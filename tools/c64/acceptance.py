@@ -74,20 +74,20 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
 | `rest offered` | Pool only: camp `REST` and the rest time the game proposes (`REST TIME = 0 DAYS 6 HRS 45 MINS` for one third-level spell), read off the screen and checked against `CAMP`'s rest-time field, then that bar's `REST`. Every action is a key and nothing is written, the area's rest interruption included, `--no-encounters` or not. Straight after a `scribe` or a `memorize` it rests in the camp that step left open. The rest is over when the clock stands still for ten reads; the result has `offered`, `elapsed_minutes`, `rest_completed`, `ended` and, after a `memorize`, `memorised` as the timed rest does, and a rest that ran short with no interruption fails. A rest the area's check stopped (`YOUR REST IS RUDELY INTERRUPTED!`, `$6DD3` = `$FF`, or `CAMP` gone) is its own outcome: the step waits, sending no key, for the fight, watch, page or world bar it leads to, logs `rest-outcome` with the text read, records it as `lost_reading` and as the last entry of the summary's `results` (`outcome` `interrupted`, `minute`, `interruption`; `completed` stays false), and fails with `RestInterrupted`, leaving the step-start snapshot for `--resume-from`. The game's dice replay from that snapshot, so the same rest is interrupted the same way again |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` or a `memorize` it rests in the camp that step left open, since every camp exit cancels the scribe queue and the memorize choice, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
-| `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (an `I` or `M` that leaves the square unchanged with a `PRESS` bar or a blank row 24 fails the walk as an encounter or a square's text, not as `blocked`; Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]` |
+| `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (an `I` or `M` that leaves the square unchanged with a `PRESS` bar or a blank row 24 fails the walk as an encounter or a square's text, not as `blocked`; Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]`; with `--cross-edge`, a disk prompt on the route's last forward move is an area edge: the side the prompt names is answered once and the move is judged by the area byte `$49F2` changing, not the square (a second prompt, or one on any other move, fails the walk), recorded as `crossing` |
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:SPELL` | Pool, any other spell with no target question (`PRAYER`): camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question, or a pick that spends nothing fails the step. The result has `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
-| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster (cleric level 5 or more, Dispel Magic among whatever else he holds), animated target and its eligible id-32 row at index 63 before input; moves the list's highlight onto `DISPEL MAGIC` when other spells are listed, captures the target prompt, all party and effect-row bytes before and after, takes the cast as done once the caster holds one Dispel Magic fewer (leaving the pick prompt by its `EXIT` row when the game puts it back up), and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
+| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster (cleric level 5 or more, Dispel Magic among whatever else he holds), animated target and its eligible id-32 row at index 63 before input; moves the list's highlight onto `DISPEL MAGIC` when other spells are listed, captures the target prompt, all party and effect-row bytes before and after, takes the cast as done once the caster holds one Dispel Magic fewer (leaving the pick prompt by its `EXIT` row when the game puts it back up), and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown; with `--dispel-tries N` a cast the game resists (one Dispel Magic spent, the row and target unchanged) is recorded as `resisted` and the step goes to a new camp, `memorize`s, `rest offered`s and casts again in the same boot, up to N casts |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `memorize WHO>SPELL[,SPELL...]` | Pool only: camp `MAGIC > MEMORIZE` for WHO (a name), the book `<NAME>'S BOOK OF SPELLS` turned with `NEXT`/`PREV` to each SPELL's page, its `MEMORIZE`, SPELL's row highlighted and picked (Return, then a KERNAL Return when nothing moved), the pick prompt's `EXIT` row, the book's `EXIT`, the `CHOSEN SPELLS` page kept and checked, `OKAY` at the confirmation, and back to the camp bar, where the party stays so a `rest` next learns them, since leaving camp drops the choice. Every action is a key and nothing is written. WHO's memorised list is read from the live record before, after each pick and at the end: each pick must add one entry, the spell's id (any id the title's spell table draws SPELL for) with bit 7 set; `<NAME> CAN'T MEMORIZE` (no slot of that level left), a pick that adds nothing, a spell in no page of the book, a choice already pending, or an end list other than the start list plus those entries fails the step. The `rest` after it adds `memorised` (the list, `learned`, `still_pending`) and fails when it ran its full time in that camp and an entry is still pending |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL`, `ready WHO>#N` | Pool and Curse (Curse reads its own record, item and roster blocks, `roster_diff` added, and no effect array): `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee`; under `--fast-flee` the party's movement is raised from the first turn |
 | `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; under `--fast-flee` every turn, from the first, first raises the party's movement |
-| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure |
+| `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure; with `--cross-edge` the last forward move may cross an area edge as `walk` does (side 2 stays the encounter's) |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
@@ -3936,6 +3936,23 @@ class PoolRun:
                             "for this Dispel Magic cast")
         return slot
 
+    @staticmethod
+    def _dispel_resisted(before: dict, after: dict, caster: str,
+                         slot: int) -> bool:
+        """Whether the game resisted the cast: exactly one Dispel Magic was
+        spent and neither the row nor the target member changed."""
+        def member(reading: dict, key, value) -> dict | None:
+            return next((p for p in reading.get("party", [])
+                         if p[key] == value), None)
+        was = next((p for p in before["party"]
+                    if p.get("name", "").upper() == caster.upper()), None)
+        now = member(after, "slot", was["slot"]) if was else None
+        if was is None or now is None:
+            return False
+        spent = was["memorised"].count(41) - now["memorised"].count(41) == 1
+        return (spent and before["effect_rows"] == after["effect_rows"]
+                and member(before, "slot", slot) == member(after, "slot", slot))
+
     def _dispel_result(self, before: dict, after: dict, slot: int) -> None:
         """Check the game cleared only the expected array id for this cast."""
         earlier, later = before["effect_rows"], after.get("effect_rows", [])
@@ -4152,7 +4169,33 @@ class PoolRun:
                 "party_before": before["party"], "party_after": after["party"],
                 "effects_before": before["effects"], "effects_after": after["effects"]}
 
+    #: How many casts a Pool Dispel Magic step may make: the game resists
+    #: some, and every one after the first is preceded by a new camp's
+    #: `memorize` and `rest offered` in the same boot, so later dice are
+    #: drawn.  `--dispel-tries` sets it; 1 casts once.
+    dispel_tries = 1
+
     def cast(self, arg: str) -> dict:
+        caster, spell, target = parse_cast(arg)
+        if (spell not in POOL_TARGET_SPELLS or target is None
+                or self.dispel_tries <= 1):
+            return self._cast_once(arg)
+        attempts: list[dict] = []
+        for attempt in range(1, self.dispel_tries + 1):
+            if attempt > 1:
+                if not self.to_world():
+                    raise self.fail("world", "the world bar never came back")
+                self.memorize(f"{caster}>{spell}")
+                self.rest_offered()
+            got = self._cast_once(arg, resist_ok=attempt < self.dispel_tries)
+            if got.get("outcome") != "resisted":
+                got["attempts"] = attempts
+                got["tries"] = attempt
+                return got
+            attempts.append(got)
+        raise AssertionError("the last attempt neither succeeded nor failed")
+
+    def _cast_once(self, arg: str, resist_ok: bool = False) -> dict:
         caster, spell, target = parse_cast(arg)
         if target is None and spell not in CAMP_PARTY_SPELLS:
             return self.cast_untargeted(caster, spell)
@@ -4221,6 +4264,18 @@ class PoolRun:
             if after["effect_rows"] == before["effect_rows"]:
                 self.log.emit("dispel-outcome", result="unsuccessful-roll",
                               row=after["effect_rows"][63])
+                if resist_ok and self._dispel_resisted(before, after, caster,
+                                                       slot):
+                    return {"outcome": "resisted", "caster": caster,
+                            "spell": spell, "target": target, "slot": slot,
+                            "row": after["effect_rows"][63],
+                            "memorised_before": next(
+                                p for p in before["party"]
+                                if p["name"].upper() == caster.upper())["memorised"],
+                            "memorised_after": next(
+                                p for p in after["party"]
+                                if p["name"].upper() == caster.upper())["memorised"],
+                            "messages": messages}
                 raise self.fail("dispel-roll", "Dispel Magic completed an "
                                 "unsuccessful roll; row 63 stayed unchanged")
             self._dispel_result(before, after, slot)
@@ -6034,6 +6089,94 @@ class PoolRun:
         return {"area": area, "writes": listing, "triple": triple,
                 "position": self.position()}
 
+    #: What the last `cross_edge` of the running walk recorded; None when the
+    #: walk crossed no area edge.
+    walk_crossed: dict | None = None
+    #: The area `$49F2` read as the crossing's disk prompt stood up, before
+    #: the answer: the prompt is in front of the load that changes it.
+    walk_area_start: int | None = None
+
+    #: `--cross-edge`: the last forward move of a `walk` or `walk-fight` may
+    #: leave the area; off, any disk prompt a move raises (side 2 aside, for
+    #: `walk-fight`) fails the step as before.
+    edge_crossing = False
+
+    def crossing_move(self, route: str, n: int, move: str) -> bool:
+        """Whether move N is the route's last and a forward one, the only
+        move that may leave the area, and the run allows it."""
+        return self.edge_crossing and n == len(route) - 1 and move == "I"
+
+    def area_byte(self) -> int:
+        """The running area `$49F2`."""
+        try:
+            with self.sess.mon(5) as m:
+                return m.read(AREA_AT, 1)[0]
+        except (OSError, S.MonitorError) as e:
+            raise self.fail("walk", f"could not read the area: {e}") from e
+
+    def crossed_position(self) -> list:
+        """`[x, y, None]` from the travel pair when the party is on the
+        travel grid, else the status line's square; the status line lags a
+        step out there."""
+        with self.sess.mon(5) as m:
+            inside = m.read(S.INDOORS_AT, 1)[0]
+            x, y = m.read(S.TRAVEL_XY, 2)
+        return self.position() if inside else [x, y, None]
+
+    def cross_edge(self, verb: str, route: str, last, screen) -> dict:
+        """Answer the one disk prompt an area edge raises on the last move.
+
+        The side is the one the prompt text names.  The arrival is judged by
+        the area byte `$49F2` differing from `walk_area_start`, and a second
+        prompt after the answer fails the step."""
+        sess = self.sess
+        n, move, before = last
+        where = f"{verb} {route}: move {n} ({move}) from {before}"
+        text = screen.text().upper()
+        sides = S.RE_GAME_SIDE.findall(text)
+        row = screen.row(24).strip()
+        if S.SAVE_PROMPT in text or len(sides) != 1:
+            raise self.fail("walk", f"{where}: a disk prompt a crossing does "
+                                    f"not answer: {row}")
+        side = sides[0]
+        self.walk_area_start = self.area_byte()
+        self.capture(f"side{side}-before-answer")
+        if not sess.handle_prompt(screen):
+            raise self.fail("walk", f"{where}: the side {side} prompt was not "
+                                    f"answered: {row}")
+        self.log.emit("walk-side-answered", side=side, n=n, move=move,
+                      crossing=True)
+        limit = self.clock() + SIDE_LINGER_SECONDS
+        while self.clock() < limit:
+            time.sleep(0.3)
+            after = sess.screen()
+            if after is None or not sess.wanted_disk(after):
+                break
+        else:
+            raise self.fail("walk", f"{where}: the side {side} prompt stayed "
+                                    f"up {int(SIDE_LINGER_SECONDS)} seconds "
+                                    f"after its answer")
+        limit = self.clock() + ENCOUNTER_DRAW_SECONDS
+        area = self.area_byte()
+        while area == self.walk_area_start:
+            if self.clock() >= limit:
+                raise self.fail("walk", f"{where}: answered side {side} and "
+                                        f"the area is still {area}")
+            self.budget(1, f"{verb} {route}")
+            time.sleep(0.3)
+            again = sess.screen()
+            if again is not None and sess.wanted_disk(again):
+                raise self.fail("walk", f"{where}: a second disk prompt came "
+                                        f"after side {side}: "
+                                        f"{again.row(24).strip()}")
+            area = self.area_byte()
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back after "
+                                     "the area crossing")
+        self.capture(f"crossed-{area}")
+        return {"side": side, "at_move": n, "area_before": self.walk_area_start,
+                "area_after": area, "position": self.crossed_position()}
+
     def stop_at_prompt(self, route: str, last, why: str) -> None:
         """Fail the walk when a disk prompt is on the screen, answering nothing."""
         screen = self.sess.screen()
@@ -6048,7 +6191,8 @@ class PoolRun:
             "walk", f"walk {route}: move {n} ({move}) from {before} {why}, "
                     f"not a step: {row}")
 
-    def answer_side_prompt(self, route: str, last, why: str) -> bool:
+    def answer_side_prompt(self, route: str, last, why: str,
+                           crossing: bool = False) -> bool:
         """`stop_at_prompt`, except that `INSERT SIDE # N` is answered once.
         Returns whether a prompt was answered, which means the move key was
         read.
@@ -6058,7 +6202,11 @@ class PoolRun:
         side's image attached and a key pressed, then the answered prompt's
         lingering text is waited out.  A save-disk prompt, a side outside
         `WALK_SIDES`, a side already answered in this step, or a prompt that
-        outlives `SIDE_LINGER_SECONDS` stops the step with the frame kept."""
+        outlives `SIDE_LINGER_SECONDS` stops the step with the frame kept.
+
+        CROSSING is true on a route's last forward move: a side outside
+        `WALK_SIDES` is then the area edge's disk, answered through
+        `cross_edge` and kept in `walk_crossed`."""
         sess = self.sess
         screen = sess.screen()
         if screen is None or not sess.wanted_disk(screen):
@@ -6070,12 +6218,17 @@ class PoolRun:
             self.stop_at_prompt(route, last, why)
             return False
         side, row = sides[0], screen.row(24).strip()
+        if side not in WALK_SIDES and crossing and self.walk_crossed is None:
+            self.walk_crossed = self.cross_edge(self.walk_verb, route, last,
+                                                screen)
+            return True
         if side not in WALK_SIDES:
             raise self.fail(
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
                         f"{before}: the game asks for side {side} mid-walk, "
                         f"which the step does not answer (only side 2, the "
-                        f"encounter's, is): {row}")
+                        f"encounter's, and the last forward move's area edge "
+                        f"are): {row}")
         if side in self.walk_side_open:
             raise self.fail(
                 "walk", f"{self.walk_verb} {route}: move {n} ({move}) from "
@@ -6628,7 +6781,19 @@ class PoolRun:
             raise self.fail("world", "the world bar never came back")
         return {"name": name}
 
+    def cross_if_prompt(self, route: str, last) -> bool:
+        """On the route's last forward move, answer a disk prompt that is up
+        as an area crossing; True when it did."""
+        if not self.crossing_move(route, *last[:2]):
+            return False
+        screen = self.sess.screen()
+        if screen is None or not self.sess.wanted_disk(screen):
+            return False
+        self.walk_crossed = self.cross_edge("walk", route, last, screen)
+        return True
+
     def _walk(self, route: str) -> dict:
+        self.walk_crossed = None
         self.leave_arrival(f"walk {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -6646,6 +6811,8 @@ class PoolRun:
             before_rows = self.rows()
             status_moved = self.sess.walk_one(move, tries=1, answer_prompts=False)
             resent = False
+            if self.cross_if_prompt(route, last):
+                return self._walk_crossed(route, start, moves, last)
             self.stop_at_prompt(route, last, "ran the square's event")
             # Out on the travel grid a move is pressed once and never re-sent:
             # the status line lags and a turn does not exist there.
@@ -6691,6 +6858,8 @@ class PoolRun:
             look_until = self.clock() + LOOK_SECONDS
             while True:
                 self.budget(1, f"walk {route}")
+                if self.cross_if_prompt(route, last):
+                    return self._walk_crossed(route, start, moves, last)
                 self.stop_at_prompt(route, last, "ran the square's event")
                 if self.clock() >= look_until:
                     break
@@ -6769,6 +6938,8 @@ class PoolRun:
                           "moved": before[:2] != after[:2],
                           "status_moved": status_moved, "resent": resent,
                           "asked": asked})
+        if self.cross_if_prompt(route, last):
+            return self._walk_crossed(route, start, moves, last)
         self.stop_at_prompt(route, last, "ran the square's event")
         end = self.position()
         self.capture(f"walked-{route}")
@@ -6785,6 +6956,23 @@ class PoolRun:
                                   if m["move"] == "M"),
                 "blocked": [i for i, m in enumerate(moves) if m["blocked"]],
                 "expected_facing": facing}
+
+    def _walk_crossed(self, route: str, start: list, moves: list, last) -> dict:
+        """`walk`'s result for a route whose last move crossed an area edge:
+        the move is judged by the area byte, not the square."""
+        n, move, before = last
+        end = self.walk_crossed["position"]
+        moves.append({"move": move, "before": before, "after": end,
+                      "blocked": False, "moved": True, "status_moved": True,
+                      "resent": False, "asked": None, "crossed": True})
+        self.capture(f"walked-{route}")
+        return {"route": route, "start": start, "position": end, "moves": moves,
+                "asked_forward": route.count("I"),
+                "squares_moved": sum(m["moved"] for m in moves),
+                "back_moved": sum(m["moved"] for m in moves
+                                  if m["move"] == "M"),
+                "blocked": [i for i, m in enumerate(moves) if m["blocked"]],
+                "expected_facing": None, "crossing": self.walk_crossed}
 
     def walk_fight(self, arg: str) -> dict:
         """Walk a route, fighting every encounter the route meets, and resume.
@@ -6818,6 +7006,7 @@ class PoolRun:
         route, answer = parse_walk_fight(arg)
         self.walk_side_prompts = []
         self.walk_side_open = set()
+        self.walk_crossed = None
         self.leave_arrival(f"{self.walk_verb} {route}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -6852,6 +7041,9 @@ class PoolRun:
                     route, n, move, before, last,
                     answer if n == len(route) - 1 else None, fights,
                     word, flees)
+                if self.walk_crossed is not None:
+                    after = self.walk_crossed["position"]
+                    break
                 after = self.position()
                 if getattr(self.sess, "walk_unsent_press_bar", False):
                     unsent += 1
@@ -6873,6 +7065,14 @@ class PoolRun:
                     continue
                 break
             never_sent = sends == 0
+            if self.walk_crossed is not None:
+                # The edge is the move: its square is another area's.
+                self.log.emit("move", move=move, n=n, before=before,
+                              after=after, resent=False,
+                              row24=self.bar().strip(), crossed=True)
+                moves.append({"move": move, "before": before, "after": after,
+                              "moved": True, "resent": False, "crossed": True})
+                continue
             if flees and flees[-1]["at_move"] == n:
                 flees[-1].update(before=before, after=after)
             if flees and flees[-1]["at_move"] == n and flees[-1]["escaped"]:
@@ -6893,7 +7093,10 @@ class PoolRun:
                           "moved": before[:2] != after[:2], "resent": resent})
         last = (len(route) - 1, route[-1], self.position())
         mark = len(self.walk_side_prompts)
-        if self.answer_side_prompt(route, last, "ran the square's event"):
+        if (self.answer_side_prompt(
+                route, last, "ran the square's event",
+                crossing=self.crossing_move(route, *last[:2]))
+                and self.walk_crossed is None):
             # The load the answer started is the last key's, so it is waited
             # out and fought as the key's own would be.
             n, move, before = last
@@ -6907,6 +7110,9 @@ class PoolRun:
                "fights": fights, "moves": moves,
                "side_prompts": self.walk_side_prompts,
                "treasure_screens": self.walk_treasures}
+        if self.walk_crossed is not None:
+            got["crossing"] = self.walk_crossed
+            got["position"] = self.walk_crossed["position"]
         if word == ENCOUNTER_FLEE:
             got["flees"] = flees
         return got
@@ -7006,7 +7212,11 @@ class PoolRun:
         # `walk_one` returns at a disk prompt with the encounter flag unset;
         # an answered prompt means the game read the key, so it is not sent
         # again into the encounter that is loading.
-        answered = self.answer_side_prompt(route, last, "ran the square's event")
+        answered = self.answer_side_prompt(
+            route, last, "ran the square's event",
+            crossing=self.crossing_move(route, n, move))
+        if answered and self.walk_crossed is not None:
+            return False
         unread = unread and not answered
         stop = getattr(sess, "walk_stop_screen", None)
         rejected = getattr(sess, "walk_stopped", None)
@@ -9226,7 +9436,7 @@ def seeded_vicerc_digest(joy: bool = False) -> str:
 
 #: The arguments a resumed run must repeat, since each changes what the
 #: machine did before the snapshot.
-RESUME_OPTIONS = ("no_encounters", "walk_retry", "walk", "walk_steps",
+RESUME_OPTIONS = ("no_encounters", "walk_retry", "dispel_tries", "cross_edge", "walk", "walk_steps",
                   "walk_fight_seconds", "joy", "first_bar_key", "stage_row",
                   "stage_trait", "stage_item", "stage_record", "stage_status",
                   "stage_side", "stage_var", "stage_roster", "quit_nonattacking")
@@ -9596,6 +9806,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         if hasattr(args, "walk_fight_seconds"):
             pool.walk_fight_seconds = args.walk_fight_seconds
         pool.walk_retry = getattr(args, "walk_retry", 0)
+        pool.dispel_tries = getattr(args, "dispel_tries", 1)
+        pool.edge_crossing = getattr(args, "cross_edge", False)
         pool.fight_watch = getattr(args, "fight_watch", "")
         if getattr(args, "no_encounters", False):
             pool.no_encounters = True
@@ -9999,6 +10211,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--walk-retry", type=int, default=0, metavar="N",
                     help="a `walk` step that meets an encounter rolls back to "
                          "a snapshot and walks again, up to N more times")
+    ap.add_argument("--cross-edge", action="store_true",
+                    help="Pool only: the last forward move of a `walk` or "
+                         "`walk-fight` may leave the area, answering the one "
+                         "disk prompt the edge raises")
+    ap.add_argument("--dispel-tries", type=int, default=1, metavar="N",
+                    help="a Pool `cast WHO:DISPEL MAGIC>TARGET` the game resists "
+                         "is recorded as resisted and cast again, after a new "
+                         "camp's memorize and rest offered, up to N casts")
     ap.add_argument("--no-encounters", action="store_true",
                     help="switch wandering encounters off for each `walk` step, "
                          "and put back and verify the gates before every save")
@@ -10033,6 +10253,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.walk_retry < 0:
         ap.error("--walk-retry cannot be negative")
+    if args.dispel_tries < 1:
+        ap.error("--dispel-tries must be at least 1")
     if (args.resume_from is None) != (args.at_step is None):
         ap.error("--resume-from and --at-step go together")
     if args.at_step is not None and args.at_step < 2:
