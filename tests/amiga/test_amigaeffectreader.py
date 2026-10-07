@@ -255,6 +255,7 @@ def test_pool_read_slot_reads_the_dos_member_keys_through_the_amiga_offsets(monk
         "creature_type": record.get("creature_type"),
         "turn_class": record.get("turn_class"),
         "movement": record.get("movement"),
+        "gold": int.from_bytes(raw[0x90:0x92], "big"),
     }
     assert member["status_bytes"] == list(raw[0x10E:0x112])
     assert member["control"] == raw[0x85]
@@ -262,6 +263,7 @@ def test_pool_read_slot_reads_the_dos_member_keys_through_the_amiga_offsets(monk
     assert member["creature_type"] == raw[0xA1]
     assert member["turn_class"] == raw[0x76]
     assert member["movement"] == raw[0x72]
+    assert member["gold"] == raw[0x90] << 8 | raw[0x91]
 
 
 def test_pool_read_slot_keeps_two_members_of_one_name_in_party_order(monkeypatch):
