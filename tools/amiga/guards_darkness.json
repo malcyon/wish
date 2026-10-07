@@ -730,6 +730,39 @@
       "example": "628/darkness-P1a/accept1/shots/19-camp_sheet_spent.png",
       "sha256": "b869d36f4b5b849242eef848d7a555fc71957dc3f99eb6214b27c8b2a5b08e29"
     },
+    "camp_use_combat": {
+      "also": [],
+      "box": [
+        74,
+        408,
+        190,
+        426
+      ],
+      "example": "amiga-grab-crops/wish2-use__camp_use_combat.png",
+      "sha256": "1fa8832ac9c1eda066ffe0e194bf9e99290d4582aa3fbaabb3fe94c5841600bf"
+    },
+    "camp_use_list": {
+      "also": [],
+      "box": [
+        74,
+        408,
+        250,
+        426
+      ],
+      "example": "amiga-grab-crops/wish2-use__camp_use_list.png",
+      "sha256": "8daf7731c6bebb39b95fbde7222c5648f4a0cae5b58d2666b507dd671df44130"
+    },
+    "camp_use_target": {
+      "also": [],
+      "box": [
+        74,
+        408,
+        365,
+        426
+      ],
+      "example": "amiga-grab-crops/wish2-use__camp_use_target.png",
+      "sha256": "f90727455ab039238e446191cb89e4a19b07ccb6c73208cbe21abd7930120c59"
+    },
     "continue": {
       "also": [],
       "box": [
@@ -2137,6 +2170,15 @@
     ],
     "WISH-6/wish6-l1/measure2/shots/55-elminster_menu.png": [
       "elminster_menu"
+    ],
+    "amiga-grab-crops/wish2-use__camp_use_combat.png": [
+      "camp_use_combat"
+    ],
+    "amiga-grab-crops/wish2-use__camp_use_list.png": [
+      "camp_use_list"
+    ],
+    "amiga-grab-crops/wish2-use__camp_use_target.png": [
+      "camp_use_target"
     ],
     "amiga-grab-crops/wish347-a3r3__intro_followers.png": [
       "intro"

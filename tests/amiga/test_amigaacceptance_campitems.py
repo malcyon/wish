@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import pathlib
 
 import pytest
 
@@ -345,3 +346,115 @@ def test_a_guard_map_without_the_items_screens_is_blocked_before_a_key_is_presse
     guest = PoolCampGuest(clock, ROWS)
     with pytest.raises(RouteError, match=r"screen guard map lacks \['camp_items_3'\]"):
         _pool_items_run(tmp_path, clock, ("items 3",), guard=Lacking(guest))
+
+
+def test_use_casts_each_case_spell_and_returns_to_the_same_row_of_the_list():
+    # HILDE is line 5 of 7, reached backwards; the case is row 3. Each spell is U, C, then S at the target picker or Y at
+    # the combat-only prompt, and the list comes back with the row still highlighted.
+    assert route_camp.steps_for(("use 5 3 SY",), "darkness", 7) == (
+        ("NP8", "camp", "key"), ("NP8", "camp", "key"), ("NP8", "camp", "key"),
+        ("V", "camp_sheet_items_5", "key"),
+        ("I", "camp_items_5", "key"),
+        ("NP2", "camp_items_5_row2", "key"), ("NP2", "camp_items_5_row3", "key"),
+        ("U", "camp_use_list", "key"), ("C", "camp_use_target", "key"),
+        ("S", "camp_items_5_row3", "key"),
+        ("U", "camp_use_list", "key"), ("C", "camp_use_combat", "key"),
+        ("Y", "camp_items_5_row3", "key"),
+        ("E", "camp_sheet_items_5", "key"), ("E", "camp", "key"),
+        ("NP2", "camp", "key"), ("NP2", "camp", "key"), ("NP2", "camp", "key"))
+
+
+@pytest.mark.parametrize("text,why", [
+    ("use 1 1", "is not use N I followed by one S or Y per spell"),
+    ("use 1 1 X", "is not use N I followed by one S or Y per spell"),
+    ("use 1 1 SYx", "is not use N I followed by one S or Y per spell"),
+    ("use 1 0 S", "rows 1 to 16 only"),
+    ("use 1 17 S", "rows 1 to 16 only"),
+    ("use 7 1 S", "lines 1 to 6 only"),
+])
+def test_use_blocks_a_place_or_answer_it_cannot_drive(text, why):
+    with pytest.raises(RouteError, match=why):
+        route_camp.validate_steps((text,), 6, name="darkness")
+
+
+@pytest.mark.parametrize("name", ["pool", "ssb", "curse"])
+def test_use_is_blocked_for_a_title_whose_use_routine_is_unread(name):
+    with pytest.raises(RouteError, match="USE is built for Pools of Darkness only"):
+        route_camp.validate_steps(("use 1 1 S",), 4, name=name)
+
+
+def test_use_states_are_strict_and_the_steps_go_before_the_camp_save():
+    tokens = ("use 1 1 SY",)
+    title = route_camp.camp_title(route_darkness.DARKNESS, tokens, 6, name="darkness")
+    at = route_darkness.DARKNESS.route.index(route_camp.CAMP_SAVE_STEP)
+    added = route_camp.steps_for(tokens, "darkness", 6)
+    assert title.route == (*route_darkness.DARKNESS.route[:at], *added,
+                           *route_darkness.DARKNESS.route[at:])
+    assert {"camp", "camp_sheet_items", "camp_items", "camp_use_list", "camp_use_target",
+            "camp_use_combat"} <= set(title.strict)
+
+
+def test_use_marks_land_after_the_steps_before_them():
+    tokens = ("use 1 2 S", "snapshot a")
+    title = route_camp.camp_title(route_darkness.DARKNESS, tokens, 6, name="darkness")
+    marks = route_camp.camp_marks(title, tokens, 6, name="darkness")
+    assert list(marks.values()) == [(("snapshot", "a"),)]
+    assert title.route[next(iter(marks)) - 1] == ("E", "camp", "key")
+
+
+def test_the_darkness_guards_tell_the_spell_list_the_target_picker_and_the_prompt_apart():
+    guards = json.loads(pathlib.Path(route_darkness.__file__).with_name(
+        "guards_darkness.json").read_text())["guards"]
+    assert {"camp_use_list", "camp_use_target", "camp_use_combat"} <= set(guards)
+
+
+def _play_use(steps, spells, row):
+    """The screens a case's `U`, `C` and answer keys lead to, for spells that ask `spells` in turn.
+
+    Returns the screen after every step: a spell that asks whom shows the target picker, a
+    combat-only one shows its prompt, and either answer returns to the list with the row kept.
+    """
+    screen, asked, shown = "camp", iter(spells), []
+    for key, _state, _ in steps:
+        if screen == "camp" and key == "V":
+            screen = "camp_sheet_items_5"
+        elif screen == "camp_sheet_items_5" and key == "I":
+            screen = "camp_items_5"
+        elif screen.startswith("camp_items_5") and key == "NP2":
+            at = int(screen.rsplit("row", 1)[1]) + 1 if "row" in screen else 2
+            screen = f"camp_items_5_row{at}"
+        elif screen.startswith("camp_items_5") and key == "U":
+            screen = "camp_use_list"
+        elif screen == "camp_use_list" and key == "C":
+            screen = "camp_use_target" if next(asked) == "target" else "camp_use_combat"
+        elif screen == "camp_use_target" and key == "S" or (
+                screen == "camp_use_combat" and key == "Y"):
+            screen = f"camp_items_5_row{row}" if row > 1 else "camp_items_5"
+        elif screen.startswith("camp_items_5") and key == "E":
+            screen = "camp_sheet_items_5"
+        elif screen == "camp_sheet_items_5" and key == "E":
+            screen = "camp"
+        elif key.startswith("NP"):
+            pass
+        else:
+            screen = f"unexpected-{screen}-{key}"
+        shown.append(screen)
+    return shown
+
+
+@pytest.mark.parametrize("answers,spells", [
+    ("S", ["target"]), ("Y", ["combat"]), ("SYS", ["target", "combat", "target"])])
+def test_each_use_branch_shows_the_screen_its_step_waits_for(answers, spells):
+    steps = route_camp.steps_for((f"use 5 3 {answers}",), "darkness", 7)
+    shown = _play_use(steps, spells, 3)
+    assert all(s == state or key.startswith("NP") and state == "camp"
+               for s, (key, state, _) in zip(shown, steps)), shown
+    assert shown[-1] == "camp"
+
+
+def test_a_spell_that_asks_whom_is_not_answered_with_the_combat_only_key():
+    steps = route_camp.steps_for(("use 5 3 Y",), "darkness", 7)
+    shown = _play_use(steps, ["target"], 3)
+    expected = [state for _, state, _ in steps]
+    assert shown != expected
+    assert shown[expected.index("camp_use_combat")] == "camp_use_target"

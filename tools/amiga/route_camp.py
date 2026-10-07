@@ -106,8 +106,9 @@ and the same kind of picker, with `Lay` where the other two say `Heal`:
   NP8, NP7). Camp entry does not reset it.
 * **The sheet** adds `Items` only while the member has items (`021558`-`02156C`);
   `I` runs the item routine `021932`, whose list starts on the first item
-  (`021942`) with a bar of `Rdy`, `Trade`, `Drop`, `Halve`, `Join` and `Exit`. `Rdy`
-  (`021BBA`) runs the ready routine `022152`, and the list redraws with the same
+  (`021942`) with a bar of `Rdy`, `Use`, `Trade`, `Drop`, `Halve`, `Join` and `Exit`
+  (`Use` is added while the record is active, the area allows magic and the mode byte
+  `g5B12` is 2, 3 or 4). `Rdy` (`021BBA`) runs the ready routine `022152`, and the list redraws with the same
   row highlighted. The keypad Down (NP2) moves the row highlight: the cursor Down
   was dropped on this list in a run under FS-UAE.
 
@@ -253,6 +254,16 @@ ITEMS_TITLES = frozenset({"darkness", "pool", "ssb"})
 #: The titles whose item routine's `Rdy` has been read, so `ready N I` may name them.
 READY_TITLES = frozenset({"darkness"})
 READY = "R"
+#: The titles whose item routine's `Use` on a scroll case has been read, so `use N I S|Y...`
+#: may name them.
+USE_TITLES = frozenset({"darkness"})
+USE = "U"
+#: The key that casts the highlighted spell of a case's spell list.
+USE_CAST = "C"
+#: What a case spell asks next: `S` picks the caster at the target picker, `Y` answers YES to the
+#: combat-only prompt. Each spell used leaves the item list on the same row.
+USE_ANSWERS = {"S": "camp_use_target", "Y": "camp_use_combat"}
+USE_LIST = "camp_use_list"
 #: The titles whose camp sheet steps, `view N` and `heal N`, are not built: Pool of Radiance's
 #: sheet has no HEAL, and its guard map holds no camp sheet.
 SHEETLESS = frozenset({"pool"})
@@ -476,6 +487,15 @@ def _item_place(words: list[str]) -> tuple[int, int] | None:
     return int(words[1]), int(words[2])
 
 
+def _use_place(words: list[str]) -> tuple[int, int, str] | None:
+    """The party line, item row and answer letters a `use N I S|Y...` token names, else None."""
+    if len(words) != 4 or words[0] != "use" or not all(w.isdigit() for w in words[1:3]):
+        return None
+    if not words[3] or any(c not in USE_ANSWERS for c in words[3]):
+        return None
+    return int(words[1]), int(words[2]), words[3]
+
+
 def _join_place(words: list[str]) -> tuple[int, int] | None:
     """The party line and item row a `join N I` token names, else None."""
     return _item_place(words) if words[0] == "join" else None
@@ -540,7 +560,9 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     or `heal`, so its rests must total less than `CLOCK_BLIND_REST`, which the
     clock can prove. `join N I` presses JOIN on row I of line N's item list
     (only for a title in `JOIN_TITLES`), and `ready N I` presses READY on it (only for a
-    title in `READY_TITLES`).
+    title in `READY_TITLES`). `use N I ANSWERS` presses USE on row I and casts one case spell
+    per letter of ANSWERS, `S` for a spell that asks whom and `Y` for a combat-only one (only for
+    a title in `USE_TITLES`).
     """
     view_lines, heal_lines = sheet_lines(name)
     _validate_machine_steps(tuple(t for t in tokens if is_machine_step(t)))
@@ -576,6 +598,19 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             if place is None:
                 raise RouteError(f"camp step {token!r} is not ready N I")
             line, row = place
+            if not 1 <= line <= lines_held:
+                raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            if not 1 <= row <= ITEM_ROWS:
+                raise RouteError(f"{token!r}: an item list has rows 1 to {ITEM_ROWS} only")
+            continue
+        if words[0] == "use":
+            if name not in USE_TITLES:
+                raise RouteError(f"{token!r}: USE is built for Pools of Darkness only")
+            place = _use_place(words)
+            if place is None:
+                raise RouteError(f"camp step {token!r} is not use N I followed by one S or Y "
+                                 f"per spell")
+            line, row, _ = place
             if not 1 <= line <= lines_held:
                 raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
             if not 1 <= row <= ITEM_ROWS:
@@ -617,7 +652,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             continue
         also = (", nor items N" if name in ITEMS_TITLES else "") + (
             " or join N I" if name in JOIN_TITLES else "") + (
-            " or ready N I" if name in READY_TITLES else "")
+            " or ready N I" if name in READY_TITLES else "") + (
+            " or use N I S|Y" if name in USE_TITLES else "")
         raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
                          f"rest DURATION or display{also}")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST and name in SHEETLESS:
@@ -737,6 +773,18 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
             steps += [(READY, items_row_state(line, row), "key"),
                       (SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
             steps += back
+        elif words[0] == "use":
+            line, row = int(words[1]), int(words[2])
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(VIEW, items_sheet_state(line), "key"), (ITEMS, items_state(line), "key")]
+            steps += [(ITEM_NEXT, items_row_state(line, n), "key") for n in range(2, row + 1)]
+            for answer in words[3]:
+                # The list comes back with the same row highlighted, the count redrawn.
+                steps += [(USE, USE_LIST, "key"), (USE_CAST, USE_ANSWERS[answer], "key"),
+                          (answer, items_row_state(line, row), "key")]
+            steps += [(SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += back
         elif words[0] == "display":
             # The list is left from its first page; a further page is recorded, not read.
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
@@ -760,7 +808,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     The camp states are not strict: a screen the guard map lacks is settled and
     marks the run as measuring, so one boot can capture them all, and the camp
     save's own strict picker still stops the run before any write. The states of
-    an `items` or `join` step are strict instead, the camp bar and each list JOIN
+    an `items`, `join`, `ready` or `use` step are strict instead, the camp bar and each list JOIN
     redraws included, so every key of those steps goes out on a screen its guard
     recognised. A kept slot letter the rest menu uses as a key (`A`, for a source
     loaded from slot D) becomes a simple key on the rest menu only.
@@ -782,7 +830,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     limits = dict(title.wait_limits)
     if rest_minutes(tokens):
         limits[CAMP] = max(limits.get(CAMP, 0.0), REST_LIMIT)
-    item_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in ("items", "join", "ready"))
+    item_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in ("items", "join", "ready", "use"))
     item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
     item_states |= {joined_after(state) for state in item_states if is_join(state)}
     strict = title.strict | ({CAMP} | item_states if item_states else set())
