@@ -654,7 +654,7 @@ def new_savegame(state: world_state.WorldState,
     # byte for byte; the test checks the shipped file, and other specimens
     # agreed when measured).  Not measured: no shipped Amiga Curse
     # save is in this state, so its zero script region and the container
-    # number 2 in byte 0 and `$5012` are taken from DOS Curse.  The
+    # number 2 in byte 0 and `$6E12` are taken from DOS Curse.  The
     # Amiga loader overwrites the mode-before byte with the mode byte, so
     # its 4 is only there to match the shipped file.  The disk number is
     # taken from DOS's `PRE_ADVENTURE_DISK`, which agrees with the Amiga
@@ -1178,9 +1178,9 @@ POR_WALL_BYTE = 12803
 #: changed the square and the facing, and it is the same 14 DOS's own
 #: engine-written outdoor saves hold at `goldbox.dos_savegame.SCRATCH_BYTE`.
 POR_WALL_OUTDOORS = 14
-#: A square property, `fn(x, y)` at `0x2ec54`, and the low byte of `$5200`.
-#: The two engine-written outdoor saves hold 1 here with `$5200` = 1, keeping
-#: that relationship; this writer leaves `$5200` zero, so it writes zero.
+#: A square property, `fn(x, y)` at `0x2ec54`; it is not a copy of `$9800`
+#: (`$5200` in the DOS names).  The two engine-written outdoor saves hold 1
+#: here; this writer writes zero.
 POR_SQUARE_PROPERTY = 12804
 #: `(start, end)` of the five bytes nothing reads: two the struct pads to and
 #: the first three of wallset entry 0.  The write is ten bytes long and the
@@ -1351,7 +1351,7 @@ POR_ENCOUNTER_STATE = (
     "the pending-encounter record: it changes together with the message "
     "buffer beside it, and a converted party has no encounter pending")
 
-#: Words of `$4900`-`$52FF` no source save can answer for, written **zero**
+#: Words of `$4900`-`$52FF` (engine `$4900`-`$4CFF` and `$6B00`-`$6EFF`, then `$9700`-`$98FF`) no source save can answer for, written **zero**
 #: with the reason each is nobody's.  The Amiga counterpart of
 #: `goldbox.dos_codec.SAVGAM_UNSOURCED`, and it is that list address for address --
 #: which is a finding rather than a convenience.  **Every one of the 92
@@ -1400,7 +1400,7 @@ POR_SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
 #: Words the catch-all sweep's argument does not cover: no Amiga saved game
 #: read here is non-zero in them, and every script that writes one belongs to
 #: an area named below, in the game's own area numbering (the `$49F2` word,
-#: not the `$5012` container id).  For most of these rows that area is one no
+#: not the `$6E12` container id).  For most of these rows that area is one no
 #: saved game here comes from at all, which is what the reason string below
 #: says.
 #:

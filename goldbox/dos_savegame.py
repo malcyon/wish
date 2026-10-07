@@ -46,7 +46,7 @@ Pools of Darkness is the other form
 ------------------------------------
 It writes 1024 **byte-wide** ECL variables from file offset 0, variable *N* at
 offset *N* - 1, where the first three titles write 2560 ``u16le`` words from
-``$4900``.  Nothing in it can line up with ``$5012`` or ``$503E`` under any
+``$4900``.  Nothing in it can line up with ``$6E12`` or ``$6E3E`` under any
 origin, which is why #53 could not find them.  ``pod_var`` reads it,
 ``POD_CLOCK`` and its siblings name what the engine puts in it, and its square
 block is twelve bytes rather than eight -- ``SAVE_POOLS_OF_DARKNESS`` and
@@ -172,13 +172,13 @@ SCRATCH_BYTE = 12804         # unnamed and engine-maintained: it replaced a
                              # the 9 indoor specimens hold it and a save
                              # carrying it loads, not because 0 means indoors
 SCRATCH_INDOORS, SCRATCH_OUTDOORS = 0, 14
-VM_COPY_BYTE = 12805         # the low byte of $5200, equal in 13 of 13 files
+VM_COPY_BYTE = 12805         # the square's attribute, $C04F; not a copy of $9800
 VIEW_MODE_BYTE = 12806       # 1 indoors, 3 outdoors -- perfectly correlated
                              # with $49E6 in 12 of 12, so write it from that
 TAIL_CONSTANT_BYTE = 12807   # 2 in all twelve genuine specimens
 TAIL_CONSTANT = 2
 VIEW_MODE_INDOORS, VIEW_MODE_OUTDOORS = 1, 3
-PARTY_SIZE_BYTE = 12808      # the same count the word at $503E carries
+PARTY_SIZE_BYTE = 12808      # the same count the word at $6E3E carries
 
 PARTY_TABLE = 12809          # eight entries of 41 bytes
 PARTY_ENTRY = 41
@@ -491,8 +491,8 @@ SAVE_POOL_OF_RADIANCE = DosContainer(
 
 #: Curse of the Azure Bonds, 13149.  **The same file as Pool of Radiance's
 #: with twelve more bytes inside the square block**, and the variable array
-#: is at the same offset holding the same ECL addresses: `$5012` equals the
-#: header byte (2 and 2), `$503E` is the party size (6 and 6) and `$49E6` is
+#: is at the same offset holding the same ECL addresses: `$6E12` equals the
+#: header byte (2 and 2), `$6E3E` is the party size (6 and 6) and `$49E6` is
 #: the indoors flag (1 and 1) in both specimens.
 #:
 #: Its save routine writes the file in this order, from the `BlockWrite`
@@ -539,7 +539,7 @@ SAVE_SECRET_OF_THE_SILVER_BLADES = DosContainer(
 #: **The 1024 bytes at the front are the ECL variable array, one byte per
 #: variable, variable *N* at file offset *N*-1** (#175).  Not the 2560
 #: `u16le` words the first three titles write -- which is why nothing here
-#: could find `$5012` or `$503E` under any origin: the array is byte wide and
+#: could find `$6E12` or `$6E3E` under any origin: the array is byte wide and
 #: based at 0 rather than at an ECL address.  `var_bytes` rather than
 #: `var_words`, and `pod_var` rather than `word`.
 #:
@@ -644,11 +644,11 @@ WALLMAP = 0x4AFD             # three words: (1,2,3) with three sets loaded,
 #: what was measured, not because the load depends on it.
 OUTDOOR_WALLSET = (0, EMPTY, EMPTY)
 
-PARTY_SIZE = 0x503E          # 6 -> 1 when a six-member save became one member
-DISK = 0x5012                # the DAX container number again, as a VM word;
+PARTY_SIZE = 0x503E          # the party count, $6E3E in the engine; 6 -> 1 when a six-member save became one member
+DISK = 0x5012                # $6E12 in the engine: the DAX container number as a VM word;
                              # the geo load fails without it
 ENCOUNTER_TEXT = 0x5227      # string buffer, one ASCII character per word
-VM_SCRATCH = 0x5200          # byte 12805 is this word's low byte
+VM_SCRATCH = 0x5200          # $9800 in the engine: the script workspace and loop counter
 # The shared, cross-port ECL variable space ends here. No ECL script in the
 # thirty-script specimens references an address at or above $4AF9 (2544 distinct
 # bracketed addresses), and on the C64 $4D00 upwards is the twelve character
@@ -1181,8 +1181,9 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
     **indoors**, which is what refuted reading it as an indoors flag.
 
     `TAIL_CONSTANT_BYTE` is 2 in all twelve genuine specimens regardless.
-    `VM_COPY_BYTE` is written from `$5200` as it stands in this save, which is
-    the relationship 13 of 13 files show.
+    `VM_COPY_BYTE` is the square's attribute, not a copy of `$9800`; it is
+    written from `$9800` as it stands in this save, which 13 of 13 files agree
+    with, but the two are different things.
 
     **Curse and Silver Blades**: all four bytes zero, see `LATER_TAIL_ZERO`.
     Their mode byte is not Pool of Radiance's constant 2 -- it varies 0/2
@@ -1303,7 +1304,7 @@ def move_to_area(save: bytearray, *, area: int, dax: int, wallset,
     or None for a title that stages none (Silver Blades).
 
     **Container-aware since #299.**  The four writes every title shares --
-    the container byte, `$49C5`, `$49F2`, `$5012` -- land at the container's
+    the container byte, `$49C5`, `$49F2`, `$6E12` -- land at the container's
     own offsets; the wall triples go into the variable array in Pool of
     Radiance and into the twelve-byte block inside the square block in
     Curse and Silver Blades (`put_wall_block`); and the script is staged
@@ -1323,7 +1324,7 @@ def move_to_area(save: bytearray, *, area: int, dax: int, wallset,
     letting the default stand in for it.
 
     **`outdoors` changes `$49C5` regardless of `geo`.**  A travel window is
-    an area like any other everywhere else -- byte 0 and `$5012` are its DAX
+    an area like any other everywhere else -- byte 0 and `$6E12` are its DAX
     number, `$49F2` is its id, the ECL buffer is its own block -- but `$49C5`
     is **0** rather than the id, in 10 of 10 outdoor specimens, and that is
     the field that says the overland names no `GEO`.  The C64 is not the

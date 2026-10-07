@@ -682,6 +682,30 @@ the layout §1.7 describes.
 | square and party | 12801-12808, **8** | **12800-12812, 13** |
 | character table | 12809-13136, 328 | **12813-13140, 328** |
 
+**The first 5120 bytes are three blocks of the engine's variable space, not one
+array from `$4900`.** File `0x000`-`0x7FF` is `$4900`-`$4CFF`, `0x800`-`0xFFF`
+is `$6B00`-`$6EFF` and `0x1000`-`0x13FF` is `$9700`-`$98FF`, so
+`2*(name - $4900)` lands on the right bytes while the name is not the engine's
+address: past `$4CFF` the engine's address
+is the name's plus `$1E00`, and past `$50FF` plus `$4600`. The names this
+document and the code use for three of them are the DOS array's:
+
+| name used here | file offset (Amiga, DOS) | engine address | grade |
+|---|---|---|---|
+| `$5012`, the disk side | `0xE24`, `0xE25` | `$6E12` | CONFIRMED |
+| `$503E`, the party count | `0xE7C`, `0xE7D` | `$6E3E` | CONFIRMED |
+| `$5200`, the script workspace | `0x1200`, `0x1201` | `$9800` | CONFIRMED (address), PROBABLE (meaning) |
+
+Every other `$5012`, `$503E` and `$5200` in this document names those same
+words. Conversions copy all three by offset, so none is wrong. The mapping is
+read from the classifier at `/program` `0x9B14` (five classes: `$4900`-`$4CFF`,
+`$6B00`-`$6EFF`, `$9700`-`$98FF`, `$9900`-`$B6FF`, the rest), the generic store
+at `0xA0E8` and the save routine, which moves the blocks in that order;
+`docs/163-dos-vm-address-map.md` holds the same mapping for DOS. The earlier
+reading treated the array as contiguous from `$4900` and so named the words by
+their position, and the file byte at 12804 was taken for a copy of `$5200`; it
+is the square's attribute (§1.9b), which differs from `$9800` in 27 of 89 saves.
+
 `13137 = 1 + 5120 + 7680 + 8 + 328`; `13141 = 0 + 5120 + 7680 + 13 + 328`. The
 +4 is **−1 for the missing container byte and +5 for the square block**, and
 all four boundaries are measured.
@@ -690,8 +714,8 @@ all four boundaries are measured.
 value by 256: `$5012`=3 (New Phlan's container number, `docs/141` slot A),
 `$503E`=6 (the six `CHRDATA<n>.sav` beside it), `$49E6`=1 (indoors),
 `$4AFA`-`$4AFC`=(0, `$FFFF`, `$FFFF`) — **byte-identical to DOS slot A's New
-Phlan wallset triple**, `$5200`=25 (and file byte 12804 reads 25, the same copy
-DOS keeps at its 12805), and the clock at `$49C6` reading 05:48.
+Phlan wallset triple**, `$5200`=25 (file byte 12804 also reads 25 in that save, by
+coincidence: it is the square's attribute), and the clock at `$49C6` reading 05:48.
 
 **The ECL buffer starts at 5120, one byte before DOS's.** The Amiga's buffer
 and the DOS save's open with the same twenty bytes and **3916 of 7680 are
@@ -735,7 +759,7 @@ B (0,3 N 05:49)   12800:  00 03 00 00 00 00 00 00 00 00 01 02 06
 | 12801 | 4 | 3 | **y** — the step north |
 | 12802 | 6 | 0 | **facing, DOS's doubled encoding**: 6 W, 0 N |
 | 12803 | 1 | 0 | DOS's unnamed engine-maintained byte |
-| 12804 | 25 | 0 | **the low byte of `$5200`**, which moved 25 → 0 in the same save |
+| 12804 | 25 | 0 | **the square's attribute**, which moved 25 → 0 in the same save; not a copy of `$5200` (§1.9a) |
 | 12805-12809 | 0 | 0 | two unreferenced struct bytes and three bytes of the neighbouring wallset table -- `165-amiga-savegame.md` |
 | 12810-12812 | 1, 2, 6 | 1, 2, 6 | view mode, the constant 2, party size |
 
