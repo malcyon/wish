@@ -345,3 +345,19 @@ def test_a_fast_travel_without_addresses_does_not_fail_the_wait(app):
     bar = row(app, machine(resting=IN_THE_IRQ))
     bar.fasttravel = SimpleNamespace(addresses=None)
     assert bar.wait_for_key_wait().ok
+
+
+def test_a_trip_into_phlan_city_hall_lands_on_the_lobby_square():
+    """City Hall runs on New Phlan's map, so a party that is not given a square
+    stays on the street square it left. Both trip writers take the square from
+    the one table row, and leave the facing to the area script."""
+    from automap import amigafasttravel
+    from goldbox import areas
+
+    hall = areas.area(8)
+    assert actions.FastTravel.arrival_of(hall) == (4, 4)
+    for travel in (actions.FastTravel, amigafasttravel.AmigaFastTravel):
+        arrival, overland = travel._square_writes(hall)
+        assert (arrival, overland) == ((4, 4), None)
+    writes = actions.newecl_writes(0, 8, hall.disk, arrival=(4, 4))
+    assert any(value[:2] == bytes((4, 4)) for _, value in writes)

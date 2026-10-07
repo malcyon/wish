@@ -193,9 +193,10 @@ def test_every_row_carries_a_confidence():
 
 def test_arrival_squares_where_they_are_known():
     known = {a.id: a.arrival for a in areas.AREAS if a.arrival}
-    # Sixteen: fifteen harvested from the scripts, and Sokol Keep's, which P20
-    # found in `ECL15`'s own bytecode -- `reports/p20-arrivals.md` in scratch, deleted.
-    assert len(known) == 16
+    # Seventeen: fifteen harvested from the scripts, Sokol Keep's, which P20
+    # found in `ECL15`'s own bytecode, and City Hall's lobby.
+    assert len(known) == 17
+    assert known[8] == Arrival(4, 4)
     assert known[21] == Arrival(8, 14, 0)
     assert known[0] == Arrival(15, 1, 3)
     assert str(known[0]) == "15,1 W"

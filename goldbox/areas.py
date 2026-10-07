@@ -30,7 +30,7 @@ example: its `GEO12` is also area 18's, Podol Plaza's.
 
 Names come from `docs/88-map-files.md` and two write-ups since lost,
 `reports/world-map.md` and `reports/quest-flags.md`; arrival squares were harvested from the
-departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fourteen
+departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Thirteen
 areas have no known arrival square and say so with `arrival = None`. FastTraveling
 into all fifteen that had none at the time and watching where the party ends up
 P20, whose write-up `reports/p20-arrivals.md` is lost: it found area 21's
@@ -348,7 +348,8 @@ AREAS: tuple[Area, ...] = (
     _a(5, "Valjevo Castle, a Floor", 5, ("GEO05",), None, P, dynamic_geo=True),
     _a(6, "Valjevo Castle, a Floor", 5, ("GEO06",), Arrival(4, 15, 0), P),
     _a(7, "Valjevo Castle, the Pool", 5, ("GEO07",), Arrival(5, 7), P),
-    _a(8, "Phlan City Hall", 3, (), None, C),
+    # Runs on New Phlan's map, so a trip with no square leaves the party in the street.
+    _a(8, "Phlan City Hall", 3, (), Arrival(4, 4), C),
     _a(9, "Stojanow Gate", 2, ("GEO09",), None, C),
     _a(10, "Valhingen Graveyard", 4, ("GEO0A",), Arrival(0, 4, 3), C),
     _a(11, "The Training Hall", 3, (), None, C),

@@ -184,11 +184,13 @@ def test_the_walk_abstains_rather_than_guessing(pool):
     """Five measured squares the derivation declines to name.
 
     `$00`, `$0A`, `$0E` and `$17` have two or three departing scripts naming
-    different squares and `$0D` has none, so the walk answers None. An area a
+    different squares and `$0D` has none, so the walk answers None. `$08` has no
+    map of its own to walk, and its square was read from the party standing on
+    New Phlan's map. An area a
     table declines to place a party in is better than one it places a party in
     wrongly, and this pins that the abstention is deliberate.
     """
     table = _table(c64_port.POOL_OF_RADIANCE)
     abstained = {id for id, a in table.items()
                  if a.arrival is not None and pool[id].square is None}
-    assert abstained == {0x00, 0x0A, 0x0D, 0x0E, 0x17}
+    assert abstained == {0x00, 0x08, 0x0A, 0x0D, 0x0E, 0x17}

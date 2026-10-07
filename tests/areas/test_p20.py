@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """P20: where a fasttravel lands a party in an area with no arrival square.
 
-Fourteen of the thirty areas have no arrival square harvested from the scripts,
+Thirteen of the thirty areas have no arrival square harvested from the scripts,
 and for those `FastTravel` picks one off the `GEO` with `goldbox.areas.landing_square`.
 The rule that used to ship took the first square with any passable edge;
 driving the game found what that came to (`reports/p20-arrivals.md`, scratch, deleted), and
@@ -29,7 +29,7 @@ from goldbox.geo import (
 #: Every map on the disks, once, with the area that loads it.
 MAPS = sorted({g for a in areas.AREAS for g in a.geos})
 
-#: The fourteen with no harvested arrival square. Eleven have a map; three do
+#: The thirteen with no harvested arrival square. Eleven have a map; two do
 #: not and get no square at all, which is what the game itself has to cope
 #: with. **This said ten and four until 2026-09-07**, when area 30 turned out
 #: to load `GEO12` after all -- the same stale count the test two lines below
@@ -62,22 +62,23 @@ def first_passable(g: Geo) -> tuple[int, int, int] | None:
     return None
 
 
-def test_fourteen_areas_have_no_arrival_square():
+def test_thirteen_areas_have_no_arrival_square():
     """Area 21 used to be the fifteenth: P20 found Sokol Keep's square in
     `ECL15`'s own bytecode and `goldbox/areas.py` carries it now."""
-    assert NO_ARRIVAL == (3, 4, 5, 8, 9, 11, 15, 19, 20, 25, 26, 27, 29, 30)
+    assert NO_ARRIVAL == (3, 4, 5, 9, 11, 15, 19, 20, 25, 26, 27, 29, 30)
     assert areas.AREAS_BY_ID[21].arrival == areas.Arrival(8, 14, 0)
+    assert areas.AREAS_BY_ID[8].arrival == areas.Arrival(4, 4)
 
 
-def test_three_of_them_have_no_map_either():
-    """Areas 8, 11 and 19 load no `GEO`, so there is no square to choose.
+def test_two_of_them_have_no_map_either():
+    """Areas 11 and 19 load no `GEO`, so there is no square to choose.
 
     Area 30 used to be a fourth: `ECL1E` was believed to issue no `LOADFILES`
     at all, until `#260 (Area 30 is recorded as having no map, and ECL1E loads
     GEO12)` found it loads `GEO12` -- it still has no arrival square, since
     nothing in `ECL1E`'s bytecode names one."""
     assert [i for i in NO_ARRIVAL if not areas.AREAS_BY_ID[i].geos] == \
-        [8, 11, 19]
+        [11, 19]
 
 
 def test_the_retired_fallback_always_picked_the_corner():
