@@ -1603,7 +1603,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     `read(address, length)` and `locate()` (`AmigaTarget`), once the named step's guard has matched.
     A fetch only reads; it is recorded in the events and in `result["memory_reads"]` with its
     resolved address and the bytes in hex. A run that finishes its route without reaching a read's
-    step fails.
+    step fails, except a step before `at_step` of a resumed run, which is listed in
+    `reads_skipped_by_resume`. Each row carries `attempt` (a restored walk leg reads a step again),
+    `final` (the last attempt) and `guarded` (false for a step with no guard, read after its wait).
 
     Outside measure, a `key` step whose screen matches its guard only unchanged from the screen
     before it stops the run with `KeyUnchanged`, except the steps `route_camp.may_keep_screen`
@@ -2092,21 +2094,38 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             except RouteError as exc:
                 raise RouteError(f"after restoring {name}: {exc}") from exc
 
-    def read_after(n: int, state: str) -> None:
+    def read_after(n: int, state: str, guarded: bool = True) -> None:
         for spec in reads:
             if not _read_matches(spec, n, state):
                 continue
             address = _read_address(spec, reader)
             data = reader.read(address, spec.length)
+            # A restored walk leg reaches its steps again, so the same step can be read twice.
+            attempt = 1 + sum(1 for r in result["memory_reads"]
+                              if r["spec"] == spec.text and r["step"] == n)
             row = {"spec": spec.text, "step": n, "state": state, "address": address,
-                   "length": len(data), "hex": data.hex(), "set_bits": sum(b.bit_count() for b in data)}
+                   "length": len(data), "hex": data.hex(), "set_bits": sum(b.bit_count() for b in data),
+                   "attempt": attempt, "final": False, "guarded": guarded}
             result["memory_reads"].append(row)
             result["events"].append({"memory_read": spec.text, "step": n, "address": address})
             log("memory_read", **row)
 
-    def reads_unreached() -> None:
+    def reads_unreached(route: Sequence[Any]) -> None:
+        last: dict[tuple[str, int], dict[str, Any]] = {}
+        for r in result["memory_reads"]:
+            last[(r["spec"], r["step"])] = r
+        for r in last.values():
+            r["final"] = True
+        # A resumed run starts at `at_step`: a step before it was passed by the earlier run.
+        passed = [spec.text for spec in reads
+                  if earlier is not None
+                  and not any(r["spec"] == spec.text for r in result["memory_reads"])
+                  and (steps_for := [i for i, s in enumerate(route, 1) if _read_matches(spec, i, s[1])])
+                  and max(steps_for) < at_step]
+        result["reads_skipped_by_resume"] = passed
         missing = [spec.text for spec in reads
-                   if not any(r["spec"] == spec.text for r in result["memory_reads"])]
+                   if spec.text not in passed
+                   and not any(r["spec"] == spec.text for r in result["memory_reads"])]
         if missing:
             raise RouteError(f"--read-at {missing[0]}: the route never reached that step")
 
@@ -2880,6 +2899,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         perform(key, kind, state, n)
                         sent.append(sent_entry(key, kind))
                 name = f"{n:02d}-{state}" + ("-resumed" if at_resume else "")
+                guarded = True
                 if title is not None:
                     try:
                         digest = reach(state, name, min_waits.get(state, 0), strict=True)
@@ -2892,7 +2912,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 else:
                     wait(min_waits.get(state, 0))
                     digest = capture(name, check=False)
-                read_after(n, state)
+                    guarded = False
+                read_after(n, state, guarded)
                 if digest == previous:
                     result["events"].append({"unchanged": key, "step": n})
                     changed = False
@@ -2900,7 +2921,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 previous = digest
             result["route_changed"] = changed
             if changed:
-                reads_unreached()
+                reads_unreached(steps_m)
         else:
             if earlier is None:
                 previous = until_guard("title", "title", 0, TITLE_POLL, title_limit)
@@ -3028,7 +3049,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     machine_step("restore", WALK_LEG, leg[0])
                     resumed = True
                     n = leg[0] - 1
-            reads_unreached()
+            reads_unreached(steps)
             for verb, mark_name in marks.get(len(steps), ()):
                 machine_step(verb, mark_name, len(steps) + 1)
             if counter is not None:
@@ -4263,7 +4284,8 @@ AT_STEP_HELP = "the route step the record stopped on; goes with --resume-from"
 READ_AT_HELP = ("STEP:ADDR:LEN, repeatable: once step STEP (a number, or a state name for every step in it) has matched "
                 "its guard, read LEN bytes at ADDR (0xHEX, a4+HEX, a4-HEX, base+HEX or base-HEX; "
                 "a4 is the data hunk plus 0x7FFE, base the hunk itself) into the events and the "
-                "summary's memory_reads; writes nothing")
+                "summary's memory_reads; writes nothing. A step with no guard is read after its "
+                "wait and recorded with guarded false")
 
 NO_ENCOUNTERS_HELP = ("turn the title's random encounters off in memory for the turn and move "
                       "steps, and back on before every other step, so no save carries the "

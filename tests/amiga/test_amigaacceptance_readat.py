@@ -9,6 +9,7 @@ import pytest
 
 from tests.amiga.test_amigaacceptance_accept import (  # noqa: F401
     AcceptGuest,
+    MapGuard,
     _accept,
     readings,
 )
@@ -17,6 +18,12 @@ from tests.amiga.test_amigaacceptance_measure import (  # noqa: F401
     _measure,
     clock,
 )
+from tests.amiga.test_amigaacceptance_resume import (
+    BackGuest,
+    _resume,
+    _stopped,
+)
+from tests.amiga.test_amigaacceptance_snapshot import FakePipe
 from tools.amiga import acceptance
 from tools.amiga.amigatarget import A4_BIAS
 from tools.amiga.winuaesession import RouteError
@@ -95,11 +102,83 @@ def test_reads_need_a_reader_and_a_route_that_walks(tmp_path, clock, readings): 
         _accept(tmp_path, clock, reads=(spec,), reader=object(), reload=True)
 
 
-def test_the_option_is_on_accept_and_measure_and_rejects_a_bad_value(capsys):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--read-at", action="append", type=acceptance._read_at_arg)
-    assert parser.parse_args(["--read-at", "1:0x10:2"]).read_at == [acceptance.parse_read_at("1:0x10:2")]
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--read-at", "nonsense"])
-    source = open(acceptance.__file__).read()
-    assert source.count('"--read-at", action="append"') == 2
+@pytest.mark.parametrize("command", ["accept", "measure"])
+@pytest.mark.parametrize("bad, message", [
+    ("nonsense", "wants STEP:ADDR:LEN"),
+    ("3:0x10", "wants STEP:ADDR:LEN"),
+    (":0x10:2", "wants STEP:ADDR:LEN"),
+    ("3:a5+1:2", "address 'a5+1'"),
+    ("3:a4:2", "address 'a4'"),
+    ("3:0x10:0", "length '0'"),
+    ("3:0x10:4097", "length '4097'"),
+    ("3:0x10:x", "length 'x'"),
+])
+def test_the_command_line_rejects_a_bad_read_at(command, bad, message, capsys):
+    with pytest.raises(SystemExit) as stop:
+        acceptance.main([command, "--title", "ssb", "--read-at", bad])
+    assert stop.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_read_options_build_a_reader_from_the_parsed_options(monkeypatch):
+    from automap import amiga
+
+    made = []
+    monkeypatch.setattr(amiga, "WinuaePipe", lambda holder: made.append(holder) or "pipe")
+    monkeypatch.setattr(amiga, "AmigaTarget", lambda pipe, machine: ("target", pipe, machine))
+    specs = [acceptance.parse_read_at("1:0x10:2"), acceptance.parse_read_at("vault:a4-8:4")]
+    got = acceptance._read_options(argparse.Namespace(read_at=specs, title="ssb"), "lane1")
+    assert got["reads"] == tuple(specs) and got["reader"][:2] == ("target", "pipe")
+    assert made == ["lane1"]
+    assert acceptance._read_options(argparse.Namespace(read_at=None, title="ssb"), "lane1") == {}
+
+
+def test_a_read_on_a_step_with_no_guard_says_so(tmp_path, clock):  # noqa: F811
+    guest = ScreenGuest(clock)
+    result = _measure(tmp_path, guest, reads=(acceptance.parse_read_at("sheet:0x100:8"),),
+                      reader=ReadOnlyGuestMemory(guest), guard=None)
+    assert result["memory_reads"] and all(r["guarded"] is False for r in result["memory_reads"])
+
+
+def test_a_guarded_read_says_it_was_guarded(tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    _, result = _accept(tmp_path, clock, guest=guest, reader=ReadOnlyGuestMemory(guest),
+                        reads=(acceptance.parse_read_at("4:0x100:4"),))
+    assert [r["guarded"] for r in result["memory_reads"]] == [True]
+
+
+def test_a_restored_walk_leg_numbers_its_reads_and_marks_the_last_final(
+        tmp_path, clock, readings):  # noqa: F811
+    guest = AcceptGuest(clock)
+    fake = FakePipe(guest)
+    guest.snapshot, guest.restore = fake.snapshot, fake.restore
+
+    def world(path):
+        restores = sum(1 for call in fake.calls if call[0] == "restore")
+        return not (path.stem == "13-world" and restores < 1)
+
+    _, result = _accept(tmp_path, clock, guest=guest, guard=MapGuard(on={"world": world}),
+                        walk_retry=1, reader=ReadOnlyGuestMemory(guest),
+                        reads=(acceptance.parse_read_at("12:0x100:4"),))
+    assert result["error"] == ""
+    rows = result["memory_reads"]
+    assert [(r["step"], r["attempt"], r["final"]) for r in rows] == [(12, 1, False), (12, 2, True)]
+
+
+def test_a_resume_does_not_fail_a_read_aimed_before_its_step(tmp_path, clock):  # noqa: F811
+    stopped, first = _stopped(tmp_path, clock)
+    guest = BackGuest(clock, stopped)
+    _, result = _resume(tmp_path, clock, stopped, first, guest=guest, reader=ReadOnlyGuestMemory(guest),
+                        reads=(acceptance.parse_read_at("3:0x100:4"),
+                               acceptance.parse_read_at("9:0x100:4")))
+    assert result["error"] == "" and result["success"] is True, result
+    assert result["reads_skipped_by_resume"] == ["3:0x100:4"]
+    assert [r["step"] for r in result["memory_reads"]] == [9]
+    # A step the resumed route does not have is still an error.
+    (tmp_path / "again").mkdir()
+    stopped, first = _stopped(tmp_path / "again", clock)
+    guest = BackGuest(clock, stopped)
+    _, result = _resume(tmp_path / "again", clock, stopped, first, guest=guest,
+                        reader=ReadOnlyGuestMemory(guest),
+                        reads=(acceptance.parse_read_at("99:0x100:4"),))
+    assert "never reached" in result["error"]
