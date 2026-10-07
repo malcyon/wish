@@ -426,7 +426,8 @@ def test_cast_reads_a_spell_with_no_target():
     assert A.parse_cast("DIRTEN:cure light wounds>Brutus") == (
         "DIRTEN", "CURE LIGHT WOUNDS", "Brutus")
     for bad in ("DIRTEN:ANIMATE DEAD>BRUTUS", "SHARA:CURE BLINDNESS PHILIPPE",
-                "ROLAND:DISPEL MAGIC", "DIRTEN:CURE LIGHT WOUNDS>"):
+                "ROLAND:DISPEL MAGIC", "DIRTEN:CURE LIGHT WOUNDS>",
+                "DIRTEN:CURE LIGHT WOUNDS>EXIT", "DIRTEN:PRAYER>exit"):
         with pytest.raises(ValueError):
             A.parse_cast(bad)
 

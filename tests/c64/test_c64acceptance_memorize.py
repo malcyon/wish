@@ -464,3 +464,79 @@ def test_a_pick_that_adds_nothing_and_draws_no_message_fails(tmp_path):
     run = _run(tmp_path, sess)
     with pytest.raises(A.StepFailed, match="neither Return picked ANIMATE DEAD"):
         run.memorize("DIRTEN>ANIMATE DEAD")
+
+
+# -- the scribe walk's read cap and the whom pick ----------------------------------
+
+class _WalkSess:
+    """A list drawn two rows at first (no highlight yet) and eight after, the
+    highlight on the last row and moved one row a key."""
+
+    def __init__(self, partial_reads=1, rows=8):
+        self.reads, self.partial_reads, self.n, self.hot = 0, partial_reads, rows, 2 + rows
+        self.sent = []
+        self.kbd = self
+
+    def key(self, name):
+        self.sent.append(name)
+        self.hot = max(3, min(2 + self.n, self.hot + (1 if name == "Down" else -1)))
+
+    def settle(self, seconds=0):
+        pass
+
+    def screen(self):
+        self.reads += 1
+        shown = 2 if self.reads <= self.partial_reads else self.n
+        lines = {3 + i: f"  SPELL {i}" for i in range(shown)}
+        return _Screen(_window(lines, A.PICK_MEMORIZE),
+                       self.hot if shown == self.n else None)
+
+
+def test_scribe_walk_widens_its_cap_when_the_first_frame_was_part_drawn(tmp_path):
+    sess = _WalkSess(partial_reads=1, rows=8)
+    run = _run(tmp_path, sess)
+    run._scribe_walk("SPELL 1")
+    assert sess.hot == 4 and sess.sent == ["Up"] * 6
+
+
+class _Whom:
+    def __init__(self):
+        self.picked = []
+        self.keys = []
+        self.kbd = self
+
+    def key(self, name):
+        self.keys.append(name)
+
+    def select_party(self, index, timeout=0):
+        self.picked.append(index)
+        return True
+
+
+def _whom_rows(names):
+    rows = [" " * 40 for _ in range(25)]
+    rows[24] = A.CAST_WHOM.ljust(40)
+    rows[2] = " " * 17 + " " * 12 + "AC".ljust(11)
+    for i, name in enumerate(names + ["EXIT"]):
+        rows[3 + i] = " " * 17 + name.ljust(12) + " " * 11
+    return rows
+
+
+def _pick_run(tmp_path, names):
+    sess = _Whom()
+    run = _run(tmp_path, sess)
+    run.wait_rows = lambda ok, timeout, what="": _whom_rows(names)
+    return run, sess
+
+
+def test_pick_on_the_cast_question_fails_when_two_entries_match_the_name(tmp_path):
+    run, sess = _pick_run(tmp_path, ["BRUTUS", "BRUTUS", "SHARA"])
+    with pytest.raises(A.StepFailed, match="matches 2 entries"):
+        run.pick("BRUTUS", A.CAST_WHOM)
+    assert sess.picked == [] and sess.keys == []
+
+
+def test_pick_on_the_cast_question_takes_a_party_slot_and_a_single_name(tmp_path):
+    run, sess = _pick_run(tmp_path, ["BRUTUS", "BRUTUS", "SHARA"])
+    assert run.pick("2", A.CAST_WHOM) and run.pick("SHARA", A.CAST_WHOM)
+    assert sess.picked == [1, 2]

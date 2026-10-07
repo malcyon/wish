@@ -1094,6 +1094,8 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
     target = target.strip() if target is not None else None
     if not caster or not spell or target == "":
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
+    if target is not None and target.upper() == "EXIT":
+        raise ValueError(f"cast {arg!r}: EXIT is not a target")
     if target is None and any(spell == t or spell.startswith(t + " ")
                               for t in TARGETED_CAST_SPELLS):
         raise ValueError(f"cast {arg!r}: {spell} needs a target")
@@ -4425,7 +4427,7 @@ class PoolRun:
         a read.  LIMIT is how many reads it gets; by default twice the rows
         of the list first read, plus two, so a long page (a cleric's book page
         of fourteen spells and `EXIT`) is walked end to end."""
-        tries, cap = 0, limit or 12
+        tries, cap, seen = 0, limit or 12, 0
         while tries < cap:
             tries += 1
             screen = self.sess.screen()
@@ -4434,9 +4436,14 @@ class PoolRun:
                 continue
             rows = [screen.row(r) for r in range(25)]
             if limit is None:
-                limit = cap = tries + 2 * sum(
+                # A partly drawn first frame shows fewer rows than the list
+                # has, so the cap is widened whenever a read shows more.
+                count = sum(
                     1 for r in range(3, 23) if r < len(rows)
-                    and rows[r][1:39].startswith("  ") and rows[r][1:39].strip()) + 1
+                    and rows[r][1:39].startswith("  ") and rows[r][1:39].strip())
+                if count > seen:
+                    seen = count
+                    cap = tries + 2 * seen + 1
             target = scribe_row(rows, label)
             if target is None:
                 raise self.fail("scribe-row", f"{label} is not a row of the list")
@@ -4949,7 +4956,9 @@ class PoolRun:
         """Choose TARGET on the whom menu, which is the party panel: the
         highlight is walked there by `Session.select_party`, since the panel's
         heading is drawn in the highlight colour too, and Return chooses.
-        QUESTION is the one on row 24: the camp list's or `CAST_WHOM`."""
+        QUESTION is the one on row 24: the camp list's or `CAST_WHOM`.  A
+        number is the party slot from 1; a name that two entries match fails
+        the step rather than choosing the first."""
         rows = self.wait_rows(lambda r: question in r[24], 30)
         if rows is None:
             return False
@@ -4958,7 +4967,11 @@ class PoolRun:
             at = int(target) - 1
         else:
             wanted = (target.upper(), screens.as_drawn(target).upper())
-            at = next((i for i, e in enumerate(entries) if e.upper() in wanted), None)
+            hits = [i for i, e in enumerate(entries) if e.upper() in wanted]
+            if len(hits) > 1:
+                raise StepFailed(f"{target} matches {len(hits)} entries of the "
+                                 f"whom menu: {entries}; name a party slot")
+            at = hits[0] if hits else None
         if at is None or not 0 <= at < len(entries):
             self.log.say(f"  {target} is not on the whom menu: {entries}")
             return False
