@@ -12707,24 +12707,21 @@ def test_temple_raise_stops_at_a_screen_it_does_not_know(tmp_path, text_rows,
 
 
 def test_map_lets_camp_and_save_follow_a_press_in_darkness():
+    with pytest.raises(ValueError, match="may come after a press"):
+        da.validate_steps(_steps("load", "press j", "camp", "save E", "read"),
+                          "darkness")
     da.validate_steps(_steps("load", "press j", "map", "camp", "save E", "read"),
                       "darkness")
 
 
-def test_camp_straight_after_a_press_still_fails():
-    with pytest.raises(ValueError, match="may come after a press"):
-        da.validate_steps(_steps("load", "press j", "camp", "save E", "read"),
-                          "darkness")
-
-
-@pytest.mark.parametrize("title,steps", [
-    ("pool", ("load", "press j", "map")),
-    ("curse", ("load", "press j", "map")),
-    ("darkness", ("load", "map")),
-    ("darkness", ("load", "press j", "map", "map")),
+@pytest.mark.parametrize("title,steps,text", [
+    ("pool", ("load", "press j", "map"), "may come after a press"),
+    ("curse", ("load", "press j", "map"), "may come after a press"),
+    ("darkness", ("load", "map"), "map follows a press"),
+    ("darkness", ("load", "press j", "map", "map"), "map follows a press"),
 ])
-def test_map_is_for_darkness_straight_after_a_press(title, steps):
-    with pytest.raises(ValueError, match="map"):
+def test_map_is_for_darkness_straight_after_a_press(title, steps, text):
+    with pytest.raises(ValueError, match=text):
         da.validate_steps(_steps(*steps), title)
 
 
