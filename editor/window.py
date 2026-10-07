@@ -66,7 +66,14 @@ from goldbox.spells import for_game as spell_table
 
 from . import activeeffects, changes, files, inventory, podsheet, saveplan
 from . import effects as trait_effects
-from .binding import COMBAT_FIELDS, bindings, field_name, value_range, widest_text
+from .binding import (
+    COMBAT_FIELDS,
+    bindings,
+    field_name,
+    set_sheet_value,
+    value_range,
+    widest_text,
+)
 from .enums import caster_bits, tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
@@ -3586,7 +3593,7 @@ class EditorBinding(QObject):
                                and current > w.maximum()
                                and stored == w.maximum())
                     if current != stored and not clamped:
-                        record.set(name, stored)
+                        set_sheet_value(record, name, stored, member.game)
                 elif isinstance(w, QLineEdit) and name == "name":
                     if record.name != w.text():
                         record.name = w.text()

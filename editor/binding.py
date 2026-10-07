@@ -21,8 +21,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from goldbox import c64_codec
 from goldbox.encoding import combat_value
 from goldbox.layout import LAYOUT, Confidence, Field, Kind
+from goldbox.neutral import ABILITIES
 
 PREFIX = "field_"
 
@@ -192,7 +194,9 @@ NOT_ON_THE_SHEET = (
     "level_knight",       # Krynn class slots of the per-class level array
     "level_paladin",
     "level_ranger",
-    "abilities_second",   # Curse's second ability block, zero in this game
+    # The permanent ability scores in Curse and Silver Blades: no box of their
+    # own, because each ability box writes both copies (`set_sheet_value`).
+    "abilities_second",
     # The class a dual-classed human left and the level it was left at. Curse,
     # Silver Blades and Gateway write them; Pool of Radiance's code does not
     # reference either byte, so they are zero in every character this editor
@@ -273,3 +277,34 @@ NOT_ON_THE_SHEET = (
 def shown_fields(fields):
     """The editable fields the sheet is expected to bind, in order."""
     return [f for f in fields if f.name not in NOT_ON_THE_SHEET]
+
+
+def keeps_permanent_abilities(game) -> bool:
+    """Does this title's C64 record keep a permanent copy of the abilities at
+    `abilities_second`?  True for Curse of the Azure Bonds and Secret of the
+    Silver Blades; Pool of Radiance keeps one copy, and its bytes there are
+    memorised spells."""
+    deltas = c64_codec.DELTAS_BY_KEY.get(getattr(game, "key", game))
+    return bool(deltas is not None and deltas.second_abilities)
+
+
+def set_sheet_value(record, name: str, value, game) -> None:
+    """Write one sheet box's value into the record.
+
+    An ability, in a title that keeps a permanent copy, is written to both
+    copies: the score a character with no item or spell on it holds.  The
+    engine rebuilds the score in force from the permanent one -- C64 `ECL65
+    $913B` (Curse) and `$9612` (Silver Blades) begin `LDA $7C65,X / STA
+    $7C14,X`, and the DOS and Amiga recomputes seed from the permanent byte
+    of the pair (docs/201-the-two-ability-arrays.md,
+    docs/204-the-dos-ability-pair.md) -- so an edit to the score in force
+    alone is undone at the next rebuild, and an item or spell still running
+    is applied on top of the edited score there.
+    """
+    record.set(name, value)
+    if (name not in ABILITIES or not keeps_permanent_abilities(game)
+            or not record.is_stored("abilities_second")):
+        return
+    second = bytearray(record.get_raw("abilities_second"))
+    second[ABILITIES.index(name)] = record.get_raw(name)[0]
+    record.set_raw("abilities_second", bytes(second))
