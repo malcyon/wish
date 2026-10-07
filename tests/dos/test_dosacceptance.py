@@ -12843,3 +12843,59 @@ def test_continue_is_allowed_after_a_press_in_darkness_only():
         da.validate_steps(_steps("load", "press Down", "continue"), "pool")
     with pytest.raises(ValueError, match="follows a press"):
         da.validate_steps(_steps("load", "begin", "continue"), "darkness")
+
+
+def _saveas_report(tmp_path, files, **outcome):
+    """A Save As DOS report for `files` (name -> bytes), as `podsaveasdrive` writes it."""
+    report = {"written_sha256": {n: hashlib.sha256(b).hexdigest() for n, b in files.items()},
+              "save_as": {"to": "dos", **outcome}}
+    path = tmp_path / "saveas-report.json"
+    path.write_text(json.dumps(report))
+    return path
+
+
+def test_a_saveas_report_accepts_the_folder_it_wrote(tmp_path):
+    folder = tmp_path / "out"
+    folder.mkdir()
+    (folder / "SAVGAMA.PTY").write_bytes(b"party")
+    (folder / "VAULTA.DAT").write_bytes(b"vault")
+    report = _saveas_report(tmp_path, {"SAVGAMA.PTY": b"party", "VAULTA.DAT": b"vault"})
+    da.check_saveas_report(report, folder)
+
+
+@pytest.mark.parametrize("files,outcome,why", [
+    ({"SAVGAMA.PTY": b"other"}, {}, "differs from the SAVGAMA.PTY"),
+    ({}, {}, "lacks SAVGAMA.PTY"),
+    ({"SAVGAMA.PTY": b"party"}, {"to": "amiga"}, "not dos"),
+    ({"SAVGAMA.PTY": b"party"}, {"stopped": ["ConvertError", "x"]}, "stopped"),
+])
+def test_a_saveas_report_fails_a_folder_it_did_not_write(tmp_path, files, outcome, why):
+    folder = tmp_path / "out"
+    folder.mkdir()
+    for name, data in files.items():
+        (folder / name).write_bytes(data)
+    report = _saveas_report(tmp_path, {"SAVGAMA.PTY": b"party"}, **outcome)
+    with pytest.raises(ValueError, match=why):
+        da.check_saveas_report(report, folder)
+
+
+def test_saveas_report_goes_with_save_and_is_checked_before_any_boot(
+        monkeypatch, capsys, tmp_path):
+    ran = []
+    monkeypatch.setattr(da, "run", lambda args: ran.append(args) or 0)
+    folder = tmp_path / "out"
+    folder.mkdir()
+    (folder / "SAVGAMA.PTY").write_bytes(b"changed")
+    report = _saveas_report(tmp_path, {"SAVGAMA.PTY": b"party"})
+    with pytest.raises(SystemExit):
+        da.main(["--title", "darkness", "--save", str(folder), "--saveas-report",
+                 str(report), "--steps", "load"])
+    assert "differs from the SAVGAMA.PTY" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        da.main(["--title", "darkness", "--amiga-disk", "x.adf", "--amiga-slot",
+                    "SavGamA.pty", "--saveas-report", str(report), "--steps", "load"])
+    assert "--saveas-report checks" in capsys.readouterr().err
+    (folder / "SAVGAMA.PTY").write_bytes(b"party")
+    assert da.main(["--title", "darkness", "--save", str(folder), "--saveas-report",
+                    str(report), "--steps", "load"]) == 0
+    assert len(ran) == 1

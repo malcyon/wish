@@ -30,6 +30,9 @@ With no `--steps` only that conversion runs.
         --steps load begin camp 'sheet 4' 'items 4' 'save D' read \\
         --issue 650 --run scrolls
 
+`--saveas-report PATH` (with `--save`) stops the run before the boot unless the folder holds,
+byte for byte, every file the Save As DOS report at `PATH` names, and the report did not stop.
+
 `--amiga-slot` (with `--amiga-disk`, a path to an `.adf` or the end of a
 `tools/amiga/amigasaves.py` label) replaces `--save` for Pools of Darkness:
 the Amiga saved game is converted by the Convert window's own route,
@@ -8614,6 +8617,38 @@ def describe(result: dict) -> list[str]:
     return lines
 
 
+def check_saveas_report(report_path: str | pathlib.Path, save: str | pathlib.Path) -> None:
+    """Raise `ValueError` unless `save` holds exactly the files the Save As report at `report_path` wrote.
+
+    A report that stopped, went to another port or lists no files, or a file of the report that
+    `save` lacks or holds with other bytes, fails the run before any boot, so an edited party
+    is never accepted from a folder that is not the one Save As published.
+    """
+    report_path = pathlib.Path(report_path)
+    try:
+        report = json.loads(report_path.read_text())
+    except (OSError, ValueError) as e:
+        raise ValueError(f"cannot read the Save As report {report_path}: {e}") from e
+    outcome = report.get("save_as") or {}
+    if outcome.get("stopped"):
+        raise ValueError(f"the Save As report {report_path} stopped: {outcome['stopped']}")
+    if outcome.get("to") != "dos":
+        raise ValueError(f"the Save As report {report_path} is for "
+                         f"{outcome.get('to')!r}, not dos")
+    written = report.get("written_sha256")
+    if not written or not isinstance(written, dict):
+        raise ValueError(f"the Save As report {report_path} lists no written files")
+    save = pathlib.Path(save)
+    for name, digest in sorted(written.items()):
+        path = save / name if save.is_dir() else save
+        if not save.is_dir() and save.name != name:
+            raise ValueError(f"{save} is not {name}, a file the Save As report names")
+        if not path.is_file():
+            raise ValueError(f"{save} lacks {name}, which the Save As report names")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"{path} differs from the {name} the Save As report names")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--title", choices=sorted(TITLES), default="pool")
@@ -8633,6 +8668,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="a C64 .D64 or Amiga .adf holding a pool, curse or "
                           "ssb save; convert it with Save As DOS first "
                           "(not darkness: use --amiga-slot)")
+    ap.add_argument("--saveas-report", default=None, metavar="PATH",
+                    help="with --save: the Save As DOS report that wrote it; "
+                         "the run fails unless the folder holds the files the "
+                         "report names, byte for byte")
     ap.add_argument("--name", action="append", default=[], metavar="POSITION=NAME",
                     help="with --convert: the name for the party member at "
                          "POSITION (0 is the first), as the Shorten window "
@@ -8791,6 +8830,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.fixture_row and args.title == "darkness":
             raise ValueError("--fixture-row converts a C64 party, and Pools of "
                              "Darkness has no C64 port: use --amiga-slot")
+        if args.saveas_report:
+            if not args.save:
+                raise ValueError("--saveas-report checks the folder given by --save")
+            check_saveas_report(args.saveas_report, args.save)
         if args.amiga_slot:
             if args.title != "darkness":
                 raise ValueError("--amiga-slot converts a Pools of Darkness save: "
