@@ -303,6 +303,9 @@ class HTMLContent(HTMLParser):
         self.close()
 
     def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            # Plane adds rel="noopener noreferrer" to every stored link.
+            attrs = [(k, v) for k, v in attrs if k != 'rel']
         self.events.append(('start', tag, tuple(sorted(attrs))))
 
     def handle_startendtag(self, tag, attrs):

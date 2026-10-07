@@ -1127,3 +1127,40 @@ def test_fuzzed_line_mixes_never_put_a_backslash_outside_a_table():
     for _ in range(2000):
         source = '\n'.join(rng.choice(prefixes) + rng.choice(bodies) for _ in range(rng.randint(2, 7)))
         assert '\\' not in _outside_tables(paragraph(source)), source
+
+
+def test_confirm_changes_ignores_rel_plane_adds_to_links():
+    from tools.plane.client import confirm_changes
+    sent = '<p>See <a href="https://x.test/a">doc</a></p>'
+    for field in ('description_html', 'comment_html'):
+        confirm_changes({field: '<div><p>See <a rel="noopener noreferrer" href="https://x.test/a">doc</a></p></div>'}, {field: sent})
+
+
+def test_confirm_changes_still_detects_link_href_or_text_change():
+    from tools.plane.client import confirm_changes
+    sent = '<p><a href="https://x.test/a">doc</a></p>'
+    for field in ('description_html', 'comment_html'):
+        with pytest.raises(PlaneError, match='readback did not confirm'):
+            confirm_changes({field: '<p><a rel="noopener noreferrer" href="https://x.test/b">doc</a></p>'}, {field: sent})
+        with pytest.raises(PlaneError, match='readback did not confirm'):
+            confirm_changes({field: '<p><a rel="noopener noreferrer" href="https://x.test/a">other</a></p>'}, {field: sent})
+
+
+def test_update_with_a_link_confirms_and_posts_the_explanation_when_plane_adds_rel(tmp_path):
+    current = record()
+    explained = []
+    def handle(method, path, data, params):
+        if path == 'users/me':
+            return {'id': AGENT}
+        if path.endswith('/comments'):
+            if method == 'POST':
+                explained.append(True)
+                return {'id': IMPORTER, 'created_by': AGENT, 'updated_by': AGENT, **data}
+            return {'results': [], 'next_page_results': False}
+        if method == 'PATCH':
+            current.update(data)
+            current['description_html'] = current['description_html'].replace('<a href=', '<a rel="noopener noreferrer" href=')
+        return dict(current)
+    Client(settings(tmp_path), Fake(handle)).update(
+        ITEM, {'description_html': 'Documentation: [the doc](https://x.test/doc.md)'}, 'Added the documentation link')
+    assert explained == [True]
