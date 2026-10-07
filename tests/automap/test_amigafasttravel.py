@@ -175,6 +175,8 @@ def test_a_pools_of_darkness_area_with_no_map_is_not_a_destination(disks):
 
 
 def test_return_from_an_area_with_no_map_says_the_title_is_unsupported(disks):
+    """Overrides `_row` to reach the branch for a non-fasttravelable Back row,
+    which no stored Back area reaches today."""
     t = aft.AmigaFastTravel(POD, object())
     t.back = engine.Waypoint(41, None, (4, 11, 0))
     t._row = lambda id: areas.area_in(id, areas.POOLS_OF_DARKNESS)

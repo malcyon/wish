@@ -181,7 +181,9 @@ class AmigaFastTravel(engine.FastTravel):
             return engine.Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
             # A party that left from inside such a child area must see the
-            # Return sentence, not the attract-mode one.
+            # Return sentence, not the attract-mode one. Unreachable today:
+            # a Waypoint has no `fasttravelable`, so it defaults to True, and
+            # Pools of Darkness `_row` finds no row for a stored Back area.
             return engine.Verdict(False, self.not_built if back
                                   else self.ATTRACT_TRAP)
         here = trips.area_id(target, row)
