@@ -417,7 +417,7 @@ def claim(note: str = "") -> Slot:
 #: breakpoint and the dynamic core does not.  `hma=false` keeps the DOS kernel
 #: out of the HMA, as in DOSBox 0.74.  With it there, the EXEPACKed `GAME.EXE`
 #: that Pools of Darkness' `CONTROL` starts prints `Packed file is corrupt`
-#: and the game drops back to DOS.  Free conventional memory is 608K either way.
+#: and the game drops back to DOS.  One MEM reading on Pools of Darkness with `hma=false` showed 608K free.
 CONFIG = """\
 [sdl]
 fullscreen=false

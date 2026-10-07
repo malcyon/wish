@@ -9642,7 +9642,7 @@ def test_intervene_boots_silver_blades_with_its_cheat_arguments(monkeypatch, tmp
 
 
 @pytest.mark.parametrize("steps, emulator", [
-    (["load", "snapshot a"], "x"), (["load"], "plain")])
+    (["load", "snapshot a"], "x"), (["load"], "dosbox")])
 def test_pools_of_darkness_starts_with_its_own_batch_file_in_both_emulators(
         monkeypatch, tmp_path, steps, emulator):
     _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("x"))
@@ -9658,7 +9658,7 @@ def test_pools_of_darkness_starts_with_its_own_batch_file_in_both_emulators(
 
     monkeypatch.setattr(da.dosboxx, "claim", lambda note="": _Slot(log))
     monkeypatch.setattr(da.dossnapshot, "SnapshotSession", session("x"))
-    monkeypatch.setattr(dosbox, "Session", session("plain"))
+    monkeypatch.setattr(dosbox, "Session", session("dosbox"))
     args = _run_args(tmp_path, steps)
     args.title = "darkness"
     da.run(args)
