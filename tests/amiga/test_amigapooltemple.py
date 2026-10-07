@@ -274,6 +274,13 @@ def test_a_payment_one_platinum_short_names_the_change_expected():
             "5500") in walk["verdicts"][-1]
 
 
+@pytest.mark.parametrize(("coin", "amount"), [("electrum", 1), ("copper", 7), ("silver", 50)])
+def test_a_purse_with_an_unmeasured_coin_rate_fails(coin, amount):
+    walk = _verdict(_slot(START, money=dict(STAGED, **{coin: amount})), _slot(SQUARE, money=PAID))
+    assert not walk["d_ok"]
+    assert f"the temple's rate for {coin} is not measured" in walk["verdicts"][-1]
+
+
 def test_a_control_slot_without_the_staged_gold_fails():
     walk = _verdict(_slot(START, money=PAID), _slot(SQUARE))
     assert not walk["d_ok"]

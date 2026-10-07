@@ -355,8 +355,10 @@ def temple_payment(b: dict[str, Any], d: dict[str, Any], member: str, *,
 
     The game counts the payer's own coins in whole gold pieces (`purse_in_gold`), takes the price,
     and writes the change back as platinum, so the part of a gold piece below the change is
-    lost (two raises measured). Paid means: slot `b` holds `staged_gold` gold, his coins in gold fell by
-    exactly the price, his gems and jewelry did not change, and no other member's purse did.
+    lost (two raises measured). Paid means: slot `b` holds `staged_gold` gold, his coins in gold
+    fell by exactly the price, his gems and jewelry did not change, and no other member's purse
+    did. A purse with copper or electrum, or with silver other than the 0 or 102 measured, fails
+    because the temple's rate for those coins is not known.
     """
     def purses(reading: dict[str, Any]) -> dict[str, dict[str, int] | None]:
         return {m.get("name"): m.get("money") for m in reading.get("members", [])}
@@ -367,6 +369,9 @@ def temple_payment(b: dict[str, Any], d: dict[str, Any], member: str, *,
         return False, f"{member}'s purse was not read in both slots"
     if mine_before["gold"] != staged_gold:
         return False, f"{member} held {mine_before['gold']} gold before, not the staged {staged_gold}"
+    for coin, measured in (("copper", (0,)), ("electrum", (0,)), ("silver", (0, 102))):
+        if mine_before[coin] not in measured:
+            return False, f"the temple's rate for {coin} is not measured"
     held_before, held_after = purse_in_gold(mine_before), purse_in_gold(mine_after)
     coins = ", ".join(f"{coin} {mine_after[coin]}" for coin in COPPER_PER if mine_after[coin])
     if held_before - held_after != POOL_RAISE_PRICE:
