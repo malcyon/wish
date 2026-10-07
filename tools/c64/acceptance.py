@@ -72,13 +72,15 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game rejecting the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
+| `rest offered` | Pool only: camp `REST` and the rest time the game proposes (`REST TIME = 0 DAYS 6 HRS 45 MINS` for one third-level spell), read off the screen and checked against `CAMP`'s rest-time field, then that bar's `REST`. Every action is a key and nothing is written, the area's rest interruption included, `--no-encounters` or not. Straight after a `scribe` or a `memorize` it rests in the camp that step left open. The rest is over when the clock stands still for ten reads; the result has `offered`, `elapsed_minutes`, `rest_completed`, `ended` and, after a `memorize`, `memorised` as the timed rest does, and a rest that ran short with no interruption fails. A rest the area's check stopped (`YOUR REST IS RUDELY INTERRUPTED!`, `$6DD3` = `$FF`, or `CAMP` gone) is its own outcome: the step waits, sending no key, for the fight, watch, page or world bar it leads to, logs `rest-outcome` with the text read, records it as `lost_reading`, and fails with `RestInterrupted`, leaving the step-start snapshot for `--resume-from`. The game's dice replay from that snapshot, so the same rest is interrupted the same way again |
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` or a `memorize` it rests in the camp that step left open, since every camp exit cancels the scribe queue and the memorize choice, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (an `I` or `M` that leaves the square unchanged with a `PRESS` bar or a blank row 24 fails the walk as an encounter or a square's text, not as `blocked`; Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]` |
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
-| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
+| `cast CASTER:SPELL` | Pool, any other spell with no target question (`PRAYER`): camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question, or a pick that spends nothing fails the step. The result has `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
+| `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster (cleric level 5 or more, Dispel Magic among whatever else he holds), animated target and its eligible id-32 row at index 63 before input; moves the list's highlight onto `DISPEL MAGIC` when other spells are listed, captures the target prompt, all party and effect-row bytes before and after, takes the cast as done once the caster holds one Dispel Magic fewer (leaving the pick prompt by its `EXIT` row when the game puts it back up), and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `memorize WHO>SPELL[,SPELL...]` | Pool only: camp `MAGIC > MEMORIZE` for WHO (a name), the book `<NAME>'S BOOK OF SPELLS` turned with `NEXT`/`PREV` to each SPELL's page, its `MEMORIZE`, SPELL's row highlighted and picked (Return, then a KERNAL Return when nothing moved), the pick prompt's `EXIT` row, the book's `EXIT`, the `CHOSEN SPELLS` page kept and checked, `OKAY` at the confirmation, and back to the camp bar, where the party stays so a `rest` next learns them, since leaving camp drops the choice. Every action is a key and nothing is written. WHO's memorised list is read from the live record before, after each pick and at the end: each pick must add one entry, the spell's id (any id the title's spell table draws SPELL for) with bit 7 set; `<NAME> CAN'T MEMORIZE` (no slot of that level left), a pick that adds nothing, a spell in no page of the book, a choice already pending, or an end list other than the start list plus those entries fails the step. The `rest` after it adds `memorised` (the list, `learned`, `still_pending`) and fails when it ran its full time in that camp and an entry is still pending |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
@@ -360,6 +362,12 @@ MAGIC_BAR = "SCRIBE"
 WHOM = "DISPLAY SPELLS ON WHOM"
 CAST_WHOM = "CAST SPELL ON WHOM"
 PICK_SPELL = "PICK A SPELL TO CAST"
+#: The cast list's title, `<NAME>'S MEMORIZED SPELLS`, over `CAST EXIT`.
+MEMORIZED_SPELLS = "'S MEMORIZED SPELLS"
+#: How long a pick with no target is given to spend its entry, and how long
+#: the `<NAME> CASTS` message is given to come and go.
+CAST_PICK_SECONDS = 6.0
+CAST_REDRAW_SECONDS = 15.0
 AFFECTED = "IS AFFECTED BY:"
 WHOLE_PARTY = "THE WHOLE PARTY"
 CONTINUE = "PRESS ANY KEY TO CONTINUE"
@@ -377,6 +385,9 @@ POOL_TARGET_SPELLS = {"DISPEL MAGIC": 41}
 #: the memorised list's cursor like the others; the result is read as the
 #: party and effect checkpoints before and after.
 POOL_BUFF_SPELLS = {"ENLARGE"}
+#: The spells `cast` drives through the target question; any other spell is
+#: cast with no target, Pool's `ANIMATE DEAD` and `PRAYER` among them.
+TARGETED_CAST_SPELLS = set(CAMP_CURES) | set(POOL_TARGET_SPELLS) | POOL_BUFF_SPELLS
 DISEASE_CURE = (34, "DISEASE")
 
 #: `MAGIC > SCRIBE`'s screens, read in Silver Blades: the scroll list,
@@ -937,6 +948,19 @@ WATCH_GO_CLEARS = ["$4A07", "$4A0F", "$4A10", "$4A11"]
 #: Seconds the world bar must hold after an interrupted rest before it is
 #: taken as the end, not a frame drawn before the area script's prompt.
 REST_WORLD_HOLD = 3.0
+#: `rest offered`: the rest time the game proposes, rested as it stands.
+REST_OFFERED = "offered"
+#: The line Pool's `REST` draws over `REST  INCREASE  DECREASE  EXIT`, read
+#: in the measuring boots as `REST TIME =  0 DAYS  6 HRS 45 MINS`.
+REST_TIME_LINE = re.compile(r"REST TIME\s*=\s*(\d+)\s*DAYS\s*(\d+)\s*HRS\s*(\d+)\s*MINS")
+#: `CAMP`'s message `$1C`, `YOUR REST IS RUDELY INTERRUPTED!`.
+REST_INTERRUPTED_TEXT = "RUDELY INTERRUPTED"
+#: One-second clock reads in a row that must agree before a rest is taken
+#: as over, as `route_pool.rest` waits.
+REST_STILL_READS = 10
+#: Seconds an offered rest is given, plus seconds per five-minute pass.
+REST_OFFERED_SECONDS = 300
+REST_OFFERED_PASS_SECONDS = 1.0
 
 
 def clock_minutes(clock: list[int]) -> int:
@@ -1032,10 +1056,10 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
     target = target.strip() if target is not None else None
     if not caster or not spell or target == "":
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
-    if target is None and spell not in CAMP_PARTY_SPELLS:
+    if target is None and any(spell == t or spell.startswith(t + " ")
+                              for t in TARGETED_CAST_SPELLS):
         raise ValueError(f"cast {arg!r}: {spell} needs a target")
-    if target is not None and spell not in (
-            CAMP_CURES | POOL_TARGET_SPELLS | dict.fromkeys(POOL_BUFF_SPELLS)):
+    if target is not None and spell not in TARGETED_CAST_SPELLS:
         raise ValueError(f"cast {arg!r}: {spell} has no target prompt")
     if spell in POOL_TARGET_SPELLS and (caster.isdigit() or target.isdigit()):
         raise ValueError(f"cast {arg!r}: Dispel Magic needs a named caster and target")
@@ -1203,7 +1227,7 @@ def parse_steps(texts) -> list[Step]:
             raise ValueError(f"{verb} needs an argument")
         if verb in ("snapshot", "restore"):
             parse_snapshot_name(verb, arg)
-        if verb == "rest":
+        if verb == "rest" and arg.lower() != REST_OFFERED:
             parse_rest(arg)
         elif verb == "peek":
             parse_peek(arg)
@@ -2067,6 +2091,10 @@ class StepFailed(RuntimeError):
 class NotAnUnknownScreen(StepFailed):
     """A step that cannot succeed from any saved state, such as `items` for a
     character who carries nothing; no resume record is written for it."""
+
+
+class RestInterrupted(StepFailed):
+    """A `rest offered` the area's check stopped: its own outcome, not a pass."""
 
 
 class FightCastSetback(StepFailed):
@@ -3809,6 +3837,8 @@ class PoolRun:
                     else float("inf"))
         caster_slot = next(p["slot"] for p in before["party"] if
                            p.get("name", "").upper() == caster.upper())
+        held = next(p for p in before["party"]
+                    if p["slot"] == caster_slot)["memorised"].count(41)
         messages: list[list[str]] = []
 
         def stalled() -> StepFailed:
@@ -3842,10 +3872,11 @@ class PoolRun:
                 self.log.emit("dispel-observe", elapsed=self.clock() - start,
                               screen=rows, reading=reading)
                 bar = rows[24] if rows else ""
-            if (self._list_bar(bar) or MAGIC_BAR in bar or CAMP_BAR in bar):
+            if (self._list_bar(bar) or MAGIC_BAR in bar or CAMP_BAR in bar
+                    or (PICK_SPELL in bar and self._cast_settled(rows))):
                 caster_after = next(p for p in reading["party"] if
                                     p["slot"] == caster_slot)
-                consumed = caster_after["memorised"] == []
+                consumed = caster_after["memorised"].count(41) < held
                 if not consumed:
                     continue
                 self.log.emit("dispel-outcome", result="menu-consumed",
@@ -3863,8 +3894,8 @@ class PoolRun:
         casters, targets = named(caster), named(target)
         if len(casters) != 1 or casters[0]["status"] != 1:
             raise self.fail("dispel-caster", f"{caster} is not one living party member")
-        if casters[0]["cleric_level"] < 5 or casters[0]["memorised"] != [41]:
-            raise self.fail("dispel-caster", f"{caster} needs cleric level 5 and only "
+        if casters[0]["cleric_level"] < 5 or 41 not in casters[0]["memorised"]:
+            raise self.fail("dispel-caster", f"{caster} needs cleric level 5 and "
                             "Dispel Magic id 41 memorised")
         if len(targets) != 1:
             raise self.fail("dispel-target", f"{target} is not one named party member")
@@ -3895,16 +3926,9 @@ class PoolRun:
             raise self.fail("dispel-member", "Dispel Magic changed the named "
                             "member's zombie fields")
 
-    def cast(self, arg: str) -> dict:
-        caster, spell, target = parse_cast(arg)
-        dispel = spell in POOL_TARGET_SPELLS
-        if dispel:
-            before = self.reading()
-            self.log.emit("dispel-before", reading=before)
-            slot = self._dispel_guard(before, caster, target)
-        elif target is not None and spell not in POOL_BUFF_SPELLS:
-            cure_id, word = CAMP_CURES[spell]
-            self.owner_of(target)
+    def _open_cast_pick(self, caster: str) -> list[str]:
+        """Camp, CASTER on the panel, `MAGIC`, `CAST`, the list's `CAST`, and
+        the pick prompt `PICK A SPELL TO CAST`, whose screen it returns."""
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         if not self.sess.select_party(self.panel_index(caster)):
@@ -3924,9 +3948,201 @@ class PoolRun:
             raise self.fail("pick-prompt", f"{PICK_SPELL} never came up")
         # A key sent before the game polls its input routine is thrown away.
         self.sess.settle(1)
-        listed = self.capture("pick-list")
-        if dispel and sum(spell in _inner(row) for row in listed[3:24]) != 1:
-            raise self.fail("dispel-spell", f"{spell} was not the single shown spell")
+        return self.capture("pick-list")
+
+    @staticmethod
+    def cast_list_spells(rows: list[str]) -> list[str]:
+        """The spells the memorised list shows, in screen order, without its
+        title, level headings, `EXIT` row or a message under them."""
+        out = []
+        for row in rows[3:23]:
+            text = _inner(row)
+            if (not text or _is_frame(text) or text == "EXIT"
+                    or re.fullmatch(r"\d+(ST|ND|RD|TH) LEVEL", text)):
+                continue
+            out.append(text)
+        return out
+
+    def _cast_highlight(self, spell: str, listed: list[str]) -> None:
+        """Put the pick prompt's highlight on SPELL's row.  It starts on the
+        first spell, so a list of SPELL alone needs no key; otherwise Down and
+        Up move it, judged by the row drawn white at `SCRIBE_LIST_COLUMN`."""
+        spells = self.cast_list_spells(listed)
+        if spell not in spells:
+            raise self.fail("cast-spell", f"{spell} is not in the spell list "
+                            f"({', '.join(spells) or 'empty'})")
+        if set(spells) != {spell}:
+            self._scribe_walk(spell, limit=2 * len(spells) + 2)
+
+    def _leave_cast_pick(self) -> None:
+        """The pick prompt's `EXIT` row, back to the spell list's bar."""
+        self._scribe_walk("EXIT", limit=24)
+        for key in ("xtest-return", "kernal-return"):
+            self._send_pick(key)
+            if self.wait_rows(lambda r: self._list_bar(r[24]) or MAGIC_BAR in r[24],
+                              8, "the spell list's bar") is not None:
+                return
+        raise self.fail("cast-exit-row", "the pick prompt's EXIT row did nothing")
+
+    @staticmethod
+    def _cast_message(rows: list[str]) -> list[str]:
+        """`<NAME> CASTS` and the spell, drawn over the list's foot."""
+        shown = [t for t in (_inner(r) for r in rows[17:23]) if t and not _is_frame(t)]
+        return shown if any(t.endswith(" CASTS") for t in shown) else []
+
+    def _cast_settled(self, rows: list[str]) -> bool:
+        """Where a cast with no target ends: the pick prompt again with no
+        message, the spell list's bar, or the MAGIC bar."""
+        if not rows or self._cast_message(rows):
+            return False
+        return (self._list_bar(rows[24]) or MAGIC_BAR in rows[24]
+                or (PICK_SPELL in rows[24] and scribe_row(rows, "EXIT") is not None))
+
+    def _cast_untargeted_pick(self, spell: str, slot: int, ids: set[int],
+                              held: list[int]) -> dict:
+        """Pick the highlighted SPELL and judge it by CASTER's list: exactly one
+        entry gone, an id SPELL is drawn for, and nothing added.  A target
+        question fails the step; a `PRESS ANY KEY` page is answered with a
+        KERNAL Return and kept.  A Return that changed nothing is followed by
+        a KERNAL Return."""
+        messages: list[str] = []
+        pages: list[list[str]] = []
+        for key in ("xtest-return", "kernal-return"):
+            was = self.rows()
+            self._send_pick(key)
+            limit = self.clock() + self.budget(CAST_PICK_SECONDS, "the cast")
+            moved = False
+            while self.clock() < limit:
+                rows = self.rows()
+                if rows and CAST_WHOM in rows[24]:
+                    raise self.fail("cast-whom-unexpected", f"{spell} asked "
+                                    f"{CAST_WHOM}; name a target")
+                for text in self._cast_message(rows) if rows else []:
+                    if text not in messages:
+                        messages.append(text)
+                if rows and CONTINUE in rows[24]:
+                    shown = self.capture(f"cast-page-{len(pages) + 1}", rows)
+                    pages.append([t for t in (_inner(r) for r in shown[:24])
+                                  if t and not _is_frame(t)])
+                    self.sess.press_kernal(0x0D)
+                    self.wait_rows(lambda r, was=shown: r != was, 30, "the next page")
+                    continue
+                moved = moved or (bool(rows) and rows != was)
+                now = self.memorised_entries(slot)
+                lost = collections.Counter(held) - collections.Counter(now)
+                added = collections.Counter(now) - collections.Counter(held)
+                if lost or added:
+                    rows = self._cast_settle(CAST_REDRAW_SECONDS, messages)
+                    now = self.memorised_entries(slot)
+                    lost = list((collections.Counter(held)
+                                 - collections.Counter(now)).elements())
+                    added = list((collections.Counter(now)
+                                  - collections.Counter(held)).elements())
+                    if added or len(lost) != 1 or lost[0] not in ids:
+                        raise self.fail("cast-spent", f"casting {spell} took "
+                                        f"{lost} from the list and added {added}, "
+                                        f"not one entry of id {sorted(ids)}")
+                    return {"key": key, "spent": lost[0], "messages": messages,
+                            "pages": pages, "memorised_after": now}
+                time.sleep(0.3)
+            if moved:
+                self.capture("cast-not-spent")
+                raise self.fail("cast-not-spent", f"picking {spell} took nothing "
+                                "from the memorised list"
+                                + (f"; the game drew: {' '.join(messages)}"
+                                   if messages else ""))
+        raise self.fail("cast-pick", f"neither Return picked {spell}")
+
+    def _cast_settle(self, seconds: float, messages: list[str]) -> list[str]:
+        """Wait until two reads in a row are the same settled screen, keeping
+        any cast message seen on the way."""
+        limit = self.clock() + self.budget(seconds, "the cast's message")
+        last = None
+        while True:
+            rows = self.rows()
+            for text in self._cast_message(rows) if rows else []:
+                if text not in messages:
+                    messages.append(text)
+            if self._cast_settled(rows):
+                if rows == last:
+                    return rows
+                last = rows
+            else:
+                last = None
+            if self.clock() >= limit:
+                self.capture("cast-message", rows or None)
+                raise self.fail("cast-message", "the pick prompt or the spell "
+                                f"list did not come back within {seconds:g} s")
+            time.sleep(0.3)
+
+    def cast_untargeted(self, caster: str, spell: str) -> dict:
+        """`cast CASTER:SPELL` in Pool's camp for a spell with no target
+        question, such as `PRAYER`: the spell list's highlight moved onto
+        SPELL, Return, and the game's `<NAME> CASTS` message kept; then the
+        pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`,
+        ending on the camp bar.  Every action is a key and nothing is written.
+
+        CASTER's memorised list, read from the live record, must lose exactly
+        one entry of an id the title's spell table draws SPELL for and gain
+        none; a caster without SPELL ready, a list owned by another member, a
+        target question or a pick that spends nothing fails the step."""
+        if self.game.key != "pool-of-radiance":
+            raise self.fail("cast", "a cast with no target is measured on Pool "
+                            "of Radiance only")
+        ids = self.spell_ids().get(spell)
+        if not ids:
+            raise self.fail("cast-spell", f"{spell}: no spell of this title is "
+                            "drawn so")
+        before = self.reading()
+        members = [p for p in before.get("party", [])
+                   if p.get("name", "").upper() == caster.upper()]
+        if len(members) != 1:
+            raise self.fail("cast-caster", f"{caster} is not one named party member")
+        slot = members[0]["slot"]
+        held = self.memorised_entries(slot)
+        if not any(n in ids for n in held):
+            raise self.fail("cast-caster", f"{caster} has no {spell} ready to cast "
+                            f"(memorised {held})")
+        listed = self._open_cast_pick(caster)
+        owner = book_owner(listed, MEMORIZED_SPELLS)
+        if owner not in {caster.upper(), screens.as_drawn(caster).upper()}:
+            raise self.fail("cast-list-member", f"the spell list is {owner!r}'s, "
+                            f"not {caster}'s")
+        self._cast_highlight(spell, listed)
+        picked = self._cast_untargeted_pick(spell, slot, ids, held)
+        self.capture("cast-result")
+        if PICK_SPELL in self.bar():
+            self._leave_cast_pick()
+        if self._list_bar(self.bar()) and not self.choose_bar("EXIT", timeout=15):
+            raise self.fail("cast-exit", "EXIT could not be chosen on the spell list")
+        if self.wait_rows(lambda r: MAGIC_BAR in r[24], 20, "the MAGIC bar") is None:
+            raise self.fail("cast-exit", "the MAGIC bar never came back")
+        if not self.choose_bar("EXIT", timeout=15) or self.wait_rows(
+                lambda r: CAMP_BAR in r[24], 20, "the camp bar") is None:
+            raise self.fail("cast-camp", "the camp bar never came back")
+        after = self.reading()
+        return {"caster": caster, "spell": spell, "slot": slot,
+                "spell_id": picked["spent"], "key": picked["key"],
+                "messages": picked["messages"], "pages": picked["pages"],
+                "memorised_before": held, "memorised_after": picked["memorised_after"],
+                "party_before": before["party"], "party_after": after["party"],
+                "effects_before": before["effects"], "effects_after": after["effects"]}
+
+    def cast(self, arg: str) -> dict:
+        caster, spell, target = parse_cast(arg)
+        if target is None and spell not in CAMP_PARTY_SPELLS:
+            return self.cast_untargeted(caster, spell)
+        dispel = spell in POOL_TARGET_SPELLS
+        if dispel:
+            before = self.reading()
+            self.log.emit("dispel-before", reading=before)
+            slot = self._dispel_guard(before, caster, target)
+        elif target is not None and spell not in POOL_BUFF_SPELLS:
+            cure_id, word = CAMP_CURES[spell]
+            self.owner_of(target)
+        listed = self._open_cast_pick(caster)
+        if dispel:
+            self._cast_highlight(spell, listed)
         if spell in POOL_BUFF_SPELLS:
             # The cursor starts on the first listed row and the screen text
             # does not mark it, so that row must name the spell.
@@ -3967,6 +4183,9 @@ class PoolRun:
         if dispel:
             self.capture("dispel-result")
             messages = self._observe_dispel(before, caster)
+            # With other spells held the game puts the pick prompt back up.
+            if PICK_SPELL in self.bar():
+                self._leave_cast_pick()
         else:
             messages = self._acknowledge(label="cure")
         # The cured row clears only after the spell list is exited.
@@ -4865,6 +5084,8 @@ class PoolRun:
             "outcome": outcome, "message": message}
 
     def rest(self, arg: str) -> dict:
+        if arg.strip().lower() == REST_OFFERED:
+            return self.rest_offered()
         minutes, hours = parse_rest(arg)
         # A pending scribe or memorize survives only a rest taken in the
         # same camp.
@@ -4944,6 +5165,189 @@ class PoolRun:
         if pending is not None:
             result["memorised"] = self._memorize_learned(pending, in_camp,
                                                          completed)
+        return result
+
+    def _rest_clock(self) -> list[int]:
+        with self.sess.mon(10) as m:
+            clock = list(m.read(route_pool.CLOCK, 6))
+            m.resume()
+        return clock
+
+    def _rest_state(self) -> dict:
+        """The marker an interrupted rest leaves, and whether `CAMP` is still
+        the overlay at `$0800`; read, never written."""
+        with self.sess.mon(10) as m:
+            marker = m.read(route_pool.REST_MARKER, 1)[0]
+            camp = bytes(m.read(route_pool.CAMP_TICK,
+                                len(route_pool.CAMP_TICK_BYTES)))
+            m.resume()
+        return {"rest_marker": marker,
+                "camp_resident": camp == route_pool.CAMP_TICK_BYTES}
+
+    @staticmethod
+    def _rest_text(rows: list[str]) -> list[str]:
+        """The message lines over the rest-time bar, rows 17 to 22; a row of
+        frame pieces alone, as a fight's map draws there, is not text."""
+        return [t for t in (_inner(r) for r in rows[17:23])
+                if any(c.isalnum() for c in t) and not _is_frame(t)]
+
+    @classmethod
+    def _keep_rest_text(cls, seen: list[str], rows: list[str]) -> None:
+        """Add the message lines ROWS shows to SEEN, once each, the rest-time
+        line left out; a line read half drawn gives way to the whole line."""
+        for text in cls._rest_text(rows) if rows else []:
+            if text in seen or REST_TIME_LINE.search(text):
+                continue
+            seen[:] = [t for t in seen if not text.startswith(t)]
+            if not any(t.startswith(text) for t in seen):
+                seen.append(text)
+
+    def _rest_after_interruption(self, seen: list[str]) -> dict:
+        """Wait, sending no key, for what an interrupted rest leads to: a fight,
+        the city watch's `GO STAY`, a `PRESS ANY KEY` page or the world bar,
+        keeping every message line drawn on the way."""
+        def ended(r: list[str]) -> bool:
+            self._keep_rest_text(seen, r)
+            return (self.rest_fight(r) or r[24].split() == WATCH_BAR
+                    or CONTINUE in r[24] or self.at_world(r[24]))
+
+        rows = self.wait_rows(ended, REST_LEAVE_SECONDS,
+                              "what the interrupted rest led to")
+        if rows is None:
+            rows = self.rows()
+            then = "row 24 " + repr(rows[24].strip() if rows else "")
+        elif self.rest_fight(rows):
+            then = "fight"
+        elif rows[24].split() == WATCH_BAR:
+            then = "watch"
+        elif CONTINUE in rows[24]:
+            then = "page"
+        else:
+            then = "world"
+        self._keep_rest_text(seen, rows)
+        self.capture("rest-interrupted-then", rows or None)
+        return {"then": then, "bar": rows[24].strip() if rows else ""}
+
+    def rest_offered(self) -> dict:
+        """`rest offered`: camp `REST`, the rest time the game proposes taken
+        as it stands, and its `REST`.  Every action is a key and nothing is
+        written, the area's rest interruption included, whatever
+        `--no-encounters` says.
+
+        The rest is over when the clock stands still.  One that ran the
+        offered time returns to the camp bar; after a `memorize` it rests in
+        that camp and checks each pending entry became learned.  One the
+        area's check stopped (`YOUR REST IS RUDELY INTERRUPTED!`, `$6DD3` =
+        `$FF`, or `CAMP` gone) is its own outcome: the step waits, key-free,
+        for what follows, logs `rest-outcome` and fails with `RestInterrupted`,
+        leaving the step-start snapshot for `--resume-from`."""
+        if self.game.key != "pool-of-radiance":
+            raise self.fail("rest-offered", "rest offered is measured on Pool "
+                            "of Radiance only")
+        in_camp = self.scribing and CAMP_BAR in self.bar()
+        self.scribing = False
+        pending, self.memorize_pending = self.memorize_pending, None
+        if in_camp:
+            square_before = self.scribe_square
+        else:
+            if not self.to_world():
+                raise self.fail("world", "the world bar never came back")
+            square_before = self.position()
+            if not self.to_camp():
+                raise self.fail("camp", "ENCAMP never put up the camp bar")
+        if not self.choose_bar("REST", timeout=20):
+            raise self.fail("rest-offered", "REST could not be chosen on the camp bar")
+        rows = self.wait_rows(lambda r: "INCREASE" in r[24]
+                              and any(REST_TIME_LINE.search(t)
+                                      for t in self._rest_text(r)),
+                              30, "the rest-time bar")
+        if rows is None:
+            raise self.fail("rest-offered", "the rest-time bar never came up")
+        self.sess.settle(1)
+        rows = self.capture("rest-offered", self.rows())
+        shown = next((m for m in map(REST_TIME_LINE.search, self._rest_text(rows))
+                      if m), None)
+        if shown is None:
+            raise self.fail("rest-offered", "the rest time left the screen")
+        days, hours, minutes = (int(g) for g in shown.groups())
+        with self.sess.mon(10) as m:
+            field = list(m.read(route_pool.REST_TIME, 3))
+            before = list(m.read(route_pool.CLOCK, 6))
+            m.resume()
+        if field != [minutes, hours, days]:
+            raise self.fail("rest-offered", f"the screen offers {days}d {hours}h "
+                            f"{minutes}m and CAMP's rest-time field holds "
+                            f"{field} (minutes, hours, days)")
+        offered = (days * 24 + hours) * 60 + minutes
+        if not offered:
+            raise self.fail("rest-offered", "the game offered no rest time")
+        if not self.choose_bar("REST", timeout=15):
+            raise self.fail("rest-offered", "REST could not be chosen on the "
+                            "rest-time bar")
+        # No key while it runs: `CAMP $1E44` reads the keyboard every pass.
+        passes = -(-offered // REST_PASS_MINUTES)
+        limit = self.clock() + self.budget(
+            REST_OFFERED_SECONDS + passes * REST_OFFERED_PASS_SECONDS,
+            "the offered rest")
+        seen: list[str] = []
+        still, last, broke = 0, None, False
+        while still < REST_STILL_READS and self.clock() < limit:
+            time.sleep(1.0)
+            self._keep_rest_text(seen, self.rows())
+            if any(REST_INTERRUPTED_TEXT in t for t in seen):
+                broke = True
+                break
+            now = self._rest_clock()
+            still = still + 1 if now == last else 0
+            last = now
+        after = self._rest_clock()
+        state = self._rest_state()
+        elapsed = clock_minutes(after) - clock_minutes(before)
+        completed = None if elapsed < 0 else elapsed >= offered
+        result = {"offered": [days, hours, minutes], "offered_minutes": offered,
+                  "field": field, "before_clock": before, "after_clock": after,
+                  "elapsed_minutes": elapsed, "rest_completed": completed,
+                  "text": seen, "position_before": square_before,
+                  "wrote_nothing": True, **state}
+        if in_camp:
+            result["stayed_in_camp"] = True
+        interrupted = (broke or state["rest_marker"] == route_pool.REST_INTERRUPTED
+                       or not state["camp_resident"])
+        if interrupted:
+            self.capture("rest-interrupted")
+            result.update(self._rest_after_interruption(seen), text=seen,
+                          ended="interrupted", interrupted=True)
+            if pending is not None:
+                result["memorised"] = {
+                    "who": pending["who"], "pending_before": pending["entries"],
+                    "after": self.memorised_entries(pending["slot"])}
+            self.lost_reading = {"step": "rest offered", "outcome": result}
+            self.log.emit("rest-outcome", result="interrupted", **result)
+            raise RestInterrupted(
+                f"the offered rest was interrupted after {elapsed} of {offered} "
+                f"minutes ({' / '.join(seen) or 'no message read'}), then "
+                f"{result['then']}")
+        if self.clock() >= limit and still < REST_STILL_READS:
+            raise self.fail("rest-offered", "the clock was still moving when "
+                            f"the {passes} passes' time limit ran out")
+        rows = self.wait_rows(lambda r: CAMP_BAR in r[24] or "INCREASE" in r[24],
+                              30, "the camp bar after the rest")
+        if rows is not None and CAMP_BAR not in rows[24]:
+            if not self.choose_bar("EXIT", timeout=15) or self.wait_rows(
+                    lambda r: CAMP_BAR in r[24], 20) is None:
+                raise self.fail("rest-offered", "the camp bar never came back "
+                                "after the rest")
+        elif rows is None:
+            raise self.fail("rest-offered", "neither the camp bar nor the rest-time "
+                            f"bar followed the rest; row 24 {self.bar().strip()!r}")
+        self.capture("rested-offered")
+        result["ended"] = {True: "completed", False: "short"}.get(completed, "unmeasured")
+        if pending is not None:
+            result["memorised"] = self._memorize_learned(pending, in_camp, completed)
+        self.log.emit("rest-outcome", result=result["ended"], **result)
+        if completed is False:
+            raise self.fail("rest-offered", f"the rest ended after {elapsed} of the "
+                            f"{offered} minutes offered with no interruption seen")
         return result
 
     def _memorize_learned(self, pending: dict, in_camp: bool,
@@ -9687,17 +10091,17 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--first-bar-key requires --title curse or ssb, without --attack-by")
     if any(x.verb == "cure" for x in steps) and args.title != "curse":
         ap.error("the cure step requires --title curse")
+    if args.title != "pool" and any(x.verb == "rest" and x.arg.lower() == REST_OFFERED
+                                    for x in steps):
+        ap.error("rest offered requires --title pool")
     for step in (s for s in steps if s.verb == "cast"):
         try:
             _, spell, target = parse_cast(step.arg)
         except ValueError as e:
             ap.error(str(e))
-        if args.title == "pool" and not (
-                (target is None and spell in CAMP_PARTY_SPELLS)
-                or (target is not None
-                    and spell in POOL_TARGET_SPELLS | dict.fromkeys(POOL_BUFF_SPELLS))):
-            ap.error("Pool cast supports CASTER:ANIMATE DEAD, "
-                     "CASTER:DISPEL MAGIC>TARGET or CASTER:ENLARGE>TARGET")
+        if args.title == "pool" and target is not None and spell in CAMP_CURES:
+            ap.error("Pool cast supports CASTER:SPELL for a spell with no target "
+                     "question, CASTER:DISPEL MAGIC>TARGET or CASTER:ENLARGE>TARGET")
         if args.title == "curse" and (target is None or spell not in CAMP_CURES):
             ap.error("Curse cast requires CASTER:CURE BLINDNESS>TARGET")
         if args.title == "ssb":
