@@ -461,7 +461,9 @@ def _normal_token(part: str) -> str:
     words = part.split()
     if words[0].lower() in MACHINE_VERBS:
         return " ".join([words[0].lower(), *words[1:]])
-    return " ".join(words).lower()
+    token = " ".join(words).lower()
+    # The answer letters of `use N I S|Y...` are upper case, the only form `_use_place` reads.
+    return token[:-len(words[-1])] + words[-1].upper() if words[0].lower() == "use" and len(words) == 4 else token
 
 
 def parse_steps(text: str, name: str = "ssb") -> tuple[str, ...]:

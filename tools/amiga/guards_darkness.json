@@ -150,6 +150,55 @@
       "example": "amiga-grab-crops/wish9-b1__32-camp_items_5.png",
       "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
     },
+    "camp_items_5_row2": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__14-camp_items_row2.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_items_5_row3": {
+      "also": [
+        "camp_items",
+        "camp_items_2",
+        "camp_items_3",
+        "camp_items_4",
+        "camp_items_5",
+        "camp_items_5_row2",
+        "camp_items_6",
+        "camp_items_row2",
+        "camp_items_row3",
+        "camp_items_row4",
+        "camp_items_row5",
+        "camp_items_row6",
+        "camp_items_row7"
+      ],
+      "box": [
+        74,
+        80,
+        250,
+        96
+      ],
+      "example": "amiga-grab-crops/wish9-b1__15-camp_items_row3.png",
+      "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
     "camp_items_6": {
       "also": [
         "camp_items",
@@ -2006,6 +2055,12 @@
     "WISH-2/wish2-a4/measure-a4-33/shots/06-sheet.png": [
       "sheet"
     ],
+    "WISH-2/wish2-l1-r5-run/accept-l1r5/shots/12-world.png": [
+      "place_x2_y2_f1"
+    ],
+    "WISH-2/wish2-l1-r5-run/accept-l1r5/shots/13-world.png": [
+      "place_x3_y2_f1"
+    ],
     "WISH-2/wish2-s5-reload/reload1/shots/10-world.png": [
       "place_x3_y2_f1"
     ],
@@ -2285,12 +2340,6 @@
     ],
     "amiga-grab-crops/wish9-b1__31-camp_sheet_items_5.png": [
       "camp_sheet_items_5"
-    ],
-    "WISH-2/wish2-l1-r5-run/accept-l1r5/shots/12-world.png": [
-      "place_x2_y2_f1"
-    ],
-    "WISH-2/wish2-l1-r5-run/accept-l1r5/shots/13-world.png": [
-      "place_x3_y2_f1"
     ],
     "amiga-grab-crops/wish9-b1__32-camp_items_5.png": [
       "camp_items_5"

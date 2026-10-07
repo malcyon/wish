@@ -473,3 +473,9 @@ def test_a_screen_after_cast_that_is_neither_prompt_stops_the_run_before_any_ans
     assert {"camp_use_target", "camp_use_combat"} <= set(
         route_camp.camp_title(route_darkness.DARKNESS, ("use 5 3 SY",), 7,
                               name="darkness").strict)
+
+
+def test_use_answers_are_read_in_either_case_and_parse_to_the_same_steps():
+    upper = route_camp.parse_steps("use 5 3 SYY", "darkness")
+    assert route_camp.parse_steps("use 5 3 syy", "darkness") == upper == ("use 5 3 SYY",)
+    assert route_camp.steps_for(upper, "darkness", 7) == route_camp.steps_for(("use 5 3 SYY",), "darkness", 7)

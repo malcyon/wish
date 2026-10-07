@@ -1128,3 +1128,13 @@ def test_a_reload_runs_world_and_place_crops_are_named_for_the_square_it_proved(
     for name in ('unshown', 'unfinished'):
         assert states[f'2/{name}/reload/shots/10-world.png'] == ('world',)
         assert states[f'2/{name}/reload/shots/11-place.png'] == ('place',)
+
+
+def test_darkness_use_route_states_for_line_5_all_have_a_guard():
+    """The `use 5 3 SYY` route keys line 5's row 2 and row 3, which need guards of their own."""
+    from tools.amiga import route_camp, route_darkness
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    route = route_camp.camp_title(route_darkness.DARKNESS, ('use 5 3 SYY',), 7, name='darkness')
+    assert {'camp_items_5_row2', 'camp_items_5_row3'} <= route.strict
+    assert route.strict <= spec['guards'].keys()
