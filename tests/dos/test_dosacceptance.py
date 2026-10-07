@@ -13007,7 +13007,9 @@ def test_exit_on_a_party_menu_or_another_bar_fails_and_presses_nothing(
 
 
 @pytest.mark.parametrize("sig, kind", [("8f9a22c9f2996980", "items"),
-                                        ("28ace249ea92355a", "take")])
+                                        ("28ace249ea92355a", "take"),
+                                        ("b992865494269413", "store"),
+                                        ("7a2624033e9fc866", "buy")])
 def test_exit_presses_e_on_the_treasure_item_and_take_bars(tmp_path, monkeypatch, sig, kind):
     game, d = _pod_driver(tmp_path, question=False)
     monkeypatch.setattr(da, "bar_signature", lambda sc: sig)
