@@ -56,6 +56,7 @@ a source whose title does not match `--title`:
 | `camp` guard | Pool presses `ENCAMP` only on a measured map bar of `POOL_MAP_BARS`, and no title presses it on the party menu, where `e` is EXIT TO DOS |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature`.  After `vault`, Pools of Darkness presses `REST` on Elminster's menu instead, which opens the camp loop, and requires a bar reading `SAVE ... EXIT` |
 | `vault` | Pools of Darkness, straight after `begin`, which then takes Elminster's menu in Limbo (area 18) as its end: `STORAGE`, the vault's bar read as text, `TAKE` (and `ITEMS` at `TAKE: MONEY ITEMS EXIT`) when offered, every page of the stored items read as text with `NEXT`, `EXIT` back to the vault and `EXIT` to Elminster's menu; records the rows and the `TMPVAULT.DAT` leaving wrote.  The run fails unless every page reads the names that file caches, in order and to the last, and the file and the last saved slot's vault hold the installed items and coins (`vault_verdict`).  Blocked before the boot unless the installed save names area 18 in variable `$16` and `$A2` is not 1 |
+| `deposit 5 2` | Pools of Darkness, after `vault`, at Elminster's menu: `STORAGE`, roster line 5 highlighted, `ITEMS`, row 2 highlighted and `D` (`DEPOSIT`, no question), `EXIT` twice, then the vault read back as `vault` reads it.  Stops before `D` on a readied row or a list's last row, and fails unless the list lost that row, `TMPVAULT.DAT` gained it as its last record with the coins unchanged, the readback lists every record, and the last saved slot's vault holds what the deposit left (`deposit_verdict`) |
 | `leave` | Curse and Silver Blades, in camp: the camp bar's `Exit` (`CAMP_EXIT`), believed when the map bar is back, so a `fight` can follow a camp `save` in the same boot.  Curse's has left camp in one boot; Silver Blades' is read from its key set only and is not yet verified live |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only; Pool's is the next row), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
 | `heal N` | the same three, in camp: line N's sheet, `HEAL` (`LAY` in Pools of Darkness), `SELECT` at `HEAL WHOM?` on the member it opens on, and the sheet required back without the word; back to camp |
@@ -699,8 +700,6 @@ VAULT_TAKE = "t"
 VAULT_TAKE_PROMPT = ("TAKE:", "MONEY", "ITEMS", "EXIT")
 VAULT_TAKE_ITEMS = "i"
 VAULT_EXIT = "e"
-#: Pages of the vault's item list read before the run gives up on the last.
-VAULT_PAGES = 12
 #: What leaving the vault screen writes (`GAME.OVR` 0x34C0 -> 0x13B5D).
 TMPVAULT = "TMPVAULT.DAT"
 #: Where the vault's item list is read: rows 1 to 22, one item a row,
@@ -716,6 +715,22 @@ VAULT_LIST_RECT = (0, 8, 320, 176)
 #: the item, as a length byte and text (`goldbox.dos_port.ITEM_LAYOUT`
 #: 0x00-0x29): the vault screen fills it, and its writer stores it.
 VAULT_NAME = slice(0x00, 0x2A)
+#: `ITEMS` on the vault bar lists the highlighted member's items under the
+#: bar `READY TRADE DEPOSIT HALVE JOIN EXIT`, and `D` deposits the
+#: highlighted item at once, with no question: the row leaves the list and
+#: the highlight stays on the same row (one press, then one `Return` on the
+#: lit `DEPOSIT`, each taking one row off a 14-row list).  `D` on a readied
+#: item leaves the list as it was (one press; the drop at `GAME.OVR` 0x247E5
+#: turns a readied item away).  The vault screen draws the roster where camp
+#: does, and `Down` moves its highlight a member on (four presses, line 1 to
+#: 5).  `E` leaves the list.
+VAULT_ITEMS = "i"
+VAULT_DEPOSIT = "d"
+VAULT_ITEMS_EXIT = "e"
+VAULT_ROSTER = "camp"
+#: The member's list is headed `<NAME>'S ITEMS` on text row 1.
+VAULT_ITEMS_HEAD_ROW = 1
+VAULT_ITEMS_HEAD = "'S ITEMS"
 
 
 def is_vault_bar(words: list[str]) -> bool:
@@ -769,6 +784,58 @@ def vault_window_check(pages: list[list[str]], names: list[str]) -> dict:
                     "read": rows, "names": want}
     end = tops[-1] + len(pages[-1]) if pages else 0
     return {"tops": tops, "covered": end == len(names)}
+
+
+def vault_page_limit(records: int) -> int:
+    """How many pages a vault of `records` items lists: one window of
+    `VAULT_WINDOW` rows a page, the last never past the end, and one page
+    for an empty or short list.  A list still offering `NEXT` after that many
+    pages holds more than the vault file does."""
+    return max(1, -(-records // VAULT_WINDOW))
+
+
+def same_name(read: str, name: str) -> bool:
+    """Whether a name read off the screen is `name`, a `?` read under the
+    pointer matching any character."""
+    return len(read) == len(name) and all(a in ("?", b) for a, b in zip(read, name))
+
+
+def vault_item_entry(text: str) -> tuple[bool | None, str]:
+    """A row of the member's list in the vault, `YES  NAME` or `NO   NAME`:
+    whether it is readied (None when the column reads neither) and the name."""
+    words = text.split(None, 1)
+    if not words:
+        return None, ""
+    ready = {"YES": True, "NO": False}.get(words[0])
+    if ready is None:
+        return None, text.strip()
+    return ready, words[1].strip() if len(words) > 1 else ""
+
+
+def parse_deposit(words: list[str], text: str):
+    """`deposit MEMBER ROW`: roster line 1-8 and a row the list draws, from
+    1, or None when `words` are not a deposit step."""
+    if len(words) != 3 or words[0].lower() != "deposit" or not re.fullmatch(
+            r"[1-8]", words[1]) or not re.fullmatch(r"\d+", words[2]):
+        return None
+    row = int(words[2])
+    if not 1 <= row <= ITEM_ROWS:
+        raise ValueError(f"deposit row {row} is blocked: the list shows rows 1 to "
+                         f"{ITEM_ROWS} and the rows past them need Next, which "
+                         "is not driven here")
+    return Step("deposit", text, line=int(words[1]), row=row)
+
+
+def deposit_rejection(title: str, where: str, step) -> str | None:
+    """Why `step`, a deposit, cannot run with the party `where`, or None: it
+    starts at Elminster's menu, which only `vault` (or a deposit) leaves the
+    party at, in Pools of Darkness."""
+    if title != "darkness":
+        return f"deposit is driven in darkness only, not {title}"
+    if where != "elminster":
+        return (f"deposit comes after vault, which leaves the party at Elminster's "
+                f"menu: {step.text!r}")
+    return None
 
 #: `View` on the map and camp bars; `Items` and `Exit` on the sheet's bar
 #: `Items Spells Trade Deposit Drop Lay Cure Exit` (`GAME.EXE` 0xBB4F).  The
@@ -2253,7 +2320,7 @@ STEP_HELP = ("load, begin, vault, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp,
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
              "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
-             "'snapshot NAME', 'restore NAME', read")
+             "'snapshot NAME', 'restore NAME', 'deposit 5 2', read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
 CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
@@ -2268,6 +2335,9 @@ def parse_step(text: str) -> Step:
     if kind in ("load", "begin", "camp", "leave", "display", "vault",
                 "read") and len(words) == 1:
         return Step(kind, text)
+    deposit = parse_deposit(words, text)
+    if deposit is not None:
+        return deposit
     if kind == "rest" and len(words) == 2:
         minutes = parse_duration(words[1])
         rest_presses(minutes)
@@ -2426,6 +2496,10 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"vault follows begin, which ends at Elminster's "
                                  f"menu for it: {step.text!r}")
             where = "elminster"
+        elif k == "deposit":
+            why = deposit_rejection(title, where, step)
+            if why:
+                raise ValueError(why)
         elif k == "leave":
             if title not in LEAVE_TITLES:
                 raise ValueError(f"leave is driven in {', '.join(sorted(LEAVE_TITLES))} "
@@ -4118,6 +4192,7 @@ class Driver:
         `NEXT` while the bar offers it; a page reading as the one before
         ends the reading."""
         font = self.display_font()
+        limit = vault_page_limit(self.held_vault()["items"])
         pages: list[dict] = []
         while True:
             rows = [text_row(screen, r, font, VAULT_TEXT_COLUMNS).strip()
@@ -4129,9 +4204,10 @@ class Driver:
                           "items": [r for r in rows if r]})
             if "NEXT" not in words:
                 break
-            if len(pages) >= VAULT_PAGES:
+            if len(pages) >= limit:
                 raise self.fail("vault-pages", f"the vault's list still offers "
-                                f"NEXT after {VAULT_PAGES} pages")
+                                f"NEXT after {limit} pages, all that its "
+                                f"{self.held_vault()['items']} items fill")
             screen, words = self.press_bar(ITEMS_NEXT, screen, "vault-next", page=True)
         return pages
 
@@ -4196,6 +4272,108 @@ class Driver:
                 "expected": expected,
                 "matches": check["covered"] and listed == expected["items"],
                 "tmpvault": written}
+
+    def held_vault(self) -> dict:
+        """The vault the game holds now: the `TMPVAULT.DAT` this boot's last
+        exit from the vault wrote, which the loader reads in place of the
+        slot's file while it is there (`GAME.OVR` 0x1379B), or else the
+        installed `VAULT<L>.DAT`."""
+        written = tmpvault(self.s.save_dir)
+        if written is not None and "error" not in written:
+            return {"file": written["file"],
+                    **{k: written[k] for k in ("items", "platinum", "gems", "jewelry")}}
+        return self.installed_vault()
+
+    def deposit(self, line: int, row: int) -> dict:
+        """Pools of Darkness, at Elminster's menu: `STORAGE`, roster line
+        `line` highlighted, `ITEMS`, row `row` highlighted and `DEPOSIT`d,
+        `EXIT` twice back to the menu; then the vault read back as `vault`
+        reads it.  The run stops before `D` when the row is readied or the
+        list's last, and when the list does not lose exactly that row."""
+        if self.title.key != "darkness" or self.where != "elminster":
+            raise StepFailed("deposit needs Elminster's menu in Limbo, which "
+                             "the vault step leaves the party at")
+        label = f"deposit-{line}-{row}"
+        before = self.held_vault()
+        font = self.display_font()
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, f"{label}-settle"))
+        if bar_signature(screen) != POD_ELMINSTER_BAR:
+            raise self.fail(f"{label}-menu", f"Elminster's menu is not showing: "
+                            f"{self.bar_named(screen)}")
+        if "STORAGE" not in self.bar_text(screen):
+            raise self.fail(f"{label}-storage", "Elminster's menu offers no STORAGE")
+        screen, words = self.press_bar(ELMINSTER_STORAGE, screen, f"{label}-open")
+        if not is_vault_bar(words):
+            raise self.fail(f"{label}-open", f"STORAGE did not open the vault: "
+                            f"{self.bar_named(screen)}")
+        picked = self.pick_line(line, VAULT_ROSTER, f"{label}-member")
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, f"{label}-member"))
+        words = self.bar_text(screen)
+        if "ITEMS" not in words:
+            raise self.fail(f"{label}-items", f"the vault bar offers no ITEMS for "
+                            f"line {line}, who has no items: {words}")
+        screen, words = self.press_bar(VAULT_ITEMS, screen, f"{label}-items")
+        if not on_items_list(screen) or "DEPOSIT" not in words:
+            raise self.fail(f"{label}-items", f"ITEMS opened no list with DEPOSIT: "
+                            f"{self.bar_named(screen)}")
+        head = text_row(screen, VAULT_ITEMS_HEAD_ROW, font, VAULT_TEXT_COLUMNS).strip()
+        owner = head[:-len(VAULT_ITEMS_HEAD)] if head.endswith(VAULT_ITEMS_HEAD) else None
+        moved = self.pick_item(row, f"{label}-select")
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, f"{label}-select"))
+        rows_before = item_rows(screen)
+        ready, name = vault_item_entry(text_row(
+            screen, ITEM_TEXT_ROW + row - 1, font, VAULT_TEXT_COLUMNS))
+        shot_before = self.shot(f"{label}-before")
+        if ready is not False:
+            raise self.fail(f"{label}-ready", f"row {row} ({name}) is "
+                            + ("readied, and the game deposits only an item "
+                               "that is not" if ready else "not read as YES or NO"))
+        if rows_before is None or rows_before < 2:
+            raise self.fail(f"{label}-rows", f"the list draws {rows_before} rows; "
+                            "what DEPOSIT does with the last item is not measured")
+        self.s.key(VAULT_DEPOSIT)
+        self.s.wait_for(lambda sc: item_rows(sc) != rows_before,
+                        self.bounded(10.0, f"{label}-deposit"))
+        screen = self.s.settle(quiet=0.8, timeout=self.bounded(30.0, f"{label}-deposit"))
+        rows_after = item_rows(screen)
+        shot_after = self.shot(f"{label}-after")
+        if rows_after != rows_before - 1:
+            raise self.fail(f"{label}-deposit", f"DEPOSIT left {rows_after} rows "
+                            f"of {rows_before}")
+        screen, words = self.press_bar(VAULT_ITEMS_EXIT, screen, f"{label}-list-exit")
+        if not is_vault_bar(words):
+            raise self.fail(f"{label}-back", f"leaving the list did not bring the "
+                            f"vault back: {self.bar_named(screen)}")
+        screen, words = self.press_bar(VAULT_EXIT, screen, f"{label}-exit")
+        if not self.s.wait_for(lambda sc: bar_signature(sc) == POD_ELMINSTER_BAR,
+                               self.bounded(30.0, f"{label}-exit")):
+            raise self.fail(f"{label}-exit", f"EXIT did not bring Elminster's menu "
+                            f"back: {self.bar_named(self.s.capture())}")
+        dosbox.settle_files(self.s.save_dir, quiet=1.0,
+                            timeout=self.bounded(30.0, f"{label}-file"))
+        written = tmpvault(self.s.save_dir)
+        readback = self.vault()
+        coins = ("platinum", "gems", "jewelry")
+        names = (written or {}).get("names") or []
+        why = None
+        if written is None or "error" in written:
+            why = f"leaving the vault wrote no readable {TMPVAULT}: {written}"
+        elif written["items"] != before["items"] + 1:
+            why = (f"{TMPVAULT} holds {written['items']} items after one deposit "
+                   f"into {before['items']}")
+        elif not same_name(name, names[-1]):
+            why = f"{TMPVAULT}'s last item is {names[-1]}, not the deposited {name}"
+        elif any(written[k] != before[k] for k in coins):
+            why = (f"{TMPVAULT}'s coins {[written[k] for k in coins]} moved from "
+                   f"{[before[k] for k in coins]}")
+        elif readback["listed"] != written["items"]:
+            why = (f"the vault listed {readback['listed']} items where "
+                   f"{TMPVAULT} holds {written['items']}")
+        return {"line": line, "row": row, "owner": owner, "item": name,
+                "member_presses": picked["presses"], "row_presses": moved["presses"],
+                "rows_before": rows_before, "rows_after": rows_after,
+                "before": before, "tmpvault": written, "readback": readback,
+                "shots": [shot_before, shot_after], "why": why}
 
     def elminster_camp(self) -> dict:
         """Camp from Elminster's menu: `REST` runs `PROGRAM 9`, the camp loop
@@ -7700,6 +7878,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.camp()
                 elif step.kind == "vault":
                     r = d.vault()
+                elif step.kind == "deposit":
+                    r = d.deposit(step.line, step.row)
                 elif step.kind == "leave":
                     r = d.leave()
                 elif step.kind == "walk":
@@ -7767,7 +7947,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             unproved = (walk_verdict(steps, summary.get("read"))
                        or share_verdict(summary.get("read"))
                        or expect_verdict(summary.get("read"))
-                       or vault_verdict(results, summary.get("read")))
+                       or stored_verdict(results, summary.get("read")))
             doubtful = inconclusive_watch(results)
             if unproved:
                 summary["lost"] = unproved
@@ -8144,6 +8324,41 @@ def vault_verdict(results: list[dict], read: dict | None) -> str | None:
     if held != {k: want[k] for k in keys}:
         return f"VAULT{last}.DAT holds {held}, not the installed {want}"
     return None
+
+
+def deposit_verdict(results: list[dict], read: dict | None) -> str | None:
+    """Why a run with `deposit` steps has not shown the game storing each
+    item, or None: each step's own check (`Driver.deposit`), and the last
+    saved slot's vault, when a save followed, holding what the last deposit
+    left in `TMPVAULT.DAT`."""
+    deposits = [r for r in results if str(r.get("step", "")).split()[:1] == ["deposit"]]
+    if not deposits:
+        return None
+    for r in deposits:
+        if r.get("why"):
+            return f"{r['step']}: {r['why']}"
+    if not read or not read.get("saved"):
+        return None
+    last = read["saved"][-1]
+    saved = (read.get("slots") or {}).get(last, {}).get("vault")
+    if saved is None:
+        return f"slot {last} was saved with no VAULT{last}.DAT"
+    keys = ("platinum", "gems", "jewelry")
+    want = deposits[-1]["tmpvault"]
+    held = {"items": len(saved["items"]), **{k: saved[k] for k in keys}}
+    if held != {"items": want["items"], **{k: want[k] for k in keys}}:
+        return (f"VAULT{last}.DAT holds {held}, not the {want['items']} items "
+                f"the last deposit left")
+    return None
+
+
+def stored_verdict(results: list[dict], read: dict | None) -> str | None:
+    """`vault_verdict`, or with deposits its listing and file checks alone
+    (the saved vault no longer holds the installed one) and then
+    `deposit_verdict`."""
+    if not any(str(r.get("step", "")).split()[:1] == ["deposit"] for r in results):
+        return vault_verdict(results, read)
+    return vault_verdict(results, None) or deposit_verdict(results, read)
 
 
 def walk_verdict(steps: list[Step], read: dict | None) -> str | None:

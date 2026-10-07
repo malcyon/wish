@@ -38,6 +38,7 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosshop.py` | Checks the New Phlan shop squares and scripts `tools/dos/dosshop.py` uses, and the record the engine wrote after a purchase. |
 | `test_dosslotwatch.py` | Checks that `tools/dos/dosslotwatch.py` stages writable copies of a read-only `--save` and survives a second run into the same directory. |
 | `test_dostailsweep.py` | Checks that `tools/dos/dostailsweep.py` does not count a Gateway or Treasures record as a Curse or Pools of Darkness one. |
+| `test_dosvaultdeposit.py` | Checks that `tools/dos/acceptance.py`'s Pools of Darkness `deposit` step deposits an unreadied item from the vault screen, stops before a readied row or a list's last row, and reads the vault back, that the vault list's page bound is the pages its records fill, and the live run's screens and files where this machine has them. |
 | `test_dosvmwatch.py` | Checks the translation `tools/dos/dosvmwatch.py` makes from a saved-game word to its VM address, and its writable staging of a save. |
 | `test_dosxpaward.py` | Checks the experience-award bytes before a DOS record's portrait against three routes read out of the shipped engines. |
 | `test_dualclassdos.py` | Checks how `tools/dos/dualclassdos.py` names the game tree a record came from, and its boundary listing and string search. |
