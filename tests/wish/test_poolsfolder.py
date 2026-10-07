@@ -198,6 +198,124 @@ def test_the_flag_adds_the_row_after_silver_blades(app, tmp_path, monkeypatch,
         win.close()
 
 
+# --- the Fast travel page exists only behind the flag --------------------------
+
+def travel_tab_texts(dialog):
+    tabs = dialog.travel_tabs
+    return [tabs.tabText(i) for i in range(tabs.count())]
+
+
+def test_the_travel_page_is_absent_by_default(app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert POD.title not in travel_tab_texts(dialog)
+        assert POD.key not in dialog.travel_tables
+        assert preferences.travel_titles() == preferences.TRAVEL_TITLES
+        assert dialog.findChild(preferences.QTableWidget,
+                                "travel_table_pools_of_darkness") is None
+    finally:
+        win.close()
+
+
+@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
+@pytest.mark.parametrize("value", ["0", "off"])
+def test_a_forgotten_setting_does_not_add_the_travel_page(
+        app, tmp_path, monkeypatch, env, value):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(env, value)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert POD.title not in travel_tab_texts(dialog)
+        assert POD.key not in dialog.travel_tables
+    finally:
+        win.close()
+
+
+def test_the_conversion_flag_alone_does_not_add_the_travel_page(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv("WISH_EXPERIMENTAL_POD_CONVERT", "1")
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert POD.key in dialog.game_folder_edits
+        assert POD.title not in travel_tab_texts(dialog)
+        assert POD.key not in dialog.travel_tables
+    finally:
+        win.close()
+
+
+@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
+def test_the_flag_adds_the_travel_page_after_silver_blades(
+        app, tmp_path, monkeypatch, env):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(env, "1")
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert travel_tab_texts(dialog) == [
+            g.title for g in preferences.TRAVEL_TITLES] + [POD.title]
+        assert POD.key in dialog.travel_tables
+    finally:
+        win.close()
+
+
+def test_the_travel_page_lists_only_destinations(app, tmp_path, monkeypatch,
+                                                 amiga_on):
+    from goldbox import areas
+
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        listed = {row.id for row in dialog.travel_rows[POD.key]}
+        assert listed == {a.id for a in areas.areas_for_title(POD.title)
+                          if a.fasttravelable}
+        assert 84 not in listed
+        assert dialog.travel_tables[POD.key].rowCount() == len(listed)
+        assert dialog.travel_ticked(POD) == []
+    finally:
+        win.close()
+
+
+def test_a_pools_of_darkness_window_opens_on_its_page(app, tmp_path,
+                                                      monkeypatch, amiga_on):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app, title=POD.title)
+    try:
+        dialog = PreferencesDialog(win)
+        assert dialog.travel_tabs.tabText(
+            dialog.travel_tabs.currentIndex()) == POD.title
+    finally:
+        win.close()
+
+
+def test_ticking_a_pools_of_darkness_area_files_it_under_its_key(
+        app, tmp_path, monkeypatch, amiga_on):
+    from PyQt6.QtCore import Qt
+
+    from goldbox import areas
+
+    nowhere(tmp_path, monkeypatch)
+    aerie = next(a for a in areas.areas_for_title(POD.title) if a.id == 33)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        table = dialog.travel_tables[POD.key]
+        row = next(i for i, a in enumerate(dialog.travel_rows[POD.key])
+                   if a.id == aerie.id)
+        table.item(row, 0).setCheckState(Qt.CheckState.Checked)
+        assert win.settings.fast_travel_targets == {POD.key: [33]}
+        assert Settings.load().chosen_areas(POD) == (33,)
+        assert dialog.travel_notes[POD.key].text() == (
+            "1 area in the Fast Travel list.")
+    finally:
+        win.close()
+
+
 # --- what the row's line says -------------------------------------------------
 
 def test_the_line_counts_the_pools_of_darkness_images(app, tmp_path,

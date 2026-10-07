@@ -203,16 +203,30 @@ def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
         return GAME_FOLDER_TITLES + maps.AMIGA_ONLY_TITLES
     return GAME_FOLDER_TITLES
 
-#: The titles the Fast travel tab has a page for, in `c64_port.GAMES` order --
-#: the titles `goldbox.areas.TABLES` has a table for, and no others. A title
-#: with no table gets no tab, and a fourth table needs a fourth page in
-#: `preferences.ui`; `test_there_is_a_tab_for_every_title_with_an_area_table`
-#: fails until it has one.
+#: The Commodore 64 titles the Fast travel tab has a page for, in
+#: `c64_port.GAMES` order. `travel_titles()` adds the title with no C64
+#: container while an Amiga backend flag is on, so the tabs are the titles
+#: `goldbox.areas.TABLES` has a table for, and no others. A title with no table
+#: gets no tab, and a new table needs a new page in `preferences.ui`;
+#: `test_there_is_a_tab_for_every_title_with_an_area_table` fails until it has
+#: one.
 TRAVEL_TITLES: tuple[c64_port.C64Container, ...] = (
     c64_port.POOL_OF_RADIANCE,
     c64_port.CURSE_OF_THE_AZURE_BONDS,
     c64_port.SECRET_OF_THE_SILVER_BLADES,
 )
+
+
+def travel_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
+    """The titles that have a Fast travel page in this run: the three above,
+    then the titles with no C64 container while an Amiga backend flag is on.
+
+    Only an attached Amiga lists those titles' areas, so the Pools of
+    Darkness conversion flag alone does not add the page.
+    """
+    if backends.amiga_enabled():
+        return TRAVEL_TITLES + maps.AMIGA_ONLY_TITLES
+    return TRAVEL_TITLES
 
 
 def title_folder_report(folder: str,
@@ -928,7 +942,8 @@ class PreferencesDialog(QDialog):
         fast-travellable and has no name, so it is in that table as `Area 30`,
         as are Silver Blades' unnamed ids 4 and 17 in its own.
 
-        **One tab per title that has an area table** (`TRAVEL_TITLES`), each
+        **One tab per title that has an area table** (`travel_titles()`; the
+        Amiga-only title's tab exists only while an Amiga backend flag is on), each
         with its own table, so any title's areas can be ticked from any
         session. The tab that is current on opening is the open title's, or the
         first when the open title has none; the dropdown under the map still
@@ -959,15 +974,33 @@ class PreferencesDialog(QDialog):
         self.travel_rows: dict[str, list[area_table.Area]] = {}
         self.travel_tables: dict[str, QTableWidget] = {}
         self.travel_notes: dict[str, QLabel] = {}
-        for game in TRAVEL_TITLES:
+        self._build_amiga_travel_tabs()
+        for game in travel_titles():
             self._wire_travel_page(game)
 
         self.travel_game = self.win.map_game()
-        keys = [g.key for g in TRAVEL_TITLES]
+        keys = [g.key for g in travel_titles()]
         here = getattr(self.travel_game, "key", None)
         self.travel_tabs.setCurrentIndex(keys.index(here) if here in keys else 0)
 
-    def _wire_travel_page(self, game: c64_port.C64Container) -> None:
+    def _build_amiga_travel_tabs(self) -> None:
+        """Keep the Fast travel page of each title with no C64 container while
+        an Amiga backend flag is on, and take it out of the tabs otherwise.
+
+        `preferences.ui` holds the page so that it can be rearranged in
+        Designer; a run without the flag never shows it, and nothing in the
+        dialog refers to it.
+        """
+        if backends.amiga_enabled():
+            return
+        for game in maps.AMIGA_ONLY_TITLES:
+            page = getattr(self.ui, f"travel_tab_{_row_suffix(game)}")
+            self.travel_tabs.removeTab(self.travel_tabs.indexOf(page))
+            page.setParent(None)
+            page.deleteLater()
+
+    def _wire_travel_page(self, game: c64_port.C64Container | titles.Title
+                          ) -> None:
         """One title's table: its rows, its ticks and its count."""
         suffix = _row_suffix(game)
         #: The table's rows: by name, then the unnamed ones by area number.
@@ -1031,17 +1064,20 @@ class PreferencesDialog(QDialog):
         self.travel_notes[game.key] = getattr(self.ui, f"travel_note_{suffix}")
         self._say_travel(game)
 
-    def travel_ticked(self, game: c64_port.C64Container) -> list[int]:
+    def travel_ticked(self, game: c64_port.C64Container | titles.Title
+                      ) -> list[int]:
         """The area ids with a tick against them on `game`'s tab, in table order."""
         table = self.travel_tables[game.key]
         return [row.id for i, row in enumerate(self.travel_rows[game.key])
                 if table.item(i, 0).checkState() == Qt.CheckState.Checked]
 
-    def _travel_changed(self, game: c64_port.C64Container) -> None:
+    def _travel_changed(self, game: c64_port.C64Container | titles.Title
+                        ) -> None:
         self.win.set_fast_travel_targets(self.travel_ticked(game), game)
         self._say_travel(game)
 
-    def _say_travel(self, game: c64_port.C64Container) -> None:
+    def _say_travel(self, game: c64_port.C64Container | titles.Title
+                    ) -> None:
         """How many areas `game`'s ticks give the dropdown. A count, and no more.
 
         Nothing ticked used to get a sentence explaining that an empty list was

@@ -55,7 +55,8 @@ def app():
 def _no_disks_env(monkeypatch):
     """$POR_DISKS and $POR_ULTIMATE are the player's, not this file's."""
     for name in ("POR_DISKS", "POR_GAME_DISK", "POR_ULTIMATE",
-                 "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE"):
+                 "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE", bk.AMIGA_FSUAE_ENV,
+                 bk.AMIGA_WINUAE_ENV, "WISH_EXPERIMENTAL_POD_CONVERT"):
         monkeypatch.delenv(name, raising=False)
     preferences._scan.cache_clear()
 
@@ -1262,7 +1263,7 @@ def test_a_title_with_no_area_table_has_no_tab_and_is_never_offered_another_titl
     dialog = PreferencesDialog(win)
     tabs = dialog.travel_tabs
     titles = [tabs.tabText(i) for i in range(tabs.count())]
-    assert titles == [g.title for g in preferences.TRAVEL_TITLES]
+    assert titles == [g.title for g in preferences.travel_titles()]
     assert champions.title not in titles
     assert champions.key not in dialog.travel_tables
 
@@ -1277,23 +1278,29 @@ def test_a_title_with_no_area_table_has_no_tab_and_is_never_offered_another_titl
     assert bar.combo.itemText(0) == "No areas are known for Champions of Krynn."
 
 
+@pytest.mark.parametrize("amiga", [False, True])
 def test_there_is_a_tab_for_every_title_with_an_area_table(
-        app, tmp_path, monkeypatch):
+        app, tmp_path, monkeypatch, amiga):
     """One tab per title `goldbox.areas.TABLES` has rows for, labelled with the
     title's own name -- the string the Game disks tab uses for the same title --
-    in `c64_port.GAMES` order. A fourth table fails this until it has a page in
-    `preferences.ui`."""
+    in `TABLES` order. A new table fails this until it has a page in
+    `preferences.ui`; a title with no C64 version has its page only while an
+    Amiga backend flag is on."""
+    from automap import maps
     from goldbox import areas
 
     nowhere(tmp_path, monkeypatch)
+    if amiga:
+        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
     dialog = PreferencesDialog(window(app))
     tabs = dialog.travel_tabs
-    with_tables = [g for g in c64_port.GAMES if areas.areas_for_title(g.title)]
-    assert [g.title for g in preferences.TRAVEL_TITLES] == [
-        g.title for g in with_tables]
-    assert [tabs.tabText(i) for i in range(tabs.count())] == [
-        g.title for g in with_tables]
-    for game in preferences.GAME_FOLDER_TITLES:
+    with_tables = [t for t in areas.TABLES if areas.areas_for_title(t)]
+    if not amiga:
+        gone = {t.title for t in maps.AMIGA_ONLY_TITLES}
+        with_tables = [t for t in with_tables if t not in gone]
+    assert [g.title for g in preferences.travel_titles()] == with_tables
+    assert [tabs.tabText(i) for i in range(tabs.count())] == with_tables
+    for game in preferences.game_folder_titles():
         label = getattr(dialog.ui,
                         f"game_folder_label_{preferences._row_suffix(game)}")
         assert game.title in [tabs.tabText(i) for i in range(tabs.count())]
@@ -1343,7 +1350,7 @@ def test_each_tab_lists_its_own_titles_areas(app, tmp_path, monkeypatch):
         return [table.item(i, 0).toolTip() for i in range(table.rowCount())
                 if table.item(i, 0).toolTip()]
 
-    for game in preferences.TRAVEL_TITLES:
+    for game in preferences.travel_titles():
         expected = [a.label for a in areas.areas_for_title(game.title)
                     if a.fasttravelable and a.name]
         assert len(expected) > 0
@@ -1358,7 +1365,7 @@ def test_the_dialog_opens_on_the_open_titles_tab_and_forgets_the_rest(
     """The open title's tab when it has one, the first when it has none, and a
     tab the player left selected is not remembered by the next dialog."""
     nowhere(tmp_path, monkeypatch)
-    for game in preferences.TRAVEL_TITLES:
+    for game in preferences.travel_titles():
         dialog = PreferencesDialog(window(app, title=game.title))
         assert dialog.travel_tabs.tabText(
             dialog.travel_tabs.currentIndex()) == game.title
@@ -1372,8 +1379,9 @@ def test_the_dialog_opens_on_the_open_titles_tab_and_forgets_the_rest(
     assert PreferencesDialog(win).travel_tabs.currentIndex() == 0
 
 
+@pytest.mark.parametrize("amiga", [False, True])
 def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
-        app, tmp_path, monkeypatch):
+        app, tmp_path, monkeypatch, amiga):
     """The tab bar inside Fast travel takes a row of height the table used to
     have. Both are asserted across +0, +6 (about Windows' base font) and +10:
     width from what the bar asks for, height from what the table asks for:
@@ -1382,6 +1390,8 @@ def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
     from PyQt6.QtGui import QFont
 
     nowhere(tmp_path, monkeypatch)
+    if amiga:
+        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
     base = app.font()
     try:
         for extra in (0, 6, 10):
@@ -1393,9 +1403,9 @@ def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
             dialog.show()
             try:
                 app.processEvents()
-                for game in preferences.TRAVEL_TITLES:
+                for game in preferences.travel_titles():
                     dialog.travel_tabs.setCurrentIndex(
-                        [g.key for g in preferences.TRAVEL_TITLES].index(game.key))
+                        [g.key for g in preferences.travel_titles()].index(game.key))
                     app.processEvents()
                     table = dialog.travel_tables[game.key]
                     assert table.height() >= table.minimumHeight(), extra
@@ -1557,7 +1567,7 @@ def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
     }
     assert folder.minimumWidth() >= needed["folder"]
     assert dialog.host.minimumWidth() >= needed["host"]
-    for game in preferences.TRAVEL_TITLES:
+    for game in preferences.travel_titles():
         table = dialog.travel_tables[game.key]
         assert table.minimumWidth() >= table.sizeHintForColumn(0)
     assert dialog.travel_tables[POOL.key].minimumWidth() >= needed["areas"]
@@ -1906,7 +1916,7 @@ def test_every_control_is_a_widget_the_ui_file_built(app, tmp_path, monkeypatch)
         assert dialog.report_rows["Titles"] is dialog.ui.report_titles
         assert dialog.travel_tabs is dialog.ui.travel_tabs
         assert dialog.travel_warning is dialog.ui.travel_warning
-        for game in preferences.TRAVEL_TITLES:
+        for game in preferences.travel_titles():
             suffix = preferences._row_suffix(game)
             assert dialog.travel_tables[game.key] is getattr(
                 dialog.ui, f"travel_table_{suffix}")

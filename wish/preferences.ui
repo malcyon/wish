@@ -380,6 +380,17 @@
            </item>
           </layout>
          </widget>
+         <widget class="QWidget" name="travel_tab_pools_of_darkness">
+          <attribute name="title"><string>Pools of Darkness</string></attribute>
+          <layout class="QVBoxLayout" name="travel_tab_layout_pools_of_darkness">
+           <item>
+            <widget class="QTableWidget" name="travel_table_pools_of_darkness"/>
+           </item>
+           <item>
+            <widget class="QLabel" name="travel_note_pools_of_darkness"/>
+           </item>
+          </layout>
+         </widget>
         </widget>
        </item>
       </layout>
