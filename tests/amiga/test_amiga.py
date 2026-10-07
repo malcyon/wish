@@ -2030,15 +2030,15 @@ def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case()
 def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
     """Half a party on a disk is worse than none.
 
-    `AmigaDisk.write_file` allocates the replacement before freeing the
-    original, so a slot that runs the disk out of blocks stops part way
-    through -- which is the state `write_por_slot` exists to block, arrived
-    at by a different route.
+    A slot that runs the disk out of blocks stops part way through, after
+    the six records are written -- which is the state `write_por_slot`
+    exists to block, arrived at by a different route.
     """
     from goldbox.amiga_adf import AmigaDisk
 
-    # 48 blocks fits the six records and stops on the saved game.
-    disk = AmigaDisk.blank("poolgame", blocks=48)
+    # 46 blocks leaves 27 free after the six records; the saved game needs
+    # 28, so the write stops there with the records already on the disk.
+    disk = AmigaDisk.blank("poolgame", blocks=46)
     disk.make_dir("save")
     disk.write_file(amiga_savegame.POR_SLOT_LIST, amiga_savegame.slot_list_bytes(["A"]))
     before = disk.to_bytes()
