@@ -1202,3 +1202,12 @@ def test_dos_scrolls_left_two_one_and_none_stay_items_of_their_own(
         assert [bytes(n) for n in nodes] == [mace] + scrolls[3 - kept:]
         assert files["CHRDATA1.SAV"][
             podsheet.TABLE["item_count"].offset] == 1 + kept
+
+
+def test_a_short_case_list_leaves_the_remaining_slots_outside_any_case():
+    from editor.inventory import EMPTY, Inventory
+    inventory = Inventory.from_blocks([EMPTY] * 16)
+    inventory.set_cases([3, 3])
+    assert inventory._case_mates(0) == [0, 1]
+    assert inventory._case_mates(1) == [0, 1]
+    assert inventory._case_mates(5) == [5]

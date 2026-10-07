@@ -217,8 +217,9 @@ class Inventory:
             self._patch(m, 9, tenths >> 8)
 
     def set_cases(self, case_of: Sequence[int | None]) -> None:
-        """Say which slots hold scrolls of the same case."""
-        self.case_of = list(case_of)
+        """Say which slots hold scrolls of the same case; slots past the end
+        of `case_of` (a character holding fewer than sixteen) are in none."""
+        self.case_of = (list(case_of) + [None] * len(self))[:len(self)]
 
     def _case_mates(self, n: int) -> list[int]:
         """Every slot sharing `n`'s case, `n` included; just `n` outside one."""
