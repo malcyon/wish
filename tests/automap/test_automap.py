@@ -3214,7 +3214,7 @@ def test_the_button_says_which_class_it_will_raise(app):
     card = CharacterCard(make_root(), 0)
     card.show_character(_multi_class_character())
     assert card.training_classes(_multi_class_character()) == ["magic-user"]
-    assert card.level_up.toolTip() == "level up as magic-user"
+    assert card.level_up.toolTip() == "Level up as magic-user"
 
 
 def test_the_tooltip_names_every_class_a_curse_press_trains(app):
@@ -3240,7 +3240,7 @@ def test_the_tooltip_names_every_class_a_curse_press_trains(app):
     card = CharacterCard(make_root(), 0)
     card.show_character(travis)
     assert card.training_classes(travis) == ["fighter", "thief"]
-    assert card.level_up.toolTip() == "level up as fighter and thief"
+    assert card.level_up.toolTip() == "Level up as fighter and thief"
 
 
 def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):

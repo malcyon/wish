@@ -1602,7 +1602,7 @@ class AutomapBinding(QObject):
         for card in self.roster.cards:
             if card.levelling and card.ready and card.level_up is not None:
                 card.level_up.setEnabled(True)
-                if not card.level_up.toolTip().startswith("level up as"):
+                if not card.level_up.toolTip().startswith("Level up as"):
                     card.level_up.setToolTip(card.level_up_default_tip)
         self._show_strip(snap)
 

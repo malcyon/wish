@@ -216,3 +216,12 @@ def test_the_wrong_game_path_on_a_c64_is_unchanged():
     assert not window.roster.unsupported
     for button in window.actions_bar.buttons.values():
         assert button.toolTip() == "No emulator attached"
+
+
+def test_level_up_tooltip_opens_with_a_capital_for_a_lowercase_reason():
+    from support.automapwindow import make_root
+
+    from automap.panel import RosterPanel
+    roster = RosterPanel(make_root())
+    roster.set_unsupported("action unsupported here")
+    assert roster.cards[0].level_up.toolTip() == "Action unsupported here"

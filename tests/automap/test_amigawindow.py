@@ -552,7 +552,7 @@ def test_level_up_is_offered_to_the_member_the_trainer_would_train():
     window, _ = pod_window([fighter(8), fighter(9)[:0x80] + bytes(0x114)])
     assert level_up_shown(window, 0)
     assert not level_up_shown(window, 1)        # the second has no experience
-    assert window.roster.cards[0].level_up.toolTip() == "level up as fighter"
+    assert window.roster.cards[0].level_up.toolTip() == "Level up as fighter"
 
 
 @pytest.mark.parametrize("key, offered", [

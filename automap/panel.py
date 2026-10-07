@@ -47,6 +47,11 @@ from ui.iconpaint import draw_icon, icon_pixmap
 
 from .state import OUTDOORS_WHERE
 
+
+def _capital(text: str) -> str:
+    """`text` with its first letter capitalised, for a tooltip a person reads."""
+    return text[:1].upper() + text[1:]
+
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and the level swallows them when it is off -- without
 #: `automap` importing `wish`.
@@ -630,9 +635,9 @@ class CharacterCard(QObject):
                     # names one class for a Curse press that trains several,
                     # and reads them with Pool of Radiance's own tables)`.
                     joined = ", ".join(names[:-1]) + " and " + names[-1]
-                    self.level_up.setToolTip(f"level up as {joined}")
+                    self.level_up.setToolTip(f"Level up as {joined}")
                 elif names:
-                    self.level_up.setToolTip(f"level up as {names[0]}")
+                    self.level_up.setToolTip(f"Level up as {names[0]}")
         conditions = who.conditions
         if self.conditions is not None:
             self.conditions.set_icons(icon for icon, _ in conditions)
@@ -891,7 +896,7 @@ class RosterPanel(QObject):
             if card.level_up is not None:
                 card.level_up.hide()
                 card.level_up.setEnabled(False)
-                card.level_up.setToolTip(reason)
+                card.level_up.setToolTip(_capital(reason))
 
     def clear_unsupported(self) -> None:
         """Undo `set_unsupported`; a card shows its button again on its next snapshot."""
