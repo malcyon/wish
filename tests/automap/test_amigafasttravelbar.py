@@ -48,6 +48,15 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
 
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch):
+    """An armed trip's deadline never passes on a slow runner; a test moves the
+    returned list's one entry to pass it."""
+    now = [1000.0]
+    monkeypatch.setattr(amigafasttravel.time, "monotonic", lambda: now[0])
+    return now
+
+
 @pytest.fixture
 def lengths(monkeypatch):
     """Every area's script is 0x1000 bytes long, so every tail is free. The
@@ -325,6 +334,22 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     assert bar.back_button.isEnabled()
     # Only the arming line was said; a trip that happened adds none.
     assert bar.last.message == "Traveling to Tilverton sewers."
+
+
+def test_a_trip_stays_armed_until_the_clock_passes_its_deadline(
+        lengths, frozen_clock):
+    window, target = attached(CURSE, GUILD, ticked=(SEWERS, FIRE_KNIFE))
+    bar = window.fasttravel_bar
+    before = bytes(target.ram)
+    pick(window, SEWERS)
+    bar.button.click()
+    frozen_clock[0] += amigafasttravel.FIRE_SECONDS
+    window._refresh_roster()
+    assert bar.fasttravel.trip is not None
+    frozen_clock[0] += 0.001
+    window._refresh_roster()
+    assert bar.fasttravel.trip is None
+    assert bytes(target.ram) == before
 
 
 def test_a_trip_that_does_not_fire_puts_everything_back(lengths):
