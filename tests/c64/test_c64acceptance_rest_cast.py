@@ -425,7 +425,7 @@ def test_cast_reads_a_spell_with_no_target():
     assert A.parse_steps(["load", "cast DIRTEN:PRAYER"])[1].arg == "DIRTEN:PRAYER"
     assert A.parse_cast("DIRTEN:cure light wounds>Brutus") == (
         "DIRTEN", "CURE LIGHT WOUNDS", "Brutus")
-    for bad in ("DIRTEN:ANIMATE DEAD>BRUTUS", "SHARA:CURE BLINDNESS PHILIPPE",
+    for bad in ("SHARA:CURE BLINDNESS PHILIPPE",
                 "ROLAND:DISPEL MAGIC", "DIRTEN:CURE LIGHT WOUNDS>",
                 "DIRTEN:CURE LIGHT WOUNDS>EXIT", "DIRTEN:PRAYER>exit"):
         with pytest.raises(ValueError):
@@ -486,6 +486,18 @@ def test_cast_answers_the_target_question_with_the_named_member(tmp_path):
     after_pick = sess.sent[sess.sent.index(("key", "Return")):]
     assert after_pick[1:3] == [("party", 1), ("key", "Return")]
     assert list(tmp_path.glob("*cast-whom.txt"))
+    assert sess.state == "camp"
+
+
+def test_cast_animate_dead_answers_the_target_question_with_the_dead_member(tmp_path):
+    sess = CampFake([1, 36], whom_spells=(36,), dispel_page=False)
+    run = _run(tmp_path, sess)
+    got = run.cast("DIRTEN:ANIMATE DEAD>BRUTUS")
+    assert (got["spell"], got["target"], got["spell_id"]) == (
+        "ANIMATE DEAD", "BRUTUS", 36)
+    assert got["memorised_after"] == [1]
+    after_pick = sess.sent[sess.sent.index(("key", "Return")):]
+    assert after_pick[1:3] == [("party", 0), ("key", "Return")]
     assert sess.state == "camp"
 
 

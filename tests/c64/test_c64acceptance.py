@@ -3314,7 +3314,6 @@ def test_pool_specimen_does_not_register_stale_save_after_failed_cast(
 @pytest.mark.parametrize("step", [
     "cast SHARA CURE BLINDNESS>PHILIPPE",       # no colon
     "cast SHARA:CURE BLINDNESS PHILIPPE",       # no arrow
-    "cast SHARA:ANIMATE DEAD>PHILIPPE",         # a whole-party spell
     "cast SHARA:CURE BLINDNESS>",               # nobody
     "cure MARK",                                # nobody
     "cure >LEDERA",                             # no paladin
@@ -3345,20 +3344,23 @@ def test_cast_and_cure_steps_keep_their_names_and_the_pool_rejects_them(tmp_path
     assert info.value.code == 2
 
 
-def test_pool_cast_accepts_animate_dead_without_a_target_and_rejects_other_forms(
+def test_pool_cast_takes_animate_dead_with_a_target_and_rejects_other_forms(
         tmp_path):
     assert A.parse_cast("BRUTUS:animate dead") == ("BRUTUS", "ANIMATE DEAD", None)
     assert A.parse_cast("ROLAND:dispel magic>BRUTUS") == (
         "ROLAND", "DISPEL MAGIC", "BRUTUS")
-    steps = A.parse_steps(["load", "cast BRUTUS:ANIMATE DEAD", "save"])
-    assert steps[1].arg == "BRUTUS:ANIMATE DEAD"
-    for bad in ("BRUTUS:ANIMATE DEAD>BAKSHI", "BRUTUS:CURE BLINDNESS",
+    assert A.parse_cast("ROLAND:animate dead>MAGEB") == (
+        "ROLAND", "ANIMATE DEAD", "MAGEB")
+    steps = A.parse_steps(["load", "cast BRUTUS:ANIMATE DEAD>BAKSHI", "save"])
+    assert steps[1].arg == "BRUTUS:ANIMATE DEAD>BAKSHI"
+    for bad in ("BRUTUS:ANIMATE DEAD>EXIT", "BRUTUS:CURE BLINDNESS",
                 "ROLAND:DISPEL MAGIC"):
         with pytest.raises(ValueError):
             A.parse_cast(bad)
     assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
-                   "--stage-only", "--steps", "load", "cast BRUTUS:ANIMATE DEAD",
-                   "save", "--out", str(tmp_path / "cast")]) == 0
+                   "--stage-only", "--steps", "load",
+                   "cast BRUTUS:ANIMATE DEAD>BAKSHI", "save",
+                   "--out", str(tmp_path / "cast")]) == 0
     assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
                    "--stage-only", "--steps", "load",
                    "cast ROLAND:DISPEL MAGIC>BRUTUS", "save",
@@ -3383,7 +3385,7 @@ def test_bad_cast_form_is_rejected_before_claiming_a_slot(tmp_path, monkeypatch)
     monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
     with pytest.raises(SystemExit) as exc:
         A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
-                "--steps", "load", "cast BRUTUS:ANIMATE DEAD>BRUTUS", "save",
+                "--steps", "load", "cast BRUTUS:CURE BLINDNESS", "save",
                 "--out", str(tmp_path / "bad-cast")])
     assert exc.value.code == 2
 
@@ -3858,33 +3860,6 @@ def _animate_party(status: int, *, animated: bool = False) -> list[dict]:
         party[1]["traits"][9] = 32
         party[1]["creature_type"] = 4
     return party
-
-
-def test_pool_cast_reads_party_before_and_after_without_waiting_for_a_target(
-        tmp_path):
-    screens = {**CAST_SCREENS,
-               "list": _window({3: "ANIMATE DEAD"}, CAST_LIST),
-               "picking": _window({3: "ANIMATE DEAD"}, A.PICK_SPELL),
-               "msg": _window({2: "THE DEAD RISE"}, A.CONTINUE)}
-    moves = _cast_moves({("picking", ("key", "Return")): "msg"})
-    moves[("camp", ("party", 1))] = "camp"
-    moves[("msg", ("key", 0x0D))] = "magic"
-    sess = _CurseFake(screens, moves, "camp")
-    run, log = _pool_run(tmp_path, sess)
-    run.panel_index = lambda who: 1
-    before, after = _animate_party(0x83), _animate_party(0x03, animated=True)
-    run.reading = lambda: {"party": before if sess.state == "picking" else after,
-                           "effects": []}
-    try:
-        got = run.cast("BRUTUS:ANIMATE DEAD")
-    finally:
-        log.close()
-    assert got["spell"] == "ANIMATE DEAD"
-    assert got["party_before"] == before and got["party_after"] == after
-    assert got["messages"] == [["THE DEAD RISE"]]
-    assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
-                         ("bar", "CAST"), ("key", "Return"), ("key", 0x0D)]
-    assert list(tmp_path.glob("*cast-result.txt"))
 
 
 def _dispel_readings():
