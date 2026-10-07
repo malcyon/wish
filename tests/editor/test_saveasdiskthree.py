@@ -13,11 +13,7 @@ import pathlib
 import pytest
 from support.editorwindow import make_root
 from test_podparty import _flag
-from test_podwindow import (  # noqa: F401
-    _no_box,
-    _window,
-    information_boxes,
-)
+from test_podwindow import _no_box, _window
 from test_saveplan_pod import _disk_file, _disk_one, _disk_three, _dos_folder
 
 import editor.window as ew

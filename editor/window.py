@@ -219,12 +219,6 @@ RECOVERY_FAILED_NO_BACKUP = (
 #: player.
 SAVE_AS_FAILED = "The save could not be written, and your saved game is unchanged."
 
-#: The note a Pools of Darkness save opened without item names brings up, once
-#: per File > Open, under the application's own name.
-NO_GAME_DISK_TITLE = "Wish"
-NO_GAME_DISK_TEXT = (
-    "No game disk found. Inventory items will not display properly.")
-
 #: The word the Condition line shows for each neutral status name.
 #: `c64_codec.status_from_byte` and the DOS and Amiga readers name the states.
 CONDITION_WORDS = {
@@ -1971,9 +1965,6 @@ class EditorBinding(QObject):
             QMessageBox.critical(self.root, "Cannot open", str(exc))
             return
         self._adopt(party, str(source.path) if source is not None else path)
-        if self._is_pod() and not self.item_names:
-            QMessageBox.information(
-                self.root, NO_GAME_DISK_TITLE, NO_GAME_DISK_TEXT)
 
     def _adopt(self, party: Party, path: str | None, note: str | None = None,
                dirty: bool = False) -> None:
@@ -4022,7 +4013,7 @@ class EditorBinding(QObject):
             text = ("Items live in the save game, so this file has none -- a "
                     "roster disk and a .chr export both carry the character "
                     "only")
-        elif not self.item_names and not self._is_pod():
+        elif not self.item_names:
             text = (f"{member.inventory.used} of 16 slots used. No game disk "
                     f"found, so items show as name-table indices: "
                     f"File > Preferences… to say where the disks are")

@@ -131,20 +131,6 @@ def fake_names(monkeypatch):
     return calls
 
 
-@pytest.fixture(autouse=True)
-def information_boxes(monkeypatch):
-    """Stand in for every information box, so none blocks, and collect what
-    each one said as `(title, text)`."""
-    import editor.window as ew
-    boxes = []
-
-    def box(parent, title, text, *args, **kwargs):
-        boxes.append((title, text))
-        return ew.QMessageBox.StandardButton.Ok
-    monkeypatch.setattr(ew.QMessageBox, "information", box)
-    return boxes
-
-
 def _open_synthetic(monkeypatch, tmp_path, *, names: bool):
     _flag(monkeypatch, "1")
     _no_box(monkeypatch)
@@ -249,64 +235,11 @@ def test_a_folder_with_no_names_keeps_the_existing_lines(
     assert window.item_names == {} and window.spell_names == {}
     assert window.root.statusBar().currentMessage().endswith(
         "  -- no game disk, so no item names and no icons")
-    assert window._child("label_inventory").text() == "1 of 16 slots used"
+    label = window._child("label_inventory").text()
+    assert label.startswith("1 of 16 slots used. No game disk found")
     # Items show as the name words they hold, as for any title with no names.
     inventory = window.items
     assert inventory.data(inventory.index(0, 1)).startswith("word ")
-
-
-POPUP = "No game disk found. Inventory items will not display properly."
-
-
-def test_no_names_found_opens_one_box_with_the_approved_text(
-        app, monkeypatch, tmp_path, information_boxes):
-    window, folder = _open_synthetic(monkeypatch, tmp_path, names=False)
-    assert [text for _title, text in information_boxes] == [POPUP]
-    # Another open is another box: once per open.
-    window.load(str(folder))
-    assert [text for _title, text in information_boxes] == [POPUP, POPUP]
-
-
-def test_the_inventory_line_is_the_slot_count_only_with_or_without_names(
-        app, monkeypatch, tmp_path, fake_names):
-    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=False)
-    window.item_names = {}
-    window._describe_inventory(window.party.member(0))
-    assert window._child("label_inventory").text() == "1 of 16 slots used"
-
-
-def test_names_found_opens_no_box(
-        app, monkeypatch, tmp_path, fake_names, information_boxes):
-    _open_synthetic(monkeypatch, tmp_path, names=True)
-    assert information_boxes == []
-
-
-def test_another_title_with_no_game_files_opens_no_box_and_keeps_its_line(
-        app, monkeypatch, tmp_path, information_boxes):
-    from support.windowsparty import _ordinary_party
-    window = _window()
-    window.load(_ordinary_party(tmp_path))
-    assert window.party is not None and not window._is_pod()
-    assert not window.item_names
-    assert information_boxes == []
-    assert window._child("label_inventory").text().startswith(
-        "0 of 16 slots used. No game disk found, so items show as name-table")
-
-
-def test_switching_tabs_does_not_open_the_box_again(
-        app, monkeypatch, tmp_path, information_boxes):
-    from wish.session import Session
-    from wish.window import EDITOR_TAB, MAP_TAB, WishWindow
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    _flag(monkeypatch, "1")
-    folder = _synthetic_folder(tmp_path)
-    window = WishWindow(maps={}, session=Session(find=lambda pref=None: None))
-    window.editor.load(str(folder))
-    assert [text for _title, text in information_boxes] == [POPUP]
-    for tab in (MAP_TAB, EDITOR_TAB, MAP_TAB, EDITOR_TAB):
-        window.tabs.setCurrentIndex(tab)
-    assert [text for _title, text in information_boxes] == [POPUP]
 
 
 def test_opening_and_flushing_a_character_moves_no_byte(
