@@ -171,9 +171,9 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              peek_vars=(), title: str | None = None) -> dict:
     """One trip, or the way back, driven as the window's timer drives it.
 
-    Returns `{"result": ..., "outcomes": [...], "answered": bool}` where result
-    is `not_legal`, `not_applied`, `idle` (no trip or hop left) or `timeout`;
-    `settled` is False when an idle game never reached the menu gate;
+    Returns `{"result": ..., "outcomes": [...], "answered": bool, "settled": bool, ...}`
+    where result is `not_legal`, `not_applied`, `idle` (no trip or hop left) or
+    `timeout`; `settled` is False when an idle game never reached the menu gate;
     `areas_seen` is the starting area and then each new area byte the polls
     read. `party` reads the party (as `amigaparty.read_party`); its names are
     logged and returned before and after the trip. `peek_vars` are read
@@ -322,7 +322,9 @@ def main(argv: list[str] | None = None) -> int:
                                 answer=args.answer, budget=args.budget,
                                 party=amigaparty.read_party,
                                 peek_vars=peek_vars, title=args.title)]
-            if args.back and results[0]["result"] == "idle":
+            if args.back and results[0]["result"] == "idle" and not results[0]["settled"]:
+                results.append({"result": "skipped", "reason": "leg 1 never became ready"})
+            elif args.back and results[0]["result"] == "idle":
                 results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                         back=True, budget=args.budget,
                                         party=amigaparty.read_party,

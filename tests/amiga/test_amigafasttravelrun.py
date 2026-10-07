@@ -403,6 +403,50 @@ def _run_main(monkeypatch, tmp_path):
                                "--out", str(tmp_path)])
 
 
+def _back_run(monkeypatch, tmp_path, legs):
+    calls = []
+
+    def fake(*a, **k):
+        calls.append(k.get("back", False))
+        return legs[len(calls) - 1]
+
+    monkeypatch.setattr(ftr, "run_trip", fake)
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", lambda key, disks: None)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
+    code = ftr.main(["--holder", "h", "--disks", "D", "--to", "3", "--back",
+                     "--out", str(tmp_path)])
+    return code, calls
+
+
+def test_an_unsettled_first_leg_skips_the_way_back_and_exits_nonzero(monkeypatch, tmp_path,
+                                                                    capsys):
+    code, calls = _back_run(monkeypatch, tmp_path, [{"result": "idle", "settled": False}])
+    out = capsys.readouterr()
+    assert code == 1 and calls == [False]
+    assert '"result": "skipped"' in out.out
+    assert "Leg 1 (the trip) never became ready" in out.err
+
+
+def test_an_unsettled_way_back_exits_nonzero_naming_leg_two(monkeypatch, tmp_path, capsys):
+    code, calls = _back_run(monkeypatch, tmp_path, [{"result": "idle", "settled": True},
+                                                    {"result": "idle", "settled": False}])
+    assert code == 1 and calls == [False, True]
+    assert "Leg 2 (the way back) never became ready" in capsys.readouterr().err
+
+
 class _Pipe:
     def __init__(self, holder):
         pass
