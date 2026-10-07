@@ -198,20 +198,21 @@ DOS_INSTALL_NOTE = ""
 
 def _is_dos_install(where: pathlib.Path,
                     game: c64_port.C64Container | titles.Title | None) -> bool:
-    """Whether `where` holds this title's DOS install, which has no `.adf`
-    images to count. Both `title_folder_report` and `report` ask this, so the
-    row and the Titles line cannot disagree."""
-    return (isinstance(game, titles.Title) and where.is_dir()
+    """Whether `where` holds this title's DOS install, which has no disk
+    images of the title to count. Both `title_folder_report` and `report` ask
+    this, so the row and the Titles line cannot disagree."""
+    return (game is not None and where.is_dir()
             and titles.dos_folder_title(where) == game.key)
 
 
 def _dos_installed_titles(where: pathlib.Path,
                           game: c64_port.C64Container | titles.Title | None
-                          ) -> list[titles.Title]:
-    """The title with no C64 container whose DOS install `where` is, whichever
-    title the window is on: `game` and the Amiga-only titles are tried."""
-    wanted = ([game] if isinstance(game, titles.Title) else [])
-    wanted += [t for t in maps.AMIGA_ONLY_TITLES if t not in wanted]
+                          ) -> list[c64_port.C64Container | titles.Title]:
+    """The title whose DOS install `where` is, whichever title the window is
+    on: `game`, the Commodore 64 titles and the Amiga-only titles are tried."""
+    wanted = [game] if game is not None else []
+    wanted += [t for t in c64_port.GAMES + tuple(maps.AMIGA_ONLY_TITLES)
+               if t not in wanted]
     return [t for t in wanted if _is_dos_install(where, t)]
 
 

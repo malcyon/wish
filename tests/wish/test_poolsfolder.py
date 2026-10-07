@@ -765,7 +765,7 @@ def test_another_titles_dos_install_does_not_name_the_title(tmp_path,
     nowhere(tmp_path, monkeypatch)
     curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
     rows = dict(preferences.report(Settings(), flag=str(curse), game=POD))
-    assert rows["Titles"] == "none; no .adf disk images here"
+    assert rows["Titles"] == "Curse of the Azure Bonds"
 
 
 @pytest.mark.parametrize("game", [None, POOL])
@@ -816,3 +816,50 @@ def test_the_conversion_flag_alone_shows_no_amiga_titles_in_the_scan(
     folder = tmp_path / "pod"
     adf(folder, "a.adf", "POD 1")
     assert preferences._scan(str(folder), bk.amiga_enabled())["titles"] == []
+
+
+CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
+
+
+def curse_dos_install(folder):
+    return dos_install(folder, "START.EXE", "CURSE.CFG")
+
+
+@pytest.mark.parametrize("game", [None, CURSE])
+def test_the_titles_line_names_a_curse_dos_install(tmp_path, monkeypatch, game):
+    nowhere(tmp_path, monkeypatch)
+    folder = curse_dos_install(tmp_path / "curse")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
+    assert rows["Titles"] == CURSE.title
+
+
+def test_a_curse_dos_install_row_has_the_empty_note(tmp_path):
+    folder = curse_dos_install(tmp_path / "curse")
+    assert preferences._is_dos_install(folder, CURSE)
+    assert title_folder_report(str(folder), CURSE) == preferences.DOS_INSTALL_NOTE
+
+
+def test_a_curse_dos_install_in_another_titles_row_does_not_claim_it(tmp_path):
+    folder = curse_dos_install(tmp_path / "curse")
+    assert not preferences._is_dos_install(folder, POOL)
+    assert title_folder_report(str(folder), POOL) == (
+        f"none; no {preferences._pretty(POOL.disk_glob)} here")
+    assert title_folder_report(str(folder), POD) == (
+        "none; no .adf disk images here")
+
+
+def test_a_c64_disk_folder_keeps_its_disk_count(tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    folder = pool_folder(tmp_path, walled_geo(art=1))
+    assert title_folder_report(str(folder), POOL) == "1 disk"
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=POOL))
+    assert rows["Titles"] == f"{POOL.title} (1 disk)"
+
+
+def test_a_pools_of_darkness_dos_install_is_still_named_alone(tmp_path,
+                                                              monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    folder = dos_install(tmp_path / "dos")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=CURSE))
+    assert rows["Titles"] == POD.title
+    assert title_folder_report(str(folder), POD) == preferences.DOS_INSTALL_NOTE
