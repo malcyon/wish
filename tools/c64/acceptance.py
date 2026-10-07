@@ -7209,7 +7209,8 @@ class PoolRun:
         for n, move in enumerate(route):
             self.budget(1, f"{self.walk_verb} {route}")
             last = (n, move, self.position())
-            self.answer_side_prompt(route, last, "was up before the next move")
+            self.answer_side_prompt(route, last, "was up before the next move",
+                                    crossing=self.crossing_move(route, n, move))
             before = last[2]
             resent = False
             sends = unsent = 0
@@ -7335,7 +7336,8 @@ class PoolRun:
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
             self.answer_side_prompt(route, (n, move, before),
-                                    "came up while the encounter loaded")
+                                    "came up while the encounter loaded",
+                                    crossing=self.crossing_move(route, n, move))
             if sess.in_combat():
                 return None
             stop = sess.walk_stop(wait=0.0)
@@ -7703,7 +7705,8 @@ class PoolRun:
         stale_until = self.clock() + ENCOUNTER_STALE_BAR_SECONDS - key_age
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
-            self.answer_side_prompt(route, last, "started an encounter")
+            self.answer_side_prompt(route, last, "started an encounter",
+                                    crossing=self.crossing_move(route, *last[:2]))
             if sess.mode() in (S.COMBAT, COMBAT_PREP):
                 return None, False, False
             screen = sess.screen()
@@ -7807,7 +7810,8 @@ class PoolRun:
         left_treasure = None
         while True:
             self.budget(1, f"{self.walk_verb} {route}")
-            self.answer_side_prompt(route, last, "ran the square's event")
+            self.answer_side_prompt(route, last, "ran the square's event",
+                                    crossing=self.crossing_move(route, *last[:2]))
             mode = getattr(sess, "mode", lambda: None)()
             screen = sess.screen()
             row = "" if screen is None else screen.row(24)
@@ -7893,7 +7897,8 @@ class PoolRun:
         look_until = start + LOOK_SECONDS
         while not self.sess.in_combat():
             self.budget(1, f"{self.walk_verb} {route}")
-            self.answer_side_prompt(route, last, "ran the square's event")
+            self.answer_side_prompt(route, last, "ran the square's event",
+                                    crossing=self.crossing_move(route, *last[:2]))
             preparing = getattr(self.sess, "mode", lambda: None)() == COMBAT_PREP
             if preparing and self.clock() >= start + FIGHT_OPENS_SECONDS:
                 raise self.fail(

@@ -166,6 +166,68 @@ def test_walk_fight_does_not_judge_the_crossing_move_as_an_exit(tmp_path, monkey
     assert got["moves"][-1]["crossed"] is True
 
 
+class _FightSession(_Session):
+    """Ends every wait loop once the prompt is answered, as a fight does."""
+
+    walk_encounter = None
+
+    def in_combat(self):
+        return bool(self.answered)
+
+    def mode(self):
+        return A.S.COMBAT if self.answered else 1
+
+    def walk_stop(self, wait=0.0):
+        return None
+
+
+def _crossing_site(tmp_path, monkeypatch):
+    sess = _FightSession()
+    return sess, _run(tmp_path, monkeypatch, sess)
+
+
+LAST = (3, "I", [15, 4, 1])
+
+
+def test_a_prompt_before_the_last_forward_move_is_the_crossing(tmp_path, monkeypatch):
+    sess, run = _crossing_site(tmp_path, monkeypatch)
+    run.leave_arrival = lambda *a: None
+    run.position = lambda: [15, 4, 1]
+    run._walk_fight_key = lambda *a, **k: False
+    run._walk_fight("I", None)
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_a_prompt_while_the_encounter_loads_is_the_crossing(tmp_path, monkeypatch):
+    sess, run = _crossing_site(tmp_path, monkeypatch)
+    run._await_side_encounter("KKII", *LAST[:2], LAST[2])
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_a_prompt_while_an_encounter_is_drawn_is_the_crossing(tmp_path, monkeypatch):
+    sess, run = _crossing_site(tmp_path, monkeypatch)
+    run._await_encounter("KKII", LAST, "FIGHT")
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_a_prompt_after_a_press_bar_is_the_crossing(tmp_path, monkeypatch):
+    sess, run = _crossing_site(tmp_path, monkeypatch)
+    run._await_fight_after_press("KKII", LAST, 3, "I", LAST[2], "FIGHT")
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_a_prompt_while_looking_for_a_fight_is_the_crossing(tmp_path, monkeypatch):
+    sess, run = _crossing_site(tmp_path, monkeypatch)
+    run._look_for_fight("KKII", LAST)
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_the_waits_still_fail_a_foreign_side_off_the_last_move(tmp_path, monkeypatch):
+    sess, run = _crossing_site(tmp_path, monkeypatch)
+    with pytest.raises(A.StepFailed, match="side 7 mid-walk"):
+        run._look_for_fight("KKII", (1, "I", [14, 4, 1]))
+
+
 # -- a Dispel Magic the game resists ----------------------------------------------
 
 def _readings():
