@@ -422,7 +422,7 @@ class FastTravelBar(QObject):
     **The writes are proven; the arrival is chosen.** The writes are `NEWECL`'s
     own and entering its handler at `$2034` from the key-wait loop was made
     twice in the game, the party walking afterwards (`docs/118-debug-mode.md`,
-    P15). Fourteen areas have no arrival square of their own, so one is chosen
+    P15). Thirteen areas have no arrival square of their own, so one is chosen
     off the map, and every area's script assumes quest flags the party never
     set. `DANGER` is the short version of that, and it is the Fast Travel
     button's own tooltip while the button is usable.

@@ -143,7 +143,7 @@ scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 `0 N, 1 E, 2 S, 3 W`. Sokol Keep's is the one that came from an arriving script
 rather than a departing one: `ECL15 $9A92` writes `mapDir` 0, `mapX` 8, `mapY`
 14 behind the scratch flag `$4A02` and then prints the boat message, and P20
-watched it place a fasttraveled-in party. Fourteen areas still have none.
+watched it place a fasttraveled-in party. Thirteen areas still have none.
 
 | id | `ECL` | `GEO` | disk | name | arrival | confidence |
 |---|---|---|---|---|---|---|

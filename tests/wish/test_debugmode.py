@@ -512,7 +512,7 @@ def test_an_arrival_square_is_taken_from_the_table():
 
 
 def test_a_square_is_chosen_off_the_map_when_the_table_has_none():
-    """The fallback for the fourteen areas nobody has harvested: never the
+    """The fallback for the thirteen areas nobody has harvested: never the
     party's current square, which is a wall in the next area along.
 
     `goldbox.areas.landing_square` picks it -- P20 measured what the old rule came
