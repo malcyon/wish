@@ -734,3 +734,58 @@ def test_the_bar_adapter_logs_the_rows_state_and_runs_the_legs_through_it():
     assert adapter.back_verdict(object())
     assert adapter.apply_back(object()).message == "back"
     assert ("select", 0) in calls and "run" in calls and "run_back" in calls
+
+
+# --- the bar the driver builds is the window's ---------------------------------
+
+def test_the_bar_is_offscreen_whatever_the_environment_exports(monkeypatch):
+    from PyQt6.QtWidgets import QApplication
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+    monkeypatch.setattr("wish.window.load_maps_titled", lambda *a: ({}, None))
+    bar = ftr.build_bar(engine_game())
+    assert QApplication.instance().platformName() == "offscreen"
+    assert bar.root is not None
+
+
+def test_a_bar_beside_a_real_platform_application_fails_before_the_emulator(monkeypatch):
+    class Live:
+        @staticmethod
+        def platformName():
+            return "xcb"
+    from PyQt6.QtWidgets import QApplication
+    monkeypatch.setattr(QApplication, "instance", staticmethod(lambda: Live()))
+    with pytest.raises(ftr.DriverError, match="offscreen"):
+        ftr.build_bar(engine_game())
+
+
+def engine_game():
+    from goldbox import c64_save
+    return c64_save.POOL_OF_RADIANCE
+
+
+def test_the_bar_gets_the_maps_the_window_loads_and_a_trip_arms_the_expectation(monkeypatch):
+    seen = []
+    fake = {"GEO1": object()}
+
+    def load(disks, game):
+        seen.append((disks, game))
+        return fake, game
+    monkeypatch.setattr("wish.window.load_maps_titled", load)
+    game = engine_game()
+    bar = ftr.build_bar(game, "/some/disks")
+    assert seen == [("/some/disks", game)]
+    assert bar.maps is fake
+
+    class Area:
+        geos = ("GEO1",)
+    bar._expect(Area())
+    assert bar._pending is not None
+
+
+def test_a_bar_built_on_the_registered_disks_has_maps():
+    from automap.paths import tool_disks
+    game = engine_game()
+    disks = tool_disks(game)
+    if disks is None:
+        pytest.skip("no Pool of Radiance disks on this machine")
+    assert ftr.build_bar(game, disks).maps

@@ -1023,7 +1023,8 @@ class FastTravelBar(QObject):
                 _log("gave up waiting for the key-wait loop: %s", exc)
                 return engine.Verdict(False, self.LOST_WHILE_WAITING)
             looks += 1
-            if seen is None or in_key_wait(seen, self.fasttravel.addresses):
+            addresses = self.fasttravel.addresses
+            if seen is None or addresses is None or in_key_wait(seen, addresses):
                 return engine.Verdict(True)
             if time.monotonic() >= deadline:
                 _log("the PC was outside the key-wait windows for all %d looks "

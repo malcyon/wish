@@ -177,18 +177,25 @@ class BarFastTravel:
         self.bar.fasttravel.cancel_pending()
 
 
-def build_bar(game):
-    """The Fast Travel row of a window opened on `game`, offscreen."""
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+def build_bar(game, disks=None):
+    """The Fast Travel row of a window opened on `game`, offscreen, with the maps the window loads."""
+    # An exported xcb or wayland platform would open a real window, or abort, after the emulator is up.
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
     from PyQt6.QtWidgets import QApplication, QMainWindow  # noqa: PLC0415
 
     from automap.actionbar import FastTravelBar  # noqa: PLC0415
     from wish.ui_window import Ui_WishWindow  # noqa: PLC0415
-    app = QApplication.instance() or QApplication([])
+    from wish.window import load_maps_titled  # noqa: PLC0415
+    app = QApplication.instance()
+    if app is not None and app.platformName() != "offscreen":
+        raise DriverError(f"a {app.platformName()!r} Qt application already exists; "
+                          "the driver's bar needs the offscreen platform")
+    app = app or QApplication([])
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
     root._driver_app = app
-    return FastTravelBar(root, title=game.title, game=game)
+    maps, _title = load_maps_titled(None if disks is None else str(disks), game)
+    return FastTravelBar(root, title=game.title, game=game, maps=maps)
 
 
 def parse_leg(text: str):
@@ -725,7 +732,7 @@ def main(argv: list[str] | None = None) -> int:
                     bring_up(args.title, sess, disks, out, log)
                     action = engine.FastTravel(game)
                     if args.through_bar:
-                        action = BarFastTravel(build_bar(game), log)
+                        action = BarFastTravel(build_bar(game, disks), log)
                     driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
                                     action, out, log, answer=args.answer,
                                     budget=args.budget, game=game, peeks=peeks,

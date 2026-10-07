@@ -337,3 +337,11 @@ def test_the_silver_blades_mine_level_has_its_own_return_tooltip(app):
     bar.fasttravel.back = actions.Waypoint(0x31, 3, (3, 3, 1), None)
     bar.refresh()
     assert bar.back_button.toolTip() == actions.FastTravel.MINE_LEVEL_BACK
+
+
+def test_a_fast_travel_without_addresses_does_not_fail_the_wait(app):
+    """An action with no addresses has no key-wait window to test the PC against."""
+    from types import SimpleNamespace
+    bar = row(app, machine(resting=IN_THE_IRQ))
+    bar.fasttravel = SimpleNamespace(addresses=None)
+    assert bar.wait_for_key_wait().ok
