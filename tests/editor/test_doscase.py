@@ -11,7 +11,7 @@ import struct
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-from editor import convert
+from editor import convert, dosimport
 from goldbox import (
     amiga_pod,
     amiga_savegame,
@@ -242,3 +242,36 @@ def test_a_single_lower_case_character_file_converts_in_the_dialog(
     finally:
         dialog.close()
     assert critical == []
+
+
+def test_a_clash_found_only_in_the_rehearsal_names_both_item_files(
+        two_case_names_possible, tmp_path, monkeypatch):
+    """The slot detects and its character file is unique; the item file beside
+    it is read only when the conversion is rehearsed."""
+    _ = QApplication.instance() or QApplication([])
+    slot = tmp_path / "slot"
+    _clash_folder(slot, "CHRDATD1.SAV")
+    for name in ("CHRDATD1.ITM", "chrdatd1.itm"):
+        (slot / name).write_bytes(b"\x00" * dos_codec.ITEM_SIZE)
+    out = tmp_path / "out"
+    out.mkdir()
+    before = sorted((p.name, p.read_bytes()) for p in slot.iterdir())
+    critical = _convert_modals(monkeypatch)
+    game_files = dosimport.GameFiles(icon=b"", animate=b"")
+    dialog = convert.ConvertDialog(
+        str(slot / "SAVGAMD.DAT"), None, lambda game: game_files,
+        destination="c64", folder=str(out))
+    text = (
+        "This folder contains both CHRDATD1.ITM and chrdatd1.itm. DOS treats "
+        "these names as the same save file.\n\nMove the copy you do not want "
+        "to another folder, then try again. No files have been changed.")
+    try:
+        dialog.replan()
+        assert dialog.source is not None and dialog.source.slot == "D"
+        assert dialog.rehearsal is None
+        assert dialog._blocked == (convert.DIALOG_TITLE, text)
+    finally:
+        dialog.close()
+    assert critical == [(convert.DIALOG_TITLE, text)]
+    assert sorted((p.name, p.read_bytes()) for p in slot.iterdir()) == before
+    assert list(out.iterdir()) == []
