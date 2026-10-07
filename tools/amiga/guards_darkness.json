@@ -1825,6 +1825,12 @@
     "WISH-2/wish2-a2-capture/strict1/shots/13-world.png": [
       "place_x5_y10_f1"
     ],
+    "WISH-2/wish2-a2-reload/reload-a2/shots/10-world.png": [
+      "place_x5_y10_f1"
+    ],
+    "WISH-2/wish2-a2-reload/reload-a2/shots/11-place.png": [
+      "place_x5_y10_f1"
+    ],
     "WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png": [
       "loaded_menu"
     ],
@@ -1868,6 +1874,12 @@
     ],
     "WISH-2/wish2-a3/measure-a3-8/shots/06-sheet.png": [
       "sheet"
+    ],
+    "WISH-2/wish2-a4-reload/reload-a4b/shots/10-world.png": [
+      "place_x11_y4_f2"
+    ],
+    "WISH-2/wish2-a4-reload/reload-a4b/shots/11-place.png": [
+      "place_x11_y4_f2"
     ],
     "WISH-2/wish2-a4/accept2/shots/12-world.png": [
       "place_x11_y3_f2"
