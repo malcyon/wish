@@ -2602,14 +2602,22 @@ class FastTravel(Action):
                 self.back = was
                 return Outcome(False, FASTTRAVEL_FAILED, ())
             if holds:
-                # `run` takes the destination's own overland square, and
-                # Return goes back to the one the party left.
-                dest = (dataclasses.replace(area, overland=was.overland)
-                        if was.overland is not None else area)
+                # `run` takes the destination's own overland square and disk,
+                # and Return goes back to the ones the party left.
+                changes = {}
+                if was.overland is not None:
+                    changes["overland"] = was.overland
+                if was.disk is not None:
+                    changes["disk"] = was.disk
+                dest = dataclasses.replace(area, **changes)
                 outcome = self.run(target, area=dest, arrival=was.square)
                 # Return is not itself a place to return to.
                 self.back = None if outcome.ok else was
-                return outcome
+                if not outcome.ok:
+                    return outcome
+                name = getattr(area, "name", None) or f"area {was.area}"
+                return Outcome(True, f"travelled back to {name}",
+                               outcome.writes)
         # `was.square` is $C04B at departure; `was.overland` is $49C3/$49C4
         # at departure. The area we are returning to decides which one is
         # its real position -- $C04B is not GDRIVE00's square outdoors

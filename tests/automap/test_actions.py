@@ -2206,6 +2206,75 @@ def test_back_out_of_an_area_with_no_departure_row_is_the_plain_jump():
     assert ft.back is None
 
 
+def test_back_through_a_departure_says_what_return_always_said():
+    ft, _target, outcome = _pool_back(16, 0, {0x4A5D: 40, 0x4AB5: 0})
+    assert outcome.ok, outcome.message
+    assert outcome.message == "travelled back to New Phlan"
+    assert outcome.notes == ()
+
+
+def test_back_through_a_departure_returns_to_the_disk_the_party_left():
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = two_hop_machine(16)
+    for address, value in {0x4A5D: 40, 0x4AB5: 0}.items():
+        target.write(address, bytes([value]))
+    ft = actions.FastTravel()
+    # New Phlan's own disk is 3; the party left it from disk 5.
+    ft.back = actions.Waypoint(0, 5, (2, 3, 1))
+    outcome = ft.apply_back(target)
+    assert outcome.ok, outcome.message
+    assert (addr.disk, b"\x05") in outcome.writes
+
+
+def test_back_through_a_departure_to_a_window_keeps_the_square_it_left():
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = two_hop_machine(16)
+    for address, value in {0x4A5D: 40, 0x4AB5: 0}.items():
+        target.write(address, bytes([value]))
+    ft = actions.FastTravel()
+    ft.back = actions.Waypoint(26, 7, None, (4, 5))
+    outcome = ft.apply_back(target)
+    assert outcome.ok, outcome.message
+    assert (addr.travel_square, b"\x04\x05") in outcome.writes
+    assert ft.back is None
+
+
+def test_back_through_a_departure_with_an_unreadable_guard_keeps_the_waypoint():
+    target = two_hop_machine(16)
+
+    def unreadable(address, length, _read=target.read):
+        if address == 0x4A5D:
+            raise OSError("no such byte")
+        return _read(address, length)
+    target.read = unreadable
+    ft = actions.FastTravel()
+    was = actions.Waypoint(0, 3, (2, 3, 1))
+    ft.back = was
+    before = dict(target.memory)
+    outcome = ft.apply_back(target)
+    assert not outcome.ok
+    assert ft.back is was
+    assert target.memory == before
+
+
+def test_back_out_of_the_kobold_caves_answered_no_writes_only_the_walk_out():
+    addr = fasttravel.POOL_OF_RADIANCE
+    target = two_hop_machine(13)
+    before = dict(target.memory)
+    ft = actions.FastTravel()
+    ft.back = actions.Waypoint(27, 3, None, (4, 5))
+    outcome = ft.apply_back(target)
+    assert outcome.ok, outcome.message
+    # The game's own question is unanswered here; "no" leaves the party where
+    # the walk-out put it, with nothing else written.
+    assert outcome.writes == ()
+    assert target.read(addr.live_square, 3)[:2] != before[addr.live_square][:2]
+    for untouched in (addr.slot, addr.disk):
+        assert target.memory[untouched] == before[untouched]
+    assert "PRINCESS FATIMA" in [m.name for m in actions.read_party(target)]
+    assert ft.back is None
+
+
 def test_back_leaves_a_departure_alone_whose_guard_does_not_hold():
     _ft, target, outcome = _pool_back(16, 0, {0x4A5D: 39, 0x4AB5: 0})
     assert outcome.ok, outcome.message
