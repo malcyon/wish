@@ -3927,9 +3927,12 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     # The vault the converter writes (`PodDosToAmiga.rehearse`): the DOS vault beside the source, or
     # an empty one when the slot has none.
     dos_vault = dos_savegame.save_file(source.parent, f"VAULT{letter}.DAT")
+    vault = (dos_codec.pod_vault_from_dos(dos_vault.read_bytes()) if dos_vault.is_file()
+             else dos_codec.EMPTY_POD_VAULT)
+    # The party's node count only bounds a vault past 200 items.
     converted_vault = amiga_savegame.pod_vault_to_amiga(
-        dos_codec.pod_vault_from_dos(dos_vault.read_bytes()) if dos_vault.is_file()
-        else dos_codec.EMPTY_POD_VAULT)
+        vault, amiga_savegame.pod_party_nodes(new[slot_paths[0]])
+        if len(vault.items) > amiga_savegame.POD_VAULT_NODES else None)
     if new[slot_paths[1]] != converted_vault:
         raise RouteError(f"vault {letter} is not the vault converted from the DOS source")
     reading = DARKNESS.read_slot(published, letter)

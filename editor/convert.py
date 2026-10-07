@@ -1095,7 +1095,8 @@ class PodDosToAmiga(Direction):
         savegame, save_report = amiga_savegame.pod_new_savegame(
             state, characters)
         try:
-            vault_bytes = amiga_savegame.pod_vault_to_amiga(vault)
+            vault_bytes = amiga_savegame.pod_vault_to_amiga(
+                vault, amiga_savegame.pod_party_nodes(savegame))
             disk = amiga_savegame.pod_slot_on_disk_three(
                 disk_three, letter, savegame, vault_bytes, replace=replace)
         except (amiga_savegame.AmigaSaveError, AmigaDiskError) as e:

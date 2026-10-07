@@ -1930,6 +1930,10 @@ POD_VAULT_HEADER = 12
 POD_VAULT_MARKER = 0xFFFF
 POD_VAULT_NODES = 200
 POD_VAULT_SIZE = POD_VAULT_HEADER + 4 + POD_VAULT_NODES * POD_ITEM_BYTES
+#: The game's item-node pool, which holds every party member's items and the
+#: open vault's nodes at once; the vault screen allocates up to three more.
+POD_POOL_NODES = 448
+POD_VAULT_SPARE_NODES = 3
 
 
 class PodSaveError(ValueError):
@@ -2253,8 +2257,12 @@ def pod_vault_path(slot: str) -> str:
     return f"/{SAVE_DRAWER}/Vault{slot_letter(slot)}.DAT"
 
 
-def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
-    """`Vault<L>.DAT` as coins and DOS item records.
+def _pod_vault_walk(data: bytes) -> tuple[dos_codec.PodVault, int]:
+    """`Vault<L>.DAT` as coins and DOS item records, and its node count.
+
+    A vault past 200 nodes is read whole (the game's writer makes a
+    16 + 20n byte file with no padding); only more nodes than the game's
+    448-node pool holds are blocked.
 
     Twelve bytes of header, the marker `$FFFF`, a `u16be` count of top-level
     items, then each item's twenty bytes; a scroll case (`is_scroll`) is
@@ -2283,7 +2291,7 @@ def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
             raise AmigaSaveError(
                 f"the vault's item list runs off the end at byte {at}")
         nodes += 1
-        if nodes > POD_VAULT_NODES:
+        if nodes > POD_POOL_NODES:
             raise AmigaSaveError(
                 "The vault holds more items than the game can store.")
         item = amiga_pod.PodItem.from_bytes(data[at:at + POD_ITEM_BYTES])
@@ -2296,13 +2304,31 @@ def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
                         f"a scroll case's chained nodes run off the end at "
                         f"byte {at}")
                 nodes += 1
-                if nodes > POD_VAULT_NODES:
+                if nodes > POD_POOL_NODES:
                     raise AmigaSaveError(
                         "The vault holds more items than the game can store.")
                 chained.append(data[at:at + POD_ITEM_BYTES])
                 at += POD_ITEM_BYTES
     items = tuple(it.to_dos_bytes() for it in amiga_pod.unbundle(heads, chained))
-    return dos_codec.PodVault(platinum, gems, jewelry, items)
+    return dos_codec.PodVault(platinum, gems, jewelry, items), nodes
+
+
+def pod_vault_from_amiga(data: bytes) -> dos_codec.PodVault:
+    """`Vault<L>.DAT` as coins and DOS item records; see `_pod_vault_walk`."""
+    return _pod_vault_walk(data)[0]
+
+
+def pod_party_nodes(savegame: bytes | PodSavegame) -> int:
+    """P: the item-pool nodes the party holds when the vault loads.
+
+    Each member's items plus the scrolls inside any bundles.  The party
+    chains are CONFIRMED by a static read of the game's loader; that nothing
+    else holds pool nodes at the load is PROBABLE (WISH-6 comment 4c943e53).
+    The vault loads whole when its nodes n satisfy
+    n <= POD_POOL_NODES - P - POD_VAULT_SPARE_NODES.
+    """
+    save = pod_parse(savegame) if isinstance(savegame, bytes) else savegame
+    return sum(c.items + c.bundled for c in save.characters)
 
 
 def pod_read_vault(disk: AmigaDisk, slot: str) -> dos_codec.PodVault:
@@ -2331,7 +2357,8 @@ def pod_read_vault(disk: AmigaDisk, slot: str) -> dos_codec.PodVault:
     return pod_vault_from_amiga(data)
 
 
-def pod_vault_to_amiga(vault: dos_codec.PodVault) -> bytes:
+def pod_vault_to_amiga(vault: dos_codec.PodVault,
+                       party_nodes: int | None = None) -> bytes:
     """`vault` as the bytes `Vault<L>.DAT` holds.
 
     For the DOS to Amiga direction (#194, commit 2): a DOS vault has no case,
@@ -2341,15 +2368,22 @@ def pod_vault_to_amiga(vault: dos_codec.PodVault) -> bytes:
     `POD_VAULT_SIZE`, is left zero -- whether the game accepts that in place
     of its own item-template padding is #651's still-open padding question,
     settled by a WinUAE run rather than by this function.
+
+    Past 200 items the file is 16 + 20n bytes with no padding, as the game's
+    own writer makes it; `party_nodes` (`pod_party_nodes`) then bounds n.
     """
     if len(vault.items) > POD_VAULT_NODES:
-        raise AmigaSaveError(
-            f"a Pools of Darkness vault of {len(vault.items)} items has no "
-            f"Amiga counterpart the game itself could write, which caps a "
-            f"vault at {POD_VAULT_NODES} nodes; write a "
-            f"{POD_VAULT_HEADER + 4 + (POD_VAULT_NODES + 1) * POD_ITEM_BYTES}"
-            f"-byte VaultA.DAT, load it in WinUAE and enter the vault to "
-            f"settle whether the Amiga actually enforces this")
+        if party_nodes is None:
+            raise AmigaSaveError(
+                f"a vault of {len(vault.items)} items needs the party's pool "
+                f"node count to be checked against the game's "
+                f"{POD_POOL_NODES}-node pool")
+        room = POD_POOL_NODES - POD_VAULT_SPARE_NODES - party_nodes
+        if len(vault.items) > room:
+            raise AmigaSaveError(
+                f"a vault of {len(vault.items)} items does not fit the "
+                f"game's {POD_POOL_NODES}-node item pool beside a party of "
+                f"{party_nodes} item nodes, which leaves room for {room}")
     heads = [amiga_pod.PodItem.from_dos_bytes(r) for r in vault.items]
     for head in heads:
         if head.is_scroll:
@@ -2362,7 +2396,7 @@ def pod_vault_to_amiga(vault: dos_codec.PodVault) -> bytes:
     out += struct.pack(">HH", POD_VAULT_MARKER, len(heads))
     for head in heads:
         out += head.raw
-    out += bytes(POD_VAULT_SIZE - len(out))
+    out += bytes(max(0, POD_VAULT_SIZE - len(out)))
     return bytes(out)
 
 
@@ -2421,11 +2455,25 @@ def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
         raise AmigaSaveError(
             f"a Pools of Darkness saved game is {POD_SAVEGAME_SIZE} bytes; "
             f"got {len(savegame)}")
-    if len(vault) != POD_VAULT_SIZE:
-        raise AmigaSaveError(
-            f"a Pools of Darkness vault is {POD_VAULT_SIZE} bytes; "
-            f"got {len(vault)}")
-    pod_vault_from_amiga(vault)
+    _, nodes = _pod_vault_walk(vault)
+    if nodes <= POD_VAULT_NODES:
+        if len(vault) != POD_VAULT_SIZE:
+            raise AmigaSaveError(
+                f"a Pools of Darkness vault is {POD_VAULT_SIZE} bytes; "
+                f"got {len(vault)}")
+    else:
+        size = POD_VAULT_HEADER + 4 + nodes * POD_ITEM_BYTES
+        if len(vault) != size:
+            raise AmigaSaveError(
+                f"a Pools of Darkness vault of {nodes} nodes is {size} "
+                f"bytes; got {len(vault)}")
+        room = (POD_POOL_NODES - POD_VAULT_SPARE_NODES
+                - pod_party_nodes(savegame))
+        if nodes > room:
+            raise AmigaSaveError(
+                f"a vault of {nodes} nodes does not fit the game's "
+                f"{POD_POOL_NODES}-node item pool beside this party, which "
+                f"leaves room for {room}")
     _check_pod_disk_three(disk_three)
     if not replace:
         for path in (pod_slot_path(letter), pod_vault_path(letter)):

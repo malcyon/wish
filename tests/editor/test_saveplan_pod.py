@@ -316,10 +316,23 @@ def test_an_edited_stat_and_item_cross_before_any_save(monkeypatch, tmp_path):
     assert back.inventory.item(0).quantity == 3
 
 
-def test_a_vault_over_two_hundred_items_stays_stopped(monkeypatch, tmp_path):
+def test_a_vault_of_two_hundred_and_one_items_converts_whole(
+        monkeypatch, tmp_path):
     item = bytes(dos_codec.ITEM_SIZE)
     big = dos_codec.pod_vault_to_dos(dos_codec.PodVault(
         0, 0, 0, (item,) * (amiga_savegame.POD_VAULT_NODES + 1)))
+    folder, party = _dos_party(monkeypatch, tmp_path, vault=big)
+    plan = _to_amiga(party, tmp_path, _disk_file(tmp_path, _disk_three()))
+    [image] = plan.files.values()
+    raw = _files(image)["/save/vaulta.dat"]
+    assert len(raw) == 16 + 20 * 201
+    assert len(amiga_savegame.pod_vault_from_amiga(raw).items) == 201
+
+
+def test_a_vault_over_the_game_pool_stays_stopped(monkeypatch, tmp_path):
+    item = bytes(dos_codec.ITEM_SIZE)
+    big = dos_codec.pod_vault_to_dos(dos_codec.PodVault(
+        0, 0, 0, (item,) * (amiga_savegame.POD_POOL_NODES + 1)))
     folder, party = _dos_party(monkeypatch, tmp_path, vault=big)
     out = tmp_path / "out.adf"
     with pytest.raises(convert.ConvertError):

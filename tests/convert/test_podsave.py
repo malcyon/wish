@@ -199,12 +199,21 @@ def test_pod_vault_from_amiga_blocks_a_wrong_marker():
         amiga_savegame.pod_vault_from_amiga(data)
 
 
-def test_pod_vault_from_amiga_blocks_a_case_walking_past_two_hundred_nodes():
-    case = _amiga_node(type_index=0x49, quantity=201)
+def test_pod_vault_from_amiga_blocks_more_nodes_than_the_game_pool_holds():
+    case = _amiga_node(type_index=0x49, quantity=200)
     scroll = _amiga_node(type_index=39, quantity=0)
-    data = _amiga_vault((0, 0, 0), 1, case + scroll * 201)
+    data = _amiga_vault((0, 0, 0), 51, case + scroll * 200 + case + scroll * 200
+                        + _amiga_node(type_index=1, quantity=1) * 49)
     with pytest.raises(amiga_savegame.AmigaSaveError, match="holds more items"):
         amiga_savegame.pod_vault_from_amiga(data)
+
+
+def test_pod_vault_from_amiga_reads_a_vault_past_two_hundred_nodes():
+    case = _amiga_node(type_index=0x49, quantity=2)
+    scroll = _amiga_node(type_index=39, quantity=0)
+    sword = _amiga_node(type_index=1, quantity=1)
+    data = _amiga_vault((0, 0, 0), 199, sword * 198 + case + scroll * 2)
+    assert len(amiga_savegame.pod_vault_from_amiga(data).items) == 200
 
 
 def test_pod_vault_to_amiga_round_trips_case_free_items():
@@ -220,10 +229,83 @@ def test_pod_vault_to_amiga_round_trips_case_free_items():
     assert amiga_savegame.pod_vault_from_amiga(raw) == v
 
 
-def test_pod_vault_to_amiga_blocks_more_than_two_hundred_items():
-    v = dos_codec.PodVault(0, 0, 0, tuple(_dos_item_record() for _ in range(201)))
-    with pytest.raises(amiga_savegame.AmigaSaveError, match="200"):
-        amiga_savegame.pod_vault_to_amiga(v)
+def _bundled_party() -> bytes:
+    """A two-member party whose item nodes (P) are 3 + (2 + 4 scrolls) = 9."""
+    out = bytearray(amiga_savegame.POD_VAR_BYTES)
+    out[dos_savegame.POD_PARTY_COUNT - 1] = 2
+    out += bytes((3, 4, 2, 5, 137, 0))
+    out += bytes((dos_savegame.POD_MODE_DUNGEON, dos_savegame.POD_MODE_DUNGEON))
+    out += struct.pack(">HHH", 6, 0, 2)
+    plain = _amiga_node(type_index=1, quantity=1)
+    bundle = bytearray(plain)
+    bundle[0] = amiga_savegame.POD_BUNDLE_ID
+    bundle[amiga_savegame.POD_BUNDLE_COUNT] = 4
+    for n, nodes in enumerate((plain * 3, plain + bytes(bundle) + plain * 4)):
+        record = bytearray(b"\x5A" * amiga_savegame.POD_RECORD_BYTES)
+        struct.pack_into(">I", record, amiga_savegame.POD_ITEM_COUNT_AT,
+                         (3, 2)[n])
+        struct.pack_into(">I", record, amiga_savegame.POD_EFFECT_HEAD_AT, 0)
+        name = f"WHO{n}".encode()
+        record[amiga_savegame.POD_NAME_AT:
+               amiga_savegame.POD_NAME_AT + len(name) + 1] = name + b"\x00"
+        out += record + nodes
+    out += b"\xA5" * (amiga_savegame.POD_SAVEGAME_SIZE - len(out))
+    return bytes(out)
+
+
+def _items(n: int) -> dos_codec.PodVault:
+    return dos_codec.PodVault(
+        7, 8, 9, tuple(_dos_item_record(1 + i % 100) for i in range(n)))
+
+
+def test_pod_party_nodes_counts_items_and_bundled_scrolls():
+    assert amiga_savegame.pod_party_nodes(_bundled_party()) == 9
+
+
+@pytest.mark.parametrize("n", [201, 445 - 9])
+def test_pod_vault_past_two_hundred_converts_both_ways_with_every_item(n):
+    v = _items(n)
+    raw = amiga_savegame.pod_vault_to_amiga(v, 9)
+    assert len(raw) == 16 + 20 * n
+    assert struct.unpack_from(">HH", raw, 12) == (0xFFFF, n)
+    back = amiga_savegame.pod_vault_from_amiga(raw)
+    assert len(back.items) == n
+    assert (back.platinum, back.gems, back.jewelry) == (7, 8, 9)
+    assert amiga_savegame.pod_vault_to_amiga(back, 9) == raw
+
+
+def test_pod_vault_one_past_the_pool_headroom_stops():
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="room for 436"):
+        amiga_savegame.pod_vault_to_amiga(_items(446 - 9), 9)
+
+
+def test_pod_vault_past_two_hundred_needs_the_party_count():
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="pool"):
+        amiga_savegame.pod_vault_to_amiga(_items(201))
+
+
+def test_pod_vault_of_two_hundred_or_fewer_ignores_the_party_count():
+    v = _items(150)
+    assert (amiga_savegame.pod_vault_to_amiga(v)
+            == amiga_savegame.pod_vault_to_amiga(v, 400))
+
+
+def test_pod_slot_on_disk_three_writes_a_vault_past_two_hundred_nodes():
+    party = _bundled_party()
+    vault = amiga_savegame.pod_vault_to_amiga(_items(436), 9)
+    out = amiga_savegame.pod_slot_on_disk_three(
+        _synthetic_disk_three("A"), "B", party, vault)
+    assert out.read_file(amiga_savegame.pod_vault_path("B")) == vault
+
+
+def test_pod_slot_on_disk_three_stops_a_vault_the_pool_cannot_hold():
+    party = _bundled_party()
+    vault = amiga_savegame.pod_vault_to_amiga(_items(436), 9)
+    bigger = vault + _amiga_node(type_index=1, quantity=1)
+    bigger = bigger[:12] + struct.pack(">HH", 0xFFFF, 437) + bigger[16:]
+    with pytest.raises(amiga_savegame.AmigaSaveError, match="room for 436"):
+        amiga_savegame.pod_slot_on_disk_three(
+            _synthetic_disk_three("A"), "B", party, bigger)
 
 
 def test_pod_vault_to_amiga_blocks_a_dos_type_105_record():
@@ -1243,7 +1325,7 @@ def test_pod_dos_to_amiga_turns_an_oversized_vault_into_a_convert_error(tmp_path
             (tmp_path / path.name).write_bytes(path.read_bytes())
     item = bytes(dos_codec.ITEM_SIZE)
     big = dos_codec.PodVault(
-        0, 0, 0, (item,) * (amiga_savegame.POD_VAULT_NODES + 1))
+        0, 0, 0, (item,) * (amiga_savegame.POD_POOL_NODES + 1))
     (tmp_path / f"VAULT{held}.DAT").write_bytes(
         dos_codec.pod_vault_to_dos(big))
     with pytest.raises(convert.ConvertError):
