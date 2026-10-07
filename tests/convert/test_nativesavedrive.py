@@ -202,3 +202,35 @@ def test_a_run_with_no_item_edits_gold_and_strength_and_leaves_a_backup(
     assert report["after"]["strength"] == 17
     assert report["after"]["quantities"] == {}
     assert len(report["backups"]) == 1
+
+
+def test_readied_and_delete_item_edit_the_table_and_report_a_bad_position(
+        tmp_path):
+    from editor.roster import Party
+
+    base = tmp_path / "base.adf"
+    amiga_savegame.make_save_disk(
+        amiga_savegame.CURSE, "A", synthetic_curse(("ALPHA", "BRAVO"), item=True)
+    ).save(base)
+    before = Party(str(base)).members[0].inventory
+    held = [n for n in range(len(before)) if before.holds(n)]
+    assert held
+    out = tmp_path / "ready" / "out.adf"
+    report = nativesavedrive.drive(
+        base, out, who=0, gold=10, strength=12, items={}, readied={held[0]: True})
+    assert report["ok"]
+    assert Party(str(out)).members[0].inventory.item(held[0]).readied
+
+    gone = tmp_path / "gone" / "out.adf"
+    report = nativesavedrive.drive(
+        base, gone, who=0, gold=10, strength=12, items={}, deletes=[held[0]])
+    assert report["ok"]
+    after = Party(str(gone)).members[0].inventory
+    assert len([n for n in range(len(after)) if after.holds(n)]) == len(held) - 1
+
+    empty = next(n for n in range(len(before)) if before.is_empty(n))
+    with pytest.raises(SystemExit, match=f"holds no item at position {empty}"):
+        nativesavedrive.main([
+            "--base", str(base), "--out", str(tmp_path / "x" / "o.adf"),
+            "--who", "0", "--gold", "10", "--strength", "12",
+            "--delete-item", str(empty)])

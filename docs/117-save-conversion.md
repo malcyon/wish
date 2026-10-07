@@ -2273,6 +2273,7 @@ graph LR
   memory --> layout
   neutral --> layout
   pod_rewrite --> amiga_pod
+  pod_rewrite --> amiga_savegame
   pod_rewrite --> c64_codec
   pod_rewrite --> dos_codec
   pod_rewrite --> dos_port

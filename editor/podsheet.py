@@ -98,39 +98,17 @@ UNWRITABLE = frozenset({
     "item_effects", "infravision", "strength_index", "party_order",
 })
 
-#: What an Amiga character adds to :data:`UNWRITABLE`. Its sheet record is
-#: a DOS rendering of the block (:func:`amiga_member`), and the rendering
-#: rebuilds the class code from the levels and the class mask, so a class
-#: code typed into the box is written to the block but read back as the
-#: rebuilt one; and the block's turning row is read by neither reader, so an
-#: edit to it has no place to go (`goldbox.pod_rewrite.AMIGA_PLACES`). The
-#: block's items are not written back either (`editor.saveplan
-#: .write_amiga_pod`), so the item table and its buttons are greyed under the
-#: name `INVENTORY`.
-INVENTORY = "inventory"
-AMIGA_UNWRITABLE = UNWRITABLE | frozenset({"char_class", "turn_class",
-                                           INVENTORY})
+#: The Amiga greys the same names as DOS: its sheet record is the block
+#: rendered as a DOS record with the class code, the turning row and the class
+#: levels taken from the block itself (:func:`amiga_member`), and each of them
+#: has a place in the block (`goldbox.pod_rewrite.AMIGA_PLACES`).
+AMIGA_UNWRITABLE = UNWRITABLE
 
 
 def unwritable(port: str) -> frozenset[str]:
     """The sheet names a party on `port` greys: :data:`AMIGA_UNWRITABLE` on
     the Amiga, :data:`UNWRITABLE` on DOS."""
     return AMIGA_UNWRITABLE if port == "amiga" else UNWRITABLE
-
-
-def unwritable_levels(record: "PodSheetRecord", port: str) -> frozenset[str]:
-    """The level boxes one character cannot be given a value in, by port.
-
-    A dual-classed human on the Amiga holds a level in a class only through
-    the block's class code, which the sheet's DOS rendering derives from the
-    class he left; a level typed into any other class is kept by the disk
-    and read back as a different class and levels. Nobody else is held back:
-    a character with no former class gains a class by being given a level.
-    """
-    if port != "amiga" or record.former_class() is None:
-        return frozenset()
-    return frozenset(name for name in LEVEL_SLOTS
-                     if not record.get(name))
 
 
 #: The bit the DOS control byte sets for a character the engine drives: the
@@ -555,7 +533,11 @@ def amiga_member(block: bytes, position: int) -> PodMember:
     neutral record from `goldbox.amiga_pod.pod_to_neutral`, written by
     `goldbox.dos_codec.write` with the combat figure set to the file
     position, as `goldbox.dos_codec.new_pod_save_from` does.  The block
-    itself is kept as `native`.
+    itself is kept as `native`.  The class code, the turning row and the
+    seven class levels are the block's own bytes rather than the rendering's:
+    `goldbox.dos_codec.write` rebuilds the code from the levels and zeroes the
+    levels of a class a dual-classed human left, so a value typed into any of
+    them would read back changed.
     """
     from goldbox import amiga_pod
 
@@ -563,6 +545,11 @@ def amiga_member(block: bytes, position: int) -> PodMember:
     rec, itm, spc, _report = dos_codec.write(neutral, deltas=DELTAS)
     record = bytearray(rec)
     record[TABLE["combat_figure"].offset] = position
+    record[TABLE["char_class"].offset] = block[amiga_pod.CLASS]
+    record[TABLE["turn_class"].offset] = block[amiga_pod.TURN_CLASS]
+    levels = TABLE["class_levels"]
+    record[levels.span] = block[
+        amiga_pod.CLASS_LEVELS:amiga_pod.CLASS_LEVELS + levels.size]
     effects = [spc[i:i + dos_codec.EFFECT_SIZE]
                for i in range(0, len(spc), dos_codec.EFFECT_SIZE)]
     char = dos_codec.DosCharacter(

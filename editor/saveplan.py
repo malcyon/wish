@@ -348,35 +348,33 @@ def write_amiga_pod(party: Any, disk: Any) -> None:
     Each character's block is the one the party was read with
     (`Member.native`), with each DOS field the sheet changed put at its
     place in the Amiga record (`goldbox.pod_rewrite.rewrite_amiga_record`);
-    its items, its effects and every other byte stay as read. The saved
+    its effects and every other byte stay as read. The saved
     game is written only when it differs from the file on the disk, so a
     Save with nothing in it leaves the image as it was. The vault and every
     other file are not touched.
 
-    The window greys the item table for this port (`podsheet.INVENTORY`),
-    because the sheet's slots are a DOS rendering of the block's items and
-    nothing writes them back into the block. An item edit that reaches this
-    function anyway raises `RuntimeError` and writes nothing.
+    Its items are patched node by node from the sheet's slots
+    (`goldbox.pod_rewrite.rewrite_amiga_items`), and a block that grew or
+    shrank is put back with the saved game at its fixed size
+    (`goldbox.pod_rewrite.rebuild_party`).
     """
     from .podsheet import item_blocks
 
-    for member in party.members:
-        if (member.inventory is not None
-                and member.inventory.raws != item_blocks(
-                    _pod_rendered(member).dos)):
-            raise RuntimeError(
-                f"{member.name}: the Items table is read-only for an Amiga "
-                f"Pools of Darkness character, so no item edit reaches a save")
     slot = party.source.slot
     path = amiga_savegame.pod_slot_path(slot)
     data = amiga_savegame.pod_read_slot(disk, slot)
     save = amiga_savegame.pod_parse(data)
     blocks = list(save.blocks)
     for member in party.members:
-        blocks[member.index - 1], _moved = pod_rewrite.rewrite_amiga_record(
+        block, _moved = pod_rewrite.rewrite_amiga_record(
             bytes(member.native), member.record_original,
             member.record.to_bytes())
-    written = pod_rewrite.replace_records(data, save.characters, blocks)
+        if member.inventory is not None:
+            block, _moved = pod_rewrite.rewrite_amiga_items(
+                block, item_blocks(_pod_rendered(member).dos),
+                member.inventory.raws)
+        blocks[member.index - 1] = block
+    written = pod_rewrite.rebuild_party(data, blocks)
     if written != data:
         # Under the name the disk already spells it with: AmigaDOS finds the
         # file whatever the case, and a write under another spelling renames

@@ -335,7 +335,6 @@ def test_every_amiga_field_edit_reads_back_as_the_edit(monkeypatch):
     if not blocks:
         pytest.skip("needs an Amiga Pools of Darkness disk 3")
     names = _sheet_names("amiga")
-    exceptions: set[tuple[str, str]] = set()
     for block, position in blocks.items():
         before = podsheet.amiga_member(block, position).record
         for name in names:
@@ -357,33 +356,62 @@ def test_every_amiga_field_edit_reads_back_as_the_edit(monkeypatch):
                 at = amiga_pod.CLASS_LEVELS
                 assert written[at:at + amiga_pod.CLASS_LEVEL_COUNT] == want[
                     levels], name
-                if back != want:
-                    # A dual-classed human given a level in a class he does
-                    # not hold now: the block holds the level as typed, and
-                    # the DOS rendering of it derives the class code and the
-                    # levels from the class he left.
-                    assert before.former_class() is not None, name
-                    exceptions.add((before.name, name))
-                    continue
             assert bytes(back) == bytes(want), name
     assert len(blocks) >= 100
-    # ABAGAIL (former cleric), DONALD DUCK, jimmi hendrixs and PAINE
-    # (former rangers) in the disks we have.
-    assert len({who for who, _name in exceptions}) <= 4
 
 
-def test_the_amiga_greys_what_it_cannot_write_back():
+def test_the_amiga_greys_what_dos_greys():
     assert podsheet.unwritable("dos") == podsheet.UNWRITABLE
-    assert podsheet.unwritable("amiga") - podsheet.UNWRITABLE == {
-        "char_class", "turn_class", podsheet.INVENTORY}
-    assert "turn_class" not in pod_rewrite.AMIGA_PLACES
-    before = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
-    after = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
-    after.set("turn_class", 3)
-    with pytest.raises(RewriteError, match="turn_class"):
-        pod_rewrite.rewrite_amiga_record(
-            bytes(amiga_pod.RECORD_LENGTH), before.to_bytes(),
-            after.to_bytes())
+    assert podsheet.unwritable("amiga") == podsheet.UNWRITABLE
+    assert pod_rewrite.AMIGA_PLACES["turn_class"].span == (
+        amiga_pod.TURN_CLASS, 1)
+
+
+def test_a_turn_class_edit_lands_on_the_turning_row_and_reads_back(
+        monkeypatch):
+    _flag(monkeypatch, "1")
+    blocks = _amiga_blocks()
+    for block, position in blocks.items():
+        before = podsheet.amiga_member(block, position).record
+        after = podsheet.PodSheetRecord(before.to_bytes())
+        after.set("turn_class", 3)
+        written, moved = pod_rewrite.rewrite_amiga_record(
+            block, before.to_bytes(), after.to_bytes())
+        assert moved == ["turn_class"]
+        assert _differing(block, written) == [amiga_pod.TURN_CLASS]
+        assert written[amiga_pod.TURN_CLASS] == 3
+        again = podsheet.amiga_member(written, position).record
+        assert again.get("turn_class") == 3
+
+
+def test_a_class_code_and_a_level_in_an_unheld_class_read_back_as_typed(
+        monkeypatch):
+    """A class code typed into the box and a level typed into a class a
+    dual-classed human left (ABAGAIL, given cleric 1) are the block's own
+    bytes, so reopening shows them."""
+    _flag(monkeypatch, "1")
+    dual = 0
+    for block, position in _amiga_blocks().items():
+        before = podsheet.amiga_member(block, position).record
+        code = podsheet.PodSheetRecord(before.to_bytes())
+        code.set("char_class", (before.get("char_class") + 1) & 0xFF)
+        written, _moved = pod_rewrite.rewrite_amiga_record(
+            block, before.to_bytes(), code.to_bytes())
+        assert podsheet.amiga_member(written, position).record.get(
+            "char_class") == code.get("char_class")
+        if before.former_class() is None:
+            continue
+        dual += 1
+        level = podsheet.PodSheetRecord(before.to_bytes())
+        level.set("level_cleric", 1 if not before.get("level_cleric")
+                  else before.get("level_cleric") + 1)
+        written, _moved = pod_rewrite.rewrite_amiga_record(
+            block, before.to_bytes(), level.to_bytes())
+        again = podsheet.amiga_member(written, position).record
+        assert again.get("level_cleric") == level.get("level_cleric")
+        assert again.to_bytes()[podsheet.TABLE["class_levels"].span] == (
+            level.to_bytes()[podsheet.TABLE["class_levels"].span])
+    assert dual >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -463,32 +491,356 @@ def test_every_amiga_slot_saves_an_age_edit_and_nothing_else(
     assert slots >= 51
 
 
-def test_an_amiga_item_edit_stops_the_save_and_writes_nothing(
+# ---------------------------------------------------------------------------
+# Amiga items
+# ---------------------------------------------------------------------------
+
+def _slots() -> list[tuple[str, bytes, amiga_savegame.PodSavegame]]:
+    out = []
+    for label, data, letters in _amiga_images():
+        disk = AmigaDisk(bytearray(data))
+        for letter in letters:
+            blob = amiga_savegame.pod_read_slot(disk, letter)
+            out.append((f"{label}:{letter}", blob,
+                        amiga_savegame.pod_parse(blob)))
+    if not out:
+        pytest.skip("needs an Amiga Pools of Darkness disk 3")
+    return out
+
+
+def _amiga_blocks() -> dict[bytes, int]:
+    blocks: dict[bytes, int] = {}
+    for _label, _blob, save in _slots():
+        for position, block in enumerate(save.blocks):
+            blocks.setdefault(block, position)
+    return blocks
+
+
+def _shown(block: bytes, position: int = 0) -> list[bytes]:
+    """The sixteen sheet slots the block opens with."""
+    return podsheet.item_blocks(podsheet.amiga_member(block, position).dos)
+
+
+def _first_sixteen(char) -> list[bytes]:
+    return podsheet.item_blocks(char)
+
+
+def _count(block: bytes) -> int:
+    return int.from_bytes(block[amiga_pod.ITEM_CHAIN:
+                                amiga_pod.ITEM_CHAIN + 4], "big")
+
+
+def _items_end(block: bytes) -> int:
+    heads, chains, tail = pod_rewrite._amiga_nodes(block)
+    return len(block) - len(tail)
+
+
+def _case_blocks() -> dict[bytes, int]:
+    return {b: p for b, p in _amiga_blocks().items()
+            if any(c is not None for _h, c in
+                   pod_rewrite.amiga_item_sources(b))}
+
+
+def _edit(block: bytes, position: int, change) -> tuple[bytes, list[str]]:
+    was = _shown(block, position)
+    now = list(was)
+    change(now)
+    return pod_rewrite.rewrite_amiga_items(block, was, now)
+
+
+def _head_item_zero(block: bytes) -> bool:
+    """Whether sheet slot 0 is a head node of its own, not a case's scroll."""
+    sources = pod_rewrite.amiga_item_sources(block)
+    return bool(sources) and sources[0][1] is None
+
+
+def test_an_unedited_amiga_save_round_trips_byte_for_byte(monkeypatch):
+    _flag(monkeypatch, "1")
+    for label, blob, save in _slots():
+        assert pod_rewrite.rebuild_party(blob, save.blocks) == blob, label
+    for block, position in _amiga_blocks().items():
+        was = _shown(block, position)
+        assert pod_rewrite.rewrite_amiga_items(block, was, was) == (
+            block, [])
+
+
+def test_an_amiga_quantity_edit_moves_only_that_nodes_quantity_byte(
+        monkeypatch):
+    _flag(monkeypatch, "1")
+    seen = 0
+    for block, position in _amiga_blocks().items():
+        if not _head_item_zero(block):
+            continue
+
+        def edit(now):
+            raw = bytearray(now[0])
+            raw[10] = raw[10] + 1 if raw[10] < 255 else raw[10] - 1
+            now[0] = bytes(raw)
+        out, moved = _edit(block, position, edit)
+        assert moved == ["item 0: quantity"]
+        assert _differing(block, out) == [
+            amiga_pod.RECORD_BYTES + pod_rewrite._QUANTITY_AT]
+        seen += 1
+    assert seen >= 100
+
+
+def test_an_amiga_item_delete_drops_one_node_and_every_other_block_stays(
         monkeypatch, tmp_path):
+    """Deleting item 0 of a block: it is 20 bytes shorter and its count one
+    lower, the file keeps its size and parses, every other block is as it
+    was, and reopening shows the slots without that item."""
+    _flag(monkeypatch, "1")
+    seen = 0
+    for label, blob, save in _slots():
+        for n, block in enumerate(save.blocks):
+            if not _head_item_zero(block):
+                continue
+            was = _shown(block, n)
+            now = was[1:] + [bytes(len(was[0]))]
+            out, moved = pod_rewrite.rewrite_amiga_items(block, was, now)
+            # Two items whose slots read the same are one item to the
+            # sheet, so deleting the first may drop either node.
+            assert [m for m in moved if m.endswith("deleted")] == [
+                moved[-1]], label
+            assert len(out) == len(block) - amiga_pod.ITEM_FILE_SIZE
+            assert _count(out) == _count(block) - 1
+            blocks = list(save.blocks)
+            blocks[n] = out
+            written = pod_rewrite.rebuild_party(blob, blocks)
+            assert len(written) == amiga_savegame.POD_SAVEGAME_SIZE, label
+            again = amiga_savegame.pod_parse(written)
+            assert [b for i, b in enumerate(again.blocks) if i != n] == [
+                b for i, b in enumerate(save.blocks) if i != n], label
+            assert again.blocks[n] == out
+            old = podsheet.amiga_member(block, n).dos
+            expect = [dos_codec.item_to_c64(i.to_bytes())
+                      for i in old.items[1:pod_rewrite.ITEM_SLOTS + 1]]
+            expect += [bytes(len(was[0]))] * (pod_rewrite.ITEM_SLOTS
+                                              - len(expect))
+            assert _shown(out, n) == expect, label
+            seen += 1
+    assert seen >= 100
+
+
+def test_an_item_delete_saved_through_the_editor_reaches_the_disk(
+        monkeypatch, tmp_path):
+    """The whole path, `saveplan.amiga_image` over a party: a deleted item is
+    gone from the slot's saved game, the other slots and files are as they
+    were, and a party with no edit gives the image back."""
     _flag(monkeypatch, "1")
     label, source = _amiga_copies(tmp_path)[0]
-    party = Party(source)
-    member = next(m for m in party.members if m.inventory.holds(0))
-    member.inventory.set_quantity(0, member.inventory.item(0).quantity + 1)
     image = pathlib.Path(source.path).read_bytes()
-    with pytest.raises(RuntimeError, match="read-only"):
-        saveplan.amiga_image(party)
-    assert pathlib.Path(source.path).read_bytes() == image, label
+    party = Party(source)
+    member = next(m for m in party.members
+                  if m.inventory.holds(0) and _head_item_zero(bytes(m.native)))
+    member.inventory.delete(0)
+    written = saveplan.amiga_image(party)
+    assert written != image
+    was = _disk_files(image)
+    now = _disk_files(written)
+    target = amiga_savegame.pod_slot_path(source.slot)
+    for name in was:
+        if name.lower() != target.lower():
+            assert now[name] == was[name], f"{label} {name}"
+    spelled = next(k for k in was if k.lower() == target.lower())
+    before = amiga_savegame.pod_parse(was[spelled])
+    after = amiga_savegame.pod_parse(now[spelled])
+    assert len(now[spelled]) == amiga_savegame.POD_SAVEGAME_SIZE
+    index = member.index - 1
+    assert _count(after.blocks[index]) == _count(before.blocks[index]) - 1
+    assert [b for i, b in enumerate(after.blocks) if i != index] == [
+        b for i, b in enumerate(before.blocks) if i != index]
 
 
-def test_write_amiga_pod_raises_on_an_item_edit_before_it_reads_the_disk():
-    """The guard needs no disk: the rendering of a blank block holds no item,
-    so a sheet that holds one is an item edit."""
-    import types
+def test_deleting_a_case_scroll_lowers_the_case_and_keeps_the_others(
+        monkeypatch):
+    _flag(monkeypatch, "1")
+    cases = _case_blocks()
+    if not cases:
+        pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
+    for block, position in cases.items():
+        sources = pod_rewrite.amiga_item_sources(block)
+        slot = next(n for n, (_h, c) in enumerate(sources)
+                    if c is not None and n < pod_rewrite.ITEM_SLOTS)
+        head, chain = sources[slot]
+        heads, chains, _tail = pod_rewrite._amiga_nodes(block)
 
-    member = types.SimpleNamespace(
-        name="X", index=1, native=bytes(amiga_pod.RECORD_LENGTH),
-        inventory=types.SimpleNamespace(
-            raws=[bytes([1]) + bytes(15)] + [bytes(16)] * 15))
-    party = types.SimpleNamespace(
-        source=types.SimpleNamespace(slot="A"), members=[member])
-    with pytest.raises(RuntimeError, match="read-only"):
-        saveplan.write_amiga_pod(party, None)
+        def drop(now):
+            now[:] = now[:slot] + now[slot + 1:] + [bytes(len(now[0]))]
+        out, moved = _edit(block, position, drop)
+        assert _count(out) == _count(block)
+        assert len(out) == len(block) - amiga_pod.ITEM_FILE_SIZE
+        new_heads, new_chains, new_tail = pod_rewrite._amiga_nodes(out)
+        assert new_heads[head][pod_rewrite._QUANTITY_AT] == len(chains[head]) - 1
+        assert new_chains[head] == chains[head][:chain] + chains[head][
+            chain + 1:]
+        assert new_tail == _tail
+        for h in range(len(heads)):
+            if h != head:
+                assert new_heads[h] == heads[h]
+                assert new_chains[h] == chains[h]
+
+
+def test_deleting_every_scroll_of_a_case_removes_the_case(monkeypatch):
+    _flag(monkeypatch, "1")
+    cases = _case_blocks()
+    if not cases:
+        pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
+    for block, position in cases.items():
+        sources = pod_rewrite.amiga_item_sources(block)
+        heads, chains, _tail = pod_rewrite._amiga_nodes(block)
+        head = next(h for h, c in sources if c is not None)
+        gone = {n for n, (h, _c) in enumerate(sources) if h == head}
+        if max(gone) >= pod_rewrite.ITEM_SLOTS:
+            continue
+
+        def drop(now):
+            kept = [b for n, b in enumerate(now) if n not in gone]
+            now[:] = kept + [bytes(len(now[0]))] * (len(now) - len(kept))
+        out, _moved = _edit(block, position, drop)
+        assert _count(out) == _count(block) - 1
+        assert len(out) == len(block) - amiga_pod.ITEM_FILE_SIZE * (
+            1 + len(chains[head]))
+        assert pod_rewrite._amiga_nodes(out)[2] == _tail
+        assert _items_end(out) + len(_tail) == len(out)
+
+
+def test_a_readied_edit_on_a_case_scroll_lands_on_the_case_and_shows_on_all(
+        monkeypatch):
+    """The sheet shows each scroll with its case's `readied`, so the edit
+    goes to the case's head node and every scroll of the case shows it on
+    reopening."""
+    from editor.inventory import READIED
+    _flag(monkeypatch, "1")
+    cases = _case_blocks()
+    if not cases:
+        pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
+    readied_at = amiga_pod.ITEM_FIELD_AT["readied"]
+    for block, position in cases.items():
+        sources = pod_rewrite.amiga_item_sources(block)
+        slot, (head, _c) = next((n, s) for n, s in enumerate(sources)
+                                if s[1] is not None)
+        was = _shown(block, position)
+        new_value = (was[slot][6] & READIED) ^ READIED
+
+        def flip(now):
+            raw = bytearray(now[slot])
+            raw[6] = (raw[6] & ~READIED) | new_value
+            now[slot] = bytes(raw)
+        out, moved = _edit(block, position, flip)
+        assert moved == [f"item {slot}: readied"]
+        heads, chains, _tail = pod_rewrite._amiga_nodes(block)
+        new_heads, new_chains, _t = pod_rewrite._amiga_nodes(out)
+        assert new_heads[head][readied_at] != heads[head][readied_at]
+        assert new_chains == chains
+        reopened = _shown(out, position)
+        mine = [n for n, (h, _c2) in enumerate(sources)
+                if h == head and n < pod_rewrite.ITEM_SLOTS]
+        assert len(mine) > 1
+        assert all(reopened[n][6] & READIED == new_value for n in mine)
+
+
+def test_the_other_scrolls_of_a_case_show_the_old_readied_until_reopened(
+        monkeypatch, tmp_path):
+    """The display point of the case edit, as the editor behaves: the
+    inventory model changes only the row that was edited, so the case's
+    other rows keep the old value after the edit and after a Save; a party
+    opened from the saved disk shows the new value on all of them."""
+    from editor.inventory import READIED
+    _flag(monkeypatch, "1")
+    for label, source in _amiga_copies(tmp_path):
+        party = Party(source)
+        member = next((m for m in party.members if any(
+            c is not None for _h, c in
+            pod_rewrite.amiga_item_sources(bytes(m.native)))), None)
+        if member is None:
+            continue
+        sources = pod_rewrite.amiga_item_sources(bytes(member.native))
+        slot, (head, _c) = next((n, s) for n, s in enumerate(sources)
+                                if s[1] is not None)
+        mine = [n for n, (h, _c2) in enumerate(sources)
+                if h == head and n < pod_rewrite.ITEM_SLOTS]
+        old = member.inventory.raws[slot][6] & READIED
+        member.inventory.set_readied(slot, not old)
+        assert all(member.inventory.raws[n][6] & READIED == old
+                   for n in mine if n != slot)
+        pathlib.Path(source.path).write_bytes(saveplan.amiga_image(party))
+        reopened = Party(source).member(member.index - 1)
+        assert all(bool(reopened.inventory.raws[n][6] & READIED) == (not old)
+                   for n in mine)
+        return
+    pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
+
+
+def test_an_added_amiga_item_becomes_a_new_head_node(monkeypatch):
+    _flag(monkeypatch, "1")
+    seen = 0
+    for block, position in _amiga_blocks().items():
+        was = _shown(block, position)
+        shown = sum(1 for raw in was if any(raw))
+        if shown == 0 or shown >= pod_rewrite.ITEM_SLOTS or any(
+                c is not None for _h, c in
+                pod_rewrite.amiga_item_sources(block)):
+            continue
+        dos = bytearray(podsheet.amiga_member(block, position)
+                        .dos.items[0].to_bytes())
+        dos[podsheet.dos_codec.ITEM_FIELDS_BY_NAME["quantity"].offset] = 7
+        dos[podsheet.dos_codec.ITEM_FIELDS_BY_NAME["type_index"].offset] = 0x7E
+        new = dos_codec.item_to_c64(bytes(dos))
+        assert new not in was
+        now = list(was)
+        now[shown] = new
+        out, moved = pod_rewrite.rewrite_amiga_items(block, was, now)
+        assert moved == [f"item {shown}: added"]
+        assert _count(out) == _count(block) + 1
+        at = _items_end(block)
+        assert out[at:at + amiga_pod.ITEM_FILE_SIZE] == (
+            amiga_pod.PodItem.from_dos_bytes(bytes(dos)).raw)
+        assert out[amiga_pod.RECORD_BYTES:at] == block[
+            amiga_pod.RECORD_BYTES:at]
+        assert _shown(out, position)[shown] == new
+        seen += 1
+    assert seen >= 50
+
+
+def test_the_bytes_no_field_owns_survive_an_edit_to_another_field(
+        monkeypatch):
+    """Item node bytes 1 and 13 and the `hidden` bits above 7 belong to no
+    DOS field; an edit to the quantity of the same node keeps them."""
+    _flag(monkeypatch, "1")
+    seen = 0
+    for block, position in _amiga_blocks().items():
+        if not _head_item_zero(block):
+            continue
+        marked = bytearray(block)
+        at = amiga_pod.RECORD_BYTES
+        marked[at + 1], marked[at + 13] = 0x84, 0xC2
+        hidden = at + amiga_pod.ITEM_FIELD_AT["hidden"]
+        marked[hidden] |= 0x40
+        marked = bytes(marked)
+
+        def edit(now):
+            raw = bytearray(now[0])
+            raw[10] = raw[10] + 1 if raw[10] < 255 else raw[10] - 1
+            now[0] = bytes(raw)
+        out, _moved = _edit(marked, position, edit)
+        assert out[at + 1] == 0x84 and out[at + 13] == 0xC2
+        assert out[hidden] & 0x40
+        seen += 1
+        if seen == 10:
+            break
+    assert seen == 10
+
+
+def test_rebuild_party_stops_when_the_party_no_longer_fits(monkeypatch):
+    _flag(monkeypatch, "1")
+    label, blob, save = _slots()[0]
+    with pytest.raises(RewriteError, match="past the"):
+        pod_rewrite.rebuild_party(
+            blob, [save.blocks[0] + bytes(amiga_savegame.POD_SAVEGAME_SIZE)]
+            + list(save.blocks[1:]))
+    with pytest.raises(RewriteError, match="characters"):
+        pod_rewrite.rebuild_party(blob, save.blocks[:-1])
 
 
 def _dual_class_record(tmp_path) -> podsheet.PodSheetRecord:
@@ -496,23 +848,8 @@ def _dual_class_record(tmp_path) -> podsheet.PodSheetRecord:
     return podsheet.PodSheetRecord((folder / "CHRDATA1.SAV").read_bytes())
 
 
-def test_the_amiga_greys_the_levels_a_dual_classed_human_does_not_hold(
-        tmp_path):
-    record = _dual_class_record(tmp_path)
-    assert record.former_class() == ("ranger", 9)
-    names = set(podsheet.LEVEL_SLOTS)
-    assert podsheet.unwritable_levels(record, "amiga") == (
-        names - {"level_magic_user"})
-    assert podsheet.unwritable_levels(record, "dos") == frozenset()
-    single = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
-    single.set("level_fighter", 5)
-    assert podsheet.unwritable_levels(single, "amiga") == frozenset()
-
-
 def test_on_dos_a_level_in_a_class_not_held_reads_back_as_typed(tmp_path):
-    """The mismatch the Amiga has (the block keeps the typed level, the
-    rendering derives other levels) does not exist on DOS: the record keeps
-    the byte and the sheet reads it, so nothing is greyed there."""
+    """The record keeps the byte and the sheet reads it."""
     before = _dual_class_record(tmp_path)
     after = podsheet.PodSheetRecord(before.to_bytes())
     after.set("level_fighter", 3)

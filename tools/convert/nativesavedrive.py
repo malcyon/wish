@@ -14,11 +14,15 @@ else writes the disk, so the bytes are what a player's Save produces.
 
     .venv/bin/python tools/convert/nativesavedrive.py --base curse.adf \\
         --out /tmp/edited/curse.adf --who 1 --gold 5000 --strength 18 \\
-        [--item 0=3] [--slot B] [--report report.json]
+        [--item 0=3] [--readied 2=0] [--delete-item 1] [--slot B] \\
+        [--report report.json]
 
 `--who` is a zero-based roster row, `--item POSITION=QUANTITY` is repeatable and
 names an occupied inventory position of that member (an empty position exits
-before anything is written), and `--slot` picks the saved game on a disk or
+before anything is written). `--readied POSITION=0|1` sets the Readied box of an
+occupied position and `--delete-item POSITION` deletes it, both repeatable;
+every position is the one the member's table showed before any edit, so the
+deletes are made last, highest first. And `--slot` picks the saved game on a disk or
 folder that holds several. `--slot` opens the party with `_adopt`,
 because `EditorBinding.load` opens a slot-picker dialog. The exit status is 1
 unless Save wrote the file and left a backup.
@@ -33,6 +37,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -102,7 +107,8 @@ def _original(backup: pathlib.Path, names: list[str]) -> str:
 
 def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
           strength: int, items: dict[int, int],
-          slot: str | None = None) -> dict:
+          slot: str | None = None, readied: dict[int, bool] | None = None,
+          deletes: Sequence[int] = ()) -> dict:
     """Copy `base` to `out`, edit and save through the editor, and report."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.pop("WAYLAND_DISPLAY", None)
@@ -120,7 +126,8 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     if not 0 <= who < len(members):
         raise SystemExit(f"{base}: no roster row {who}; the party has "
                          f"{len(members)} members")
-    for pos in items:
+    readied = readied or {}
+    for pos in (*items, *readied, *deletes):
         if members[who].inventory.is_empty(pos):
             raise SystemExit(f"{out}: member {who} holds no item at position {pos}")
 
@@ -161,6 +168,10 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int, gold: int,
     widget("strength").setValue(strength)
     for pos, qty in items.items():
         inventory.set_quantity(pos, qty)
+    for pos, on in readied.items():
+        inventory.set_readied(pos, on)
+    for pos in sorted(set(deletes), reverse=True):
+        inventory.delete(pos)
     binding._edited()
     note = binding.save(interactive=False)
     app.processEvents()
@@ -207,6 +218,13 @@ def main(argv=None) -> int:
                     metavar="POSITION=QUANTITY",
                     help="occupied inventory position and its new quantity; "
                          "repeatable")
+    ap.add_argument("--readied", action="append", default=[],
+                    metavar="POSITION=0|1",
+                    help="occupied inventory position and its Readied box; "
+                         "repeatable")
+    ap.add_argument("--delete-item", action="append", default=[], type=int,
+                    metavar="POSITION",
+                    help="occupied inventory position to delete; repeatable")
     ap.add_argument("--report", type=pathlib.Path,
                     help="also write the JSON report here")
     args = ap.parse_args(argv)
@@ -218,8 +236,15 @@ def main(argv=None) -> int:
             ap.error(f"--item wants POSITION=QUANTITY, got {spec!r}")
         items[int(pos)] = int(qty)
 
+    readied: dict[int, bool] = {}
+    for spec in args.readied:
+        pos, sep, on = spec.partition("=")
+        if not sep or not pos.isdigit() or on not in ("0", "1"):
+            ap.error(f"--readied wants POSITION=0|1, got {spec!r}")
+        readied[int(pos)] = on == "1"
+
     report = drive(args.base, args.out, args.who, args.gold, args.strength,
-                   items, args.slot)
+                   items, args.slot, readied, args.delete_item)
     text = json.dumps(report, indent=2)
     if args.report:
         args.report.write_text(text + "\n")

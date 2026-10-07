@@ -17,8 +17,11 @@ changed DOS field is put at its own place in the block's 404-byte record,
 in the Amiga's own encoding (:data:`AMIGA_PLACES`, built from
 `goldbox.amiga_pod`'s offsets).  A changed field with no place there stops
 the rewrite rather than vanishing (:class:`goldbox.rewrite.RewriteError`).
-The items, the effects and every byte of the record no changed field owns
-stay as the block held them (:func:`rewrite_amiga_record`).
+The effects and every byte of the record no changed field owns stay as the
+block held them (:func:`rewrite_amiga_record`).  The items are patched node
+by node from the sheet's slots, and a block that grows or shrinks is put back
+into the saved game at its fixed size (:func:`rewrite_amiga_items`,
+:func:`rebuild_party`).
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, NamedTuple
 
-from . import amiga_pod, c64_codec, dos_codec, dos_port, rewrite
+from . import amiga_pod, amiga_savegame, c64_codec, dos_codec, dos_port, rewrite
 from .rewrite import RewriteError
 
 DELTAS = dos_port.POOLS_OF_DARKNESS
@@ -275,6 +278,7 @@ def _amiga_places() -> dict[str, Place]:
         "thac0_base": _copy("thac0_base", a.THAC0_BASE),
         "race": _copy("race", a.RACE),
         "char_class": _copy("char_class", a.CLASS),
+        "turn_class": _copy("turn_class", a.TURN_CLASS),
         "paladin_cures": _copy("paladin_cures", a.PALADIN_CURES),
         "age": _swapped("age", a.AGE),
         "hp_max": _copy("hp_max", a.HP_MAX),
@@ -333,8 +337,7 @@ def _amiga_places() -> dict[str, Place]:
 #: DOS field -> its place in the Amiga record.  A DOS field missing here has
 #: no place the Amiga reader (`goldbox.amiga_pod.pod_to_neutral`) reads back:
 #: the heap and chain words, the item and effect bookkeeping, the derived
-#: encumbrance and hands, the combat icon, the roster slot, the gaps, and
-#: `turn_class`, whose Amiga byte neither reader reads.
+#: encumbrance and hands, the combat icon, the roster slot and the gaps.
 AMIGA_PLACES: dict[str, Place] = _amiga_places()
 
 
@@ -368,16 +371,202 @@ def rewrite_amiga_record(block: bytes, before: bytes,
     return bytes(out), moved
 
 
-def replace_records(data: bytes, characters: Sequence[Any],
-                    blocks: Sequence[bytes]) -> bytes:
-    """A `SavGam<L>.pty` with each character's block put back where
-    `goldbox.amiga_savegame.pod_parse` found it.  Every block keeps its
-    length, so nothing else in the file moves."""
-    out = bytearray(data)
-    for character, block in zip(characters, blocks):
-        if len(block) != character.size:
+_ITEM = amiga_pod.ITEM_FILE_SIZE
+_QUANTITY_AT = amiga_pod.ITEM_FIELD_AT["quantity"]
+#: What a case's scrolls take from it when the sheet shows them
+#: (`goldbox.amiga_pod.unbundle`), so an edit to either lands on the case.
+_CASE_FIELDS = ("readied", "weight")
+
+
+def _amiga_nodes(block: bytes) -> tuple[list[bytearray], list[list[bytearray]],
+                                         bytes]:
+    """The head item nodes of an Amiga block, each case's chained nodes, and
+    the bytes after the items (the effect nodes), walked as the loader does."""
+    record = amiga_pod.RECORD_BYTES
+    heads: list[bytearray] = []
+    chains: list[list[bytearray]] = []
+    at = record
+    for _ in range(int.from_bytes(block[amiga_pod.ITEM_CHAIN:
+                                        amiga_pod.ITEM_CHAIN + 4], "big")):
+        head = bytearray(block[at:at + _ITEM])
+        at += _ITEM
+        if len(head) < _ITEM:
+            raise RewriteError("an Amiga item node runs off the end of the "
+                               "block")
+        chain: list[bytearray] = []
+        if amiga_pod.PodItem(bytes(head)).is_scroll:
+            for _ in range(head[_QUANTITY_AT]):
+                chain.append(bytearray(block[at:at + _ITEM]))
+                at += _ITEM
+        heads.append(head)
+        chains.append(chain)
+    return heads, chains, bytes(block[at:])
+
+
+def amiga_item_sources(block: bytes) -> list[tuple[int, int | None]]:
+    """For each item the sheet shows, in its order, the head node it comes
+    from and, for a scroll in a case, its place in that case's chain.
+
+    The order is `goldbox.amiga_pod.unbundle`'s: head items in file order,
+    each case replaced by its scrolls.
+    """
+    heads, chains, _tail = _amiga_nodes(block)
+    out: list[tuple[int, int | None]] = []
+    for h, head in enumerate(heads):
+        if amiga_pod.PodItem(bytes(head)).is_scroll:
+            out.extend((h, c) for c in range(len(chains[h])))
+        else:
+            out.append((h, None))
+    return out
+
+
+def _patch_node(node: bytearray, was: bytes, now: bytes,
+                only: Sequence[str] | None = None) -> list[str]:
+    """Put each item field `was` and `now` (sheet blocks) disagree about into
+    the Amiga node, in its own encoding, and name them.  A node is never
+    rebuilt from the DOS item: that would zero the bytes no field owns."""
+    old = dos_codec.item_from_c64(was, DELTAS.item_size)
+    new = dos_codec.item_from_c64(now, DELTAS.item_size)
+    encoded = amiga_pod.PodItem.from_dos_bytes(new).raw
+    names = [s.name for s in rewrite.changed_spans(
+        old, new, rewrite.dos_item_spans())]
+    for name in names:
+        if name not in amiga_pod.ITEM_FIELDS or (
+                only is not None and name not in only):
+            continue
+        at, size = amiga_pod.ITEM_FIELD_AT[name], amiga_pod.ITEM_FIELDS[name].size
+        node[at:at + size] = encoded[at:at + size]
+    return names
+
+
+def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
+                        now: Sequence[bytes]) -> tuple[bytes, list[str]]:
+    """`block` with the sheet's item edits made, and what moved.
+
+    `was` and `now` are the sixteen sheet slots as the sheet was built from
+    the block and as it left them, following `_item_nodes`' rules on Amiga
+    nodes: an unchanged slot keeps its node whole, a slot holding the same
+    item has its changed fields patched into the original node, any other
+    filled slot is a new head node, a slot left empty drops its node, and the
+    items past the sixteenth are kept.
+
+    A scroll in a case is a node chained off the case.  Its `readied` and
+    `weight` are shown from the case, so an edit to either is written to the
+    case's head node; the case's own count at `+0x0C` follows the scrolls it
+    keeps, and a case none of whose scrolls remain is dropped.  The count of
+    head nodes at `0x008` is rewritten; the bytes the game derives on load
+    (encumbrance, the item count cache, hands) and the effect nodes are left
+    as read.
+    """
+    if len(was) != ITEM_SLOTS or len(now) != ITEM_SLOTS:
+        raise RewriteError(f"the sheet has {ITEM_SLOTS} item slots")
+    heads, chains, tail = _amiga_nodes(block)
+    sources = amiga_item_sources(block)
+    shown = min(len(sources), ITEM_SLOTS)
+    if [n for n in range(ITEM_SLOTS) if any(was[n])] != list(range(shown)):
+        raise RewriteError(
+            f"the sheet's item slots as read do not hold this character's "
+            f"first {shown} items in order")
+    if list(was) == list(now):
+        return bytes(block), []
+
+    used: set[int] = set()
+    order: list[tuple[str, Any]] = []
+    moved: list[str] = []
+    after = 0
+    for n in range(ITEM_SLOTS):
+        block_n = now[n]
+        if not any(block_n):
+            continue
+        same = next((m for m in range(after, shown)
+                     if m not in used and was[m] == block_n), None)
+        if same is not None:
+            used.add(same)
+            after = same + 1
+            order.append(("entry", same))
+            if same != n:
+                moved.append(f"item {same}: now item {len(order) - 1}")
+            continue
+        if (n < shown and n not in used
+                and was[n][:_ITEM_IDENTITY] == block_n[:_ITEM_IDENTITY]):
+            used.add(n)
+            h, c = sources[n]
+            if c is None:
+                names = _patch_node(heads[h], was[n], block_n)
+            else:
+                names = _patch_node(chains[h][c], was[n], block_n, [
+                    f for f in amiga_pod.ITEM_FIELDS if f not in _CASE_FIELDS])
+                _patch_node(heads[h], was[n], block_n, _CASE_FIELDS)
+            moved.extend(f"item {n}: {name}" for name in names)
+            order.append(("entry", n))
+            continue
+        raw = amiga_pod.PodItem.from_dos_bytes(
+            dos_codec.item_from_c64(block_n, DELTAS.item_size)).raw
+        order.append(("new", bytearray(raw)))
+        moved.append(f"item {len(order) - 1}: added")
+    moved.extend(f"item {m}: deleted" for m in range(shown) if m not in used)
+    for entry in range(shown, len(sources)):
+        order.append(("entry", entry))
+
+    out_heads: list[bytearray] = []
+    out_chains: list[list[bytearray]] = []
+    placed: dict[int, int] = {}
+    for kind, what in order:
+        if kind == "new":
+            out_heads.append(what)
+            out_chains.append([])
+            continue
+        h, c = sources[what]
+        if c is None:
+            out_heads.append(heads[h])
+            out_chains.append([])
+            continue
+        if h not in placed:
+            placed[h] = len(out_heads)
+            out_heads.append(heads[h])
+            out_chains.append([])
+        out_chains[placed[h]].append(chains[h][c])
+    for at in placed.values():
+        out_heads[at][_QUANTITY_AT] = len(out_chains[at])
+
+    out = bytearray(block[:amiga_pod.RECORD_BYTES])
+    out[amiga_pod.ITEM_CHAIN:amiga_pod.ITEM_CHAIN + 4] = len(
+        out_heads).to_bytes(4, "big")
+    for head, chain in zip(out_heads, out_chains):
+        out += head
+        for node in chain:
+            out += node
+    out += tail
+    return bytes(out), moved
+
+
+def rebuild_party(data: bytes, blocks: Sequence[bytes]) -> bytes:
+    """A `SavGam<L>.pty` with each character's block, whatever its length,
+    put where `goldbox.amiga_savegame.pod_parse` found the old one.
+
+    The bytes after the party are not read by the game, so they are cut or
+    padded with zeroes to keep the file's fixed size.  The result is parsed
+    again and every block boundary has to land where the blocks put it.
+    """
+    save = amiga_savegame.pod_parse(data)
+    if len(blocks) != save.count:
+        raise RewriteError(
+            f"the saved game holds {save.count} characters and the rewrite "
+            f"{len(blocks)}")
+    size = amiga_savegame.POD_SAVEGAME_SIZE
+    body = data[:amiga_savegame.POD_PARTY_AT] + b"".join(blocks)
+    if len(body) > size:
+        raise RewriteError(
+            f"the party ends at {len(body)}, past the {size} of a saved game")
+    out = (body + data[save.end:])[:size].ljust(size, b"\0")
+    try:
+        again = amiga_savegame.pod_parse(out)
+    except amiga_savegame.PodSaveError as exc:
+        raise RewriteError(f"the rebuilt saved game does not parse: {exc}")
+    at = amiga_savegame.POD_PARTY_AT
+    for block, found in zip(blocks, again.characters):
+        if found.at != at or found.size != len(block):
             raise RewriteError(
-                f"{character.name}'s block is {character.size} bytes and "
-                f"its rewrite {len(block)}")
-        out[character.at:character.at + character.size] = block
-    return bytes(out)
+                f"{found.name}'s block does not end where the rewrite put it")
+        at += len(block)
+    return out
