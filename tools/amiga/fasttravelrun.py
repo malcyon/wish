@@ -146,11 +146,12 @@ def _peek(target, title, variables, why: str, log: Log) -> None:
             r.as_log() for r in amigavars.read_variables(target, title, variables)])
 
 
-def _settle(target, row, log: Log, sleep, clock, budget: float) -> None:
+def _settle(target, row, log: Log, sleep, clock, budget: float) -> bool:
     """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
 
     The trip is idle when the area byte has changed, but the game is still
     drawing the arrival; a shot then matches the one before the second hop.
+    Returns whether the gate passed.
     """
     began = clock()
     while not amigatrip.gate(target, row) and clock() - began < budget:
@@ -158,6 +159,7 @@ def _settle(target, row, log: Log, sleep, clock, budget: float) -> None:
     passed = bool(amigatrip.gate(target, row))
     log("settle", gate=passed, waited=round(clock() - began, 3))
     sleep(SETTLE_SECONDS)
+    return passed
 
 
 def run_trip(fasttravel, target, row, area, out: pathlib.Path,
@@ -171,6 +173,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
 
     Returns `{"result": ..., "outcomes": [...], "answered": bool}` where result
     is `not_legal`, `not_applied`, `idle` (no trip or hop left) or `timeout`;
+    `settled` is False when an idle game never reached the menu gate;
     `areas_seen` is the starting area and then each new area byte the polls
     read. `party` reads the party (as `amigaparty.read_party`); its names are
     logged and returned before and after the trip. `peek_vars` are read
@@ -179,7 +182,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
     log("legality", ok=bool(verdict), reason=verdict.reason, back=back)
     summary = {"result": "not_legal", "outcomes": [], "answered": False,
-               "areas_seen": [], "party_before": None, "party_after": None}
+               "settled": True, "areas_seen": [], "party_before": None, "party_after": None}
     if not verdict:
         return summary
     screen = _Screen(out, shot, log)
@@ -255,7 +258,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         _disarm(fasttravel, target)
         log("timeout", budget=budget)
     if summary["result"] == "idle":
-        _settle(target, row, log, sleep, clock, budget)
+        summary["settled"] = _settle(target, row, log, sleep, clock, budget)
     screen.take("after")
     last = _reading(target, row)
     seen(last["area"])
@@ -328,6 +331,11 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(str(exc)) from exc
     for result in results:
         print(json.dumps(result))
+    for number, result in enumerate(results, 1):
+        if not result.get("settled", True):
+            leg = "the way back" if number > 1 else "the trip"
+            print(f"Leg {number} ({leg}) never became ready for Fast Travel.", file=sys.stderr)
+            return 1
     return 0 if all(r["result"] == "idle" for r in results) else 1
 
 

@@ -214,6 +214,21 @@ def test_a_gate_that_never_passes_ends_at_the_budget(world):
     assert settle[0]["gate"] is False and settle[0]["waited"] <= 10.0 + ftr.POLL_SECONDS
 
 
+def test_a_gate_that_never_passes_is_reported_unsettled_and_exits_nonzero(world, monkeypatch,
+                                                                         tmp_path, capsys):
+    world.gate_at = 1e9
+    got = world.drive(Travel(polls=1), budget=10.0)
+    assert got["result"] == "idle" and got["settled"] is False
+    monkeypatch.setattr(ftr, "run_trip", lambda *a, **k: got)
+    _run_main(monkeypatch, tmp_path)
+    assert _run_main.code != 0
+    assert "never became ready for Fast Travel" in capsys.readouterr().err
+
+
+def test_a_gate_that_passes_is_settled(world):
+    assert world.drive(Travel(polls=1))["settled"] is True
+
+
 def test_the_answer_is_pressed_once_when_the_screen_changes_with_the_key_taken(world):
     class Asking(Travel):
         def continue_pending(self, target):
@@ -366,6 +381,26 @@ def test_the_entry_words_come_from_the_titles_row(key, words, monkeypatch):
     monkeypatch.setattr(amigatrip, "square", lambda t, row: (0, 0, 0))
     got = ftr._reading(T(), amigatrip.row_for(key))
     assert seen == [2 * words] and len(got["entry_words"]) == 4 * words
+
+
+def _run_main(monkeypatch, tmp_path):
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", lambda key, disks: None)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
+    _run_main.code = ftr.main(["--holder", "h", "--disks", "D", "--to", "3",
+                               "--out", str(tmp_path)])
 
 
 class _Pipe:
