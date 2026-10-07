@@ -150,7 +150,9 @@ class AmigaFastTravel(engine.FastTravel):
         return self._init_areas
 
     def _row(self, id: int):
-        return areas.area_in(id, self.title)
+        # The C64 table first, so a title it covers is read as before; Pools of
+        # Darkness has no rows there and is read from its own table.
+        return engine.area_by_id(id, self.title) or areas.area_in(id, self.title)
 
     def _outdoors(self, to: int) -> bool:
         row = self._row(to)

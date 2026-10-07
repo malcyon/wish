@@ -1225,3 +1225,14 @@ def test_a_trip_between_overlands_has_no_exit_statements(disks):
     assert t.legality(m, areas.area_in(25, areas.POOLS_OF_DARKNESS))
     assert t.apply(m, areas.area_in(25, areas.POOLS_OF_DARKNESS)).ok
     assert trips.save(1, 0x22) not in _statements(m)
+
+
+@pytest.mark.parametrize("key", [CURSE, POOL])
+def test_a_title_the_c64_table_covers_is_read_from_that_table(key, monkeypatch):
+    monkeypatch.setattr(areas, "area_in", lambda id, title: "goldbox row")
+    t = aft.AmigaFastTravel(key, object())
+    rows = [(id, engine.area_by_id(id, t.title)) for id in range(256)]
+    rows = [(id, row) for id, row in rows if row is not None]
+    assert rows
+    for id, row in rows:
+        assert t._row(id) is row
