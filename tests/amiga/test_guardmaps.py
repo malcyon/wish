@@ -830,12 +830,15 @@ def test_silver_blades_identity_holds_guys_one_row_item_list():
                for rule in rules)
 
 
-def _darkness_matching(crop):
+def _darkness_matching(crop, *, places=True):
+    """Guards matching `crop`; `places=False` leaves out the place readout guards, which any screen drawn at that place shows."""
     from tools.amiga import screens
 
     spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
     matching = set()
     for state, value in spec['guards'].items():
+        if not places and state.startswith('place_'):
+            continue
         for rule in screens.rules_of(value):
             box = tuple(rule['box'])
             if screens.box_digests(crop, {box})[box] == rule['sha256']:
@@ -856,7 +859,7 @@ def test_the_darkness_save_picker_guards_recognise_the_seven_member_party_picker
         if not crop.is_file():
             continue
         seen += 1
-        assert _darkness_matching(crop) == {'camp_save_picker', 'save_picker'}, name
+        assert _darkness_matching(crop, places=False) == {'camp_save_picker', 'save_picker'}, name
     if not seen:
         pytest.skip('the kept Darkness picker crops are not on this machine')
 
@@ -902,7 +905,7 @@ def test_the_darkness_exit_game_guard_recognises_the_seven_member_quit_question(
     crop = root / 'WISH-2/wish2-a2-capture/sheets2/shots/54-exit_game.png'
     if not crop.is_file():
         pytest.skip('the kept Darkness seven-member quit question is not on this machine')
-    assert _darkness_matching(crop) == {'exit_game'}
+    assert _darkness_matching(crop, places=False) == {'exit_game'}
     for name in ('628/darkness-P1a/accept2/shots/31-exit_game.png',
                  'WISH-2/wish2-a3/accept3b/shots/16-exit_game.png'):
         other = root / name
