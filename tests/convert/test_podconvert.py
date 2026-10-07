@@ -560,3 +560,74 @@ def test_a_dos_record_holding_0x130_as_one_goes_to_amiga_as_spell_126():
     mask = raw[amiga_pod.SPELLBOOK:amiga_pod.SPELLBOOK + amiga_pod.SPELLBOOK_BYTES]
     assert mask[125 // 8] & (1 << (125 % 8))
     assert rep.dropped == []
+
+
+# --- the item's whole hidden byte -------------------------------------------
+
+def _bolt_plus_4() -> bytes:
+    """A DOS item holding the template Bolt +4's `hidden` byte, `0x46`."""
+    rec = bytearray(POD.item_size)
+    at = {f.name: f.offset for f in dos_port.ITEM_LAYOUT}
+    rec[at["type_index"]] = 0x01
+    rec[at["hidden"]] = 0x46
+    rec[at["quantity"]] = 10
+    return bytes(rec)
+
+
+def _read_back(rec: bytes, itm: bytes, spc: bytes):
+    items = [dos_codec.DosItem(itm[i:i + POD.item_size], POD.item_size)
+             for i in range(0, len(itm), POD.item_size)]
+    return dos_codec.to_neutral(dos_codec.DosCharacter(rec, items, spc))
+
+
+def _hidden(dos_item: bytes) -> int:
+    return dos_item[dos_codec.ITEM_FIELDS_BY_NAME["hidden"].offset]
+
+
+def _amiga_char_carrying(dos_item: bytes):
+    """A Pools of Darkness neutral character whose pack is that one item."""
+    raw = amiga_pod.PodWriter(
+        name="THIEF", hit_points_max=30,
+        character_class=amiga_pod.CLASSES.index("THIEF"),
+        class_levels=(0, 0, 0, 0, 0, 0, 20),
+        class_bits=amiga_pod.CLASS_BIT["thief"]).to_bytes()
+    char = amiga_pod.pod_to_neutral(raw)
+    char.set("inventory", [dos_codec.item_to_c64(dos_item, True)], "test",
+             dos_codec.Confidence.CONFIRMED)
+    return char
+
+
+def test_a_bolt_plus_4_keeps_its_hidden_byte_amiga_to_dos_to_amiga():
+    char = _amiga_char_carrying(_bolt_plus_4())
+    writer, _rep = amiga_pod.write_pod(char)
+    amiga = amiga_pod.pod_to_neutral(writer.to_bytes())
+    node = amiga_pod.PodItem.from_dos_bytes(
+        dos_codec.item_from_c64(bytes(amiga.get("inventory")[0]),
+                                POD.item_size, True))
+    assert _hidden(node.to_dos_bytes()) == 0x46
+
+    rec, itm, spc, _drep = dos_codec.write(amiga)
+    assert _hidden(itm[:POD.item_size]) == 0x46
+    back = _read_back(rec, itm, spc)
+    writer, _rep = amiga_pod.write_pod(back)
+    again = amiga_pod.pod_to_neutral(writer.to_bytes())
+    assert _hidden(dos_codec.item_from_c64(
+        bytes(again.get("inventory")[0]), POD.item_size, True)) == 0x46
+
+
+def test_a_bolt_plus_4_keeps_its_hidden_byte_dos_to_amiga():
+    char = _amiga_char_carrying(_bolt_plus_4())
+    rec, itm, spc, _rep = dos_codec.write(char)
+    back = _read_back(rec, itm, spc)
+    writer, _rep = amiga_pod.write_pod(back)
+    raw = writer.to_bytes()
+    node = amiga_pod.PodItem.from_bytes(
+        raw[amiga_pod.RECORD_BYTES:amiga_pod.RECORD_BYTES
+            + amiga_pod.ITEM_FILE_SIZE])
+    assert node.get("hidden") == 0x46
+
+
+def test_the_same_item_on_the_c64_still_keeps_only_the_name_bits():
+    c64 = dos_codec.item_to_c64(_bolt_plus_4())
+    assert c64[6] == 0x06 and c64[7] == 0
+    assert _hidden(dos_codec.item_from_c64(c64)) == 0x06

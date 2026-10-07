@@ -429,8 +429,20 @@ C64_SCROLL_TYPES = {
 }
 
 
-def item_to_c64(record: bytes) -> bytes:
+#: The titles whose neutral item keeps the whole DOS `hidden` byte.  The
+#: C64's byte +6 holds only its low three bits (the name mask), so a title
+#: with a C64 port keeps masking; Pools of Darkness has no C64 port, and its
+#: item templates set bits above `0x07` (Bolt +4 is `0x46`) that DOS JOIN
+#: compares.  They travel in bits 0-4 of byte +7, which a C64 item leaves
+#: clear below its cursed bit.
+WIDE_HIDDEN_TITLES = frozenset({"pools-of-darkness"})
+
+
+def item_to_c64(record: bytes, wide_hidden: bool = False) -> bytes:
     """Project one DOS item onto the C64's sixteen bytes.
+
+    With `wide_hidden` the `hidden` bits above `0x07` go into bits 0-4 of
+    byte +7 (:data:`WIDE_HIDDEN_TITLES`); otherwise they are masked off.
 
     63 bytes in three titles and 67 in Secret of the Silver Blades, whose
     four extra bytes are :data:`ITEM_TAIL` and are blocked if they hold
@@ -464,11 +476,12 @@ def item_to_c64(record: bytes) -> bytes:
            "readied", "hidden", "cursed", "weight", "quantity", "value",
            "charges", "effect", "power")}
     r = record
+    high = (r[at["hidden"]] >> 3) if wide_hidden else 0
     return bytes((
         r[at["type_index"]], r[at["name1"]], r[at["name2"]], r[at["name3"]],
         r[at["plus"]], r[at["plus_save"]],
         (0x80 if r[at["readied"]] else 0) | (r[at["hidden"]] & 0x07),
-        0x80 if r[at["cursed"]] else 0,
+        (0x80 if r[at["cursed"]] else 0) | high,
         r[at["weight"]], r[at["weight"] + 1],
         r[at["quantity"]],
         r[at["value"]], r[at["value"] + 1],
@@ -534,7 +547,8 @@ def _chain_cleared(record: bytes) -> bytes:
 
 
 def unbundled_inventory(
-        items: Iterable[tuple[bytes, "Sequence[bytes] | None"]]
+        items: Iterable[tuple[bytes, "Sequence[bytes] | None"]],
+        wide_hidden: bool = False
 ) -> tuple[list[bytes], tuple[ScrollBundle, ...]]:
     """The neutral `inventory` and `scroll_bundles` for a pack.
 
@@ -548,17 +562,20 @@ def unbundled_inventory(
     bundles: list[ScrollBundle] = []
     for head, scrolls in items:
         if scrolls is None:
-            inventory.append(item_to_c64(head))
+            inventory.append(item_to_c64(head, wide_hidden))
             continue
-        bundles.append(ScrollBundle(len(inventory), len(scrolls),
-                                    item_to_c64(_chain_cleared(head))))
-        inventory.extend(item_to_c64(_chain_cleared(s)) for s in scrolls)
+        bundles.append(ScrollBundle(
+            len(inventory), len(scrolls),
+            item_to_c64(_chain_cleared(head), wide_hidden)))
+        inventory.extend(item_to_c64(_chain_cleared(s), wide_hidden)
+                         for s in scrolls)
     return inventory, tuple(bundles)
 
 
 def bundled_item_units(inventory: Sequence[bytes],
                        bundles: Sequence[ScrollBundle],
-                       item_size: int) -> list[tuple[bytes, list[bytes]]]:
+                       item_size: int, wide_hidden: bool = False
+                       ) -> list[tuple[bytes, list[bytes]]]:
     """Each head item a DOS item file holds, as `(sixteen bytes, records)`.
 
     The mirror of :func:`unbundled_inventory`: a joined scroll's head is
@@ -594,12 +611,12 @@ def bundled_item_units(inventory: Sequence[bytes],
             b = order[k]
             k += 1
             head = bytes(b.head[:10]) + bytes((b.count,)) + bytes(b.head[11:])
-            units.append((head, [item_from_c64(head, item_size)]
-                          + [item_from_c64(bytes(s), item_size)
+            units.append((head, [item_from_c64(head, item_size, wide_hidden)]
+                          + [item_from_c64(bytes(s), item_size, wide_hidden)
                              for s in inventory[n:n + b.count]]))
             n += b.count
             continue
-        record = item_from_c64(bytes(inventory[n]), item_size)
+        record = item_from_c64(bytes(inventory[n]), item_size, wide_hidden)
         if is_joined_scroll(record):
             # The loader would read the next `quantity` records as this
             # item's scrolls and lose them from the pack.
@@ -638,10 +655,11 @@ def pack_of(char: "DosCharacter | NeutralCharacter"
         return (list(char.get("inventory") or ()),
                 tuple(char.get("scroll_bundles") or ()))
     return unbundled_inventory(
-        (it.to_bytes(),
-         [s.to_bytes() for s in it.subnodes]
-         if is_joined_scroll(it.to_bytes()) else None)
-        for it in char.items)
+        ((it.to_bytes(),
+          [s.to_bytes() for s in it.subnodes]
+          if is_joined_scroll(it.to_bytes()) else None)
+         for it in char.items),
+        char.deltas.key in WIDE_HIDDEN_TITLES)
 
 
 class PackUnit(NamedTuple):
@@ -3825,8 +3843,12 @@ class SaveReport(neutral.Report):
         return lines
 
 
-def item_from_c64(record: bytes, item_size: int = ITEM_SIZE) -> bytes:
+def item_from_c64(record: bytes, item_size: int = ITEM_SIZE,
+                  wide_hidden: bool = False) -> bytes:
     """Project one C64 sixteen-byte item onto the DOS item record.
+
+    With `wide_hidden` bits 0-4 of byte +7 are the `hidden` bits above
+    `0x07` (:data:`WIDE_HIDDEN_TITLES`); otherwise they are ignored.
 
     The inverse of :func:`item_to_c64` for every field the two ports share:
     the C64's two packed bytes come apart into DOS's readied, hidden and
@@ -3860,7 +3882,8 @@ def item_from_c64(record: bytes, item_size: int = ITEM_SIZE) -> bytes:
     out[at["name1"]], out[at["name2"]], out[at["name3"]] = r[1], r[2], r[3]
     out[at["plus"]], out[at["plus_save"]] = r[4], r[5]
     out[at["readied"]] = 1 if r[6] & 0x80 else 0
-    out[at["hidden"]] = r[6] & 0x07
+    out[at["hidden"]] = (r[6] & 0x07) | ((r[7] & 0x1F) << 3 if wide_hidden
+                                          else 0)
     out[at["cursed"]] = 1 if r[7] & 0x80 else 0
     out[at["weight"]:at["weight"] + 2] = r[8:10]
     out[at["quantity"]] = r[10]
@@ -6407,7 +6430,8 @@ def write(char: NeutralCharacter,
     if inventory is not None:
         projected = [bytes(i) for i in inventory.value]
         units = bundled_item_units(
-            projected, joined.value if joined is not None else (), item_size)
+            projected, joined.value if joined is not None else (), item_size,
+            deltas.key in WIDE_HIDDEN_TITLES)
         records = [r for _head, written in units for r in written]
         itm = b"".join(records)
         if records:

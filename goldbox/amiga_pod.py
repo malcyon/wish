@@ -782,9 +782,10 @@ ITEM_FIELDS: dict[str, dos_port.Field] = {
 ITEM_FIELD_AT: dict[str, int] = {
     name: _item_offset(f.offset) for name, f in ITEM_FIELDS.items()}
 #: The three bytes of the twenty no DOS item field maps onto -- the
-#: insertions -- derived rather than restated. **Zero in 93 of 93 items**,
-#: which is the constructor's own `setmem(node, size, 0)` and what an item the
-#: game built itself looks like.
+#: insertions -- derived rather than restated. Neither Amiga build reads
+#: bytes 1 and 13 and the constructor's `setmem(node, size, 0)` clears them,
+#: so a game-built item holds zero there; a load and save copies them
+#: unchanged.
 ITEM_PADS: tuple[int, ...] = tuple(
     sorted(set(range(ITEM_FILE_SIZE)) - {
         at + i for name, at in ITEM_FIELD_AT.items()
@@ -2788,7 +2789,7 @@ def pod_to_neutral(char: PodCharacter | bytes | bytearray) -> NeutralCharacter:
     # A scroll case becomes the scrolls chained off it, each an item of its
     # own, because DOS keeps no case (`unbundle`).
     items, scrolls, effects = char._tail()
-    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes())
+    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes(), True)
                           for it in unbundle(items, scrolls)],
             f"the {ITEM_FILE_SIZE}-byte item records from {RECORD_BYTES}, "
             f"read as the later Amiga titles' own item node and re-cut to the "
@@ -3282,7 +3283,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     carried: list[bytes] = []
     for entry in (carried_value.value if carried_value else None) or ():
         carried.append(PodItem.from_dos_bytes(
-            _dos.item_from_c64(bytes(entry), dos_port.ITEM_SIZE)).raw)
+            _dos.item_from_c64(bytes(entry), dos_port.ITEM_SIZE, True)).raw)
     scrolls = sum(PodItem.from_bytes(node).quantity for node in carried
                   if PodItem.from_bytes(node).is_scroll)
     # The reader unbundles cases, so only a hand-built neutral record can
