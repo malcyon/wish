@@ -60,6 +60,16 @@ class Session:
         self.clock, self.screen_at = clock, screen_at
         self.kbd = Kbd()
         self.prompts, self.bars = 0, []
+        self.no_encounters = False
+        self.calls = []
+
+    def suppress_encounters(self):
+        self.calls.append(("suppress", self.no_encounters))
+
+    def restore_encounter_gates(self):
+        self.calls.append(("restore",))
+        self.no_encounters = False
+        return []
 
     def screen(self):
         return self.screen_at(self.clock.now)
@@ -175,6 +185,34 @@ def build(screen_at=lambda t: Screen(), area_at=None, script_at=None, answer=Non
                      sleep=clock.sleep, clock=clock, budget=budget, game=game, peeks=peeks,
                      stages=stages, party_reader=lambda target, game: party_at(clock.now))
     return drv, sess, ft, memory, clock, stream
+
+
+def test_no_encounters_is_off_by_default():
+    drv, sess, *_ = build()
+    drv.run([18])
+    assert sess.calls == [] and sess.no_encounters is False
+
+
+def test_no_encounters_is_set_before_each_leg_and_restored_at_the_end():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.no_encounters = True
+    drv.run([18, 2])
+    assert sess.calls == [("suppress", True), ("suppress", True), ("restore",)]
+    logged = [e["event"] for e in events(stream)]
+    assert logged.count("no_encounters") == 2 and logged[-1] == "encounter-gates"
+
+
+def test_gates_are_restored_when_a_leg_raises():
+    drv, sess, ft, *_ = build()
+    drv.no_encounters = True
+
+    def boom(*a, **k):
+        raise RuntimeError("stop")
+
+    ft.legality = boom
+    with pytest.raises(RuntimeError):
+        drv.run([18])
+    assert sess.calls[-1] == ("restore",)
 
 
 def events(stream):

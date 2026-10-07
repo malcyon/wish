@@ -20,6 +20,12 @@ names before and after, the live square after `apply`, and `areas_seen`: each
 area the `$6E1B`-style cache slot showed on any 0.2 s poll, in order, without
 repeats.
 
+`--no-encounters` calls `Session.suppress_encounters` (the switch of
+`tools/c64/acceptance.py --no-encounters`) before each leg and
+`restore_encounter_gates` when the run ends, logging both; the driver makes no
+save. Only areas in `tools/c64/session.py` `ENCOUNTER_GATES` are covered, and
+only the one the party stands in when a leg starts.
+
 A trip has arrived when `$6E1B` and `$49F2` both equal the destination and
 `legality` toward a different area passes; a check toward the destination
 itself answers "already in that area" and proves nothing. Each poll first lets
@@ -206,7 +212,9 @@ class Driver:
                  budget: float = BUDGET_SECONDS, game=None,
                  peeks: list[tuple[int, int]] | None = None,
                  stages: list[tuple[int, int, int]] | None = None,
-                 party_reader: Callable[[object, object], object] | None = None):
+                 party_reader: Callable[[object, object], object] | None = None,
+                 no_encounters: bool = False):
+        self.no_encounters = no_encounters
         self.sess, self.connect, self.ft = sess, connect, fasttravel
         self.out, self.log, self.answer = out, log, answer
         self.sleep, self.clock, self.budget = sleep, clock, budget
@@ -283,6 +291,7 @@ class Driver:
                    "areas_seen": []}
         self.note_state(tag, "before")
         self.stage(leg, tag)
+        self.hold_encounters(tag)
 
         def legal(target):
             v = self.ft.legality(target, dest)
@@ -339,6 +348,29 @@ class Driver:
             for addr, length in self.peeks:
                 self.log("peek", tag=tag, when=when, addr=f"${addr:04X}", length=length,
                          bytes=bytes(target.read(addr, length)).hex(" "))
+
+    def hold_encounters(self, tag: str) -> None:
+        """Under `--no-encounters`, write the running area's gate through the session.
+
+        It uses `Session.suppress_encounters`, the code `acceptance.py` uses, and
+        covers only the area the party stands in when the leg starts.
+        """
+        if not self.no_encounters:
+            return
+        self.sess.no_encounters = True
+        self.sess.suppress_encounters()
+        self.log("no_encounters", tag=tag, on=True)
+
+    def release_encounters(self) -> None:
+        """Put back and verify every gate `hold_encounters` wrote, and log the rows."""
+        if not self.no_encounters:
+            return
+        try:
+            rows = self.sess.restore_encounter_gates()
+        except Exception as exc:
+            self.log("encounter-gates", verified=False, error=repr(exc))
+            raise
+        self.log("encounter-gates", verified=True, gates=rows)
 
     def stage(self, leg: int, tag: str) -> None:
         """Write the bytes `--stage` names for this leg, through the guard, and log each."""
@@ -401,6 +433,7 @@ class Driver:
                     break
         finally:
             self.ft.cancel_pending()
+            self.release_encounters()
         return self.results
 
 
@@ -477,6 +510,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--to", type=int, action="append", required=True,
                         help="a destination area id; repeat for each further leg")
     parser.add_argument("--answer", help="a bar word to select when the game asks, e.g. YES")
+    parser.add_argument("--no-encounters", action="store_true",
+                        help="hold the running area's random encounters off before each leg "
+                             "(the gates are put back when the run ends; the driver saves nothing)")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
                         help="seconds each leg may take")
     parser.add_argument("--disks", help="the folder of the title's disk images")
@@ -519,7 +555,7 @@ def main(argv: list[str] | None = None) -> int:
                     driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
                                     engine.FastTravel(game), out, log, answer=args.answer,
                                     budget=args.budget, game=game, peeks=peeks,
-                                    stages=stages)
+                                    stages=stages, no_encounters=args.no_encounters)
                     driver.shot("0-start")
                     driver.run(args.to)
                     driver.shot("final")
