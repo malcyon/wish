@@ -83,8 +83,20 @@ def find_game(stem: str = STEM) -> pathlib.Path:
     raise FileNotFoundError(f"no DOS {stem} under {dosbox.ARCHIVES}")
 
 
+#: Two title screens, as `Screen.digest`, the same on every capture of them in
+#: three DOSBox-X boots and one DOSBox 0.74 boot.  `LOGO_SCREEN`, the SSI logo, is up
+#: for about four seconds after boot and ignores keys; `PLAY_DEMO_SCREEN` is
+#: the credits with the `POOLS OF DARKNESS 1.10  PLAY DEMO` bar, which holds
+#: about eight seconds before the attract demo starts.
+LOGO_SCREEN = "97602e053b233b15"
+PLAY_DEMO_SCREEN = "188e0453cc58a20b"
+
+#: `PLAY` on the `PLAY DEMO` bar, which opens the party menu.
+TITLE_PLAY = "p"
+
+
 def to_main_menu(session: dosbox.Session, tries: int = 30, deadline=None) -> str:
-    """Press Escape past the title screens until the screen stops changing.
+    """Press past the title screens until the screen stops changing.
 
     **Escape rather than Return**, because Return on the menu the title
     sequence ends at selects `CREATE NEW CHARACTER` and walks straight into
@@ -93,16 +105,30 @@ def to_main_menu(session: dosbox.Session, tries: int = 30, deadline=None) -> str
     nothing on the menu, so "the screen stopped changing" and "we have
     arrived" become the same statement.
 
+    Two title screens are known by their digest.  The `PLAY DEMO` bar gets
+    `PLAY` (`TITLE_PLAY`) instead of Escape, the game's own key for the
+    party menu.  The SSI logo ignores keys, so it never counts as the screen
+    having stopped changing; three Escapes there would otherwise read as the
+    menu.
+
     A `deadline` (`check`/`bound`) is checked at each press and cuts its settle.
     """
-    seen: list[str] = []
-    for _ in range(tries):
+    def look() -> str:
         wait = 8.0
         if deadline is not None:
             wait = deadline.bound(wait, "pressing Escape past the titles")
-        session.key("Escape")
+        return session.settle(quiet=0.5, timeout=wait).digest()
+
+    seen: list[str] = []
+    here = look()
+    for _ in range(tries):
+        session.key(TITLE_PLAY if here == PLAY_DEMO_SCREEN else "Escape")
         time.sleep(0.6)
-        seen.append(session.settle(quiet=0.5, timeout=wait).digest())
+        here = look()
+        if here == LOGO_SCREEN:
+            seen.clear()
+            continue
+        seen.append(here)
         if len(seen) >= 3 and seen[-1] == seen[-2] == seen[-3]:
             return seen[-1]
     raise TimeoutError("never reached a screen Escape does not change")

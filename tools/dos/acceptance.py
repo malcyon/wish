@@ -75,8 +75,8 @@ a source whose title does not match `--title`:
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
-| `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it |
-| `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot` and `read` may come after it |
+| `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it.  A `snapshot` after a `press` is taken only once the screen has held unchanged for `Driver.SNAPSHOT_QUIET` seconds (30 s at most) and fails if it never does or changes while the state is written; its digest is recorded as `screen`, and a `restore` of that name fails unless the same screen comes back |
+| `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot`, `read`, `snapshot` and `restore` may come after it, and none of the last two after a `prayer-watch` |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `walk KKIIJI` | Pool: a run of `I` (step forward), `J` (turn left) and `K` (turn right), each move judged by the place the DOSBox-X debugger reads at `POOL_PLACE` and the area byte `POOL_AREA`, both logged as `place`: a step must change the square or the area and a turn must leave both alone, so the area changes only on the step that crosses into the next one (`crossings` lists them).  A story box a step lands on gets `Return`.  The last step may end on a screen that is not the map, whose text is kept as `arrival` (the temple's `DO YOU SEEK HEALING?` for `temple raise`); on any earlier move such a screen stops the run |
 | `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
@@ -2357,7 +2357,8 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     The party is somewhere at each step -- not yet loaded, on the map, at the
     party menu or in camp -- and each step needs one of those.  `shot` and
     `read` need nothing.  After a `press` nobody knows where the party is,
-    so only more `press`, `shot` and `read` may come after it, and after
+    so only more `press`, `shot` and `read` may come after it, or a `snapshot`
+    or `restore` (a restore puts back where its snapshot was), and after
     `fight first-bar`, which ends the run at a fight's first command bar,
     only `shot` and `read`.
     """
@@ -2369,6 +2370,8 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     #: Where the party was at each snapshot, which a restore returns it to.
     places: dict[str, str] = {}
     fights = 0
+    #: Whether a `prayer-watch` has run, which may leave the debugger halted.
+    watched = False
     for step in steps:
         k = step.kind
         if k in ("shot", "read"):
@@ -2380,9 +2383,12 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         if where == "first-bar":
             raise ValueError(f"only shot and read may come after fight "
                              f"{FIRST_BAR}: {step.text!r}")
-        if where == "pressed" and k != "press":
-            raise ValueError(f"only press, shot and read may come after a press: "
-                             f"{step.text!r}")
+        if where == "pressed" and k not in ("press", "snapshot", "restore"):
+            raise ValueError(f"only press, shot and read, or a snapshot or restore, "
+                             f"may come after a press: {step.text!r}")
+        if watched and k in ("snapshot", "restore"):
+            raise ValueError(f"no snapshot or restore after prayer-watch, which "
+                             f"leaves the emulator mid-fight: {step.text!r}")
         if where == "boot" and k not in ("load", "add"):
             raise ValueError(f"{k} needs load first: {step.text!r}")
         if k == "press":
@@ -2556,6 +2562,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"prayer-watch needs the map: {step.text!r}")
             # The emulator is left halted-or-running mid-fight.
             where = "pressed"
+            watched = True
         elif k == "train":
             if not t.trains:
                 raise ValueError(f"train is driven in curse only; {title}'s "
@@ -3366,6 +3373,58 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
 # --------------------------------------------------------------------------
 
 
+def hold_still(session, quiet: float, timeout: float,
+               clock=None) -> "dosbox.Screen | None":
+    """The screen once it has held unchanged for `quiet` seconds, or None when
+    it is still changing after `timeout`.
+
+    Unlike `Session.settle`, which hands back the last frame on a timeout,
+    this says whether the screen ever held still.
+    """
+    clock = clock or time.monotonic
+    end = clock() + timeout
+    last = session.capture()
+    since = clock()
+    while True:
+        if clock() - since >= quiet:
+            return last
+        if clock() >= end:
+            return None
+        time.sleep(0.15)
+        now = session.capture()
+        if now.px != last.px:
+            last, since = now, clock()
+
+
+def boot_session(session, timeout: float = 30.0, clock=None) -> None:
+    """`session.boot(fresh=False)`, waiting out a start-up text screen.
+
+    DOSBox-X shows the DOS prompt's text screen, which is not line-doubled,
+    while a launcher such as Pools of Darkness' `START.BAT` runs, and
+    `XSession.boot`'s closing settle can grab it.  The window is chosen by
+    then, so a `NotLineDoubled` there is waited out until the game's own
+    line-doubled screen shows, for `timeout` seconds at most, and the screen
+    is then settled as the boot would have.
+    """
+    try:
+        session.boot(fresh=False)
+        return
+    except dosboxx.NotLineDoubled as e:
+        first = e
+    clock = clock or time.monotonic
+    end = clock() + timeout
+    while clock() < end:
+        try:
+            session.capture()
+        except dosboxx.NotLineDoubled:
+            time.sleep(0.5)
+            continue
+        session.settle()
+        return
+    raise dosboxx.NotLineDoubled(f"still no line-doubled screen {timeout:.0f} s "
+                                 f"after the boot's settle saw: {first}")
+
+
 class Driver:
     """The steps, on one booted session of a DOS Gold Box title.
 
@@ -3437,6 +3496,8 @@ class Driver:
         self.began = time.time()
         #: What `snapshot` recorded of the driver's own place, by name.
         self._places: dict[str, dict] = {}
+        #: The screen digest a snapshot taken after a `press` held, by name.
+        self._screens: dict[str, str] = {}
         #: Set by `run` when a `vault` step follows: `begin` then takes
         #: Pools of Darkness' Elminster menu as its end instead of stopping.
         self.elminster_ok = False
@@ -7131,13 +7192,40 @@ class Driver:
                           "chosen": chosen_shot, "confirm": confirm,
                           "back_magic": back_magic, "camp": self.shot(f"{label}-back")}}
 
+    #: A snapshot after a `press` is taken only once the screen has held
+    #: unchanged this long, within `SNAPSHOT_STILL_SECONDS`.
+    SNAPSHOT_QUIET = 1.5
+    SNAPSHOT_STILL_SECONDS = 30.0
+
     def snapshot(self, name: str) -> dict:
-        """Save the whole machine under `name`; DOSBox-X only."""
+        """Save the whole machine under `name`; DOSBox-X only.
+
+        After a `press` the screen may still be drawing, so the snapshot waits
+        for it to hold still (`hold_still`) and fails rather than save a
+        machine mid-transition; a screen that changes while the state is
+        written fails it too.  That screen's digest is kept, and a `restore`
+        of the name must bring the same screen back.
+        """
         self.need_snapshots("snapshot")
+        before = None
+        if self.where == "pressed":
+            before = hold_still(self.s, self.SNAPSHOT_QUIET,
+                                self.SNAPSHOT_STILL_SECONDS)
+            if before is None:
+                raise self.fail(f"snapshot-{name}", "the screen was still changing "
+                                f"after {self.SNAPSHOT_STILL_SECONDS:.0f} s, so the "
+                                "machine would be saved mid-transition")
         path = self.s.snapshot(name)
         self._places[name] = self._place()
-        self.note(event="snapshot", name=name, path=str(path))
-        return {"name": name, "path": str(path)}
+        got = {"name": name, "path": str(path)}
+        if before is not None:
+            after = self.s.capture()
+            if after.px != before.px:
+                raise self.fail(f"snapshot-{name}", "the screen changed while the "
+                                "snapshot was written")
+            self._screens[name] = got["screen"] = before.digest()
+        self.note(event="snapshot", **got)
+        return got
 
     def restore(self, name: str) -> dict:
         """Put the machine back as `snapshot NAME` left it.
@@ -7149,6 +7237,13 @@ class Driver:
         self.need_snapshots("restore")
         changed = self.s.restore(name)
         self.s.settle()
+        got = {"name": name, "changed_saves": changed}
+        if name in self._screens:
+            got["screen"] = self.s.capture().digest()
+            if got["screen"] != self._screens[name]:
+                raise self.fail(f"restore-{name}", f"the screen after the restore "
+                                f"({got['screen']}) is not the one snapshot {name} "
+                                f"held ({self._screens[name]})")
         if self.encounters is not None:
             # The machine holds the original gate values again.
             self.encounters.reset()
@@ -7156,8 +7251,8 @@ class Driver:
         if name in self._places:
             for attr, value in self._places[name].items():
                 setattr(self, attr, dict(value) if isinstance(value, dict) else value)
-        self.note(event="restore", name=name, changed_saves=changed)
-        return {"name": name, "changed_saves": changed}
+        self.note(event="restore", **got)
+        return got
 
     #: What a restore puts back with the machine.  `combat_ds` and `sheets` are
     #: caches read off the timeline being left, so they go back to what the
@@ -7571,7 +7666,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     speculative=bool(getattr(args, "speculative_encounters",
                                              False)))
                 encounters.on()
-            session.boot(fresh=False)
+            boot_session(session)
             size = sum(1 for f in took.get("files", []) if f.endswith(".SAV")) or 6
             d = Driver(session, note, letter, args.title, party_size=size,
                        deadline=deadline, encounters=encounters)
