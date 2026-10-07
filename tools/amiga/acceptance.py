@@ -4265,6 +4265,98 @@ def prepare_published_disk_three(run_id: str, report_path: pathlib.Path, issue: 
     return path
 
 
+def _two_saves_added(
+        save: amiga_adf.AmigaDisk, base: amiga_adf.AmigaDisk, base_name: str, loaded: str,
+        names: list[str], control: str, after: str) -> tuple[dict[str, dict[str, Any]], dict[str, bytes]]:
+    """Check that `save` is `base` plus exactly the control and after saves, and read both.
+
+    Both saves must hold the loaded slot's vault and decode to the party `names`. Returns each
+    save's reading and the fetched disk's files.
+    """
+    written = {c: DARKNESS.slot_files(save, c) for c in (control, after)}
+    added = {f"/save/{name}".lower() for files in written.values() for name in files}
+    have, before = _disk_files(save), _disk_files(base)
+    # The game writes the loaded slot's vault over the vault file of each new letter, so those two
+    # files are compared as vaults below and not byte for byte.
+    rewritten = {_slot_paths(c)[1] for c in (control, after)}
+    if len(added) != 2 or set(have) != set(before) | added or any(
+            have[name] != data for name, data in before.items() if name not in rewritten):
+        raise RouteError(f"disk 3 is not {base_name} plus slots {control} and {after}")
+    loaded_vault = amiga_savegame.pod_read_vault(base, loaded)
+    for c in (control, after):
+        if amiga_savegame.pod_read_vault(save, c) != loaded_vault:
+            raise RouteError(f"vault {c} is not the loaded slot's vault")
+    reading = {c: DARKNESS.read_slot(save, c) for c in (control, after)}
+    for c, one in reading.items():
+        if "place" not in one:
+            raise RouteError(f"slot {c} does not decode: {one}")
+        if one["names"] != names:
+            raise RouteError(f"slot {c} names another party than slot {loaded}")
+    return reading, have
+
+
+def _reload_working_disks(
+        run: pathlib.Path, fetched: pathlib.Path, fetched_sha256: str,
+) -> tuple[dict[str, tuple[str, bytes]], dict[str, dict[str, str]]]:
+    """Write a reload run's working disks into `run`: the pinned disks 1 and 2 and a copy of `fetched`.
+
+    An error leaves no run folder.
+    """
+    wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
+    images = _find_images(wanted)
+    scratch.ensure(run)
+    try:
+        disks: dict[str, dict[str, str]] = {}
+        for key in wanted:
+            working = run / f"{key}.adf"
+            working.write_bytes(images[key][1])
+            disks[key] = _entry(working)
+        working = run / "disk3.adf"
+        shutil.copyfile(fetched, working)
+        disks["disk3"] = _entry(working)
+        if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
+            raise RouteError("a working copy differs from the pinned disk")
+        if disks["disk3"]["sha256"] != fetched_sha256 or sha256(fetched) != fetched_sha256:
+            raise RouteError("the working disk 3 differs from the input")
+    except BaseException:
+        _remove_run_folder(run)
+        raise
+    return images, disks
+
+
+def _check_substitute_chain(manifest: dict, base: amiga_adf.AmigaDisk) -> None:
+    """Check from the disks themselves that `base` is the pinned disk 3 with the substitute's slot in the loaded slot.
+
+    The pinned disk 3 is found in the registry. `base` may differ from it only in the loaded
+    slot's save, and in its vault when the run imported one. That save must be the recorded
+    substitute disk's slot, and that disk must hash to what the run recorded.
+    """
+    substitute, loaded = manifest["substitute"], manifest["loaded_letter"]
+    try:
+        source_path = pathlib.Path(substitute["path"])
+        if not source_path.is_file() or sha256(source_path) != substitute["sha256"]:
+            raise RouteError("the substitute disk is missing or changed from preparation")
+        source = _verified_disk(source_path)
+        slot = source.read_file(amiga_savegame.pod_slot_path(substitute["letter"]))
+        imported = {_slot_paths(loaded)[0]: slot}
+        if "vault" in manifest:
+            imported[_slot_paths(loaded)[1]] = source.read_file(
+                amiga_savegame.pod_vault_path(substitute["letter"]))
+    except (KeyError, TypeError, amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
+        raise RouteError(f"the substitute disk cannot be read for slot {loaded}: {exc}") from exc
+    pinned = _find_images({"disk3": DARKNESS_DISK3_SHA256})["disk3"][1]
+    registered_disk = amiga_adf.AmigaDisk(pinned)
+    if registered_disk.verify():
+        raise RouteError("the registered disk 3 fails ADF verification")
+    registered = _disk_files(registered_disk)
+    have = _disk_files(base)
+    if (set(have) != set(registered) or
+            any(have[name] != data for name, data in registered.items() if name not in imported) or
+            any(have[name] != data for name, data in imported.items())):
+        raise RouteError("the substitute run's disk 3 is not the registered disk 3 with the "
+                         f"substitute's slot in slot {loaded}")
+
+
 def prepare_published_disk_three_reload(
         run_id: str, published_manifest: pathlib.Path, fetched: pathlib.Path, fetched_sha256: str,
         accept_summary: pathlib.Path, issue: str | None = None) -> pathlib.Path:
@@ -4307,25 +4399,9 @@ def prepare_published_disk_three_reload(
         raise RouteError(f"disk 3 is not a verified {DARKNESS_VOLUME} disk")
     published = _verified_disk(_input(manifest["registered"], "published"))
     control, after = first.control_letter, first.after_letter
-    written = {c: DARKNESS.slot_files(save, c) for c in (control, after)}
-    added = {f"/save/{name}".lower() for files in written.values() for name in files}
-    have, before = _disk_files(save), _disk_files(published)
-    # The game writes the loaded slot's vault over the vault file of each new letter, so those two
-    # files are compared as vaults below and not byte for byte.
-    rewritten = {_slot_paths(c)[1] for c in (control, after)}
-    if len(added) != 2 or set(have) != set(before) | added or any(
-            have[name] != data for name, data in before.items() if name not in rewritten):
-        raise RouteError(f"disk 3 is not the published disk 3 plus slots {control} and {after}")
-    loaded_vault = amiga_savegame.pod_read_vault(published, manifest["loaded_letter"])
-    for c in (control, after):
-        if amiga_savegame.pod_read_vault(save, c) != loaded_vault:
-            raise RouteError(f"vault {c} is not the loaded slot's vault")
-    reading = {c: DARKNESS.read_slot(save, c) for c in (control, after)}
-    for c, one in reading.items():
-        if "place" not in one:
-            raise RouteError(f"slot {c} does not decode: {one}")
-        if one["names"] != manifest["names_a"]:
-            raise RouteError(f"slot {c} names another party than slot {manifest['loaded_letter']}")
+    reading, have = _two_saves_added(
+        save, published, "the published disk 3", manifest["loaded_letter"],
+        manifest["names_a"], control, after)
     if reading[control]["place"] == reading[after]["place"]:
         raise RouteError(f"slots {control} and {after} are at one place, which the screen "
                          "cannot tell apart")
@@ -4335,21 +4411,8 @@ def prepare_published_disk_three_reload(
     run = scratch.cache_dir("acceptance", issue, run_id)
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
+    images, disks = _reload_working_disks(run, fetched, fetched_sha256)
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
-    images = _find_images(wanted)
-    scratch.ensure(run)
-    disks: dict[str, dict[str, str]] = {}
-    for key in wanted:
-        working = run / f"{key}.adf"
-        working.write_bytes(images[key][1])
-        disks[key] = _entry(working)
-    working = run / "disk3.adf"
-    shutil.copyfile(fetched, working)
-    disks["disk3"] = _entry(working)
-    if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
-        raise RouteError("a working copy differs from the pinned disk")
-    if disks["disk3"]["sha256"] != fetched_sha256 or sha256(fetched) != fetched_sha256:
-        raise RouteError("the working disk 3 differs from the input")
     result = {
         "mode": PUBLISHED_DISK_THREE_RELOAD_MODE, "issue": issue, "title": "darkness-reload",
         "disks": disks,
@@ -4430,25 +4493,9 @@ def prepare_substitute_reload(
     if loaded in (control, after) or after != DARKNESS_RELOAD_LOADED:
         raise RouteError(f"the substitute run loaded slot {loaded}, which the reload route "
                          "cannot keep")
-    written = {c: DARKNESS.slot_files(save, c) for c in (control, after)}
-    added = {f"/save/{name}".lower() for files in written.values() for name in files}
-    have, before = _disk_files(save), _disk_files(base)
-    # The game writes the loaded slot's vault over the vault file of each new letter, so those two
-    # files are compared as vaults below and not byte for byte.
-    rewritten = {_slot_paths(c)[1] for c in (control, after)}
-    if len(added) != 2 or set(have) != set(before) | added or any(
-            have[name] != data for name, data in before.items() if name not in rewritten):
-        raise RouteError(f"disk 3 is not the substitute run's disk 3 plus slots {control} and {after}")
-    loaded_vault = amiga_savegame.pod_read_vault(base, loaded)
-    for c in (control, after):
-        if amiga_savegame.pod_read_vault(save, c) != loaded_vault:
-            raise RouteError(f"vault {c} is not the loaded slot's vault")
-    reading = {c: DARKNESS.read_slot(save, c) for c in (control, after)}
-    for c, one in reading.items():
-        if "place" not in one:
-            raise RouteError(f"slot {c} does not decode: {one}")
-        if one["names"] != names:
-            raise RouteError(f"slot {c} names another party than the substituted slot {loaded}")
+    _check_substitute_chain(manifest, base)
+    reading, have = _two_saves_added(
+        save, base, "the substitute run's disk 3", loaded, names, control, after)
     outdoors = {c: outdoor_square(one) for c, one in reading.items()}
     if reading[control]["place"] == reading[after]["place"] and outdoors[control] == outdoors[after]:
         raise RouteError(f"slots {control} and {after} are at one place, which the screen "
@@ -4457,24 +4504,7 @@ def prepare_substitute_reload(
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
-    images = _find_images(wanted)
-    scratch.ensure(run)
-    try:
-        disks: dict[str, dict[str, str]] = {}
-        for key in wanted:
-            working = run / f"{key}.adf"
-            working.write_bytes(images[key][1])
-            disks[key] = _entry(working)
-        working = run / "disk3.adf"
-        shutil.copyfile(fetched, working)
-        disks["disk3"] = _entry(working)
-        if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
-            raise RouteError("a working copy differs from the pinned disk")
-        if disks["disk3"]["sha256"] != fetched_sha256 or sha256(fetched) != fetched_sha256:
-            raise RouteError("the working disk 3 differs from the input")
-    except BaseException:
-        _remove_run_folder(run)
-        raise
+    images, disks = _reload_working_disks(run, fetched, fetched_sha256)
     result = {
         "mode": SUBSTITUTE_RELOAD_MODE, "issue": issue, "title": "darkness-reload",
         "disks": disks,

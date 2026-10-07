@@ -22,19 +22,28 @@ AFTER = dict(THREE_START, x=4)
 OTHER_VAULT = amiga_savegame.pod_vault_to_amiga(dos_codec.PodVault(7, 0, 0, ()))
 
 
-def _substituted(tmp_path, three):
+def _substituted(tmp_path, three, monkeypatch):
     """A substitute run's folder: its working disk 3 with slot B replaced, and its prepare.json."""
     run = tmp_path / "substitute-run"
     run.mkdir()
-    disk = AmigaDisk(three.registered.to_bytes())
+    pinned = three.registered.to_bytes()
+    images = foundation._find_images
+    monkeypatch.setattr(foundation, "_find_images", lambda wanted: {
+        **images({k: v for k, v in wanted.items() if k != "disk3"}),
+        **({"disk3": ("disk3", pinned)} if "disk3" in wanted else {})})
+    edited = AmigaDisk(pinned)
+    edited.write_file("/SAVE/SavGamD.pty", _pty(THREE_START))
+    edited_path = tmp_path / "edited.adf"
+    edited.save(edited_path)
+    disk = AmigaDisk(pinned)
     disk.write_file("/SAVE/SavGamB.pty", _pty(THREE_START))
     working = run / "disk3.adf"
     disk.save(working)
     entry = {"path": str(working), "sha256": hashlib.sha256(working.read_bytes()).hexdigest()}
     manifest = {"title": "darkness", "loaded_letter": "B", "names_a": NAMES,
                 "state_a": THREE_START, "disks": {"disk3": entry}, "registered": {},
-                "substitute": {"letter": "D", "path": str(tmp_path / "edited.adf"),
-                               "sha256": "0" * 64}}
+                "substitute": {"letter": "D", "path": str(edited_path),
+                               "sha256": hashlib.sha256(edited_path.read_bytes()).hexdigest()}}
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest))
     return path, disk
@@ -63,7 +72,7 @@ def _fetched(tmp_path, path, disk, *, g=AFTER, names=NAMES, extra=None, vault=No
 
 def test_a_substitute_reload_loads_g_compares_f_and_names_both_inputs(tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
-    path, disk = _substituted(tmp_path, three)
+    path, disk = _substituted(tmp_path, three, monkeypatch)
     file, sha, summary = _fetched(tmp_path, path, disk)
     reload = foundation.prepare_substitute_reload("again", path, file, sha, summary, "2")
     manifest = json.loads(reload.read_text())
@@ -98,7 +107,7 @@ def test_a_substitute_reload_loads_g_compares_f_and_names_both_inputs(tmp_path, 
 def test_a_substitute_reload_blocks_inputs_that_are_not_that_run_plus_two_saves(
         tmp_path, monkeypatch, why, kwargs, match):
     three = Three(tmp_path, monkeypatch)
-    path, disk = _substituted(tmp_path, three)
+    path, disk = _substituted(tmp_path, three, monkeypatch)
     file, sha, summary = _fetched(tmp_path, path, disk, **kwargs)
     with pytest.raises(winuaesession.RouteError, match=match):
         foundation.prepare_substitute_reload("again", path, file, sha, summary, "2")
@@ -107,7 +116,7 @@ def test_a_substitute_reload_blocks_inputs_that_are_not_that_run_plus_two_saves(
 
 def test_a_substitute_reload_blocks_a_manifest_that_is_not_a_substitute_run(tmp_path, monkeypatch):
     three = Three(tmp_path, monkeypatch)
-    path, disk = _substituted(tmp_path, three)
+    path, disk = _substituted(tmp_path, three, monkeypatch)
     file, sha, summary = _fetched(tmp_path, path, disk)
     manifest = json.loads(path.read_text())
     for change, match in (({"substitute": None}, "not a Pools of Darkness substitute run"),
@@ -142,3 +151,26 @@ def test_the_prepare_command_takes_a_substitute_manifest_only_for_darkness_reloa
                             "--substitute-manifest", "m.json"]) == 2
     assert "needs --disk3" in capsys.readouterr().err
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("forge", ["another disk", "another slot", "a changed substitute"])
+def test_a_substitute_reload_blocks_a_manifest_whose_disk_is_not_the_pinned_disk_with_the_substitute(
+        tmp_path, monkeypatch, forge):
+    three = Three(tmp_path, monkeypatch)
+    path, disk = _substituted(tmp_path, three, monkeypatch)
+    manifest = json.loads(path.read_text())
+    if forge == "another disk":
+        # An unrelated verified disk that the manifest and summary both describe consistently.
+        disk.write_file("/SAVE/notes.dat", b"x")
+        working = foundation.pathlib.Path(manifest["disks"]["disk3"]["path"])
+        disk.save(working)
+        manifest["disks"]["disk3"]["sha256"] = hashlib.sha256(working.read_bytes()).hexdigest()
+    elif forge == "another slot":
+        manifest["substitute"]["letter"] = "A"
+    else:
+        foundation.pathlib.Path(manifest["substitute"]["path"]).write_bytes(b"changed")
+    path.write_text(json.dumps(manifest))
+    file, sha, summary = _fetched(tmp_path, path, disk)
+    with pytest.raises(winuaesession.RouteError):
+        foundation.prepare_substitute_reload("again", path, file, sha, summary, "2")
+    assert not (tmp_path / "cache" / "acceptance" / "WISH-2" / "again").exists()
