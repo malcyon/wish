@@ -1198,7 +1198,11 @@ def arm_door(target, row, stand) -> Armed | None:
 
 
 def port_empty(target, row) -> bool:
-    """Whether the game window's message list is empty again."""
+    """Whether the game has taken the key: its window's message list is empty
+    again, or on a title with no window pointer its one-key buffer reads 0."""
+    row = row_for(row)
+    if row.window_pointer is None:
+        return target.read(_base(target) + row.key_buffer, 1)[0] == 0
     port = _port(target, row)
     return target.read(port + PORT_LIST, 12) == empty_list(port)
 

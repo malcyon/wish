@@ -1719,3 +1719,13 @@ def test_a_door_put_back_leaves_another_trips_journal_alone(journal):
     armed = trip.arm_door(m, pool, (4, 0, 0))
     assert trip.disarm(m, armed) is True
     assert next(journal.iterdir()).read_text() == saved
+
+
+def test_a_key_buffer_title_has_taken_the_key_once_its_buffer_byte_reads_zero():
+    m = FakeAmiga()
+    pods = trip.ROWS["pools-of-darkness"]
+    assert pods.window_pointer is None
+    m.at(pods.key_buffer, bytes([trip.FORWARD_KEY[0]]))
+    assert not trip.port_empty(m, pods)
+    m.at(pods.key_buffer, b"\x00")
+    assert trip.port_empty(m, pods)

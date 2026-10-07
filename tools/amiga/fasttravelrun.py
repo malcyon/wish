@@ -271,6 +271,23 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     return summary
 
 
+def candidate_areas(title: str) -> list:
+    """Every area of `title`, from the table `main` looks a destination up in."""
+    rows = list(engine.area_rows(title)) or list(goldbox_areas.areas_for(title))
+    return [row for row in rows if getattr(row, "id", None) is not None]
+
+
+def legality_report(fasttravel, target, rows) -> list[str]:
+    """One line per area: its id, name, whether Fast Travel offers it, and why not."""
+    lines = []
+    for row in rows:
+        verdict = fasttravel.legality(target, row)
+        name = getattr(row, "name", None) or ""
+        state = "offered" if verdict else "withheld"
+        lines.append(f"{row.id}\t{name}\t{state}\t{verdict.reason}".rstrip("\t"))
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     from tools.amiga import amigadrive  # noqa: PLC0415
 
@@ -279,7 +296,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--disks", required=True, help="the folder of the title's ADFs")
     parser.add_argument("--title", default=DEFAULT_TITLE, choices=sorted(amiga.MACHINES),
                         help="the amiga.MACHINES key of the title in the machine")
-    parser.add_argument("--to", type=int, required=True, help="the destination area id")
+    parser.add_argument("--to", type=int, help="the destination area id")
+    parser.add_argument("--legality", action="store_true",
+                        help="print each area with its legality verdict and make no trip")
     parser.add_argument("--answer", help="the key that answers the game's question")
     parser.add_argument("--back", action="store_true",
                         help="make apply_back once the trip has finished")
@@ -287,8 +306,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="comma-separated hex script variables to read before and after each leg")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
                         help="seconds each trip may take")
-    parser.add_argument("--out", required=True, help="directory for the log and screenshots")
+    parser.add_argument("--out", help="directory for the log and screenshots")
     args = parser.parse_args(argv)
+    if not args.legality and (args.to is None or args.out is None):
+        parser.error("--to and --out are required unless --legality is given")
     if args.answer is not None:
         try:
             amigakeys.lookup(args.answer)
@@ -299,6 +320,16 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         parser.error(f"--peek-var {args.peek_var!r} is not a list of hex numbers")
     machine = amiga.MACHINES[args.title]
+    if args.legality:
+        pipe = amiga.WinuaePipe(holder=args.holder)
+        target = amiga.AmigaTarget(pipe, machine)
+        try:
+            target.locate()
+        except (DriverError, amiga.GuestError) as exc:
+            raise SystemExit(str(exc)) from exc
+        fasttravel = amigafasttravel.AmigaFastTravel(args.title, args.disks)
+        print("\n".join(legality_report(fasttravel, target, candidate_areas(machine.title))))
+        return 0
     # area_by_id is empty for a title the C64 fast travel does not support, which
     # Pools of Darkness is; the Amiga legality check decides what is offered.
     area = (engine.area_by_id(args.to, machine.title)

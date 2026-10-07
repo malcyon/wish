@@ -131,6 +131,32 @@ def world(monkeypatch, tmp_path):
     state.stream.close()
 
 
+def test_a_pools_of_darkness_row_with_no_window_pointer_logs_the_after_read(monkeypatch, tmp_path):
+    row = amigatrip.row_for("pools-of-darkness")
+    assert row.window_pointer is None
+    monkeypatch.setattr(amigatrip, "area_id", lambda t, r: 33)
+    monkeypatch.setattr(amigatrip, "square", lambda t, r: (8, 15, 0))
+    monkeypatch.setattr(amigatrip, "entry_words", lambda t, r: b"\0\1")
+    monkeypatch.setattr(amigatrip, "gate", lambda t, r: True)
+
+    class Memory:
+        data_base = 0x1000
+
+        def read(self, addr, length):
+            assert addr == self.data_base + row.key_buffer
+            return b"\0"
+
+    stream = open(tmp_path / "log.jsonl", "w")
+    clock = Clock()
+    got = ftr.run_trip(Travel(polls=1), Memory(), row, SimpleNamespace(id=33), tmp_path,
+                       lambda p: p.write_bytes(b"s"), lambda key: None,
+                       ftr.Log(stream, clock), sleep=clock.sleep, clock=clock)
+    stream.close()
+    lines = [json.loads(x) for x in (tmp_path / "log.jsonl").read_text().splitlines()]
+    after = [e for e in lines if e["event"] == "read" and e.get("why") == "after"]
+    assert got["result"] == "idle" and after and after[0]["area"] == 33
+
+
 def test_the_sequence_is_legality_apply_then_polls_until_nothing_is_pending(world):
     travel = Travel(polls=3)
     got = world.drive(travel)
@@ -561,3 +587,43 @@ def test_peek_var_logs_values_before_and_after_and_reports_unreadable(world):
 def test_without_peek_var_nothing_is_peeked(world):
     world.drive(Travel(polls=1))
     assert "peek" not in [e["event"] for e in world.events()]
+
+
+def test_legality_lists_each_area_with_its_verdict_and_makes_no_trip(monkeypatch, tmp_path, capsys):
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    asked = []
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    class F:
+        def __init__(self, key, disks):
+            pass
+
+        def legality(self, target, area=None, back=False):
+            asked.append(area.id)
+            return engine.Verdict(area.id == 1, "" if area.id == 1 else "held")
+
+        def apply(self, *args, **kwargs):
+            raise AssertionError("a legality run makes no trip")
+
+    rows = [SimpleNamespace(id=1, name="Alpha"), SimpleNamespace(id=2, name="Beta")]
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", F)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr, "candidate_areas", lambda title: rows)
+    assert ftr.main(["--holder", "h", "--disks", "D", "--legality"]) == 0
+    assert asked == [1, 2]
+    assert capsys.readouterr().out.splitlines() == ["1\tAlpha\toffered", "2\tBeta\twithheld\theld"]
+
+
+def test_without_legality_to_and_out_are_required():
+    with pytest.raises(SystemExit):
+        ftr.main(["--holder", "h", "--disks", "D"])
