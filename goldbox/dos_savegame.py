@@ -80,7 +80,27 @@ class DaxError(DosSaveError):
 
 
 class DosNameClashError(ValueError):
-    """Two files in one DOS save folder have names that differ only in case."""
+    """Two files in one DOS save folder have names that differ only in case.
+
+    `names` are the clashing file names, upper case first.  `player_message`
+    is what a dialog shows; it names exactly two files, so for three or more
+    it is None and the caller shows its generic sentence.
+    """
+
+    def __init__(self, folder: pathlib.Path, names: list[str]) -> None:
+        super().__init__(
+            f"{folder} holds {' and '.join(names)}, which differ only in case")
+        self.names = list(names)
+
+    @property
+    def player_message(self) -> str | None:
+        if len(self.names) != 2:
+            return None
+        first, second = self.names
+        return (f"This folder contains both {first} and {second}. DOS treats "
+                f"these names as the same save file.\n\nMove the copy you do "
+                f"not want to another folder, then try again. No files have "
+                f"been changed.")
 
 
 def _folder_names(folder: pathlib.Path) -> list[str]:
@@ -101,8 +121,7 @@ def find_file(folder: str | pathlib.Path, name: str) -> pathlib.Path | None:
     wanted = name.upper()
     found = sorted(n for n in _folder_names(folder) if n.upper() == wanted)
     if len(found) > 1:
-        raise DosNameClashError(
-            f"{folder} holds {' and '.join(found)}, which differ only in case")
+        raise DosNameClashError(folder, found)
     return folder / found[0] if found else None
 
 

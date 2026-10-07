@@ -9,6 +9,7 @@ import pathlib
 import struct
 
 import pytest
+from PyQt6.QtWidgets import QApplication
 
 from editor import convert
 from goldbox import (
@@ -173,3 +174,71 @@ def test_a_lower_case_curse_slot_is_read_for_the_not_set_out_check(tmp_path):
     # A save that has not set out needs no game disk; an unreadable one is
     # answered with True.
     assert convert.amiga_needs_game_disk(curse, source) is False
+
+
+CLASH_TEXT = (
+    "This folder contains both CHRDATD1.SAV and chrdatd1.sav. DOS treats "
+    "these names as the same save file.\n\nMove the copy you do not want to "
+    "another folder, then try again. No files have been changed.")
+
+
+def _clash_folder(folder: pathlib.Path, *names: str) -> None:
+    """Just real enough for Source.detect to find a slot D record."""
+    folder.mkdir(exist_ok=True)
+    (folder / "SAVGAMD.DAT").write_bytes(b"\x00")
+    for name in names:
+        (folder / name).write_bytes(
+            b"\x00" * dos_port.POOL_OF_RADIANCE.record_size)
+
+
+def _convert_modals(monkeypatch):
+    critical = []
+    monkeypatch.setattr(convert.QMessageBox, "critical",
+                        lambda self_, t, x: critical.append((t, x)))
+    return critical
+
+
+def test_the_convert_dialog_names_both_files_of_a_case_clash(
+        two_case_names_possible, tmp_path, monkeypatch):
+    _ = QApplication.instance() or QApplication([])
+    _clash_folder(tmp_path / "slot", "CHRDATD1.SAV", "chrdatd1.sav")
+    before = sorted((p.name, p.read_bytes()) for p in (tmp_path / "slot").iterdir())
+    critical = _convert_modals(monkeypatch)
+    dialog = convert.ConvertDialog(
+        str(tmp_path / "slot" / "SAVGAMD.DAT"), None, lambda game: None)
+    try:
+        dialog.replan()
+        assert dialog._blocked == (convert.DIALOG_TITLE, CLASH_TEXT)
+    finally:
+        dialog.close()
+    assert critical == [(convert.DIALOG_TITLE, CLASH_TEXT)]
+    assert sorted((p.name, p.read_bytes()) for p in (tmp_path / "slot").iterdir()) == before
+
+
+def test_a_clash_among_three_names_shows_the_generic_sentence(
+        two_case_names_possible, tmp_path, monkeypatch):
+    _ = QApplication.instance() or QApplication([])
+    _clash_folder(tmp_path / "slot", "CHRDATD1.SAV", "chrdatd1.sav", "Chrdatd1.sav")
+    critical = _convert_modals(monkeypatch)
+    dialog = convert.ConvertDialog(
+        str(tmp_path / "slot" / "SAVGAMD.DAT"), None, lambda game: None)
+    try:
+        dialog.replan()
+    finally:
+        dialog.close()
+    assert critical == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)]
+
+
+def test_a_single_lower_case_character_file_converts_in_the_dialog(
+        tmp_path, monkeypatch):
+    _ = QApplication.instance() or QApplication([])
+    _clash_folder(tmp_path / "slot", "chrdatd1.sav")
+    critical = _convert_modals(monkeypatch)
+    dialog = convert.ConvertDialog(
+        str(tmp_path / "slot" / "SAVGAMD.DAT"), None, lambda game: None)
+    try:
+        dialog.replan()
+        assert dialog.source is not None and dialog.source.slot == "D"
+    finally:
+        dialog.close()
+    assert critical == []

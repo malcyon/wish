@@ -534,6 +534,15 @@ _SAVGAM_FILE_RE = re.compile(r"^SAVGAM([A-Za-z])\.(DAT|PTY)$", re.IGNORECASE)
 AMIGA_SUFFIX = ".adf"
 
 
+def _player_message_of(exc: Exception) -> str:
+    """What the dialog shows for a source or rehearsal that raised `exc`:
+    the two clashing file names when a folder holds two DOS names differing
+    only in case, otherwise the generic sentence."""
+    if isinstance(exc, dos_savegame.DosNameClashError):
+        return exc.player_message or CANNOT_CONVERT
+    return CANNOT_CONVERT
+
+
 def _dos_slots(folder: pathlib.Path) -> list[str]:
     """Complete and readable slot letters, from either save-container suffix.
 
@@ -2241,11 +2250,11 @@ class ConvertDialog(QDialog):
                        if not (d.destination_port == "amiga"
                                and (amiga_needs_disk_one(d.deltas)
                                     or amiga_needs_disk_three(d.deltas)))]
-        except Exception:
+        except Exception as exc:
             _log.exception("could not read %s", self._source_path)
             self._populate_destinations([])
             self._populate_slots(None)
-            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            self._blocked = (DIALOG_TITLE, _player_message_of(exc))
             self._settle_files_row()
             self._settle_button()
             self._maybe_warn()
@@ -2395,9 +2404,9 @@ class ConvertDialog(QDialog):
             _log.exception("could not rehearse %s", self._source_path)
             self._blocked = (DIALOG_TITLE, exc.player_message)
             return
-        except Exception:
+        except Exception as exc:
             _log.exception("could not rehearse %s", self._source_path)
-            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
+            self._blocked = (DIALOG_TITLE, _player_message_of(exc))
             return
 
         if not self._name_destination():
