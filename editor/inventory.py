@@ -101,6 +101,11 @@ class Inventory:
     # True only for a DOS Pool character, set by `from_blocks`.
     type_zero_is_an_item = False
 
+    #: Per slot, the scroll case it sits in, or None.  The Amiga game keeps
+    #: `readied` and the weight on the case, so the scrolls of one case always
+    #: show the same value and an edit to one row has to reach the others.
+    case_of: list[int | None]
+
     def __init__(self, payload: bytes, slot: int,
                  names: dict[int, str] | None = None):
         self.slot = slot
@@ -143,6 +148,7 @@ class Inventory:
 
     def _hold(self, raws: list[bytes]) -> None:
         self.raws = raws
+        self.case_of = [None] * len(raws)
         self.original = list(self.raws)
         # #285 (The C64's Ring of Fire Resistance grants nothing, and Wish
         # should repair it on conversion and on an editor save): repair a
@@ -206,12 +212,25 @@ class Inventory:
 
     def set_weight_tenths(self, n: int, tenths: int) -> None:
         """Weight in tenths of a pound, 16-bit little-endian at +8/+9."""
-        self._patch(n, 8, tenths & 0xFF)
-        self._patch(n, 9, tenths >> 8)
+        for m in self._case_mates(n):
+            self._patch(m, 8, tenths & 0xFF)
+            self._patch(m, 9, tenths >> 8)
+
+    def set_cases(self, case_of: Sequence[int | None]) -> None:
+        """Say which slots hold scrolls of the same case."""
+        self.case_of = list(case_of)
+
+    def _case_mates(self, n: int) -> list[int]:
+        """Every slot sharing `n`'s case, `n` included; just `n` outside one."""
+        case = self.case_of[n]
+        if case is None:
+            return [n]
+        return [m for m in range(len(self)) if self.case_of[m] == case]
 
     def set_readied(self, n: int, on: bool) -> None:
-        flags = self.raws[n][6]
-        self._patch(n, 6, (flags | READIED) if on else (flags & ~READIED))
+        for m in self._case_mates(n):
+            flags = self.raws[m][6]
+            self._patch(m, 6, (flags | READIED) if on else (flags & ~READIED))
 
     def can_unidentify(self, n: int) -> bool:
         """Only an item that arrived unidentified can be put back that way.
@@ -234,14 +253,17 @@ class Inventory:
         for n in range(len(self)):
             if not self.holds(n):
                 self.set_raw(n, raw)
+                self.case_of[n] = None
                 return n
         return None
 
     def delete(self, n: int) -> None:
         """Remove one item and close the gap, keeping the list a dense prefix."""
-        kept = [r for i, r in enumerate(self.raws)
-                if i != n and self.holds(i)]
-        self.raws = kept + [EMPTY] * (len(self) - len(kept))
+        keep = [i for i in range(len(self)) if i != n and self.holds(i)]
+        self.raws = [self.raws[i] for i in keep] + [EMPTY] * (
+            len(self) - len(keep))
+        self.case_of = [self.case_of[i] for i in keep] + [None] * (
+            len(self) - len(keep))
 
     # -- writing back -----------------------------------------------------
 
@@ -471,7 +493,11 @@ class InventoryModel(QAbstractTableModel):
                 self.inventory.set_bonus(row, n)
         else:
             return False
-        self.dataChanged.emit(index, index)
+        if len(self.inventory._case_mates(row)) > 1:
+            self.dataChanged.emit(self.index(0, 0), self.index(
+                self.rowCount() - 1, self.columnCount() - 1))
+        else:
+            self.dataChanged.emit(index, index)
         self.edited.emit()
         return True
 

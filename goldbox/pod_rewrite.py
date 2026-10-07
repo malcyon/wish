@@ -453,7 +453,8 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
     A scroll in a case is a node chained off the case.  Its `readied` and
     `weight` are shown from the case, so an edit to either is written to the
     case's head node; the case's own count at `+0x0C` follows the scrolls it
-    keeps, and a case none of whose scrolls remain is dropped.  The count of
+    keeps, and a case none of whose scrolls remain is dropped.  A case that
+    was already empty is kept where it was.  The count of
     head nodes at `0x008` is rewritten; the bytes the game derives on load
     (encumbrance, the item count cache, hands) and the effect nodes are left
     as read.
@@ -510,24 +511,37 @@ def rewrite_amiga_items(block: bytes, was: Sequence[bytes],
 
     out_heads: list[bytearray] = []
     out_chains: list[list[bytearray]] = []
+    origin: list[int | None] = []
     placed: dict[int, int] = {}
     for kind, what in order:
         if kind == "new":
             out_heads.append(what)
             out_chains.append([])
+            origin.append(None)
             continue
         h, c = sources[what]
         if c is None:
             out_heads.append(heads[h])
             out_chains.append([])
+            origin.append(h)
             continue
         if h not in placed:
             placed[h] = len(out_heads)
             out_heads.append(heads[h])
             out_chains.append([])
+            origin.append(h)
         out_chains[placed[h]].append(chains[h][c])
     for at in placed.values():
         out_heads[at][_QUANTITY_AT] = len(out_chains[at])
+    # A case that held no scroll when the game wrote it has no sheet row, so
+    # no edit can have emptied it: it stays after the head that preceded it.
+    for h, head in enumerate(heads):
+        if amiga_pod.PodItem(bytes(head)).is_scroll and not chains[h]:
+            at = 1 + max((i for i, o in enumerate(origin)
+                          if o is not None and o < h), default=-1)
+            out_heads.insert(at, head)
+            out_chains.insert(at, [])
+            origin.insert(at, h)
 
     out = bytearray(block[:amiga_pod.RECORD_BYTES])
     out[amiga_pod.ITEM_CHAIN:amiga_pod.ITEM_CHAIN + 4] = len(

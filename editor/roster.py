@@ -38,6 +38,7 @@ from goldbox import (
     dos_codec,
     dos_port,
     dos_savegame,
+    pod_rewrite,
     rewrite,
     titles,
 )
@@ -518,7 +519,12 @@ class Party:
         blob = amiga_savegame.pod_read_slot(disk, slot)
         for number, block in enumerate(amiga_savegame.pod_parse(blob).blocks,
                                        start=1):
-            self._append_pod(number, podsheet.amiga_member(block, number - 1))
+            member = podsheet.amiga_member(block, number - 1)
+            self._append_pod(number, member)
+            self.members[-1].inventory.set_cases([
+                h if c is not None else None for h, c in
+                pod_rewrite.amiga_item_sources(bytes(member.native))
+            ][:ITEMS_PER_CHARACTER])
         if not self.members:
             raise amiga_savegame.AmigaRecordError(
                 f"slot {slot} holds no characters")

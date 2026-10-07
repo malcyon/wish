@@ -740,12 +740,11 @@ def test_a_readied_edit_on_a_case_scroll_lands_on_the_case_and_shows_on_all(
         assert all(reopened[n][6] & READIED == new_value for n in mine)
 
 
-def test_the_other_scrolls_of_a_case_show_the_old_readied_until_reopened(
+def test_the_other_scrolls_of_a_case_show_the_new_readied_at_once(
         monkeypatch, tmp_path):
-    """The display point of the case edit, as the editor behaves: the
-    inventory model changes only the row that was edited, so the case's
-    other rows keep the old value after the edit and after a Save; a party
-    opened from the saved disk shows the new value on all of them."""
+    """The case keeps one `readied`, so the inventory model updates every row
+    of the case when one is edited, and a Save writes the same value that a
+    reopened party shows on all of them."""
     from editor.inventory import READIED
     _flag(monkeypatch, "1")
     for label, source in _amiga_copies(tmp_path):
@@ -760,16 +759,49 @@ def test_the_other_scrolls_of_a_case_show_the_old_readied_until_reopened(
                                 if s[1] is not None)
         mine = [n for n, (h, _c2) in enumerate(sources)
                 if h == head and n < pod_rewrite.ITEM_SLOTS]
+        assert len(mine) > 1
         old = member.inventory.raws[slot][6] & READIED
         member.inventory.set_readied(slot, not old)
-        assert all(member.inventory.raws[n][6] & READIED == old
-                   for n in mine if n != slot)
+        assert all(bool(member.inventory.raws[n][6] & READIED) == (not old)
+                   for n in mine)
         pathlib.Path(source.path).write_bytes(saveplan.amiga_image(party))
         reopened = Party(source).member(member.index - 1)
         assert all(bool(reopened.inventory.raws[n][6] & READIED) == (not old)
                    for n in mine)
         return
     pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
+
+
+def test_a_case_s_rows_follow_each_other_through_a_delete():
+    from editor.inventory import EMPTY, READIED, Inventory
+    item = bytearray(len(EMPTY))
+    item[0] = 1
+    plain = bytes(item)
+    inventory = Inventory.from_blocks([plain] * 3 + [EMPTY] * 13)
+    inventory.set_cases([None, 7, 7] + [None] * 13)
+    inventory.delete(0)
+    inventory.set_readied(0, True)
+    assert [bool(inventory.raws[n][6] & READIED) for n in range(3)] == [
+        True, True, False]
+
+
+def test_the_item_picker_never_offers_an_item_to_an_amiga_save(
+        app, monkeypatch, tmp_path):
+    """An Amiga Pools of Darkness window has no item templates, so the add
+    button is off and `add_item` copies nothing; a DOS item of type 105, which
+    would become an Amiga scroll case with no chained scrolls, cannot be
+    added."""
+    _flag(monkeypatch, "1")
+    window = _open(convert.Source.detect(_synthetic_folder(tmp_path),
+                                         slot="A"), tmp_path / "b")
+    window.party.port = "amiga"
+    window._apply_read_only()
+    window._populate()
+    assert window.templates == {}
+    assert not window._child("button_item_add").isEnabled()
+    before = list(window.items.inventory.raws)
+    assert window.add_item("any") == "no game disk, so no items to copy"
+    assert window.items.inventory.raws == before
 
 
 def test_an_added_amiga_item_becomes_a_new_head_node(monkeypatch):
@@ -895,3 +927,52 @@ def test_an_added_item_moves_encumbrance_by_its_weight_on_dos(
 
 def test_the_flag_is_the_one_the_open_tests_set():
     assert FLAG == convert.POD_CONVERT_ENV
+
+
+def _block_with_empty_case(monkeypatch, tmp_path) -> bytes:
+    """A synthetic Amiga block of three head nodes: a mace, a scroll case
+    that holds no scroll, and the mace again with a different bonus."""
+    _flag(monkeypatch, "1")
+    [member] = Party(convert.Source.detect(
+        _synthetic_folder(tmp_path), slot="A")).members
+    mace = bytearray(amiga_pod.PodItem.from_dos_bytes(
+        member.native.items[0].to_bytes()).raw)
+    case = bytearray(mace)
+    case[amiga_pod.ITEM_FIELD_AT["type_index"]] = amiga_pod.SCROLL_TYPE_INDEX
+    case[pod_rewrite._QUANTITY_AT] = 0
+    other = bytearray(mace)
+    other[amiga_pod.ITEM_FIELD_AT["plus"]] ^= 1
+    block = bytearray(amiga_pod.RECORD_BYTES)
+    block[amiga_pod.ITEM_CHAIN:amiga_pod.ITEM_CHAIN + 4] = (3).to_bytes(
+        4, "big")
+    return bytes(block + mace + case + other)
+
+
+def test_an_empty_case_survives_an_edit_to_another_item(monkeypatch, tmp_path):
+    block = _block_with_empty_case(monkeypatch, tmp_path)
+    heads, _chains, _tail = pod_rewrite._amiga_nodes(block)
+    assert amiga_pod.PodItem(bytes(heads[1])).is_scroll
+    was = _shown(block)
+    assert sum(1 for raw in was if any(raw)) == 2
+    now = list(was)
+    raw = bytearray(now[0])
+    raw[4] = (raw[4] + 5) & 0xFF
+    now[0] = bytes(raw)
+    out, moved = pod_rewrite.rewrite_amiga_items(block, was, now)
+    assert len(moved) == 1 and moved[0].startswith("item 0: ")
+    assert _count(out) == 3
+    new_heads, _c, _t = pod_rewrite._amiga_nodes(out)
+    assert new_heads[1] == heads[1]
+    assert new_heads[2] == heads[2]
+
+
+def test_an_empty_case_stays_after_the_head_it_followed_when_one_is_deleted(
+        monkeypatch, tmp_path):
+    block = _block_with_empty_case(monkeypatch, tmp_path)
+    heads, _chains, _tail = pod_rewrite._amiga_nodes(block)
+    was = _shown(block)
+    now = [was[1]] + [bytes(len(was[0]))] * (len(was) - 1)
+    out, _moved = pod_rewrite.rewrite_amiga_items(block, was, now)
+    new_heads, _c, _t = pod_rewrite._amiga_nodes(out)
+    assert new_heads == [heads[1], heads[2]]
+    assert _count(out) == 2
