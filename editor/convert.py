@@ -215,13 +215,15 @@ def _unread_dos_title(folder: pathlib.Path) -> str | None:
     """The key of a DOS title Wish does not read that `folder` or the game
     folder above it, holds.
 
-    A folder the readable table already names as Curse is never Gateway's,
-    whatever else it holds or is called, so a Curse save opens as Curse.
+    A folder the readable table already names as Curse or Pools of Darkness
+    is never one of the unread titles, whatever else it holds or is called,
+    so such a save opens as its own title.
     """
     for where in (folder, folder.parent):
         try:
             if (titles.dos_folder_title(where)
-                    == dos_port.CURSE_OF_THE_AZURE_BONDS.key):
+                    in (dos_port.CURSE_OF_THE_AZURE_BONDS.key,
+                        dos_port.POOLS_OF_DARKNESS.key)):
                 return None
             key = titles.dos_folder_title(
                 where, table=titles.DOS_UNREAD_FOLDER_FILES)
@@ -431,13 +433,22 @@ class Source:
             deltas = dos_port.deltas_for(record.stat().st_size)
         except dos_port.DosDeltasError as exc:
             raise ConvertError(str(exc)) from exc
-        if (deltas.key == dos_port.CURSE_OF_THE_AZURE_BONDS.key
+        if deltas.key == dos_port.CURSE_OF_THE_AZURE_BONDS.key:
+            if (_unread_dos_title(folder)
+                    == titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.key):
+                raise dos_codec.WrongTitleError(
+                    f"{folder} is a Gateway to the Savage Frontier save "
+                    f"folder; its 422-byte records would read through "
+                    f"Curse's tables",
+                    titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.title)
+        elif (deltas.key == dos_port.POOLS_OF_DARKNESS.key
                 and _unread_dos_title(folder)
-                == titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.key):
+                == titles.TREASURES_OF_THE_SAVAGE_FRONTIER_KEY):
             raise dos_codec.WrongTitleError(
-                f"{folder} is a Gateway to the Savage Frontier save folder; "
-                f"its 422-byte records would read through Curse's tables",
-                titles.GATEWAY_TO_THE_SAVAGE_FRONTIER.title)
+                f"{folder} is a Treasures of the Savage Frontier save "
+                f"folder; its 510-byte records would read through Pools of "
+                f"Darkness' tables",
+                titles.TREASURES_OF_THE_SAVAGE_FRONTIER_TITLE)
         return cls(port="dos", title=deltas, path=folder, slot=slot,
                    available_slots=available_slots)
 
@@ -1795,14 +1806,23 @@ CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
 POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 
 
+#: The sentence for a Treasures of the Savage Frontier folder, which no
+#: title row names and which is never to be read.
+TREASURES_UNSUPPORTED = (
+    f"{titles.TREASURES_OF_THE_SAVAGE_FRONTIER_TITLE} saves are not supported.")
+
+
 def unsupported_save_sentence(title: str) -> str | None:
     """"[Game title] saves are not yet supported." for a title the editor
-    cannot read, or None for one it can.
+    cannot read, or None for one it can; Treasures of the Savage Frontier,
+    which will not be read, gets `TREASURES_UNSUPPORTED`.
 
     "Cannot read" is a title with no row in `goldbox.c64_codec.DELTAS_BY_KEY`:
     Pools of Darkness, Gateway, Champions and Death Knights. The sentence is
     built from the title table's own names.
     """
+    if title == titles.TREASURES_OF_THE_SAVAGE_FRONTIER_TITLE:
+        return TREASURES_UNSUPPORTED
     for known in titles.TITLES:
         if known.title == title and known.key not in c64_codec.DELTAS_BY_KEY:
             return f"{title} saves are not yet supported."

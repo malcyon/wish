@@ -293,7 +293,14 @@ DOS_FOLDER_FILES = {
 #: above and kept apart from it because that one lists the writable titles.
 DOS_UNREAD_FOLDER_FILES = {
     "gateway-to-the-savage-frontier": ("START1.EXE", "GAME.CFG", "GATEWAY"),
+    "treasures-of-the-savage-frontier": ("STARTUP.EXE", "TREASURE.CFG",
+                                         "TREASURE"),
 }
+
+#: Treasures of the Savage Frontier has no `Title` row, since nothing here
+#: reads its characters; its key and name are all the unsupported-save sentence needs.
+TREASURES_OF_THE_SAVAGE_FRONTIER_KEY = "treasures-of-the-savage-frontier"
+TREASURES_OF_THE_SAVAGE_FRONTIER_TITLE = "Treasures of the Savage Frontier"
 
 
 def dos_folder_title(folder: "str | pathlib.Path",
