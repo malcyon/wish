@@ -449,24 +449,3 @@ def pytest_sessionfinish(session, exitstatus):
         print(line, file=sys.stderr)
     if not session.exitstatus:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
-
-
-@pytest.fixture(autouse=True)
-def information_boxes(request, monkeypatch):
-    """Stand in for every information box under tests/editor, so none blocks,
-    and collect what each one said as `(title, text)`.
-
-    Scoped by path here because a second conftest.py in tests/editor would
-    shadow this one: tests/ has no __init__.py.
-    """
-    boxes: list = []
-    editor_tests = pathlib.Path(__file__).parent / "editor"
-    if editor_tests not in pathlib.Path(request.node.path).parents:
-        return boxes
-    import editor.window as ew
-
-    def box(parent, title, text, *args, **kwargs):
-        boxes.append((title, text))
-        return ew.QMessageBox.StandardButton.Ok
-    monkeypatch.setattr(ew.QMessageBox, "information", box)
-    return boxes
