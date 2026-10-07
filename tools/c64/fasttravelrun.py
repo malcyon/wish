@@ -21,10 +21,12 @@ area the `$6E1B`-style cache slot showed on any 0.2 s poll, in order, without
 repeats.
 
 `--no-encounters` calls `Session.suppress_encounters` (the switch of
-`tools/c64/acceptance.py --no-encounters`) before each leg and
-`restore_encounter_gates` when the run ends, logging both; the driver makes no
-save. Only areas in `tools/c64/session.py` `ENCOUNTER_GATES` are covered, and
-only the one the party stands in when a leg starts.
+`tools/c64/acceptance.py --no-encounters`) before each leg and again whenever
+the came-from or cache-slot byte changes during the leg, so the area each hop
+loads is covered as well as the one the party starts in, and
+`restore_encounter_gates` when the run ends, logging each; the driver makes no
+save. Only areas in `tools/c64/session.py` `ENCOUNTER_GATES` are covered; an
+area with no gate there is logged as `encounters-live`.
 
 A trip has arrived when `$6E1B` and `$49F2` both equal the destination and
 `legality` toward a different area passes; a check toward the destination
@@ -213,8 +215,12 @@ class Driver:
                  peeks: list[tuple[int, int]] | None = None,
                  stages: list[tuple[int, int, int]] | None = None,
                  party_reader: Callable[[object, object], object] | None = None,
-                 no_encounters: bool = False):
+                 no_encounters: bool = False, gates: dict | None = None):
         self.no_encounters = no_encounters
+        #: `ENCOUNTER_GATES`, or None to take it from `tools/c64/session.py`.
+        self.gates = gates
+        #: (came-from, cache slot) when the switch was last applied in this leg.
+        self._held_at: tuple[int, int] | None = None
         self.sess, self.connect, self.ft = sess, connect, fasttravel
         self.out, self.log, self.answer = out, log, answer
         self.sleep, self.clock, self.budget = sleep, clock, budget
@@ -349,17 +355,38 @@ class Driver:
                 self.log("peek", tag=tag, when=when, addr=f"${addr:04X}", length=length,
                          bytes=bytes(target.read(addr, length)).hex(" "))
 
-    def hold_encounters(self, tag: str) -> None:
+    def hold_encounters(self, tag: str, now: dict | None = None) -> None:
         """Under `--no-encounters`, write the running area's gate through the session.
 
-        It uses `Session.suppress_encounters`, the code `acceptance.py` uses, and
-        covers only the area the party stands in when the leg starts.
+        It uses `Session.suppress_encounters`, the code `acceptance.py` uses,
+        which picks the gate by the came-from byte. NOW is the poll's reading,
+        or None at the start of a leg, when it is read here. An area with no
+        gate in the table is logged as `encounters-live`.
         """
         if not self.no_encounters:
             return
+        if now is None:
+            with self.target() as target:
+                now = reading(target, self.addresses)
+        self._held_at = (now["script49F2"], now["area6E1B"] & 0x7F)
         self.sess.no_encounters = True
         self.sess.suppress_encounters()
-        self.log("no_encounters", tag=tag, on=True)
+        area = now["script49F2"] & 0x7F
+        self.log("no_encounters", tag=tag, on=True, area=area)
+        if (self.game.key, area) not in self._gate_table():
+            self.log("encounters-live", tag=tag, area=area)
+
+    def follow_encounters(self, tag: str, now: dict) -> None:
+        """Apply the switch again once a hop has changed the came-from or cache-slot byte."""
+        if self.no_encounters and (now["script49F2"],
+                                   now["area6E1B"] & 0x7F) != self._held_at:
+            self.hold_encounters(tag, now)
+
+    def _gate_table(self) -> dict:
+        if self.gates is None:
+            from tools.c64 import session  # noqa: PLC0415
+            self.gates = session.ENCOUNTER_GATES
+        return self.gates
 
     def release_encounters(self) -> None:
         """Put back and verify every gate `hold_encounters` wrote, and log the rows."""
@@ -401,6 +428,7 @@ class Driver:
                         return "failed"
                 now = reading(target, self.addresses)
             self.see(summary, now["area6E1B"])
+            self.follow_encounters(tag, now)
             if self.clock() >= next_look:
                 next_look = self.clock() + SCREEN_SECONDS
                 done, row = self.service(self.answer, summary["questions"])
@@ -425,16 +453,38 @@ class Driver:
         return "timeout"
 
     def run(self, legs: list[int]) -> list[dict]:
-        """The legs in order, stopping at the first that does not arrive."""
+        """The legs in order, stopping at the first that does not arrive.
+
+        The gates are put back however the legs end. When a leg raised and the
+        restore fails too, the leg's error is raised with the restore's noted
+        on it; the restore's failure is in the log either way.
+        """
         try:
             for index, dest in enumerate(legs):
                 self.results.append(self.trip(dest, f"t{index}-to{dest}", leg=index))
                 if self.results[-1]["result"] != "arrived":
                     break
-        finally:
-            self.ft.cancel_pending()
-            self.release_encounters()
+        except BaseException as leg_error:
+            try:
+                self.finish()
+            except Exception as end_error:
+                leg_error.add_note(f"Ending the run also failed: {end_error!r}")
+            raise
+        self.finish()
         return self.results
+
+    def finish(self) -> None:
+        """Put the gates back, then drop any pending trip, each even if the other raises."""
+        try:
+            self.release_encounters()
+        except BaseException as gates_error:
+            try:
+                self.ft.cancel_pending()
+            except Exception as cancel_error:
+                gates_error.add_note(
+                    f"Dropping the pending trip also failed: {cancel_error!r}")
+            raise
+        self.ft.cancel_pending()
 
 
 def stage_title(key: str, S, slot, disks: pathlib.Path, save: pathlib.Path) -> tuple[str, type]:

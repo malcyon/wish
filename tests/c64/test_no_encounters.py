@@ -423,3 +423,93 @@ def test_the_driving_guide_and_the_rule_give_the_same_save_condition():
         assert "tools/c64/acceptance.py --no-encounters" in text
         assert "proves movement and saving, not combat" in text
         assert "leaves both off" not in text
+
+
+def _silver(area, script=None):
+    class T(Fake):
+        game = G.SECRET_OF_THE_SILVER_BLADES
+    s = T(area)
+    at, roll = S.SILVER_BLADES_ROLLS[area]
+    for i, b in enumerate(bytes.fromhex(roll) if script is None else script):
+        s.mem[at + i] = b
+    return s, at
+
+
+@pytest.mark.parametrize("area", sorted(S.SILVER_BLADES_ROLLS))
+def test_a_silver_blades_roll_becomes_save_and_is_put_back(area):
+    s, at = _silver(area)
+    s.suppress_encounters()
+    assert pokes(s) == [(at, S.ECL_SAVE)]
+    rows = s.restore_encounter_gates()
+    assert s.mem[at] == 0x08
+    assert rows[0]["action"] == "restored" and rows[0]["verified"]
+    s._check_save_allowed()
+
+
+def test_a_silver_blades_gate_writes_nothing_over_another_script():
+    s, at = _silver(0x20, script=bytes(13))
+    s.suppress_encounters()
+    assert pokes(s) == []
+    assert any("not suppressed" in line for line in s.lines)
+
+
+@pytest.mark.parametrize("area", (0x44, 0x61))
+def test_silver_blades_areas_without_a_roll_are_known_and_write_nothing(area):
+    s, _ = _silver(0x20)
+    s.mem[S.AREA_BYTE[G.SECRET_OF_THE_SILVER_BLADES.key].addr] = area
+    s.suppress_encounters()
+    assert pokes(s) == []
+    assert not any("not suppressed" in line for line in s.lines)
+
+
+def _silver_scripts():
+    from automap import gamedisks
+    if not gamedisks.find(G.SECRET_OF_THE_SILVER_BLADES.key):
+        pytest.skip("needs the Silver Blades C64 disks")
+    from tools.areas import ecllist
+    _game, _root, machine, base, bodies = ecllist.load(
+        G.SECRET_OF_THE_SILVER_BLADES.key)
+    return ecllist, machine, base, bodies
+
+
+@pytest.mark.parametrize("area", sorted(S.SILVER_BLADES_ROLLS))
+def test_each_silver_blades_guard_is_the_scripts_roll_and_save_skips_the_fight(area):
+    ecllist, machine, base, bodies = _silver_scripts()
+    from tools.areas.eclsweep import decode
+    at, roll = S.SILVER_BLADES_ROLLS[area]
+    body = bodies[f"ECL{area:02X}"]
+    off = at - base
+    assert body[off:off + 13] == bytes.fromhex(roll)
+    random = decode(machine, body, off)
+    compare = decode(machine, body, random.end)
+    test = decode(machine, body, compare.end)
+    after = decode(machine, body, test.end)
+    assert test.end == off + 13
+    assert random.op == 0x08 and compare.op == ecllist.COMPARE
+    (_k, top), (_k2, dest) = random.operands
+    assert dest == 0x7F79
+
+    def taken(roll_value):
+        a, b = ((roll_value if kind == 0x01 and value == dest else value)
+                for kind, value in compare.operands)
+        return ecllist.TESTS[test.op](a, b)
+
+    # The patched SAVE stores the roll's own limit and leaves past the fight;
+    # a roll of 0 is one the unpatched script fights on.
+    assert taken(top) and not taken(0)
+    assert after.op in (ecllist.EXIT, ecllist.GOTO)
+
+
+def test_silver_blades_rollless_areas_have_no_wandering_roll():
+    ecllist, machine, base, bodies = _silver_scripts()
+    from tools.areas.eclsweep import decode
+    ops = []
+    off, body = 0, bodies["ECL44"]
+    while (st := decode(machine, body, off)) is not None:
+        ops.append(st.op)
+        off = st.end
+    assert 0x08 not in ops and off > len(body) - 16
+    arm = decode(machine, bodies["ECL61"], 0x0151)
+    assert arm.op == ecllist.ONGOTO
+    first = arm.operands[2][1]
+    assert decode(machine, bodies["ECL61"], first - base).op == ecllist.EXIT

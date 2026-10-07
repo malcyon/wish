@@ -194,12 +194,85 @@ def test_no_encounters_is_off_by_default():
 
 
 def test_no_encounters_is_set_before_each_leg_and_restored_at_the_end():
-    drv, sess, _ft, _mem, _clock, stream = build()
+    drv, sess, _ft, _mem, _clock, stream = build(budget=5.0)
     drv.no_encounters = True
     drv.run([18, 2])
-    assert sess.calls == [("suppress", True), ("suppress", True), ("restore",)]
-    logged = [e["event"] for e in events(stream)]
-    assert logged.count("no_encounters") == 2 and logged[-1] == "encounter-gates"
+    held = [(e["tag"], e["area"]) for e in events(stream) if e["event"] == "no_encounters"]
+    # Leg 0 starts in 7 and loads 18; leg 1 starts in 18 and never leaves it.
+    assert held == [("t0-to18", 7), ("t0-to18", 18), ("t1-to2", 18)]
+    assert sess.calls == [("suppress", True)] * 3 + [("restore",)]
+    assert [e["event"] for e in events(stream)][-1] == "encounter-gates"
+
+
+def test_the_switch_follows_each_area_a_two_hop_trip_loads():
+    # Through area 30 at 1 s (slot first, came-from a poll later), then 18 at 3 s.
+    drv, sess, _ft, _mem, _clock, stream = build(
+        area_at=lambda t: 7 if t < 1 else 30 if t < 3 else 18,
+        script_at=lambda t: 7 if t < 1.5 else 30 if t < 3.5 else 18)
+    drv.no_encounters = True
+    assert drv.trip(18, "t")["result"] == "arrived"
+    held = [e for e in events(stream) if e["event"] == "no_encounters"]
+    assert [e["area"] for e in held] == [7, 7, 30, 30, 18]
+    assert all(c == ("suppress", True) for c in sess.calls)
+    # Each came-from/slot pair is held once, and the arrival one before arrival.
+    arrived = next(e["t"] for e in events(stream) if e["event"] == "arrival-check")
+    assert held[-1]["t"] <= arrived
+
+
+def test_without_the_switch_no_hop_is_followed():
+    drv, sess, *_ = build(area_at=lambda t: 7 if t < 1 else 30 if t < 3 else 18,
+                          script_at=lambda t: 7 if t < 1 else 30 if t < 3 else 18)
+    drv.trip(18, "t")
+    assert sess.calls == []
+
+
+def test_an_area_with_no_gate_is_logged_as_live():
+    drv, _sess, _ft, _mem, _clock, stream = build()
+    drv.no_encounters = True
+    drv.gates = {(drv.game.key, 7): object()}
+    drv.trip(18, "t")
+    live = [e for e in events(stream) if e["event"] == "encounters-live"]
+    assert [e["area"] for e in live] == [18]
+
+
+def test_the_gate_table_defaults_to_the_sessions():
+    from tools.c64 import session
+    drv, *_ = build()
+    assert drv._gate_table() is session.ENCOUNTER_GATES
+
+
+def test_gates_are_restored_when_cancel_pending_raises():
+    drv, sess, ft, *_ = build()
+    drv.no_encounters = True
+
+    def boom():
+        raise RuntimeError("cancel failed")
+
+    ft.cancel_pending = boom
+    with pytest.raises(RuntimeError, match="cancel failed"):
+        drv.run([18])
+    assert sess.calls[-1] == ("restore",)
+
+
+def test_a_failed_restore_is_noted_on_the_legs_own_error():
+    drv, sess, ft, _mem, _clock, stream = build()
+    drv.no_encounters = True
+
+    def leg_boom(*a, **k):
+        raise RuntimeError("leg failed")
+
+    def restore_boom():
+        sess.calls.append(("restore",))
+        raise RuntimeError("gate unverified")
+
+    ft.legality = leg_boom
+    sess.restore_encounter_gates = restore_boom
+    with pytest.raises(RuntimeError, match="leg failed") as raised:
+        drv.run([18])
+    assert any("gate unverified" in note for note in raised.value.__notes__)
+    assert ft.cancelled == 1
+    gates = [e for e in events(stream) if e["event"] == "encounter-gates"]
+    assert gates and gates[-1]["verified"] is False
 
 
 def test_gates_are_restored_when_a_leg_raises():

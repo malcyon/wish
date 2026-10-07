@@ -205,6 +205,25 @@ POOL_TRAVEL_ROLL_ZERO = 17
 #: Where each travel-grid window's script holds that check.
 POOL_TRAVEL_ROLLS = {0x19: 0xA0B3, 0x1A: 0xA0E7, 0x1B: 0x9EA8}
 
+#: Silver Blades' wandering-encounter roll in each area's step entry, by area:
+#: (address, the 13 bytes from `RANDOM #99, =[$7F79]` through the `COMPARE`
+#: and the `IF` after it).  The switch turns `RANDOM` (`$08`) into `SAVE`
+#: (`$09`), which stores 99, and with 99 each `IF` takes the branch that
+#: skips the fight: `IF>` against 5, 5, 3 or 8 runs its `EXIT`, and in
+#: `ECL32`/`ECL33` `COMPARE #30` (or `#35`), `IF<=` runs the `GOTO` past it.
+#: DUNGEON's `COMPARE` latches first minus second and `IF>` runs the next
+#: statement only when the first is greater (`$19F9`, `$1C7A`).
+SILVER_BLADES_ROLLS = {
+    0x20: (0x89F6, "08006301797f0301797f000519"),
+    0x21: (0x834F, "08006301797f0301797f000519"),
+    0x32: (0x9061, "08006301797f03001e01797f1a"),
+    0x33: (0x9074, "08006301797f03002301797f1a"),
+    0x41: (0x83ED, "08006301797f0301797f000319"),
+    0x62: (0x82A3, "08006301797f0301797f000819"),
+}
+#: `SAVE`'s opcode, written over the roll's `RANDOM`.
+ECL_SAVE = 0x09
+
 
 class AreaByte(NamedTuple):
     """The save-page byte naming the running area script, and how sure we are."""
@@ -267,6 +286,19 @@ ENCOUNTER_GATES: dict[tuple[str, int], EncounterGate] = {
         "New Verdigris ECL10: the fight arm runs only while $4C2D = 1 "
         "(at $85AC); bytecode only",
         ((0x4C2D, 0),)),
+    **{(G.SECRET_OF_THE_SILVER_BLADES.key, area): EncounterGate(
+        "PROBABLE",
+        f"ECL{area:02X}: the step entry's wandering roll at ${at:04X} becomes "
+        "SAVE #99, which the following IF sends past the fight; bytecode only",
+        ((at, ECL_SAVE),), (at, bytes.fromhex(roll)))
+       for area, (at, roll) in SILVER_BLADES_ROLLS.items()},
+    (G.SECRET_OF_THE_SILVER_BLADES.key, 0x44): EncounterGate(
+        "PROBABLE", "ECL44 has no RANDOM statement; its arrival question is "
+        "a once-only story event behind bit 0 of $4C9E; bytecode only", ()),
+    (G.SECRET_OF_THE_SILVER_BLADES.key, 0x61): EncounterGate(
+        "PROBABLE", "ECL61's ordinary squares (step arm 0, $94D6) only EXIT; "
+        "its RANDOMs are fixed fights' counts and ability checks; bytecode "
+        "only", ()),
     (G.POOL_OF_RADIANCE.key, 0x14): EncounterGate(
         "PROBABLE", "Slums ECL14: $4A80 < 15 at $9B32 then 1 in 14; "
         "bytecode only", ((0x4A80, 15),)),
