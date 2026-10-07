@@ -365,7 +365,7 @@ def test_rest_offered_takes_the_games_time_writes_nothing_and_learns_the_pick(
     assert got["offered"] == [0, 6, 45] and got["field"] == [45, 6, 0]
     assert got["offered_minutes"] == 405 and got["elapsed_minutes"] == 405
     assert got["rest_completed"] is True and got["ended"] == "completed"
-    assert got["wrote_nothing"] is True and got["stayed_in_camp"] is True
+    assert "wrote_nothing" not in got and got["stayed_in_camp"] is True
     assert got["memorised"]["learned"] is True
     assert got["memorised"]["after"] == [36, 28, 3, 3]
     assert sess.state == "camp"
@@ -534,3 +534,28 @@ def test_dispel_fails_before_any_key_when_the_caster_holds_no_dispel_magic(
     with pytest.raises(A.StepFailed, match="Dispel Magic id 41 memorised"):
         run.cast("DIRTEN:DISPEL MAGIC>BRUTUS")
     assert sess.sent == []
+
+
+def test_an_interrupted_rest_is_also_a_result_of_the_run(tmp_path, monkeypatch):
+    import json
+
+    from tests.c64.test_c64acceptance import _drive, _Pool
+
+    class Interrupted(_Pool):
+        lost_reading = None
+
+        def rest(self, arg):
+            outcome = {"ended": "interrupted", "elapsed_minutes": 20,
+                       "text": ["YOUR REST IS RUDELY INTERRUPTED!"], "then": "fight"}
+            self.lost_reading = {"step": "rest offered", "outcome": outcome}
+            raise A.RestInterrupted("the offered rest was interrupted")
+
+    rc, _, out = _drive(tmp_path, monkeypatch, ["load", "rest offered"],
+                        pool=Interrupted)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert rc != 0 and summary["completed"] is False
+    last = summary["results"][-1]
+    assert (last["step"], last["outcome"], last["minute"]) == (
+        "rest offered", "interrupted", 20)
+    assert last["interruption"] == "YOUR REST IS RUDELY INTERRUPTED!"
+    assert summary["lost_reading"]["outcome"]["then"] == "fight"
