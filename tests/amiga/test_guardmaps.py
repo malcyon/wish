@@ -830,14 +830,9 @@ def test_silver_blades_identity_holds_guys_one_row_item_list():
                for rule in rules)
 
 
-def test_the_darkness_camp_save_picker_guard_recognises_the_seven_member_party_picker_only():
-    """Reads a crop kept from a live run, so it skips on a machine without it."""
+def _darkness_matching(crop):
     from tools.amiga import screens
-    from tools.registry import scratch
 
-    crop = scratch.cache_dir('acceptance') / 'WISH-2/wish2-a2/measure8/shots/13-camp_save_picker.png'
-    if not crop.is_file():
-        pytest.skip('the kept Darkness camp picker crop is not on this machine')
     spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
     matching = set()
     for state, value in spec['guards'].items():
@@ -845,7 +840,58 @@ def test_the_darkness_camp_save_picker_guard_recognises_the_seven_member_party_p
             box = tuple(rule['box'])
             if screens.box_digests(crop, {box})[box] == rule['sha256']:
                 matching.add(state)
-    assert matching == {'camp_save_picker'}
+    return matching
+
+
+def test_the_darkness_save_picker_guards_recognise_the_seven_member_party_picker_on_the_camp_and_the_party_menu():
+    """Reads crops kept from live runs, so each skips on a machine without it."""
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    crops = ('WISH-2/wish2-a2/measure8/shots/13-camp_save_picker.png',
+             'WISH-2/wish2-a2-capture/sheets1/shots/08-save_picker.png')
+    seen = 0
+    for name in crops:
+        crop = root / name
+        if not crop.is_file():
+            continue
+        seen += 1
+        assert _darkness_matching(crop) == {'camp_save_picker', 'save_picker'}, name
+    if not seen:
+        pytest.skip('the kept Darkness picker crops are not on this machine')
+
+
+def test_the_darkness_exit_game_guard_recognises_a_quit_question_drawn_with_the_seven_member_border(tmp_path):
+    """Reads crops kept from live runs, so it skips on a machine without them."""
+    from PIL import Image
+
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    quit_ = next(root.glob('679/*-amiga-darkness-accept-A/acceptA/shots/16-camp.png'), None)
+    picker = root / 'WISH-2/wish2-a2-capture/sheets1/shots/08-save_picker.png'
+    if quit_ is None or not picker.is_file():
+        pytest.skip('the kept Darkness quit question or picker crop is not on this machine')
+    image = Image.open(quit_).convert('RGB')
+    other = Image.open(picker).convert('RGB')
+    for rows in ((402, 406), (428, 432)):
+        image.paste(other.crop((58, rows[0], 698, rows[1])), (58, rows[0]))
+    image.paste(other.crop((322, 406, 360, 416)), (322, 406))
+    drawn = tmp_path / 'quit.png'
+    image.save(drawn)
+    assert 'exit_game' in _darkness_matching(drawn)
+    for name in ('628/darkness-P1a/accept2/shots/31-exit_game.png',
+                 'WISH-2/wish2-a3/accept3b/shots/16-exit_game.png'):
+        crop = root / name
+        if crop.is_file():
+            assert 'exit_game' in _darkness_matching(crop), name
+    assert 'exit_game' in _darkness_matching(quit_)
+    for name in ('WISH-2/wish2-a2/measure8/shots/13-camp_save_picker.png',
+                 'WISH-2/wish2-a2-capture/sheets1/shots/08-save_picker.png',
+                 'WISH-2/wish2-a2/measure7/shots/12-camp.png'):
+        crop = root / name
+        if crop.is_file():
+            assert 'exit_game' not in _darkness_matching(crop), name
 
 
 def test_the_darkness_vault_guards_match_their_screens_and_not_the_neighbours(tmp_path):

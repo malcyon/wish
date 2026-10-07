@@ -773,17 +773,30 @@
       "example": "WISH-2/wish2-a3/accept2/shots/13-world.png",
       "sha256": "03aa1e681bdb5c268b6323dbc66d5bd296a336789bfce2a78bb6fd59e95ac527"
     },
-    "exit_game": {
-      "also": [],
-      "box": [
-        74,
-        404,
-        360,
-        430
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/16-camp.png",
-      "sha256": "cd8e839e2afa1fe0f8d1b838a43483a927c8e35e5766345b17571b4cb46bbedd"
-    },
+    "exit_game": [
+      {
+        "also": [],
+        "box": [
+          74,
+          404,
+          360,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/16-camp.png",
+        "sha256": "cd8e839e2afa1fe0f8d1b838a43483a927c8e35e5766345b17571b4cb46bbedd"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          406,
+          322,
+          428
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/16-camp.png",
+        "sha256": "7d337901cf9c94999dfd2cd288958b770f48e0e6c132dc630d9866053e77c89e"
+      }
+    ],
     "heal_whom": {
       "also": [],
       "box": [
@@ -947,19 +960,34 @@
       "example": "628/darkness-P1a/accept1/shots/21-rest_menu.png",
       "sha256": "57329e10dafb2df52b49220b2d023d92ac7731ac1792ef4f0da038cc67f01f96"
     },
-    "save_picker": {
-      "also": [
-        "camp_save_picker"
-      ],
-      "box": [
-        74,
-        404,
-        322,
-        430
-      ],
-      "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/08-save_picker.png",
-      "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
-    },
+    "save_picker": [
+      {
+        "also": [
+          "camp_save_picker"
+        ],
+        "box": [
+          74,
+          404,
+          322,
+          430
+        ],
+        "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/08-save_picker.png",
+        "sha256": "27301b4c59f31e160132ea379d29167b88251428a94892a8ab5a5a498b33b6a8"
+      },
+      {
+        "also": [
+          "camp_save_picker"
+        ],
+        "box": [
+          74,
+          404,
+          322,
+          430
+        ],
+        "example": "WISH-2/wish2-a2-capture/sheets1/shots/08-save_picker.png",
+        "sha256": "df9c8ff025a19c80ae58285e082eae7f42dd3374765bb132adb9dd01d5a3d3b2"
+      }
+    ],
     "sheet": [
       {
         "also": [
