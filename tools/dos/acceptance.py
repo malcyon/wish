@@ -2100,6 +2100,16 @@ TITLES = {
                       exe="START.BAT", suffix=".PTY"),
 }
 
+def launch_args(title: Title, intervene: bool = False) -> dict[str, str]:
+    """The `exe` a session for `title` is started with, in either emulator.
+
+    `START.EXE` is `Session`'s own default, so only another launcher is
+    named.  `intervene` adds the title's `CHEAT_ARGS`.
+    """
+    exe = f"{title.exe} {CHEAT_ARGS[title.key]}" if intervene else title.exe
+    return {} if exe == "START.EXE" else {"exe": exe}
+
+
 #: The `dosnoencounters` title each `--no-encounters` run names; Pools of
 #: Darkness has no switch.
 NO_ENCOUNTER_TITLES = {"pool": dosnoencounters.POOL,
@@ -7495,18 +7505,13 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         with deferred_sigterm():
             slot = (dosboxx.claim if debugger or snapshots else dosbox.claim)(args.note)
             stack.callback(slot.release)
-        # `START.EXE` is `Session`'s own default, so only another launcher
-        # is named.
+        launch = launch_args(
+            title, debugger and getattr(args, "intervene", False))
         if debugger or snapshots:
             x_class = dossnapshot.SnapshotSession if snapshots else dosboxx.XSession
-            if debugger and getattr(args, "intervene", False):
-                session = x_class(
-                    slot, game, exe=f"START.EXE {CHEAT_ARGS[args.title]}")
-            else:
-                session = x_class(slot, game)
+            session = x_class(slot, game, **launch)
         else:
-            session = (dosbox.Session(slot, game) if title.exe == "START.EXE"
-                       else dosbox.Session(slot, game, exe=title.exe))
+            session = dosbox.Session(slot, game, **launch)
         stack.callback(session.close)
 
         def keep_evidence():

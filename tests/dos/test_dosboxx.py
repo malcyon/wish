@@ -490,6 +490,15 @@ def test_the_config_asks_for_no_working_directory_and_logs_the_debugger(tmp_path
     assert "core=normal" in conf
 
 
+def test_the_config_keeps_dos_out_of_the_hma(tmp_path):
+    """With DOS in the HMA, Pools of Darkness' `GAME.EXE` prints `Packed file
+    is corrupt` and the game drops back to DOS before the party menu."""
+    conf = dosboxx.CONFIG.format(dir=tmp_path, stem="DARKNESS", exe="START.BAT",
+                                 cycles=30000, title=dosboxx.TITLE)
+    dos = conf.split("[dos]\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert "hma=false" in dos
+
+
 # --------------------------------------------------------------------------
 # The pool
 # --------------------------------------------------------------------------

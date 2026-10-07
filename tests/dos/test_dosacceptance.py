@@ -9641,6 +9641,36 @@ def test_intervene_boots_silver_blades_with_its_cheat_arguments(monkeypatch, tmp
     assert made == [{"exe": "START.EXE X Gem"}, {}]
 
 
+@pytest.mark.parametrize("steps, emulator", [
+    (["load", "snapshot a"], "x"), (["load"], "plain")])
+def test_pools_of_darkness_starts_with_its_own_batch_file_in_both_emulators(
+        monkeypatch, tmp_path, steps, emulator):
+    _fake_run(monkeypatch, tmp_path, menu_error=TimeoutError("x"))
+    monkeypatch.setattr(da.dospod, "find_game", lambda stem: tmp_path / "game")
+    made: list[tuple[str, dict]] = []
+    log: list[str] = []
+
+    def session(name):
+        def make(slot, game, **kw):
+            made.append((name, kw))
+            return _Session(tmp_path, log)
+        return make
+
+    monkeypatch.setattr(da.dosboxx, "claim", lambda note="": _Slot(log))
+    monkeypatch.setattr(da.dossnapshot, "SnapshotSession", session("x"))
+    monkeypatch.setattr(dosbox, "Session", session("plain"))
+    args = _run_args(tmp_path, steps)
+    args.title = "darkness"
+    da.run(args)
+    assert made == [(emulator, {"exe": "START.BAT"})]
+
+
+def test_launch_args_name_only_a_launcher_other_than_start_exe():
+    assert da.launch_args(da.TITLES["pool"]) == {}
+    assert da.launch_args(da.TITLES["darkness"]) == {"exe": "START.BAT"}
+    assert da.launch_args(da.TITLES["ssb"], intervene=True) == {"exe": "START.EXE X Gem"}
+
+
 def test_intervene_is_pressed_once_at_the_bar_after_the_first_bar_key(tmp_path, fight_now):
     game, d = _fighter(tmp_path, key="space", intervene=True)
     got = d.fight()

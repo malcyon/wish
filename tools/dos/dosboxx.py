@@ -414,7 +414,10 @@ def claim(note: str = "") -> Slot:
 #: `tools/dos/dosbox.py`'s config, plus the four sections that make a debugger
 #: reachable and keep every dialog off the user's desktop.  `core=normal`
 #: because heavy debugging checks every instruction against every memory
-#: breakpoint and the dynamic core does not.
+#: breakpoint and the dynamic core does not.  `hma=false` keeps the DOS kernel
+#: out of the HMA, as in DOSBox 0.74.  With it there, the EXEPACKed `GAME.EXE`
+#: that Pools of Darkness' `CONTROL` starts prints `Packed file is corrupt`
+#: and the game drops back to DOS.  Free conventional memory is 608K either way.
 CONFIG = """\
 [sdl]
 fullscreen=false
@@ -460,6 +463,9 @@ pcspeaker=false
 
 [joystick]
 joysticktype=none
+
+[dos]
+hma=false
 
 [autoexec]
 mount c {dir}/game
