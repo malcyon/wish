@@ -6734,6 +6734,192 @@ def test_a_vault_step_with_no_slot_to_load_does_not_name_a_slot_none(tmp_path):
     assert "None" not in str(e.value)
 
 
+# -- move-on: Elminster's MOVE ON, back to the area the party came from ------------
+
+
+def _put_name(data: bytearray, index: int, name: str) -> None:
+    from goldbox import dos_savegame
+    at = dos_savegame.pod_var_offset(index)
+    data[at:at + da.POD_NAME_SPAN] = name.encode().ljust(da.POD_NAME_SPAN, b"\0")
+
+
+def _move_on_pty(back="AERIE", on="THORNE", realm=0, area=33) -> bytes:
+    from goldbox import dos_savegame
+    data = bytearray(1364)
+    _put_name(data, da.POD_BACK_NAME, back)
+    _put_name(data, da.POD_ON_NAME, on)
+    dos_savegame.put_pod_var(data, da.POD_REALM_VAR, realm)
+    dos_savegame.put_pod_var(data, da.POD_BACK_AREA, area)
+    return bytes(data)
+
+
+class FakeMoveOn(FakeVault):
+    """Elminster's menu as `FakeVault` draws it, whose `M` (`MOVE ON`) draws
+    the destination bar `ECL1.DAX` block 18 builds at `$858C` from the save's
+    variables: the two places the save names, `REALM` unless its `$A3` is 1,
+    and `STAY`.  The first place's letter leads to `after` (the map unless
+    given), `S` back to the menu, and any other key does nothing; `drawn`
+    replaces the places the bar draws, as a save the game did not load would."""
+
+    def __init__(self, tmp, *, back="AERIE", on="THORNE", realm=0, after="map",
+                 drawn=None, **kw):
+        super().__init__(tmp, None, **kw)
+        (self.save_dir / "SAVGAMA.PTY").write_bytes(_move_on_pty(back, on, realm))
+        self.places = drawn or (back, on)
+        self.realm, self.after = realm, after
+
+    def where_text(self) -> str:
+        return " ".join((*self.places, *(() if self.realm == 1 else ("REALM",)), "STAY"))
+
+    def key(self, k, gap=0.0):
+        if self.mode == "town" and k == "m":
+            self.keys.append(k)
+            self.into_town.append(k)
+            self.mode = "where"
+        elif self.mode == "where":
+            self.keys.append(k)
+            if k == self.places[0][0].lower():
+                self.mode = self.after
+            elif k == "s":
+                self.mode = "town"
+        else:
+            super().key(k, gap)
+
+    def capture(self):
+        if self.mode != "where":
+            return super().capture()
+        px = bytearray(W * H * 3)
+        _draw(px, _FONT_BLOCK, da.BAR_ROW, 0, self.where_text(), _BAR_INK)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _move_on_driver(tmp_path, **kw):
+    game = FakeMoveOn(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d._font = _FONT
+    d.elminster_ok = da.ends_at_elminster([da.parse_step("move-on")])
+    d.load()
+    d.begin()
+    game.keys.clear()
+    return game, d
+
+
+def test_move_on_is_a_darkness_step_at_elminsters_menu():
+    for good in (("load", "begin", "move-on", "walk 1"),
+                 ("load", "begin", "shot x", "move-on", "camp", "save D", "read"),
+                 ("load", "begin", "vault", "move-on", "walk 1"),
+                 ("load", "begin", "vault", "deposit 5 2", "move-on", "turn 4")):
+        steps = [da.parse_step(t) for t in good]
+        da.validate_steps(steps, "darkness")
+        assert da.ends_at_elminster(steps)
+    assert not da.ends_at_elminster([da.parse_step(t) for t in ("load", "begin")])
+    for bad, title, match in (
+            (("load", "move-on"), "darkness", "follows begin"),
+            (("load", "begin", "camp", "move-on"), "darkness", "follows begin"),
+            (("load", "begin", "move-on", "move-on"), "darkness", "follows begin"),
+            (("load", "begin", "move-on"), "curse", "darkness only"),
+            (("load", "begin", "move-on", "vault"), "darkness", "follows begin")):
+        with pytest.raises(ValueError, match=match):
+            da.validate_steps([da.parse_step(t) for t in bad], title)
+
+
+def test_the_destination_bar_is_read_from_the_save():
+    got = da.move_on_menu(_move_on_pty())
+    assert got == {"labels": ["AERIE", "THORNE", "REALM", "STAY"],
+                   "words": ["AERIE", "THORNE", "REALM", "STAY"], "key": "a",
+                   "back": "AERIE", "area": 33}
+    assert da.move_on_menu(_move_on_pty(realm=1))["labels"] == ["AERIE", "THORNE", "STAY"]
+    two = da.move_on_menu(_move_on_pty("DOWN ROPE", "MOANDER", area=17))
+    assert two["words"] == ["DOWN", "ROPE", "MOANDER", "REALM", "STAY"]
+    assert two["key"] == "d" and two["area"] == 17
+    for back, on, match in (("", "THORNE", "names no place"),
+                            ("AERIE", "", "names no place"),
+                            ("STONE", "THORNE", "shared"),
+                            ("AERIE", "ARCAM", "shared"),
+                            ("\x07BAD", "THORNE", "not text")):
+        with pytest.raises(ValueError, match=match):
+            da.move_on_menu(_move_on_pty(back, on))
+
+
+@pytest.mark.parametrize("realm", [0, 1])
+def test_move_on_picks_the_place_the_party_came_from_and_takes_the_map(
+        tmp_path, elminster, realm):
+    game, d = _move_on_driver(tmp_path, realm=realm)
+    assert d.where == "elminster"
+    got = d.move_on()
+    assert game.keys == ["m", "a"] and game.mode == "map" and d.where == "map"
+    assert got["menu"] == ["HEAL", "TRAIN", "STORAGE", "REST", "MOVE", "ON"]
+    assert got["destinations"] == ["AERIE", "THORNE"] + ["REALM"] * (realm != 1) + ["STAY"]
+    assert got["answered"] == "a" and got["area"] == 33 and got["map_kind"] == "dungeon"
+
+
+def test_a_destination_bar_the_save_does_not_name_stops_after_move_on(tmp_path, elminster):
+    game, d = _move_on_driver(tmp_path, drawn=("THORNE", "AERIE"))
+    with pytest.raises(da.StepFailed, match="AERIE.*lost-move-on-where"):
+        d.move_on()
+    assert game.keys == ["m"] and game.mode == "where"
+
+
+def test_move_on_without_storage_presses_nothing(tmp_path, elminster, monkeypatch):
+    monkeypatch.setattr(da, "POD_ELMINSTER_BAR", elminster("HEAL TRAIN REST MOVE ON"))
+    game, d = _move_on_driver(tmp_path, storage=False)
+    with pytest.raises(da.StepFailed, match="STORAGE.*lost-move-on-menu"):
+        d.move_on()
+    assert game.keys == []
+
+
+def test_a_place_that_is_not_a_map_stops_move_on(tmp_path, elminster):
+    game, d = _move_on_driver(tmp_path, after="tour")
+    with pytest.raises(da.StepFailed, match="lost-move-on-map"):
+        d.move_on()
+    assert game.keys == ["m", "a"] and d.where == "elminster"
+
+
+def test_move_on_needs_elminsters_menu(tmp_path):
+    game, d = _pod_driver(tmp_path, question=False)
+    d.load()
+    with pytest.raises(da.StepFailed, match="Elminster's menu"):
+        d.move_on()
+    assert "m" not in game.keys
+
+
+def test_a_move_on_run_needs_area_18_storage_and_a_place_before_a_slot_is_claimed(
+        monkeypatch, tmp_path):
+    from goldbox import dos_savegame
+    log = _fake_run(monkeypatch, tmp_path)
+
+    def args(saves, **extra):
+        a = _vault_args(tmp_path, saves, **extra)
+        a.steps = ["load", "begin", "move-on", "walk 1"]
+        return a
+
+    def save(**kw):
+        saves = _pod_save(tmp_path, **{k: kw.pop(k) for k in ("area", "storage") if k in kw})
+        data = bytearray((saves / "SAVGAMA.PTY").read_bytes())
+        named = _move_on_pty(**kw)
+        for index in (da.POD_BACK_NAME, da.POD_ON_NAME):
+            at = dos_savegame.pod_var_offset(index)
+            data[at:at + da.POD_NAME_SPAN] = named[at:at + da.POD_NAME_SPAN]
+        (saves / "SAVGAMA.PTY").write_bytes(bytes(data))
+        return saves
+
+    saves = save()
+    da.check_staging(args(saves), saves, "A")
+    saves = save(area=17)
+    with pytest.raises(ValueError, match="move-on.*area 18.*names area 17"):
+        da.check_staging(args(saves), saves, "A")
+    saves = save(storage=1)
+    with pytest.raises(ValueError, match="move-on.*--stage-var A2=0"):
+        da.check_staging(args(saves), saves, "A")
+    da.check_staging(args(saves, stage_var=["A2=0"]), saves, "A")
+    saves = save(back="")
+    with pytest.raises(ValueError, match="move-on.*names no place"):
+        da.check_staging(args(saves), saves, "A")
+    with pytest.raises(ValueError, match="move-on"):
+        da.check_move_on(args(saves), saves, None)
+    assert "claim" not in log
+
+
 def test_stage_var_writes_one_byte_of_a_pools_of_darkness_save(tmp_path):
     saves = _pod_save(tmp_path, storage=1)
     before = (saves / "SAVGAMA.PTY").read_bytes()

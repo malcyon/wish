@@ -59,6 +59,7 @@ a source whose title does not match `--title`:
 | `camp` guard | Pool presses `ENCAMP` only on a measured map bar of `POOL_MAP_BARS`, and no title presses it on the party menu, where `e` is EXIT TO DOS |
 | `camp` | `ENCAMP`; records the camp bar by `bar_signature`.  After `vault`, Pools of Darkness presses `REST` on Elminster's menu instead, which opens the camp loop, and requires a bar reading `SAVE ... EXIT` |
 | `vault` | Pools of Darkness, straight after `begin`, which then takes Elminster's menu in Limbo (area 18) as its end: `STORAGE`, the vault's bar read as text, `TAKE` (and `ITEMS` at `TAKE: MONEY ITEMS EXIT`) when offered, every page of the stored items read as text with `NEXT`, `EXIT` back to the vault and `EXIT` to Elminster's menu; records the rows and the `TMPVAULT.DAT` leaving wrote.  The run fails unless every page reads the names that file caches, in order and to the last, and the file and the last saved slot's vault hold the installed items and coins (`vault_verdict`).  Blocked before the boot unless the installed save names area 18 in variable `$16` and `$A2` is not 1 |
+| `move-on` | Pools of Darkness, straight after `begin` (which then takes Elminster's menu in Limbo as its end) or after `vault` or `deposit`, at Elminster's menu with `STORAGE`: `MOVE ON`, the destination bar required to read the words the installed save names (`move_on_menu`: string variables `$2EF` and `$30D`, `REALM` unless `$A3` is 1, `STAY`), then the first place's letter, which takes the party back to the area it came from (variable `$9A`), and the map believed only by a measured bar of `POD_MAP_BARS`, so `walk`, `turn` and `camp` can follow.  Nothing is pressed on a menu without `STORAGE`, and nothing after `M` on a bar that reads otherwise.  Blocked before the boot as `vault` is, and when the save names no place |
 | `deposit 5 2` | Pools of Darkness, after `vault`, at Elminster's menu: `STORAGE`, roster line 5 highlighted, `ITEMS`, row 2 highlighted and `D` (`DEPOSIT`, no question), `EXIT` twice, then the vault read back as `vault` reads it.  Stops before `D` on a readied row or a list's last row, and fails unless the list lost that row, `TMPVAULT.DAT` gained it as its last record with the coins unchanged, the readback lists every record, and the last saved slot's vault holds what the deposit left (`deposit_verdict`) |
 | `leave` | Curse and Silver Blades, in camp: the camp bar's `Exit` (`CAMP_EXIT`), believed when the map bar is back, so a `fight` can follow a camp `save` in the same boot.  Curse's has left camp in one boot; Silver Blades' is read from its key set only and is not yet verified live |
 | `sheet N`, `items N` | Curse, Silver Blades and Pools of Darkness (`items` Pools of Darkness only; Pool's is the next row), in camp: roster line N (from 1) highlighted (`End` in Curse, `Down` in the other two), `VIEW`, the sheet's name checked against line N's, the bar read for `heal_offered` and `cure_offered` (`sheet_offers`), and for `items` its `ITEMS` list page by page with `NEXT`; back to camp |
@@ -154,8 +155,16 @@ continue screens are counted one screen at a time, at most `POD_INTERSTITIALS`
 in `begin`.  A party saved in Elminster's camp in Limbo (area 18) begins at
 his help menu `POD_ELMINSTER_BAR`; `begin` shoots it as `town-screen` and
 stops with `lost-begin-screen`, pressing nothing, unless the run goes on to
-`vault`.  Use the party-menu steps (`load 'view 1' 'save D' read`) for such a
-party otherwise.
+`vault` or `move-on` (`ELMINSTER_STEPS`).  `move-on` leaves the menu for the
+map: its `MOVE ON` arm (`ECL1.DAX` block 18, `$84F1` to `$856C`) asks `WHERE
+DO YOU WISH TO GO?` over the place the party came from, the next place, and
+`REALM` and `STAY`, and the first place's arm (`$872D`) runs `NEWECL` on
+variable `$9A` after writing variables `$22`, `$24`, `$0E` and `$3A` only.
+The next place's arm asks to go on and writes story flags, and `REALM` loads
+the overland, so neither is pressed.  Area 33's arrival entry, for the first
+place `AERIE`, puts a party coming from area 18 on square 7,0 facing east with
+no text and no fight (`$8033` to `$8151`); the other places' arrivals are not
+read, and a screen that is not a measured map stops the step.
 
 **`vault` opens Pools of Darkness' item vault, which only Elminster's menu
 in Limbo offers to a player.**  `ECL1.DAX` block 18 (area 18) sends both its
@@ -690,9 +699,11 @@ POD_MAP_BARS: dict[str, str] = {"dungeon": "0409f26b63f9c492",
 #: (`ECL1.DAX` block 18, `$84CB`), by `bar_signature`, measured on the Amiga
 #: thief party's run `88eac43064-run2-thief` of #650 (`lost-begin-screen`);
 #: its glyph signature there was `53b2db87f794e8bb`, and WISH-2's run3b of
-#: SavGamH drew the same.  It is not a map.  The destination menu after MOVE
-#: ON is bar `151b806b9b9fe327`, unmeasured and deliberately not entered:
-#: only `vault`'s `STORAGE` and `camp`'s `REST` are pressed on this bar.
+#: SavGamH drew the same.  It is not a map.  Only `vault`'s `STORAGE`,
+#: `camp`'s `REST` and `move-on`'s `MOVE ON` are pressed on this bar; the
+#: destination bar `MOVE ON` drew for that party, `AERIE THORNE REALM STAY`,
+#: was `151b806b9b9fe327` (WISH-2 run `elm-moveon`), and `move-on` reads it as
+#: text against the save rather than by that signature.
 POD_ELMINSTER_BAR = "f8c32c677c85b2d4"
 #: Variable `$16` holds the area the party was last in (the engine copies
 #: `DS:0xC580` into it after an area's entry script, `GAME.OVR` 0xE5F and
@@ -704,6 +715,64 @@ POD_STORAGE_VAR = 0xA2
 #: `STORAGE` and `REST` on Elminster's menu, keyed by their capitals.
 ELMINSTER_STORAGE = "s"
 ELMINSTER_REST = "r"
+#: `MOVE ON` on Elminster's menu.  With `STORAGE` on the menu its arm
+#: (`ECL1.DAX` block 18, `$856C`) asks `WHERE DO YOU WISH TO GO?` over a bar
+#: of the place in string variable `POD_BACK_NAME`, the place in
+#: `POD_ON_NAME`, `REALM` unless variable `POD_REALM_VAR` is 1, and `STAY`.
+#: The first place's arm (`$872D`) writes variables `$22`, `$24`, `$0E` and
+#: `$3A` and runs `NEWECL` on variable `POD_BACK_AREA`, the area the party
+#: came from; the second (`$874D`) asks to go on and writes story flags,
+#: `REALM` loads the overland (area 17) and `STAY` returns to the menu.
+#: Without `STORAGE` the bar opens on `REALMS` instead (`$85D5`), whose arm
+#: warns that items will be destroyed, so the step needs `STORAGE`.  The
+#: subroutines at `$9288`-`$93A4` set the two names and areas together.
+ELMINSTER_MOVE_ON = "m"
+POD_BACK_NAME = 0x2EF
+POD_ON_NAME = 0x30D
+POD_REALM_VAR = 0xA3
+POD_BACK_AREA = 0x9A
+MOVE_ON_REALM = "REALM"
+MOVE_ON_STAY = "STAY"
+#: The bytes between the two string variables; a name ends at its first NUL.
+POD_NAME_SPAN = POD_ON_NAME - POD_BACK_NAME
+#: The steps that end `begin` at Elminster's menu rather than stopping there.
+ELMINSTER_STEPS = frozenset({"vault", "move-on"})
+
+
+def ends_at_elminster(steps) -> bool:
+    """Whether a step that starts at Elminster's menu follows, so that
+    `begin` takes that menu as its end."""
+    return any(s.kind in ELMINSTER_STEPS for s in steps)
+
+
+def pod_var_text(pty: bytes, index: int) -> str:
+    """Pools of Darkness string variable `index` of a `SAVGAM<L>.PTY`: the
+    bytes from its offset to the first NUL, at most `POD_NAME_SPAN`."""
+    at = dos_savegame.pod_var_offset(index)
+    raw = pty[at:at + POD_NAME_SPAN].split(b"\0", 1)[0]
+    if not all(0x20 <= b < 0x7F for b in raw):
+        raise ValueError(f"string variable ${index:03X} is not text: {raw!r}")
+    return raw.decode("ascii").strip()
+
+
+def move_on_menu(pty: bytes) -> dict:
+    """The destination bar `MOVE ON` draws for the save `pty` at Elminster's
+    menu with `STORAGE`: its labels and words, the key that picks the first
+    place (its first letter, as the menu keys each label), that place, and
+    the area its `NEWECL` loads.  Raises ValueError when the save names no
+    place or the first place's letter starts another label too."""
+    back, on = pod_var_text(pty, POD_BACK_NAME), pod_var_text(pty, POD_ON_NAME)
+    if not back or not on:
+        raise ValueError(f"the save names no place for MOVE ON in string variables "
+                         f"${POD_BACK_NAME:03X} and ${POD_ON_NAME:03X}: {back!r}, {on!r}")
+    realm = [] if dos_savegame.pod_var(pty, POD_REALM_VAR) == 1 else [MOVE_ON_REALM]
+    labels = [back, on, *realm, MOVE_ON_STAY]
+    key = back[0].lower()
+    if not key.isalpha() or [label[0].lower() for label in labels].count(key) != 1:
+        raise ValueError(f"the first place {back!r} has the letter {key!r}, shared "
+                         f"with another label of {labels}")
+    return {"labels": labels, "words": " ".join(labels).split(), "key": key,
+            "back": back, "area": dos_savegame.pod_var(pty, POD_BACK_AREA)}
 #: The vault screen's bar, `View Take Pool Money Items Exit` (`DS:0x3196`);
 #: the menu builder (`GAME.OVR` 0x330D-0x339D) leaves out `Take` with an
 #: empty vault, `Money` when the member has no coins and `Items` when he
@@ -2328,7 +2397,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
     return days, hours, mins // REST_STEP
 
 
-STEP_HELP = ("load, begin, vault, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, "
+STEP_HELP = ("load, begin, vault, move-on, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, "
              "display, "
              "'rest 5m', 'save D', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
@@ -2350,8 +2419,8 @@ def parse_step(text: str) -> Step:
     if not words:
         raise ValueError("an empty step")
     kind = words[0].lower()
-    if kind in ("load", "begin", "camp", "leave", "display", "vault", "map",
-                "continue", "exit", "read") and len(words) == 1:
+    if kind in ("load", "begin", "camp", "leave", "display", "vault", "move-on",
+                "map", "continue", "exit", "read") and len(words) == 1:
         return Step(kind, text)
     deposit = parse_deposit(words, text)
     if deposit is not None:
@@ -2540,6 +2609,13 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"vault follows begin, which ends at Elminster's "
                                  f"menu for it: {step.text!r}")
             where = "elminster"
+        elif k == "move-on":
+            if title != "darkness":
+                raise ValueError(f"move-on is driven in darkness only, not {title}")
+            if previous != "begin" and where != "elminster":
+                raise ValueError(f"move-on follows begin, or vault or deposit, at "
+                                 f"Elminster's menu: {step.text!r}")
+            where = "map"
         elif k == "deposit":
             why = deposit_rejection(title, where, step)
             if why:
@@ -4237,13 +4313,14 @@ class Driver:
                 self.where = "elminster"
                 return {"map_bar": None, "map_kind": "elminster",
                         "bar": POD_ELMINSTER_BAR}
-            # The destination menu behind MOVE ON is unmeasured, so a start
-            # there is recognised and stopped at, with nothing pressed.
+            # Without a step that starts at the menu, a start there is
+            # recognised and stopped at, with nothing pressed.
             self.shot("town-screen")
             raise self.fail("begin-screen", "the party starts at Elminster's "
                             "menu in Limbo, which this driver leaves only for "
-                            "the vault (load begin vault); use the party-menu "
-                            "steps (load 'view 1' 'save D' read) otherwise")
+                            "the vault (load begin vault) or the map (load "
+                            "begin move-on); use the party-menu steps "
+                            "(load 'view 1' 'save D' read) otherwise")
         if self.on_party_menu(screen):
             raise self.fail("begin", "the party menu is still showing")
         kind = None
@@ -4478,6 +4555,42 @@ class Driver:
                 "rows_before": rows_before, "rows_after": rows_after,
                 "before": before, "tmpvault": written, "readback": readback,
                 "shots": [shot_before, shot_after], "why": why}
+
+    def move_on(self) -> dict:
+        """Pools of Darkness, at Elminster's menu with `STORAGE`: `MOVE ON`,
+        the destination bar required to read the places the installed save
+        names (`move_on_menu`), then the first place's letter, which takes
+        the party back to the area it came from; the map is believed only by
+        a measured bar.  Nothing is pressed on a menu without `STORAGE`, and
+        nothing after `MOVE ON` on a bar that reads otherwise."""
+        if self.title.key != "darkness" or self.where != "elminster":
+            raise StepFailed("move-on needs Elminster's menu in Limbo, which "
+                             "begin reaches for a party saved in area 18")
+        try:
+            menu = move_on_menu((self.s.save_dir / f"SAVGAM{self.slot}.PTY").read_bytes())
+        except (OSError, ValueError) as e:
+            raise self.fail("move-on-save", f"the installed save gives no "
+                            f"destination bar: {e}") from None
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, "move-on-settle"))
+        words = self.bar_text(screen)
+        if (bar_signature(screen) != POD_ELMINSTER_BAR or "STORAGE" not in words
+                or words[-2:] != ["MOVE", "ON"]):
+            raise self.fail("move-on-menu", f"Elminster's menu with STORAGE and "
+                            f"MOVE ON is not showing: {self.bar_named(screen)}")
+        screen, where = self.press_bar(ELMINSTER_MOVE_ON, screen, "move-on-open")
+        shot = self.shot("move-on")
+        if where != menu["words"]:
+            raise self.fail("move-on-where", f"MOVE ON drew {where}, not the "
+                            f"destinations {menu['words']} the save names")
+        self.press_bar(menu["key"], screen, "move-on-go")
+        screen = self.s.settle(quiet=1.5, timeout=self.bounded(60.0, "move-on-map"))
+        kind = self.pod_map_kind(screen, "move-on-map")
+        self.record_world(screen)
+        self.shot("map")
+        self.where = "map"
+        return {"menu": words, "destinations": where, "shot": f"{shot}.png",
+                "answered": menu["key"], "place": menu["back"], "area": menu["area"],
+                "map_bar": self.world_sig, "map_kind": kind}
 
     def elminster_camp(self) -> dict:
         """Camp from Elminster's menu: `REST` runs `PROGRAM 9`, the camp loop
@@ -7958,7 +8071,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
             if getattr(args, "first_bar_key", None) is not None:
                 d.first_bar_key = parse_key(args.first_bar_key)
             d.intervene = bool(getattr(args, "intervene", False))
-            d.elminster_ok = any(s.kind == "vault" for s in steps)
+            d.elminster_ok = ends_at_elminster(steps)
             # Only a walk or a turn compares squares, so only they pay for
             # the halts of a memory read.
             if not any(s.kind in ("walk", "turn") for s in steps):
@@ -7988,6 +8101,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.camp()
                 elif step.kind == "vault":
                     r = d.vault()
+                elif step.kind == "move-on":
+                    r = d.move_on()
                 elif step.kind == "deposit":
                     r = d.deposit(step.line, step.row)
                 elif step.kind == "leave":
@@ -8149,30 +8264,51 @@ def check_gate(args, save: pathlib.Path, from_slot: str | None) -> None:
                          f"{gate} a wandering roll there gives no fight")
 
 
-def check_vault(args, save: pathlib.Path, from_slot: str | None) -> None:
-    """Block a `vault` step whose installed save, with its `--stage-var`
-    bytes, would not begin at Elminster's menu with `STORAGE` on it:
-    variable `POD_AREA_VAR` must read `ELMINSTER_AREA` and `POD_STORAGE_VAR`
-    must not read 1."""
-    if not any(parse_step(t).kind == "vault" for t in getattr(args, "steps", [])):
-        return
+def elminster_save(args, save: pathlib.Path, from_slot: str | None,
+                   kind: str) -> bytes:
+    """The installed save, with its `--stage-var` bytes, for a `kind` step
+    that starts at Elminster's menu with `STORAGE` on it: variable
+    `POD_AREA_VAR` must read `ELMINSTER_AREA` and `POD_STORAGE_VAR` must not
+    read 1."""
     if args.title != "darkness" or from_slot is None:
-        raise ValueError("vault needs a Pools of Darkness save with a SAVGAM<slot>.PTY")
+        raise ValueError(f"{kind} needs a Pools of Darkness save with a SAVGAM<slot>.PTY")
     pty = save / f"SAVGAM{from_slot}.PTY"
     if not pty.is_file():
-        raise ValueError(f"vault needs a Pools of Darkness SAVGAM{from_slot}.PTY")
+        raise ValueError(f"{kind} needs a Pools of Darkness SAVGAM{from_slot}.PTY")
     data = bytearray(pty.read_bytes())
     for address, value in (parse_var(t) for t in getattr(args, "stage_var", []) or []):
         dos_savegame.put_pod_var(data, address, value)
     area = dos_savegame.pod_var(bytes(data), POD_AREA_VAR)
     if area != ELMINSTER_AREA:
-        raise ValueError(f"vault opens at Elminster's menu, area {ELMINSTER_AREA}; "
+        raise ValueError(f"{kind} starts at Elminster's menu, area {ELMINSTER_AREA}; "
                          f"{pty.name} names area {area} in variable "
                          f"${POD_AREA_VAR:02X}")
     if dos_savegame.pod_var(bytes(data), POD_STORAGE_VAR) == 1:
-        raise ValueError(f"vault needs STORAGE on Elminster's menu, which variable "
+        raise ValueError(f"{kind} needs STORAGE on Elminster's menu, which variable "
                          f"${POD_STORAGE_VAR:02X} = 1 takes off: stage --stage-var "
                          f"{POD_STORAGE_VAR:02X}=0")
+    return bytes(data)
+
+
+def check_vault(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Block a `vault` step whose installed save would not begin at
+    Elminster's menu with `STORAGE` on it (`elminster_save`)."""
+    if any(parse_step(t).kind == "vault" for t in getattr(args, "steps", [])):
+        elminster_save(args, save, from_slot, "vault")
+
+
+def check_move_on(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Block a `move-on` step whose installed save would not begin at
+    Elminster's menu with `STORAGE` on it, or names no destination bar
+    `move_on_menu` can read: without `STORAGE`, `MOVE ON` opens on
+    `REALMS`, whose arm destroys items."""
+    if not any(parse_step(t).kind == "move-on" for t in getattr(args, "steps", [])):
+        return
+    data = elminster_save(args, save, from_slot, "move-on")
+    try:
+        move_on_menu(data)
+    except ValueError as e:
+        raise ValueError(f"move-on: {e}") from None
 
 
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
@@ -8193,6 +8329,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
                              f"short for the hall word at {HALL_WORD:#x}")
     check_gate(args, save, from_slot)
     check_vault(args, save, from_slot)
+    check_move_on(args, save, from_slot)
     if getattr(args, "stage_place", None) and args.title == "darkness":
         parse_place(args.stage_place)
         pty = save / f"SAVGAM{from_slot}.PTY"
