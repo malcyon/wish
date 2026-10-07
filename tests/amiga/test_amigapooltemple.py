@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import pathlib
 
 import pytest
 
@@ -196,9 +197,13 @@ def test_pool_route_picks_the_temple_the_fight_or_the_walk(monkeypatch):
     assert acceptance.pool_route({"state_a": start}) == "walk"
 
 
-def _slot(place, status=0, control=0, nodes=()):
+STAGED_GOLD = 6000
+PAID_GOLD = STAGED_GOLD - route_pool.POOL_RAISE_PRICE
+
+
+def _slot(place, status=0, control=0, nodes=(), gold=PAID_GOLD):
     return {"place": place, "members": [{"name": "BRUTUS", "status_bytes": [status, 1, 0, 0],
-                                         "control": control}],
+                                         "control": control, "gold": gold}],
             "effects": {"BRUTUS": [list(n) for n in nodes]}}
 
 
@@ -207,21 +212,21 @@ SQUARE = dict(route_pool.POOL_TEMPLE_SQUARE)
 
 
 def test_a_raised_member_on_the_temple_square_passes():
-    walk = route_pool.temple_verdict(START, _slot(START), _slot(SQUARE), "BRUTUS")
+    walk = route_pool.temple_verdict(START, _slot(START), _slot(SQUARE), "BRUTUS", expected_gold=PAID_GOLD)
     assert walk["b_ok"] and walk["d_ok"]
     assert walk["area_crossed"] == {"from": 20, "to": 0}
-    assert walk["raised"] == {"status": 0, "control": 0, "node_32": False}
+    assert walk["raised"] == {"status": 0, "control": 0, "node_32": False, "gold": PAID_GOLD}
 
 
 @pytest.mark.parametrize("after", [
     _slot(SQUARE, status=6), _slot(SQUARE, control=0xB3), _slot(SQUARE, nodes=[(32, 0, 5, 1)]),
-    _slot(dict(SQUARE, y=4)), {"missing": True}])
+    _slot(dict(SQUARE, y=4)), _slot(SQUARE, gold=STAGED_GOLD), {"missing": True}])
 def test_a_member_not_raised_or_elsewhere_fails(after):
-    assert not route_pool.temple_verdict(START, _slot(START), after, "BRUTUS")["d_ok"]
+    assert not route_pool.temple_verdict(START, _slot(START), after, "BRUTUS", expected_gold=PAID_GOLD)["d_ok"]
 
 
 def test_a_control_save_that_moved_fails():
-    walk = route_pool.temple_verdict(START, _slot(SQUARE), _slot(SQUARE), "BRUTUS")
+    walk = route_pool.temple_verdict(START, _slot(SQUARE), _slot(SQUARE), "BRUTUS", expected_gold=PAID_GOLD)
     assert not walk["b_ok"] and walk["d_ok"]
 
 
@@ -386,49 +391,66 @@ def _temple_read_slot(disk, letter):
 class TempleGuest(title_run.TitleGuest):
     """Saves C where the party stands and D on the temple square with BRUTUS as `raised` leaves him."""
 
-    def __init__(self, clock, raised):
+    def __init__(self, clock, raised, gold=PAID_GOLD):
         super().__init__(clock, land=dict(SQUARE))
-        self.raised = raised
+        self.raised, self.gold = raised, gold
 
     def _write(self, letter, place):
         remote = next(r for r in self.mounted if r and r.endswith(f"-{self.save_key}.adf"))
         disk = AmigaDisk(self.remote[remote])
         status = self.raised if letter == "D" else 6
         disk.write_file(f"/SAVE/savgam{letter}.sav", json.dumps(
-            {**_slot(place, status=status), "names": title_run.NAMES}).encode())
+            {**_slot(place, status=status, gold=self.gold), "names": title_run.NAMES}).encode())
         self.remote[remote] = disk.to_bytes()
 
 
-def _temple_run(tmp_path, clock, raised):
+def _temple_run(tmp_path, clock, monkeypatch, raised, gold=PAID_GOLD, temple_route=True):
     synthetic = title_run.make_title()
     title = dataclasses.replace(
-        route_pool.POOL_TEMPLE, mounted=synthetic.mounted, spares=synthetic.spares,
+        route_pool.POOL_TEMPLE if temple_route else synthetic, mounted=synthetic.mounted, spares=synthetic.spares,
         save_disk=synthetic.save_disk, read_slot=_temple_read_slot,
         slot_letters=synthetic.slot_letters, slot_files=synthetic.slot_files, interstitials=())
     path = title_run.manifest_for(tmp_path)
     data = json.loads(path.read_text())
     data["temple"] = {"member": "BRUTUS"}
+    before = tmp_path / "save-unstaged.adf"
+    before.write_bytes(pathlib.Path(data["disks"]["boot"]["path"]).read_bytes())
+    data["staged_record"] = {"fields": {"gold": {"before": 0, "after": STAGED_GOLD}},
+                             "before": {"path": str(before), "sha256": staging.sha256(before)}}
+    monkeypatch.setattr(acceptance, "check_staged_member", lambda *_args: None)
     path.write_text(json.dumps(data))
     states = {s for _, s, _ in title.route} | {"title"}
-    guest = TempleGuest(clock, raised)
+    guest = TempleGuest(clock, raised, gold)
     result = acceptance.run_recon(
         path, guest=guest, guard=MapGuard(states=states), identity=_IdentityMap(),
         holder="wish303-test", audio_proof=_audio_proof(tmp_path), title=title, accept=True)
     return guest, result
 
 
-def test_a_temple_run_passes_when_slot_d_holds_him_raised_on_the_temple_square(tmp_path, clock):
-    guest, result = _temple_run(tmp_path, clock, raised=0)
+def test_a_temple_run_passes_when_slot_d_holds_him_raised_on_the_temple_square(tmp_path, clock, monkeypatch):
+    guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=0)
     assert result["success"], (result["error"], result["read"]["verdicts"])
-    assert result["walk"]["raised"] == {"status": 0, "control": 0, "node_32": False}
+    assert result["walk"]["raised"] == {"status": 0, "control": 0, "node_32": False,
+                                        "gold": PAID_GOLD}
     keys = title_run._keys(guest)
     assert keys.count("Y") == 2 and keys.count("H") == 2
 
 
-def test_a_temple_run_whose_slot_d_still_holds_him_dead_fails(tmp_path, clock):
-    _guest, result = _temple_run(tmp_path, clock, raised=6)
+def test_a_temple_run_whose_slot_d_still_holds_him_dead_fails(tmp_path, clock, monkeypatch):
+    _guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=6)
     assert not result["success"]
     assert any("not raised" in line for line in result["read"]["verdicts"])
+
+
+def test_a_temple_run_whose_raised_member_kept_his_gold_fails(tmp_path, clock, monkeypatch):
+    _guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=0, gold=STAGED_GOLD)
+    assert not result["success"]
+    assert any("not raised" in line and "gold" in line for line in result["read"]["verdicts"])
+
+
+def test_a_run_not_on_the_temple_route_is_not_judged_by_the_temple_verdict(tmp_path, clock, monkeypatch):
+    _guest, result = _temple_run(tmp_path, clock, monkeypatch, raised=0, temple_route=False)
+    assert "raised" not in result["walk"]
 
 
 def test_a_staged_record_whose_unstaged_disk_changed_stops_the_run_before_the_claim(

@@ -86,6 +86,7 @@ from tools.amiga.route_pool import (  # noqa: E402
     POOL_ENCOUNTER,
     POOL_RAISE_PRICE,
     POOL_SOURCES,
+    POOL_TEMPLE,
     _prepare_pool,
     pool_camp_title,
     pool_temple_title,
@@ -1124,15 +1125,19 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     manifest, after, letter=title.after_letter, check_place=False,
                     names=manifest["names_a"], extra_problems=_no_problems)
                 squares = sum(1 for *_, kind in steps if kind == "move")
-                walk = temple_verdict(
-                    manifest["state_a"], control, after, manifest["temple"]["member"],
-                    control=title.control_letter, after=title.after_letter,
-                ) if "temple" in manifest else walk_verdict(manifest["state_a"], control, after, squares,
-                                    control=title.control_letter, after=title.after_letter,
-                                    turn=title.turn, edge_exits=title.edge_exits,
-                                    wilderness_grid=title.wilderness_grid,
-                                    walk_keys=[key for key, _state, kind in steps
-                                               if kind == "move"])
+                if title.route == POOL_TEMPLE.route:
+                    gold_after = manifest["staged_record"]["fields"]["gold"]["after"]
+                    walk = temple_verdict(
+                        manifest["state_a"], control, after, manifest["temple"]["member"],
+                        expected_gold=gold_after - POOL_RAISE_PRICE,
+                        control=title.control_letter, after=title.after_letter)
+                else:
+                    walk = walk_verdict(
+                        manifest["state_a"], control, after, squares,
+                        control=title.control_letter, after=title.after_letter,
+                        turn=title.turn, edge_exits=title.edge_exits,
+                        wilderness_grid=title.wilderness_grid,
+                        walk_keys=[key for key, _state, kind in steps if kind == "move"])
                 verdicts = list(walk["verdicts"])
                 expected = manifest.get("expected_after")
                 result["expected_after_matches"] = None

@@ -38,14 +38,18 @@ def _pool_name(name: str) -> str:
 _POOL_MEMBER_BYTES = (("control", 0x084), ("treasure_share", 0x085), ("creature_type", 0x09F),
                       ("turn_class", 0x076), ("movement", 0x072))
 _POOL_STATUS_BYTES = 0x10C
+#: The two-byte big-endian gold field, at its DOS offset (`staging.POR_STAGE_FIELDS`).
+_POOL_GOLD = 0x08E
 
 
 def _pool_member_bytes(raw: bytes) -> dict[str, Any]:
-    """The status, control, treasure share, creature type, turn class and movement bytes of one Amiga record."""
+    """The status, control, treasure share, creature type, turn class, movement and gold of one Amiga record."""
     at = amiga_por.amiga_por_offset(_POOL_STATUS_BYTES)
     reading: dict[str, Any] = {"status_bytes": list(raw[at:at + 4])}
     for key, dos_offset in _POOL_MEMBER_BYTES:
         reading[key] = raw[amiga_por.amiga_por_offset(dos_offset)]
+    gold_at = amiga_por.amiga_por_offset(_POOL_GOLD)
+    reading["gold"] = int.from_bytes(raw[gold_at:gold_at + 2], "big")
     return reading
 
 
@@ -321,11 +325,11 @@ def pool_temple_title(manifest: dict) -> AmigaTitle:
 
 
 def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: str, *,
-                   control: str = "C", after: str = "D") -> dict[str, Any]:
+                   expected_gold: int, control: str = "C", after: str = "D") -> dict[str, Any]:
     """Judge a temple run's saves: `control` unmoved at `before`; `after` on the temple square with `member` raised.
 
     Raised is what the game writes for a living character: status byte 0, a control byte below
-    `$80` (the player's) and no effect node 32. The keys match `walk_verdict`'s, so the run's
+    `$80` (the player's), no effect node 32 and the temple paid: gold equal to `expected_gold`. The keys match `walk_verdict`'s, so the run's
     other checks read it the same way.
     """
     verdicts: list[str] = []
@@ -346,8 +350,10 @@ def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: s
             row = rows[0]
             nodes = [n for n in (d.get("effects") or {}).get(member, []) if n and n[0] == 32]
             raised = {"status": row["status_bytes"][0], "control": row["control"],
-                      "node_32": bool(nodes)}
-            alive = raised["status"] == 0 and raised["control"] < 0x80 and not nodes
+                      "node_32": bool(nodes), "gold": row.get("gold")}
+            paid = raised["gold"] == expected_gold
+            alive = (raised["status"] == 0 and raised["control"] < 0x80 and not nodes
+                     and paid)
             at_temple = d_place == POOL_TEMPLE_SQUARE
             d_ok = alive and at_temple
             verdicts.append(
@@ -355,7 +361,8 @@ def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: s
                                      f"stands at {d_place}, not the temple {POOL_TEMPLE_SQUARE}")
                 + f"; {member} " + ("raised" if alive else
                                     f"not raised (status {raised['status']}, control "
-                                    f"{raised['control']:#04x}, node 32 {raised['node_32']})"))
+                                    f"{raised['control']:#04x}, node 32 {raised['node_32']}, gold "
+                                    f"{raised['gold']}, expected {expected_gold})"))
     return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok, "walk_blocked": False,
             "walk_partial": False, "squares_requested": sum(
                 1 for *_, kind in _TEMPLE_WALK if kind == "move"),
