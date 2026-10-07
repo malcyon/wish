@@ -365,14 +365,13 @@ def test_a_write_error_while_arming_reports_the_failure(disks, caplog):
     t = travel()
     with caplog.at_level(logging.WARNING):
         out = t.apply(m, area(7))
-    assert not out.ok and out.message == aft.NOT_HAPPENED
-    assert t.back is None and bytes(m.ram) == before
-    # The put-back failed with the write, so the records are kept for the
-    # next poll, which puts back what landed once the machine answers.
-    assert t.trip is not None and t.trip.armed.records
+    # The put-back failed with the write, so the trip is pending, and the
+    # next poll puts back what landed once the machine answers, saying once
+    # that it did not happen.
+    assert out.ok and t.trip is not None and t.trip.armed.records
     m.fail_write = False
-    t.continue_pending(m)
-    assert t.trip is None and bytes(m.ram) == before
+    assert t.continue_pending(m).message == aft.NOT_HAPPENED
+    assert t.trip is None and t.back is None and bytes(m.ram) == before
 
 
 def test_an_arm_that_raises_is_reported_and_logged(disks, monkeypatch, caplog):
@@ -1058,11 +1057,10 @@ def test_an_init_trip_that_does_not_fire_is_put_back_and_the_journal_goes(
     assert bytes(m.ram) == before and not list(m.journal.iterdir())
 
 
-def test_a_half_written_init_trip_is_kept_and_put_back_on_the_next_poll(
-        init_span, monkeypatch):
-    m = init_span
-    before = bytes(m.ram)
-    t = pool_travel(monkeypatch)
+def half_written(m, t):
+    """Run a trip whose entry write lands and then the emulator goes away,
+    so the put-back fails too. Returns the click's outcome and the switch
+    that brings the emulator back."""
     real = m.write
     state = {"dead": False, "done": False}
 
@@ -1075,13 +1073,36 @@ def test_a_half_written_init_trip_is_kept_and_put_back_on_the_next_poll(
             raise NotConnected("the emulator went away")
 
     m.write = write
-    out = t.run(m, area(0), arrival=(1, 2, 0))
-    assert not out.ok and out.message == aft.NOT_HAPPENED
+    return t.run(m, area(0), arrival=(1, 2, 0)), state
+
+
+def test_a_half_written_init_trip_is_kept_and_put_back_on_the_next_poll(
+        init_span, monkeypatch):
+    m = init_span
+    before = bytes(m.ram)
+    t = pool_travel(monkeypatch)
+    out, state = half_written(m, t)
+    # The trip is pending like any armed one: no not-happened line yet.
+    assert out.ok and out.message.startswith("Traveling to")
     assert t.trip is not None and bytes(m.ram) != before
+    assert t.continue_pending(m) is None        # still cannot be put back
     state["dead"] = False
-    assert t.continue_pending(m).message == aft.NOT_HAPPENED
+    outcomes = [t.continue_pending(m) for _ in range(3)]
+    assert [o.message for o in outcomes if o] == [aft.NOT_HAPPENED]
     assert t.trip is None and bytes(m.ram) == before
     assert not list(m.journal.iterdir())
+
+
+def test_a_half_written_init_trip_the_game_fires_first_ends_silently(
+        init_span, monkeypatch):
+    m = init_span
+    t = pool_travel(monkeypatch)
+    out, state = half_written(m, t)
+    assert out.ok
+    m.at(trips.ROWS[POOL].area, bytes([0]))     # the game took the key
+    state["dead"] = False
+    outcomes = [t.continue_pending(m) for _ in range(3)]
+    assert outcomes == [None, None, None] and t.trip is None
 
 
 def test_attaching_after_a_crash_puts_the_init_trip_back(init_span, monkeypatch):

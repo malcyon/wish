@@ -234,11 +234,13 @@ class AmigaFastTravel(engine.FastTravel):
         try:
             armed = trips.arm(target, row, plan)
         except trips.ArmIncomplete as exc:
-            # Kept with its deadline passed, so the next poll puts it back.
+            # Still pending, as any armed trip is: kept with its deadline
+            # passed, so the next poll puts it back and says so once, or
+            # finds it fired and ends silently.
             _log.warning("amiga fast travel: %s", exc)
             self.trip = _Trip(exc.armed, row, here, to, name, 0.0,
                               previous_back)
-            return engine.Outcome(False, NOT_HAPPENED)
+            return None
         except Exception:
             _log.warning("amiga fast travel: arming failed", exc_info=True)
             armed = None

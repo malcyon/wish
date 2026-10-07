@@ -1069,6 +1069,7 @@ def arm(target, row, p: Plan) -> Armed | None:
     here = area_id(target, row)
     if here == p.area:
         return None
+    journalled = False
     try:
         buffer, writes = _prepare(target, row, p)
         originals = target.read_blocks([(a, len(d)) for a, d, _k in writes])
@@ -1076,10 +1077,15 @@ def arm(target, row, p: Plan) -> Armed | None:
         if p.placement is not None and p.placement.room is not None:
             _check_init(target, row, buffer, p.placement.room)
             journal_write(target, row, here, buffer, writes, originals)
+            journalled = True
     except ArmError as exc:
         _log.debug("amiga trip not armed: %s", exc)
         return None
-    return _write_all(target, row, p, here, buffer, writes, originals)
+    armed = _write_all(target, row, p, here, buffer, writes, originals)
+    if armed is None and journalled:
+        # Nothing is left in the game, so no journal may say otherwise.
+        _unjournal(target)
+    return armed
 
 
 def _write_all(target, row: TripRow, p: Plan, here: int, buffer: int,
@@ -1351,13 +1357,59 @@ def journal_path(target) -> pathlib.Path:
     return journal_dir() / f"{connection_name(target)}.json"
 
 
+def _started(pid: int) -> str | None:
+    """When process `pid` began, as the kernel counts it, so a reused pid is
+    told from the process that wrote a journal. None where `/proc` is absent."""
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    # The command name, in brackets, may hold spaces.
+    return stat.rpartition(")")[2].split()[19]
+
+
+def _owner() -> dict:
+    """The process writing a journal: its pid and start time."""
+    return {"pid": os.getpid(), "started": _started(os.getpid())}
+
+
+def _owner_alive(owner) -> bool:
+    """Whether the process that wrote a journal is still running. A journal
+    with no readable owner (written before owners were recorded) counts as
+    dead, since only a crash could have left it."""
+    try:
+        pid, started = int(owner["pid"]), owner.get("started")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+    if pid == os.getpid():
+        return False
+    if os.name == "nt":
+        import ctypes
+        handle = ctypes.windll.kernel32.OpenProcess(0x100000, False, pid)
+        if not handle:
+            return False
+        try:
+            # SYNCHRONIZE: a wait of zero times out only on a live process.
+            return ctypes.windll.kernel32.WaitForSingleObject(
+                handle, 0) == 0x102
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return started is None or _started(pid) in (None, started)
+
+
 def journal_write(target, row: TripRow, here: int, buffer: int, writes: list,
                   originals: list[bytes]) -> None:
     """Record `writes` and what they will overwrite, before the first is made.
     An unwritable journal is an `ArmError`: nothing is armed that a crash
     could leave in the game."""
     saved = {"title": row.key, "from_area": here, "data_base": _base(target),
-             "buffer": buffer,
+             "buffer": buffer, "owner": _owner(),
              "records": [{"address": a, "original": was.hex(),
                           "data": d.hex(), "kind": k}
                          for (a, d, k), was in zip(writes, originals)]}
@@ -1378,8 +1430,11 @@ def journal_write(target, row: TripRow, here: int, buffer: int, writes: list,
 
 def journal_clear(target, armed: Armed) -> None:
     """Delete the journal once an init trip has fired or been put back."""
-    if not any(w.kind == "init" for w in armed.records):
-        return
+    if any(w.kind == "init" for w in armed.records):
+        _unjournal(target)
+
+
+def _unjournal(target) -> None:
     try:
         journal_path(target).unlink(missing_ok=True)
     except OSError:
@@ -1395,7 +1450,9 @@ def repair(target) -> bool:
     area the party has left holds nothing to undo and is deleted. Otherwise
     each recorded word that still reads as written is put back, newest
     first, as `disarm` does. A machine that cannot be read or written leaves
-    the journal for the next attempt.
+    the journal for the next attempt. A journal whose writing process is
+    still running belongs to another Wish on the same machine and is left
+    alone.
     """
     path = journal_path(target)
     try:
@@ -1406,11 +1463,14 @@ def repair(target) -> bool:
                         for r in saved["records"])
         here, base, buffer = (saved["from_area"], saved["data_base"],
                               saved["buffer"])
+        owner = saved.get("owner")
     except FileNotFoundError:
         return False
     except (OSError, ValueError, KeyError, TypeError):
         _log.warning("amiga trip: the journal %s cannot be read, so a trip "
                      "may still be in the game", path, exc_info=True)
+        return False
+    if _owner_alive(owner):
         return False
     if _base(target) is None:
         return False

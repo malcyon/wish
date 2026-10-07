@@ -4,6 +4,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import os
 import struct
 
 import pytest
@@ -1551,3 +1552,43 @@ def test_a_connection_is_named_by_its_lane_holder_or_its_address():
     Target.debugger = type("D", (), {"host": "127.0.0.1", "port": 6520})()
     assert trip.connection_name(Target()) == "127.0.0.1-6520"
     assert trip.connection_name(object()) == "local"
+
+
+def test_a_journal_another_live_wish_wrote_is_left_alone(monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    before = bytes(m.ram)
+    p, placed = init_plan(room)
+    assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    armed_ram = bytes(m.ram)
+    path = next(journal.iterdir())
+    saved = json.loads(path.read_text())
+    # Written by a process that is not this one and is still running.
+    saved["owner"] = {"pid": os.getppid(), "started": trip._started(
+        os.getppid())}
+    path.write_text(json.dumps(saved))
+    assert trip.repair(m) is False
+    assert bytes(m.ram) == armed_ram and path.exists()
+    # The same journal from a process that has gone is put back.
+    saved["owner"] = {"pid": 2 ** 22 + 12345, "started": None}
+    path.write_text(json.dumps(saved))
+    assert trip.repair(m) is True
+    assert bytes(m.ram) == before and not list(journal.iterdir())
+
+
+def test_a_reused_pid_is_not_the_journals_owner(monkeypatch, journal):
+    if trip._started(os.getppid()) is None:
+        pytest.skip("no /proc to read a start time from")
+    assert not trip._owner_alive({"pid": os.getppid(), "started": "1"})
+
+
+def test_arm_clears_the_journal_whenever_nothing_was_left_armed(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    p, placed = init_plan(room)
+    # A put-back that succeeds without clearing, as any later exit might.
+    monkeypatch.setattr(trip, "_put_back", lambda target, armed: True)
+    m.fail_at = BUFFER + room.start
+    assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed)) is None
+    assert not list(journal.iterdir())
