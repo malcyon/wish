@@ -6856,7 +6856,8 @@ def write(char: NeutralCharacter,
     # character creation writes and how it leaves the byte after HUMAN CHANGE
     # CLASSES.  An in-place rewrite copies, so the engine's own byte stands.
     if "paladin_cures" in table:
-        _pal_name, _pal_why = WRITE_DERIVED_LATER[0]
+        _pal_name = "paladin_cures"
+        _pal_why = dict(WRITE_DERIVED_LATER)[_pal_name]
         f = table[_pal_name]
         held = use(_pal_name)
         _left = int((w.get("former_levels") or {}).get("paladin") or 0)
@@ -6897,7 +6898,8 @@ def write(char: NeutralCharacter,
     # Left at 0: both engines clear and rebuild it on load, so a converted
     # character gets the right bonus from his readied items regardless.
     if "item_save_bonus" in table:
-        _isb_name, _isb_why = WRITE_DERIVED_LATER[1]
+        _isb_name = "item_save_bonus"
+        _isb_why = dict(WRITE_DERIVED_LATER)[_isb_name]
         f = table[_isb_name]
         rec[f.offset:f.end] = b"\x00"
         rep.note(f.offset, f.size, f"{_isb_name}: 0 -- {_isb_why}")

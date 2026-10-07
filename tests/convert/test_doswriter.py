@@ -733,8 +733,8 @@ def _unsourced_offsets() -> set[int]:
     # round-trips unmasked, and masking it would hide a real regression
     # (#235, docs/169-dos-combat-side.md).
     #
-    # `unnamed_1e0` is Pools of Darkness' and no other title declares it, so
-    # it has no Pool of Radiance offset to mask (#194).
+    # A default whose field Pool of Radiance does not declare has no
+    # Pool of Radiance offset to mask.
     for name, _, _, _ in dos_codec.WRITE_DEFAULTS:
         if name == "field_10c_10f" or name not in dos_port.FIELDS_BY_NAME:
             continue
