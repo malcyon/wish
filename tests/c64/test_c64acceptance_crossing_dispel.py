@@ -395,3 +395,38 @@ def test_a_walk_failure_names_the_area_edge_only_when_crossing_is_on(tmp_path, m
         with pytest.raises(A.StepFailed, match="side 7 mid-walk") as caught:
             run.answer_side_prompt("KKII", (2, "I", [14, 4, 1]), "ran")
         assert ("area edge" in str(caught.value)) is wanted
+
+
+SITE_BAR = "YOU ARE ON THE EASTERN EDGE OF THE CITY  NORTH SOUTH BOAT LEAVE"
+MOVE_BAR = "MOVE ENCAMP VIEW AREA"
+
+
+def test_a_crossing_that_lands_on_a_site_menu_ends_the_walk_as_arrived(tmp_path, monkeypatch):
+    sess = _Session(second=SITE_BAR)
+    run = _run(tmp_path, monkeypatch, sess)
+    run.to_world = lambda: False
+    assert run.answer_side_prompt("KKII", (3, "I", [15, 4, 1]), "ran", crossing=True)
+    assert run.walk_crossed["area_after"] == 26
+    assert run.walk_crossed["position"] == [14, 27, None]
+    assert run.walk_crossed["site_menu"] == SITE_BAR
+
+
+def test_a_crossing_that_lands_on_the_move_bar_is_unchanged(tmp_path, monkeypatch):
+    sess = _Session(second=MOVE_BAR)
+    run = _run(tmp_path, monkeypatch, sess)
+    assert run.answer_side_prompt("KKII", (3, "I", [15, 4, 1]), "ran", crossing=True)
+    assert "site_menu" not in run.walk_crossed
+    run.to_world = lambda: False
+    sess2 = _Session(second=MOVE_BAR)
+    run2 = _run(tmp_path, monkeypatch, sess2)
+    run2.to_world = lambda: False
+    with pytest.raises(A.StepFailed, match="world bar never came back after"):
+        run2.answer_side_prompt("KKII", (3, "I", [15, 4, 1]), "ran", crossing=True)
+
+
+def test_a_site_menu_without_a_crossing_is_not_one(tmp_path, monkeypatch):
+    sess = _Session(prompt=SITE_BAR)
+    run = _run(tmp_path, monkeypatch, sess)
+    assert not run.cross_if_prompt("KKII", (3, "I", [15, 4, 1]))
+    assert not run.answer_side_prompt("KKII", (3, "I", [15, 4, 1]), "ran", crossing=True)
+    assert run.walk_crossed is None and sess.attached == []

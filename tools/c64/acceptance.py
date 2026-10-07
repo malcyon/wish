@@ -6198,12 +6198,28 @@ class PoolRun:
                                         f"after side {side}: "
                                         f"{again.row(24).strip()}")
             area = self.area_byte()
-        if not self.to_world():
+        menu = self.site_menu_bar()
+        if menu is None and not self.to_world():
             raise self.fail("world", "the world bar never came back after "
                                      "the area crossing")
         self.capture(f"crossed-{area}")
-        return {"side": side, "at_move": n, "area_before": self.walk_area_start,
-                "area_after": area, "position": self.crossed_position()}
+        arrived = {"side": side, "at_move": n,
+                   "area_before": self.walk_area_start, "area_after": area,
+                   "position": self.crossed_position()}
+        if menu is not None:
+            arrived["site_menu"] = menu
+        return arrived
+
+    def site_menu_bar(self) -> str | None:
+        """Row 24 when the screen is a square's site menu (a `LEAVE` word on
+        a bar that is neither the world bar nor the treasure bar), else None.
+        The walk ends on it: a later `site` step picks from it."""
+        screen = self.sess.screen()
+        row = screen.row(24) if screen is not None else ""
+        if (S.word_column(row, "LEAVE") >= 0 and not self.at_world(row)
+                and S.word_column(row, "TREASURE") < 0):
+            return row.strip()
+        return None
 
     def stop_at_prompt(self, route: str, last, why: str) -> None:
         """Fail the walk when a disk prompt is on the screen, answering nothing."""
