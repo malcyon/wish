@@ -1607,6 +1607,17 @@
         ],
         "example": "WISH-2/wish2-a4/measure-a4-33/shots/06-sheet.png",
         "sha256": "c18a06b2ebc643a788a75c0bf4307b99b67c16c535f38cea87c8705e498d4da3"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-6/wish6-accept2/wish6-accept2/shots/06-sheet.png",
+        "sha256": "c75614e39ddd32e3b9f22b757dca54b1c859d6c97b5320917f3c9a1c58d87088"
       }
     ]
   },
