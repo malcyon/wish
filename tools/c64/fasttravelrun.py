@@ -628,6 +628,15 @@ def stage_title(key: str, S, slot, disks: pathlib.Path, save: pathlib.Path) -> t
     return boot, session_class
 
 
+def load_note(log: Log):
+    """The `note` callback `curseload.load_saved_game` takes, writing each step as `load-<event>`.
+
+    The loader names its step with an `event` keyword, and `Log.__call__` already
+    takes the record's own `event` first, so the step is folded into that name.
+    """
+    return lambda event, **fields: log(f"load-{event}", **fields)
+
+
 def bring_up(key: str, sess, disks: pathlib.Path, out: pathlib.Path, log: Log) -> None:
     """Boot, load the save and reach the world bar, the way each title's own driver does."""
     def shot(tag: str) -> None:
@@ -645,7 +654,7 @@ def bring_up(key: str, sess, disks: pathlib.Path, out: pathlib.Path, log: Log) -
     elif key == "curse-of-the-azure-bonds":
         from tools.curse_of_the_azure_bonds import curseload  # noqa: PLC0415
         outcome = curseload.load_saved_game(
-            sess, note=lambda **kw: log("load", **kw), shot=shot, wait=240)
+            sess, note=load_note(log), shot=shot, wait=240)
         if outcome != "loaded":
             raise DriverError(f"the game did not accept the save: {outcome}")
         sess.patch_disk_prompt()

@@ -789,3 +789,26 @@ def test_a_bar_built_on_the_registered_disks_has_maps():
     if disks is None:
         pytest.skip("no Pool of Radiance disks on this machine")
     assert ftr.build_bar(game, disks).maps
+
+
+def test_curse_load_steps_are_logged_under_the_loaders_own_event_keyword(monkeypatch, tmp_path):
+    from tools.curse_of_the_azure_bonds import curseload
+
+    def fake_load(sess, *, note, shot, wait):
+        note(event="yes", attempt="first")
+        return "failed"
+
+    monkeypatch.setattr(curseload, "load_saved_game", fake_load)
+
+    class Sess:
+        kbd = None
+
+        def boot(self):
+            return True
+
+    stream = io.StringIO()
+    log = ftr.Log(stream, lambda: 0.0)
+    with pytest.raises(ftr.DriverError, match="failed"):
+        ftr.bring_up("curse-of-the-azure-bonds", Sess(), tmp_path, tmp_path, log)
+    assert events(stream)[0]["event"] == "load-yes"
+    assert events(stream)[0]["attempt"] == "first"
