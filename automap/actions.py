@@ -2019,7 +2019,7 @@ class FastTravel(Action):
             return Verdict(False, FASTTRAVEL_BUSY)
         return Verdict(True)
 
-    def legality(self, target, area=None) -> Verdict:
+    def legality(self, target, area=None, back: bool = False) -> Verdict:
         base = super().legality(target)
         if not base:
             return base
@@ -2036,6 +2036,8 @@ class FastTravel(Action):
         if area is None:
             return Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
+            if back and self._is_mine_level(area):
+                return Verdict(False, self.MINE_LEVEL_BACK)
             return Verdict(False, self.ATTRACT_TRAP)
         if getattr(area, "outdoors", False) and addr.travel_square is None:
             return Verdict(False, self.NO_TRAVEL_GRID.format(
@@ -2529,6 +2531,18 @@ class FastTravel(Action):
                     "program counter never returns to the key-wait loop, "
                     "so there is no way back out of it")
 
+    #: The Return button's reason when the way back is a Silver Blades mine
+    #: level, which a trip cannot enter (`goldbox/areas.py`, rows `$31` and
+    #: `$32`): the wheel lift is the only way in.
+    MINE_LEVEL_BACK = "Use the wheel lift to return to this mine level."
+
+    #: The Silver Blades rows `MINE_LEVEL_BACK` is for.
+    MINE_LEVELS = frozenset({0x31, 0x32})
+
+    def _is_mine_level(self, area) -> bool:
+        return (self.game.title == c64_port.SECRET_OF_THE_SILVER_BLADES.title
+                and getattr(area, "id", None) in self.MINE_LEVELS)
+
     #: FastTraveling out of an overland area into an indoors one hangs the loader:
     #: it asks for the target's side and goes on asking, and re-attaching,
     #: attaching something else first and poking `$49E6` afterwards all fail.
@@ -2561,7 +2575,7 @@ class FastTravel(Action):
             return Verdict(False, "nothing to go back to: the party has not "
                                   "travelled anywhere this session")
         area = self._row(self.back.area)
-        return self.legality(target, area or self.back)
+        return self.legality(target, area or self.back, back=True)
 
     def apply_back(self, target) -> Outcome:
         """FastTravel to where the last fasttravel started, on the square it started on."""

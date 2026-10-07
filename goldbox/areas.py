@@ -591,15 +591,15 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # `dynamic_geo` is what stops a caller picking a landing square off a map
     # the game was never going to draw, and it is doing real work.
     #
-    # And both printed `LEVEL 0` on arrival, which is `ECL31` reading
-    # `[$4C69]` -- the option chosen from `ECL30`'s twelve-item menu -- out of
-    # the scratch a fast travel has just wiped. The warning above this table
-    # said a trip that does not set `[$4C69]` arrives on a level nobody chose;
-    # the game says so itself.
+    # And both printed `LEVEL 0` on arrival, which is `ECL31` reading `[$4C69]`
+    # -- the option chosen from `ECL30`'s twelve-item menu -- after the
+    # departing area's own arrival script, `ECL33` (`+$010A`), stored 0 there.
+    # A trip cannot load `GEO30` or choose `[$4C69]`, so these rows are not
+    # offered: on foot the wheel lift is the only way in.
     _s(0x31, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True,
-       name="The mines, levels 1-4"),
+       fasttravelable=False, name="The mines, levels 1-4"),
     _s(0x32, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True,
-       name="The mines, levels 5-8"),
+       fasttravelable=False, name="The mines, levels 5-8"),
     _s(0x33, 3, ("GEO31",), None, Confidence.CONFIRMED,
        name="The mines, temple and bottom levels"),
     _s(0x34, 3, ("GEO32",), None, Confidence.CONFIRMED, name="Temple of Tyr"),

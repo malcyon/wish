@@ -690,6 +690,13 @@ def test_the_two_silver_blades_areas_that_load_no_map_say_so():
                    if a.id not in (0x31, 0x32))
 
 
+def test_the_silver_blades_rows_a_trip_cannot_enter_are_the_two_mine_levels():
+    """A trip cannot load `GEO30` or choose `[$4C69]`, so `$31` and `$32` are
+    not offered; every other Silver Blades row still is."""
+    assert {a.id for a in areas.AREAS_SILVER_BLADES
+            if not a.fasttravelable} == {0x31, 0x32}
+
+
 def test_a_silver_blades_label_names_its_own_disk_not_a_pool_one():
     """`POOL3` under a Silver Blades session would name a disk the player does
     not own."""
