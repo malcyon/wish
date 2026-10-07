@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Any
 
 #: The file a Save As writes for a destination that is a single image.
@@ -137,7 +137,9 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
             dos_folder: "str | pathlib.Path | None" = None,
             amiga_disk: "str | pathlib.Path | None" = None,
             amiga_disk_one: "str | pathlib.Path | None" = None,
+            amiga_disk_three: "str | pathlib.Path | None" = None,
             source_slot: "str | None" = None,
+            edits: "Callable[[Any], None] | None" = None,
             names: "Mapping[int, str] | None" = None,
             leave: "Mapping[int, Collection[int]] | None" = None,
             leave_effects: "Mapping[int, Collection[int]] | None" = None,
@@ -147,7 +149,7 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
 
     `window` is an `EditorBinding`, whose `game_files_for` finds the game data
     a route needs. The report carries `written` (paths), `slot`, `losses`,
-    `dropped`, `left_behind` and `unjoined` (the joined scrolls an Amiga
+    `dropped`, `warnings`, `left_behind` and `unjoined` (the joined scrolls an Amiga
     destination took apart to stay within the loader's limit) from the
     conversion's accounting, or
     `stopped` -- the exception's class and text -- when Save As blocked or
@@ -157,6 +159,14 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     saved games to read, the same letter `editor.convert.Source.detect`
     itself takes; `None` keeps its own default, the alphabetically first slot
     the source holds.
+
+    `amiga_disk_three` is the Pools of Darkness disk 3 an Amiga destination
+    writes its slot onto; with none named, `saveplan.resolve_assets` looks
+    for one the way the editor does.
+
+    `edits` is called with the opened `Party` before Save As prepares its
+    output, so a caller can change a member's record or items the way the
+    sheet does and the change reaches the written save.
 
     `names` is the `{position: name}` a player would choose in the Shorten
     window, handed to `prepare_save_as`. A name too long for the destination
@@ -202,11 +212,13 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
     try:
         detected = Source.detect(source, slot=source_slot)
         party = Party(detected)
+        if edits is not None:
+            edits(party)
         assets = saveplan.resolve_assets(
             Source.of_snapshot(saveplan.prepare(party)), port,
             game_files=window.game_files_for, c64_folder=c64_folder,
             dos_folder=dos_folder, amiga_disk=amiga_disk,
-            amiga_disk_one=amiga_disk_one)
+            amiga_disk_one=amiga_disk_one, amiga_disk_three=amiga_disk_three)
         plan = saveplan.prepare_save_as(
             party, port, path, assets,
             **({"names": names} if names is not None else {}),
@@ -217,6 +229,8 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
         report["left_behind"] = list(
             getattr(plan.report, "left_behind", []) or [])
         report["unjoined"] = list(getattr(plan.report, "unjoined", []) or [])
+        report["warnings"] = [
+            str(x) for x in getattr(plan.report, "warnings", []) or []]
         published = saveplan.publish(plan, party, assets=assets)
     except Exception as exc:
         if isinstance(exc, saveplan.NamesDoNotFit):
@@ -244,8 +258,9 @@ def save_as(window: Any, source: "str | pathlib.Path", port: str,
                 again = save_as(
                     window, source, port, folder, c64_folder=c64_folder,
                     dos_folder=dos_folder, amiga_disk=amiga_disk,
-                    amiga_disk_one=amiga_disk_one, source_slot=source_slot,
-                    names=names, leave=choice, leave_effects=leave_effects)
+                    amiga_disk_one=amiga_disk_one,
+                    amiga_disk_three=amiga_disk_three, source_slot=source_slot,
+                    edits=edits, names=names, leave=choice, leave_effects=leave_effects)
                 again["leave_dialog"] = record
                 return again
         report["stopped"] = [type(exc).__name__, str(exc)]

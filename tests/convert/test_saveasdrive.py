@@ -95,6 +95,45 @@ def test_chosen_names_reach_prepare_save_as(monkeypatch, tmp_path):
     assert seen == {"names": {0: "SHORTNAME"}}
 
 
+def test_edits_run_on_the_opened_party_before_prepare_save_as(monkeypatch, tmp_path):
+    from editor import roster, saveplan
+
+    order = []
+    party = object()
+
+    class _Stop(Exception):
+        pass
+
+    def prepare(party_, *_a, **_k):
+        order.append(("prepare", party_))
+        raise _Stop
+
+    _patch_save_as(monkeypatch, prepare)
+    monkeypatch.setattr(roster, "Party", lambda detected: party)
+    monkeypatch.setattr(saveplan, "prepare", lambda party_: order.append("snapshot"))
+    saveasdrive.save_as(_NoGameFiles(), "unused", "amiga", tmp_path,
+                        edits=lambda party_: order.append(("edit", party_)))
+
+    assert order == [("edit", party), "snapshot", ("prepare", party)]
+
+
+def test_the_named_disk_three_reaches_resolve_assets(monkeypatch, tmp_path):
+    from editor import saveplan
+
+    seen = {}
+
+    def resolve(*_a, **kwargs):
+        seen.update(kwargs)
+        raise RuntimeError("stop")
+
+    _patch_save_as(monkeypatch, lambda *a, **k: None)
+    monkeypatch.setattr(saveplan, "resolve_assets", resolve)
+    saveasdrive.save_as(_NoGameFiles(), "unused", "amiga", tmp_path,
+                        amiga_disk_three="disk3.adf")
+
+    assert seen["amiga_disk_three"] == "disk3.adf"
+
+
 def test_a_name_that_does_not_fit_is_reported_with_its_width(monkeypatch,
                                                               tmp_path):
     from editor import saveplan

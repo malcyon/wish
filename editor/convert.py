@@ -1542,18 +1542,11 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
 )
 
 #: Pools of Darkness directions, kept out of `DIRECTIONS` because the title
-#: has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES` --
-#: `#194 (Import and export a Pools of Darkness save between DOS and the
-#: Amiga)`'s 2026-09-23 plan comment, "the one design point". Offered only
-#: with `WISH_EXPERIMENTAL_POD_CONVERT` set, and each row comes off this
-#: tuple on its own proof: `PodAmigaToDos` and `PodDosToAmiga` move into
-#: `DIRECTIONS` when their live proof has passed in the running game and the
-#: two defects the rows still carry are fixed: a master thief's pick pockets
-#: over 127 and a scroll case's extra spells lost going to DOS, and the item
-#: vault not converted along with the saved game. The flag, this tuple,
-#: File > Convert... and `ConvertDialog` are all deleted once Pools of
-#: Darkness has a route in Save As, or Donald rules that it ships another
-#: way.
+#: has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES`. Offered
+#: only with `WISH_EXPERIMENTAL_POD_CONVERT` set. Comes off when WISH-2 and
+#: WISH-6 are Completed: the rows, the flag, this tuple, File > Convert... and
+#: `ConvertDialog` are then deleted, Pools of Darkness having its route in
+#: Save As.
 POD_DIRECTIONS: tuple[Direction, ...] = (PodAmigaToDos(), PodDosToAmiga())
 
 #: The environment variable that gates `POD_DIRECTIONS`. `WISH_EXPERIMENTAL_`

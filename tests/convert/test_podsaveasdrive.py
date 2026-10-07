@@ -1,8 +1,8 @@
 """`tools/convert/podsaveasdrive.py` writes a disk 3 and the report `prepare_published_disk_three` reads.
 
-The synthetic tests stand in a fake rehearsal for the DOS slot, since a Pools of Darkness
-slot is the player's data; the smoke test runs the real rehearsal and skips without the
-registry.
+The synthetic tests stand in a fake Save As for the DOS slot, since a Pools of Darkness
+slot is the player's data; the tests that run the editor's real Save As skip without the
+registry and the specimen tree.
 """
 
 from __future__ import annotations
@@ -38,18 +38,29 @@ def _specimen(tmp_path: pathlib.Path) -> pathlib.Path:
     return path
 
 
-def _fake_rehearsal(report=None):
-    """Stands in for `PodDosToAmiga.rehearse`: writes a slot onto the disk it is given."""
-    def rehearse(self, source, slot, options, names=None, leave=None,
-                 disk_three=None, replace=False):
+def _fake_save_as(report=None):
+    """Stands in for the editor's Save As: publishes disk 3 with a slot written onto it."""
+    def save_as(specimen, disk3, folder, to, slot, edits):
         savegame = bytes(amiga_savegame.POD_SAVEGAME_SIZE)
         vault = amiga_savegame.pod_vault_to_amiga(dos_codec.EMPTY_POD_VAULT)
-        disk = disk_three.copy() if hasattr(disk_three, "copy") else AmigaDisk(disk_three.to_bytes())
-        disk.write_file(amiga_savegame.pod_slot_path(slot), savegame)
-        disk.write_file(amiga_savegame.pod_vault_path(slot), vault)
-        return convert.PodDosAmigaRehearsal(
-            report or convert.neutral.Report(), {}, disk.to_bytes(), None, [], slot)
-    return rehearse
+        disk = AmigaDisk(disk3.read_bytes())
+        disk.write_file(amiga_savegame.pod_slot_path(LETTER), savegame)
+        disk.write_file(amiga_savegame.pod_vault_path(LETTER), vault)
+        published = folder / "wish-day" / "POOLSAVE.ADF"
+        published.parent.mkdir(parents=True)
+        published.write_bytes(disk.to_bytes())
+        report_ = report or convert.neutral.Report()
+        return {"written": [str(published)], "slot": LETTER, "destination": str(published),
+                "dropped": [str(x) for x in report_.dropped],
+                "losses": [str(x) for x in report_.losses],
+                "warnings": [str(x) for x in report_.warnings]}
+    return save_as
+
+
+def _stop_with(error):
+    def save_as(*args, **kwargs):
+        raise error
+    return save_as
 
 
 @pytest.fixture
@@ -57,12 +68,7 @@ def staged(tmp_path, monkeypatch):
     specimen = _specimen(tmp_path)
     disk3 = tmp_path / "disk3.adf"
     disk3.write_bytes(_synthetic_disk_three().to_bytes())
-    monkeypatch.setattr(
-        convert.Source, "detect",
-        classmethod(lambda cls, path, party=None, slot=None: convert.Source(
-            port="dos", title=dos_port.POOLS_OF_DARKNESS, path=pathlib.Path(path),
-            slot=LETTER)))
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", _fake_rehearsal())
+    monkeypatch.setattr(podsaveasdrive, "_save_as", _fake_save_as())
     return specimen, disk3, tmp_path / "out"
 
 
@@ -99,20 +105,18 @@ def test_losses_dropped_and_warnings_are_reported_as_text(staged, monkeypatch):
     report.dropped.append("a dropped field")
     report.losses.append("a cut value")
     report.warnings.append("a note")
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", _fake_rehearsal(report))
+    monkeypatch.setattr(podsaveasdrive, "_save_as", _fake_save_as(report))
     got = podsaveasdrive.run(specimen, disk3, out)
     assert (got["dropped"], got["losses"], got["warnings"]) == (
         ["a dropped field"], ["a cut value"], ["a note"])
     assert got["save_as"]["dropped"] == ["a dropped field"]
 
 
-def test_a_rehearsal_that_cannot_be_made_writes_a_stopped_report_and_no_image(
+def test_a_save_as_that_cannot_be_made_writes_a_stopped_report_and_no_image(
         staged, monkeypatch):
     specimen, disk3, out = staged
-
-    def stop(self, *args, **kwargs):
-        raise convert.ConvertError("slot D is held")
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", stop)
+    monkeypatch.setattr(podsaveasdrive, "_save_as",
+                        _stop_with(convert.ConvertError("slot D is held")))
     report = podsaveasdrive.run(specimen, disk3, out)
     assert report["save_as"]["stopped"] == ["ConvertError", "slot D is held"]
     assert report["written"] == []
@@ -121,18 +125,19 @@ def test_a_rehearsal_that_cannot_be_made_writes_a_stopped_report_and_no_image(
         ["--specimen", str(specimen), "--disk3", str(disk3), "--out", str(out)]) == 1
 
 
-def test_replace_is_passed_through(staged, monkeypatch):
+def test_the_destination_the_slot_and_the_edits_are_passed_to_save_as(staged, monkeypatch):
     specimen, disk3, out = staged
     seen = []
-    inner = _fake_rehearsal()
+    inner = _fake_save_as()
 
-    def spy(self, *args, **kwargs):
-        seen.append(kwargs.get("replace"))
-        return inner(self, *args, **kwargs)
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", spy)
+    def spy(specimen_, disk3_, folder, to, slot, edits):
+        seen.append((specimen_, disk3_, to, slot, edits is not None))
+        return inner(specimen_, disk3_, folder, to, slot, edits)
+    monkeypatch.setattr(podsaveasdrive, "_save_as", spy)
     podsaveasdrive.run(specimen, disk3, out)
-    podsaveasdrive.run(specimen, disk3, out, replace=True)
-    assert seen == [False, True]
+    podsaveasdrive.run(specimen, disk3, out, slot="B", sets=("0:strength=17",))
+    assert seen == [(specimen, disk3, "amiga", None, False),
+                    (specimen, disk3, "amiga", "B", True)]
 
 
 def test_commit_txt_holds_head_and_the_porcelain_status(staged, tmp_path):
@@ -176,7 +181,7 @@ def test_the_registered_disk_three_takes_a_registered_dos_slot(tmp_path):
     disk3 = tmp_path / "disk3.adf"
     disk3.write_bytes(data)
     specimen = sorted(folder.glob("SAVGAM?.PTY"))[0]
-    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out", replace=True)
+    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out")
     assert not report["save_as"].get("stopped"), report
     assert (report["dropped"], report["losses"]) == ([], [])
     image = pathlib.Path(report["written"][0])
@@ -204,7 +209,7 @@ def test_the_vault_specimen_on_the_registered_disk_three_leaves_f_and_g_free(tmp
         pytest.skip("needs the registered Pools of Darkness disk 3; set $AMIGA_DISKS")
     disk3 = tmp_path / "disk3.adf"
     disk3.write_bytes(data)
-    report = podsaveasdrive.run(folder / "SAVGAMD.PTY", disk3, tmp_path / "out", replace=True)
+    report = podsaveasdrive.run(folder / "SAVGAMD.PTY", disk3, tmp_path / "out")
     assert not report["save_as"].get("stopped"), report
     image = AmigaDisk.open(pathlib.Path(report["written"][0]))
     present = route_darkness.DARKNESS.slot_letters(image)
@@ -217,9 +222,7 @@ def test_the_vault_specimen_on_the_registered_disk_three_leaves_f_and_g_free(tmp
 def test_any_reader_error_becomes_a_stopped_report(staged, monkeypatch, error):
     specimen, disk3, out = staged
 
-    def stop(self, *args, **kwargs):
-        raise error
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", stop)
+    monkeypatch.setattr(podsaveasdrive, "_save_as", _stop_with(error))
     report = podsaveasdrive.run(specimen, disk3, out)
     assert report["save_as"]["stopped"][0] == type(error).__name__
     assert (out / "saveas-report.json").is_file() and (out / "commit.txt").is_file()
@@ -249,8 +252,7 @@ def test_an_image_from_an_earlier_run_is_removed(staged, monkeypatch):
     (out / "disk3-A.adf").write_bytes(b"old")
     podsaveasdrive.run(specimen, disk3, out)
     assert [p.name for p in out.glob("disk3-*.adf")] == [f"disk3-{LETTER}.adf"]
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse",
-                        lambda *a, **k: (_ for _ in ()).throw(convert.ConvertError("x")))
+    monkeypatch.setattr(podsaveasdrive, "_save_as", _stop_with(convert.ConvertError("x")))
     podsaveasdrive.run(specimen, disk3, out)
     assert not list(out.glob("*.adf"))
 
@@ -288,7 +290,7 @@ def test_an_unreadable_disk_three_is_a_stopped_report_with_a_traceback(
         classmethod(lambda cls, path, party=None, slot=None: convert.Source(
             port="dos", title=dos_port.POOLS_OF_DARKNESS, path=pathlib.Path(path),
             slot=LETTER)))
-    monkeypatch.setattr(convert.PodDosToAmiga, "rehearse", _fake_rehearsal())
+    monkeypatch.setattr(podsaveasdrive, "_save_as", _fake_save_as())
     disk3 = tmp_path / "disk3.adf"
     disk3.mkdir()
     report = podsaveasdrive.run(specimen, disk3, tmp_path / "out")
@@ -340,3 +342,106 @@ def test_the_disk_three_named_as_the_image_is_not_overwritten(staged):
     _stopped_without_image(podsaveasdrive.run(specimen, same, out), out)
     assert same.read_bytes() == before
     assert not list(out.glob(".disk3-*"))
+
+
+# The editor's real Save As, on the player's own specimens.
+
+SLOT_C = "pod-dos/WISH-SPEC-pod-628-dos-lay-then-rest-1h/SAVGAMC.PTY"
+
+
+def _registered_disk_three(tmp_path):
+    from tools.amiga import amigasaves, route_darkness
+    for _label, data in amigasaves.images():
+        if hashlib.sha256(data).hexdigest() == route_darkness.DARKNESS_DISK3_SHA256:
+            path = tmp_path / "disk3.adf"
+            path.write_bytes(data)
+            return path
+    pytest.skip("needs the registered Pools of Darkness disk 3; set $AMIGA_DISKS")
+
+
+def _slot_c(tmp_path):
+    import gamedata
+    root = gamedata.specimen_root()
+    specimen = root / SLOT_C if root else None
+    if specimen is None or not specimen.is_file():
+        pytest.skip("needs the pod-dos specimen tree; see $WISH_SPECIMENS")
+    return specimen, _registered_disk_three(tmp_path)
+
+
+def _open_slot(path, slot):
+    from editor.roster import Party
+    with podsaveasdrive._pod_flag():
+        return Party(convert.Source.detect(path, slot=slot))
+
+
+def test_the_run_goes_through_the_editors_prepare_save_as(tmp_path, monkeypatch):
+    from editor import saveplan
+    specimen, disk3 = _slot_c(tmp_path)
+
+    def stop(*args, **kwargs):
+        raise RuntimeError("prepare_save_as was reached")
+    monkeypatch.setattr(saveplan, "prepare_save_as", stop)
+    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out")
+    assert report["save_as"]["stopped"] == ["RuntimeError", "prepare_save_as was reached"]
+    assert report["written"] == []
+
+
+def test_a_set_stat_reads_back_from_the_written_slot_and_the_others_are_unchanged(tmp_path):
+    specimen, disk3 = _slot_c(tmp_path)
+    before = _open_slot(specimen, "C")
+    report = podsaveasdrive.run(specimen, disk3, tmp_path / "out", sets=("0:strength=17",))
+    assert not report["save_as"].get("stopped"), report
+    after = _open_slot(pathlib.Path(report["written"][0]), report["save_as"]["slot"])
+    assert before.members[0].record.get("strength") != 17
+    assert after.members[0].record.get("strength") == 17
+    for old, new in zip(before.members[1:], after.members[1:], strict=True):
+        assert new.record.get("strength") == old.record.get("strength")
+    assert report["save_as"]["to"] == "amiga" and report["save_as"]["written"] == report["written"]
+
+
+def test_an_item_edit_is_on_the_party_prepare_save_as_receives(tmp_path, monkeypatch):
+    from editor import saveplan
+    specimen, disk3 = _slot_c(tmp_path)
+    seen = []
+    inner = saveplan.prepare_save_as
+
+    def spy(party, *args, **kwargs):
+        seen.append(party.members[0].inventory.raws[1][10])
+        return inner(party, *args, **kwargs)
+    monkeypatch.setattr(saveplan, "prepare_save_as", spy)
+    podsaveasdrive.run(specimen, disk3, tmp_path / "out", items=("0:1=5",))
+    assert seen == [5]
+
+
+def test_a_dos_destination_from_an_amiga_slot_writes_the_vault_with_its_items(tmp_path):
+    from tools.amiga import amigasaves
+    for _label, data in amigasaves.images():
+        try:
+            amiga_vault = amiga_savegame.pod_vault_from_amiga(
+                AmigaDisk(data).read_file(amiga_savegame.pod_vault_path("H")))
+        except Exception:
+            continue
+        if len(amiga_vault.items) == 40:
+            break
+    else:
+        pytest.skip("needs an Amiga disk 3 whose slot H holds a vault of 40 items; set $AMIGA_DISKS")
+    disk = tmp_path / "source.adf"
+    disk.write_bytes(data)
+    report = podsaveasdrive.run(disk, None, tmp_path / "out", to="dos", slot="H")
+    assert not report["save_as"].get("stopped"), report
+    written = {pathlib.Path(p).name: pathlib.Path(p) for p in report["written"]}
+    letter = report["save_as"]["slot"]
+    assert f"SAVGAM{letter}.PTY" in written
+    vault_file = written[f"VAULT{letter}.DAT"]
+    dos_vault = dos_codec.pod_vault_from_dos(vault_file.read_bytes())
+    assert len(dos_vault.items) == 40
+    assert dos_vault.platinum == amiga_vault.platinum == 1750
+    assert report["written_sha256"][vault_file.name] == hashlib.sha256(
+        vault_file.read_bytes()).hexdigest()
+
+
+def test_an_edit_that_is_not_member_key_value_is_a_stopped_report(staged):
+    specimen, disk3, out = staged
+    report = podsaveasdrive.run(specimen, disk3, out, sets=("strength",))
+    assert "MEMBER:KEY=VALUE" in report["save_as"]["stopped"][1]
+    assert report["written"] == []
