@@ -545,3 +545,16 @@ def test_the_item_save_bonus_is_not_a_loss_because_both_games_rebuild_it(
     held.items = want.items
     assert saveplan.compare([held], [got]) == []
     assert saveplan.compare([want], [got]) == []
+
+
+@pytest.mark.parametrize("field, lost", [("unnamed_1a4", b"\x00\x00"),
+                                         ("size", b"\x00")])
+def test_the_read_back_fails_when_a_write_loses_size_or_the_creature_pair(
+        field, lost):
+    want = _record()
+    raw = bytearray(want.to_bytes())
+    spec = podsheet.TABLE[field]
+    raw[spec.offset:spec.offset + spec.size] = lost
+    got = podsheet.PodSheetRecord(bytes(raw))
+    assert [line.split(":")[0] for line in saveplan.compare([want], [got])
+            ] == [field]
