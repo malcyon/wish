@@ -87,6 +87,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `ready WHO>LABEL`, `ready WHO>#N` | Pool and Curse (Curse reads its own record, item and roster blocks, `roster_diff` added, and no effect array): `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee`; under `--fast-flee` the party's movement is raised from the first turn |
 | `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; under `--fast-flee` every turn, from the first, first raises the party's movement |
+| `site DIGIT>WORD` | Pool only: from the travel grid, presses DIGIT onto a site square (`7` west, onto the city's eastern edge), waits up to `SITE_MENU_SECONDS` for the site text to finish and WORD on the bar, reads that the travel pair moved one square along DIGIT, picks WORD with `select_bar`, answers one `INSERT SIDE # N` prompt whose side is the disk of the area being loaded, and judges the arrival by memory (indoors flag, area byte against the running area, the arrival square) once the move bar is up. An encounter when MOVE is taken, on the way or on arrival, a second prompt or a wrong side fails the step. Every action is a key and nothing is written |
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure; with `--cross-edge` the last forward move may cross an area edge as `walk` does (side 2 stays the encounter's) |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
@@ -218,6 +219,7 @@ from goldbox import (  # noqa: E402
     traits,
     world_state,
 )
+from goldbox.areas import AREAS_BY_ID  # noqa: E402
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from goldbox.geo import STEP  # noqa: E402
 from goldbox.items import (  # noqa: E402
@@ -784,7 +786,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "scribe": "must", "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
          "fight-flee": "may", "snapshot": "must", "restore": "must",
-         "fight-cast": "must", "memorize": "must"}
+         "fight-cast": "must", "memorize": "must", "site": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -1055,6 +1057,17 @@ def parse_snapshot_name(verb: str, arg: str) -> str:
     return name
 
 
+def parse_site(arg: str) -> tuple[str, str]:
+    """`7>SOUTH`: the travel-grid digit that steps onto a site square and the
+    word of the menu bar that square puts up, upper-cased."""
+    digit, sep, word = arg.strip().partition(">")
+    digit, word = digit.strip(), word.strip().upper()
+    if not sep or digit not in COMPASS or not word.isalpha():
+        raise ValueError(f"site {arg!r}: say site DIGIT>WORD, a travel-grid "
+                         f"digit 1-8 and the letters of one menu word")
+    return digit, word
+
+
 def parse_walk_fight(arg: str) -> tuple[str, str | None]:
     """`IIK` or `IIK/NO`: the moves, and the one answer a `YES NO` on the last
     square may be given.  NO is the only answer the step will press."""
@@ -1257,6 +1270,8 @@ def parse_steps(texts) -> list[Step]:
             parse_walk(arg)
         elif verb in ("walk-fight", "walk-flee"):
             parse_walk_fight(arg)
+        elif verb == "site":
+            parse_site(arg)
         elif verb == "cast":
             parse_cast(arg)
         elif verb == "cure":
@@ -1355,6 +1370,19 @@ WALK_SIDES = ("2",)
 #: How long an answered disk prompt may stay up before the step stops; it
 #: lingers about a second while the game reads the directory.
 SIDE_LINGER_SECONDS = 8.0
+
+#: How long a `site` step waits for the site's text to finish printing and its
+#: menu bar to come up; the text was still printing at 9.9 s.
+SITE_MENU_SECONDS = 30.0
+
+#: How long a `site` step waits, after the menu pick, for the disk prompt and
+#: the arrival's move bar.
+SITE_ARRIVAL_SECONDS = 90.0
+
+#: The running area, whose low seven bits name the area a `NEWECL` has just
+#: started, and the three bytes (x, y, facing) the arrival writes.
+RUNNING_AREA_AT = 0x6E1B
+ARRIVAL_AT = 0xC04B
 
 #: Passes at one move that sent no key because the square's text came up at
 #: `MOVE`, before the move is failed.
@@ -6497,6 +6525,145 @@ class PoolRun:
                 "back_moved": 0, "blocked": blocked, "expected_facing": expected,
                 "retries": retries}
 
+    def site(self, arg: str) -> dict:
+        """`site DIGIT>WORD`: from the travel grid, press DIGIT onto a site
+        square, pick WORD on the menu bar it puts up, answer the one disk
+        prompt the destination area's side asks for, and judge the arrival by
+        memory (indoors flag, area, square) once the move bar is up.
+
+        Every action is a key press and nothing is written.  An encounter
+        when MOVE is taken, while the menu or the arrival loads, or on the
+        arrival's move bar fails the step; the game's dice can raise one at
+        any of them.
+        """
+        digit, word = parse_site(arg)
+        step = f"site {arg.strip()}"
+        sess = self.sess
+        self.leave_arrival(step)
+        if not self.to_world():
+            raise self.fail("world", f"{step}: the world bar never came back")
+        before = self.travel_place()
+        if not sess.outdoor_key(digit):
+            screen = sess.screen()
+            if screen is not None and S.ENCOUNTER_FIGHT in screen.row(24):
+                raise self.fail("site", f"{step}: an encounter began when "
+                                        f"MOVE was taken, before the digit")
+            raise self.fail("walk", f"{step}: {sess.walk_stopped}")
+        rows = self._site_wait(
+            step, SITE_MENU_SECONDS, f"the {word} bar",
+            lambda row: S.word_column(row, word) >= 0)
+        text = [r.rstrip() for r in rows[17:24]]
+        self.capture("site-menu", rows)
+        dx, dy = COMPASS[digit]
+        site = self.travel_place()
+        if site[:2] != [before[0] + dx, before[1] + dy]:
+            raise self.fail("site", f"{step}: the travel pair went from "
+                                    f"{before[:2]} to {site[:2]}, not one "
+                                    f"square along {digit}")
+        if not sess.select_bar(word, answer_prompts=False):
+            raise self.fail("site", f"{step}: {word} could not be picked "
+                                    f"on {self.bar().strip()!r}")
+        sides: list[str] = []
+        limit = self.clock() + SITE_ARRIVAL_SECONDS
+        while True:
+            screen = sess.screen()
+            row = screen.row(24) if screen is not None else ""
+            if S.ENCOUNTER_FIGHT in row:
+                raise self.fail("site", f"{step}: an encounter began after "
+                                        f"{word} was picked: {row.strip()}")
+            if screen is not None and sess.wanted_disk(screen):
+                self._site_side(step, screen, sides)
+                continue
+            if S.MOVE_SUBBAR in row or self.at_world(row):
+                break
+            if self.clock() >= limit:
+                raise self.fail("site", f"{step}: no move bar "
+                                        f"{int(SITE_ARRIVAL_SECONDS)} seconds "
+                                        f"after {word}, row 24 reads "
+                                        f"{row.strip()!r}")
+            self.budget(1, step)
+            time.sleep(0.4)
+        try:
+            with sess.mon(5) as m:
+                indoors = m.read(S.INDOORS_AT, 1)[0]
+                area = m.read(AREA_AT, 1)[0]
+                running = m.read(RUNNING_AREA_AT, 1)[0] & 0x7F
+                position = list(m.read(ARRIVAL_AT, 3))
+        except (OSError, S.MonitorError) as e:
+            raise self.fail("site", f"{step}: could not read the arrival: "
+                                    f"{e}") from e
+        if indoors != 1 or area != running:
+            raise self.fail("site", f"{step}: the indoors flag reads {indoors} "
+                                    f"and the area {area} against the running "
+                                    f"area {running}")
+        self.capture("site-arrived")
+        if not self.to_world():
+            raise self.fail("world", f"{step}: the world bar never came back "
+                                     f"after the arrival")
+        return {"digit": digit, "word": word, "before": before,
+                "site": site[:2], "text": text, "sides": sides, "area": area,
+                "indoors": indoors, "position": position}
+
+    def _site_wait(self, step: str, seconds: float, what: str, ok) -> list:
+        """The screen rows once row 24 satisfies OK; a disk prompt or an
+        encounter bar in the wait fails the step."""
+        limit = self.clock() + seconds
+        while True:
+            screen = self.sess.screen()
+            if screen is not None:
+                row = screen.row(24)
+                if S.ENCOUNTER_FIGHT in row:
+                    raise self.fail("site", f"{step}: an encounter began "
+                                            f"before {what}: {row.strip()}")
+                if self.sess.wanted_disk(screen):
+                    raise self.fail("site", f"{step}: a disk prompt came "
+                                            f"before {what}: {row.strip()}")
+                if ok(row):
+                    return self.rows()
+            if self.clock() >= limit:
+                raise self.fail("site", f"{step}: {what} never came up in "
+                                        f"{int(seconds)} seconds, row 24 "
+                                        f"reads {self.bar().strip()!r}")
+            self.budget(1, step)
+            time.sleep(0.4)
+
+    def _site_side(self, step: str, screen, sides: list) -> None:
+        """Answer the one `INSERT SIDE # N` prompt, N being the disk of the
+        area the game is loading; any other prompt, a second one, or a side
+        that is not that area's fails the step."""
+        sess = self.sess
+        text = screen.text().upper()
+        found = S.RE_GAME_SIDE.findall(text)
+        row = screen.row(24).strip()
+        if S.SAVE_PROMPT in text or len(found) != 1:
+            raise self.fail("site", f"{step}: a disk prompt the step does not "
+                                    f"answer: {row}")
+        if sides:
+            raise self.fail("site", f"{step}: a second disk prompt came after "
+                                    f"side {sides[0]}: {row}")
+        try:
+            with sess.mon(5) as m:
+                running = m.read(RUNNING_AREA_AT, 1)[0] & 0x7F
+        except (OSError, S.MonitorError) as e:
+            raise self.fail("site", f"{step}: could not read the running "
+                                    f"area: {e}") from e
+        area = AREAS_BY_ID.get(running)
+        if area is None or str(area.disk) != found[0]:
+            raise self.fail("site", f"{step}: the prompt asks for side "
+                                    f"{found[0]} and area {running} is on "
+                                    f"{'no known disk' if area is None else f'side {area.disk}'}")
+        self.capture(f"side{found[0]}-before-answer")
+        if not sess.handle_prompt(screen):
+            raise self.fail("site", f"{step}: the side {found[0]} prompt was "
+                                    f"not answered: {row}")
+        sides.append(found[0])
+        limit = self.clock() + SIDE_LINGER_SECONDS
+        while self.clock() < limit:
+            time.sleep(0.3)
+            after = sess.screen()
+            if after is None or not sess.wanted_disk(after):
+                return
+
     def travel_place(self) -> list:
         """`[x, y, area]` on the travel grid: the pair `$49C3`/`$49C4`, which
         is local to the window `area` names, read with the indoors flag in
@@ -8597,6 +8764,9 @@ class CurseRun(PoolRun):
                 "notes": list(outcome.notes), "jump": jumps,
                 "areas_seen": [here, there], "position": self.position()}
 
+    def site(self, arg: str) -> dict:
+        raise self.fail("site", "Pool of Radiance only")
+
     def walk_fight(self, arg: str) -> dict:
         raise self.fail("walk-fight", "Pool of Radiance only")
 
@@ -9912,6 +10082,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.fight_cast(step.arg, args.walk, args.walk_steps)
             elif step.verb == "warp":
                 got = pool.warp(step.arg)
+            elif step.verb == "site":
+                got = pool.site(step.arg)
             elif step.verb == "walk-fight":
                 got = pool.walk_fight(step.arg)
             elif step.verb == "walk-flee":
@@ -10294,6 +10466,8 @@ def main(argv: list[str] | None = None) -> int:
                                                                    "curse"):
         ap.error("the warp step: Pool of Radiance and Curse of the Azure "
                  "Bonds only")
+    if any(x.verb == "site" for x in steps) and args.title != "pool":
+        ap.error("the site step: Pool of Radiance only")
     if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":
         ap.error("the walk-fight step: Pool of Radiance only")
     if any(x.verb == "walk-flee" for x in steps) and args.title != "pool":

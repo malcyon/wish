@@ -13280,7 +13280,9 @@ class _TravelMonitor:
         self.sess.reads.append(addr)
         mem = {A.S.INDOORS_AT: [self.sess.inside],
                A.S.TRAVEL_XY: [self.sess.x, self.sess.y],
-               A.AREA_AT: [self.sess.area]}
+               A.AREA_AT: [self.sess.area],
+               A.RUNNING_AREA_AT: [self.sess.running],
+               A.ARRIVAL_AT: list(self.sess.arrival)}
         return bytes(mem[addr][:n])
 
 
@@ -13299,10 +13301,34 @@ class OutdoorSession(WalkSession):
     prompt and presses a digit, which moves the travel pair by its compass
     step unless the square there is in `blocked`; `lost` presses are not
     read at all, `land` sends the next step to that (x, y, area), and
-    `after_press` names the bar a press leaves when the pair stays put."""
+    `after_press` names the bar a press leaves when the pair stays put.
+    `site_at` is a site square: stepping on it puts up the site's text and
+    `NORTH SOUTH BOAT LEAVE`, SOUTH raises one `INSERT SIDE # N` prompt
+    (`prompt_side`), and answering it lands the party indoors in area 24 at
+    15,4,3 on the move sub-bar.  `encounter_on_move` makes the digit meet an
+    encounter menu instead, `second_prompt` follows the answer with another
+    prompt and `arrival_encounter` lands on an encounter menu."""
 
-    def __init__(self, x=8, y=27, area=26, blocked=(), inside=0):
+    def __init__(self, x=8, y=27, area=26, blocked=(), inside=0, site_at=None,
+                 prompt_side="1", encounter_on_move=False, second_prompt=False,
+                 arrival_encounter=False):
         super().__init__(x=x, y=y, facing=0)
+        self.site_at = site_at
+        self.encounter_on_move = encounter_on_move
+        self.second_prompt = second_prompt
+        self.arrival_encounter = arrival_encounter
+        self.running = 26
+        self.arrival = (0, 0, 0)
+        self.picked = []
+        encounter = "COMBAT WAIT FLEE PARLAY"
+        self.screens["site"] = _window(
+            {17: "YOU ARE ON THE EASTERN EDGE OF THE CITY.  THERE ARE",
+             18: "NORTH AND SOUTH ENTRANCES INTO THE CITY."},
+            "NORTH SOUTH BOAT LEAVE")
+        self.screens["side"] = _window({}, f"INSERT SIDE # {prompt_side}")
+        self.screens["side-again"] = _window({}, "INSERT SIDE # 1")
+        self.screens["arrived"] = _window({}, "I,J,K,M, RETURN OR BUTTON")
+        self.screens["encounter"] = _window({}, encounter)
         self.screens["prompt"] = _window({}, PROMPT_BAR)
         self.screens["other"] = _window({}, "THE PARTY RESTS")
         self.area, self.inside = area, inside
@@ -13329,8 +13355,34 @@ class OutdoorSession(WalkSession):
         pass
 
     def outdoor_key(self, key, *a, **k):
+        if self.encounter_on_move:
+            self.state = "encounter"
+            return False
         self.state = "prompt"
         self.step(key)
+        return True
+
+    def select_bar(self, label, row=24, timeout=0, answer_prompts=True):
+        self.picked.append((label, answer_prompts))
+        if label not in self.screen().row(24).split():
+            return False
+        self.running = 24
+        self.state = "side"
+        return True
+
+    def handle_prompt(self, s=None):
+        if self.state not in ("side", "side-again"):
+            return super().handle_prompt(s)
+        self.prompts += 1
+        if self.state == "side" and self.second_prompt:
+            self.state = "side-again"
+            return True
+        self.inside, self.area, self.arrival = 1, 24, (15, 4, 3)
+        self.state = "encounter" if self.arrival_encounter else "arrived"
+        return True
+
+    def leave_move(self):
+        self.state = "world"
         return True
 
     def leave_outdoor_move(self, tries=4):
@@ -13352,6 +13404,8 @@ class OutdoorSession(WalkSession):
             self.state = self.after_press
             return False
         self.x, self.y = to
+        if to == self.site_at:
+            self.state = "site"
         return True
 
     def walk_one(self, move, *a, **k):
@@ -13565,6 +13619,94 @@ def _walked_outdoors(route, position, blocked=(), area=26):
             "asked_forward": len(route),
             "squares_moved": len(route) - len(blocked),
             "position": position, "blocked": list(blocked)}
+
+
+def _site_run(tmp_path, monkeypatch, **kw):
+    sess = OutdoorSession(x=14, y=27, site_at=(13, 27), **kw)
+    run, log = _walk_run(tmp_path, sess, _Clock(monkeypatch))
+    return sess, run, log
+
+
+def test_the_site_step_takes_the_menu_word_answers_one_side_and_judges_the_arrival(
+        tmp_path, monkeypatch):
+    assert A.COMPASS["7"] == (-1, 0) and A.AREAS_BY_ID[24].disk == 1
+    sess, run, log = _site_run(tmp_path, monkeypatch)
+    got = run.site("7>SOUTH")
+    log.close()
+    assert sess.pressed == ["7"] and sess.picked == [("SOUTH", False)]
+    assert sess.prompts == 1
+    assert got["before"] == [14, 27, 26] and got["site"] == [13, 27]
+    assert got["sides"] == ["1"] and got["area"] == 24 and got["indoors"] == 1
+    assert got["position"] == [15, 4, 3]
+    assert any("EASTERN EDGE" in line for line in got["text"])
+
+
+def test_a_site_step_whose_digit_meets_an_encounter_fails_with_nothing_answered(
+        tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch, encounter_on_move=True)
+    with pytest.raises(A.StepFailed, match="encounter began when MOVE was taken"):
+        run.site("7>SOUTH")
+    log.close()
+    assert sess.pressed == [] and sess.picked == [] and sess.prompts == 0
+
+
+def test_a_site_step_names_a_word_the_menu_does_not_hold_and_fails(
+        tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch)
+    with pytest.raises(A.StepFailed, match="the EAST bar never came up"):
+        run.site("7>EAST")
+    log.close()
+    assert sess.picked == [] and sess.prompts == 0
+
+
+def test_a_second_disk_prompt_after_the_answer_fails_the_site_step(
+        tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch, second_prompt=True)
+    with pytest.raises(A.StepFailed, match="a second disk prompt came after side 1"):
+        run.site("7>SOUTH")
+    log.close()
+    assert sess.prompts == 1
+
+
+def test_a_site_prompt_for_a_side_that_is_not_the_areas_disk_is_not_answered(
+        tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch, prompt_side="2")
+    with pytest.raises(A.StepFailed, match="asks for side 2 and area 24 is on side 1"):
+        run.site("7>SOUTH")
+    log.close()
+    assert sess.prompts == 0
+
+
+def test_an_encounter_menu_on_the_site_arrival_fails_the_step(tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch, arrival_encounter=True)
+    with pytest.raises(A.StepFailed, match="an encounter began after SOUTH"):
+        run.site("7>SOUTH")
+    log.close()
+
+
+@pytest.mark.parametrize("arg", ["9>SOUTH", "7", "I>SOUTH", "7>", "7>SO UTH",
+                                 "7>SOUTH2", ">SOUTH"])
+def test_the_site_parser_rejects_a_bad_digit_a_missing_word_or_a_non_word(arg):
+    with pytest.raises(ValueError):
+        A.parse_steps(["load", f"site {arg}"])
+
+
+def test_the_site_parser_takes_a_digit_and_a_word_and_curse_and_silver_reject_it(
+        tmp_path, capsys):
+    assert A.parse_site(" 7>south ") == ("7", "SOUTH")
+    assert A.parse_steps(["load", "site 7>SOUTH"])[1] == A.Step("site", "7>SOUTH")
+    for title in ("curse", "ssb"):
+        with pytest.raises(SystemExit) as info:
+            A.main(["--title", title, "--save", str(_fixture_disk(tmp_path)),
+                    "--disks", str(tmp_path), "--steps", "load", "site 7>SOUTH",
+                    "--out", str(tmp_path / "out")])
+        assert info.value.code == 2
+        assert "site step: Pool of Radiance only" in capsys.readouterr().err
+    for cls in (A.CurseRun, A.SilverRun):
+        run = cls.__new__(cls)
+        run.fail = lambda tag, why: A.StepFailed(why)
+        with pytest.raises(A.StepFailed, match="Pool of Radiance only"):
+            run.site("7>SOUTH")
 
 
 def test_the_save_check_counts_outdoor_moves_against_the_travel_pair():
