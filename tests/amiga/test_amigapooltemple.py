@@ -570,3 +570,57 @@ def test_a_staged_record_whose_unstaged_disk_changed_stops_the_run_before_the_cl
             identity=_IdentityMap(), holder="wish303-test", audio_proof=_audio_proof(tmp_path),
             title=title_run.make_title(), accept=True)
     assert not any(c[0] == "claim" for c in guest.calls)
+
+
+class _WalkIdentity(_IdentityMap):
+    """`world` rule failing on the first `wrong` looks at a walking frame."""
+
+    def __init__(self, wrong):
+        super().__init__()
+        self.wrong, self.looks = wrong, 0
+
+    def __contains__(self, state):
+        return state == "world" or super().__contains__(state)
+
+    def __call__(self, state, path):
+        if state != "world" or not _content(path).startswith("world"):
+            return True
+        self.looks += 1
+        return self.looks > self.wrong
+
+
+class _DrawingFightGuest(FightGuest):
+    """A walking frame differs on every grab, as a list does while it is drawn."""
+
+    def _frame(self):
+        frame = super()._frame()
+        return f"{frame} grab {self.grabs}" if self.walking else frame
+
+
+def _walk(tmp_path, clock, guest, identity, most=2):
+    path = title_run.manifest_for(tmp_path)
+    data = json.loads(path.read_text())
+    data["encounter"] = True
+    path.write_text(json.dumps(data))
+    return acceptance.run_recon(
+        path, guest=guest, guard=_fight_guard(), identity=identity,
+        holder="wish355-test", audio_proof=_audio_proof(tmp_path),
+        title=_fight_title(most=most), reload=True)
+
+
+def test_a_walk_screen_whose_party_is_drawn_late_is_polled_and_no_key_goes_out(tmp_path, clock):
+    identity = _WalkIdentity(wrong=3)
+    guest = _DrawingFightGuest(clock, met=None)
+    result = _walk(tmp_path, clock, guest, identity)
+    assert identity.looks > 3
+    assert "no encounter screen within 2 steps" in result["error"]
+    assert title_run._keys(guest).count("NP8") == 2
+
+
+def test_a_walk_screen_with_the_wrong_party_on_one_frame_stops_after_three_looks(tmp_path, clock):
+    identity = _WalkIdentity(wrong=10 ** 6)
+    guest = FightGuest(clock, met=None)
+    result = _walk(tmp_path, clock, guest, identity)
+    assert identity.looks == 3
+    assert "shows a party other than the prepared party" in result["error"]
+    assert title_run._keys(guest).count("NP8") == 1

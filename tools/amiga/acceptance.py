@@ -2549,6 +2549,16 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             wanted.append("party_menu")
         return next((s for s in wanted if guard(s, crop)), None)
 
+    #: Identity failures in a row on one unchanged frame that end the wait: a list still being
+    #: drawn changes its digest, so only a screen that stays wrong this long is the wrong party.
+    STABLE_WRONG = 3
+
+    def note_wrong(seen: dict[str, Any], exc: RouteError, digest: str) -> None:
+        seen["count"] = seen["count"] + 1 if seen["digest"] == digest else 1
+        seen.update(error=exc, digest=digest)
+        if seen["count"] >= STABLE_WRONG:
+            raise exc
+
     def until_guard(state: str, name: str, first_wait: float,
                     poll: float, limit: float, *, strict: bool = True,
                     unchanged_from: str | None = None) -> str:
@@ -2565,7 +2575,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         done: dict[str, int] = {}
         crop = shots / f"{name}.png"
         stale = False
-        wrong_party: RouteError | None = None
+        wrong: dict[str, Any] = {"error": None, "digest": None, "count": 0}
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
@@ -2573,13 +2583,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 hit = recognise(state, crop, done)
                 if digest != unchanged_from:
                     stale = False
+                if not hit:
+                    wrong.update(error=None, digest=None, count=0)
                 if hit and digest == unchanged_from:
                     stale = True
                 elif hit:
                     try:
                         check_identity(hit, crop)
                     except RouteError as exc:
-                        wrong_party = exc
+                        note_wrong(wrong, exc, digest)
                     else:
                         observe(hit, name, crop)
                         landed["state"] = hit
@@ -2591,8 +2603,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     # a screen; each interstitial row's count and the route deadline bound it.
                     started = time.monotonic()
             if time.monotonic() - started >= limit:
-                if wrong_party is not None:
-                    raise wrong_party
+                if wrong["error"] is not None:
+                    raise wrong["error"]
                 if stale:
                     raise KeyUnchanged(f"{state} matched only unchanged within {limit:.0f}s;"
                                        f" kept {crop}")
@@ -2629,18 +2641,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         started = time.monotonic()
         done: dict[str, int] = {}
         crop = shots / f"{name}.png"
+        wrong: dict[str, Any] = {"error": None, "digest": None, "count": 0}
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
                 hit = next((s for s in states if guard(s, crop)), None)
                 if hit:
-                    check_identity(hit, crop)
-                    landed["state"] = hit
-                    result["events"][-1]["recognized"] = hit
-                    log("recognized", state=hit, name=name)
-                    return hit, digest
-                interstitial(states[0], crop, done)
+                    try:
+                        check_identity(hit, crop)
+                    except RouteError as exc:
+                        note_wrong(wrong, exc, digest)
+                    else:
+                        landed["state"] = hit
+                        result["events"][-1]["recognized"] = hit
+                        log("recognized", state=hit, name=name)
+                        return hit, digest
+                else:
+                    wrong.update(error=None, digest=None, count=0)
+                    interstitial(states[0], crop, done)
             if time.monotonic() - started >= GUARD_LIMIT:
+                if wrong["error"] is not None:
+                    raise wrong["error"]
                 raise GuardMissed(f"none of {list(states)} was recognized within "
                                   f"{GUARD_LIMIT:.0f}s; kept {crop}")
             wait(GUARD_POLL)

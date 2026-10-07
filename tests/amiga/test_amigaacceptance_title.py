@@ -1100,11 +1100,54 @@ def test_an_identity_that_fails_on_the_first_frame_and_passes_on_a_later_one_con
     assert result["error"] == "" and result["success"] is True
 
 
-def test_an_identity_that_never_passes_stops_the_run_at_the_guard_limit(tmp_path, clock):
+class _DrawingGuest(TitleGuest):
+    """Every grab differs, as a list does while its rows are still being drawn."""
+
+    def grab(self, state, raw, cropped, timeout=None):
+        super().grab(state, raw, cropped, timeout)
+        cropped.write_bytes(f"frame {self.presses} grab {self.grabs}".encode())
+        return True
+
+
+def test_an_identity_that_keeps_failing_on_a_changing_screen_stops_at_the_guard_limit(
+        tmp_path, clock):
     identity = _LateIdentity(wrong=10 ** 6)
-    _, result = _run(tmp_path, clock, identity=identity)
-    assert identity.looks >= 2
+    guest, result = _run(tmp_path, clock, identity=identity, guest=_DrawingGuest(clock))
+    assert identity.looks > acceptance.GUARD_LIMIT / acceptance.GUARD_POLL / 2
     assert result["error"] == "RouteError: world shows a party other than the prepared party"
+    assert _keys(guest)[-1] == "NP2"
+
+
+def test_an_identity_that_fails_on_the_same_frame_three_times_stops_the_run_at_once(
+        tmp_path, clock):
+    identity = _LateIdentity(wrong=10 ** 6)
+    guest, result = _run(tmp_path, clock, identity=identity)
+    assert identity.looks == 3
+    assert result["error"] == "RouteError: world shows a party other than the prepared party"
+    assert _keys(guest)[-1] == "NP2"  # no key went out while the wrong party was polled
+
+
+class _MenuIdentity(_IdentityMap):
+    """`loaded_menu` always fails its identity rule; `looks` counts the looks it gets."""
+
+    looks = 0
+
+    def __call__(self, state, path):
+        if state == "loaded_menu":
+            self.looks += 1
+            return False
+        return True
+
+
+def test_an_identity_error_is_forgotten_when_the_screen_stops_matching_the_guard(
+        tmp_path, clock):
+    identity = _MenuIdentity()
+    guard = MapGuard(states=("title", *STATES), on={
+        "loaded_menu": lambda path: identity.looks == 0 and "loaded_menu" in path.stem})
+    guest, result = _run(tmp_path, clock, identity=identity, guard=guard)
+    assert identity.looks == 1
+    assert "loaded_menu screen was not recognized" in result["error"]
+    assert "another party" not in result["error"]
 
 
 def test_the_named_identity_messages_are_unchanged(tmp_path, clock):
