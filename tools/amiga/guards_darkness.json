@@ -1475,17 +1475,30 @@
     }
   },
   "identity": {
-    "camp_items": {
-      "also": [],
-      "box": [
-        150,
-        104,
-        676,
-        400
-      ],
-      "example": "amiga-grab-crops/wish9-b1__13-camp_items.png",
-      "sha256": "6a08a1f2f88dc549c61ee804578b99c47d9b64e2f1d7eef71a673c4d558623c4"
-    },
+    "camp_items": [
+      {
+        "also": [],
+        "box": [
+          150,
+          104,
+          676,
+          400
+        ],
+        "example": "amiga-grab-crops/wish9-b1__13-camp_items.png",
+        "sha256": "6a08a1f2f88dc549c61ee804578b99c47d9b64e2f1d7eef71a673c4d558623c4"
+      },
+      {
+        "also": [],
+        "box": [
+          150,
+          104,
+          676,
+          400
+        ],
+        "example": "WISH-2/r9-l4-gcamp/b1/shots/22-camp_items.png",
+        "sha256": "766b7eb3996120953ecaf80fd265a0dad0e864dab08c1ebd598fdbd6c81bc27c"
+      }
+    ],
     "camp_items_2": {
       "also": [],
       "box": [
@@ -1618,19 +1631,34 @@
       "example": "WISH-2/wish2-a2-capture/sheets2/shots/28-camp_sheet_4.png",
       "sha256": "3ebf5a6716032a590c394e79e50ea29bfc1cb535ad7ca6563ddd879219941968"
     },
-    "camp_sheet_5": {
-      "also": [
-        "camp_sheet_items_5"
-      ],
-      "box": [
-        74,
-        46,
-        330,
-        62
-      ],
-      "example": "WISH-2/wish2-a2-capture/sheets2/shots/36-camp_sheet_5.png",
-      "sha256": "767e04178168c0fb82181009b4c56753530e86aced5ae3be73cc26e999412acb"
-    },
+    "camp_sheet_5": [
+      {
+        "also": [
+          "camp_sheet_items_5"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/wish2-a2-capture/sheets2/shots/36-camp_sheet_5.png",
+        "sha256": "767e04178168c0fb82181009b4c56753530e86aced5ae3be73cc26e999412acb"
+      },
+      {
+        "also": [
+          "camp_sheet_items_5"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/r9-l4-gcamp/b1/shots/17-camp_sheet_5.png",
+        "sha256": "c061ed96c96aeb448462bb462d323b5d9efef2e37146f7fb1e164b470a668bf2"
+      }
+    ],
     "camp_sheet_6": {
       "also": [],
       "box": [
@@ -1669,19 +1697,35 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/06-sheet.png",
       "sha256": "f20f85d3f3b407e1c3151a01f4f19fb4db49f70d7112afd8d5b5d1aa227ae22e"
     },
-    "camp_sheet_items": {
-      "also": [
-        "sheet"
-      ],
-      "box": [
-        74,
-        46,
-        330,
-        62
-      ],
-      "example": "amiga-grab-crops/wish9-b1__12-camp_sheet_items.png",
-      "sha256": "1a1a57d1477a53d337a7b5dbf92fddb1079d7615b3894566273727cac365f0fd"
-    },
+    "camp_sheet_items": [
+      {
+        "also": [
+          "sheet"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "amiga-grab-crops/wish9-b1__12-camp_sheet_items.png",
+        "sha256": "1a1a57d1477a53d337a7b5dbf92fddb1079d7615b3894566273727cac365f0fd"
+      },
+      {
+        "also": [
+          "camp_sheet",
+          "sheet"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/r9-l4-gcamp/b1/shots/21-camp_sheet_items.png",
+        "sha256": "c18a06b2ebc643a788a75c0bf4307b99b67c16c535f38cea87c8705e498d4da3"
+      }
+    ],
     "camp_sheet_items_2": {
       "also": [
         "camp_sheet",
@@ -1744,6 +1788,19 @@
         ],
         "example": "WISH-354/w354-live3/live3/shots/17-camp_sheet_items_5.png",
         "sha256": "767e04178168c0fb82181009b4c56753530e86aced5ae3be73cc26e999412acb"
+      },
+      {
+        "also": [
+          "camp_sheet_5"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/r9-l4-gcamp/b1/shots/17-camp_sheet_5.png",
+        "sha256": "c061ed96c96aeb448462bb462d323b5d9efef2e37146f7fb1e164b470a668bf2"
       }
     ],
     "camp_sheet_items_6": {
@@ -1911,7 +1968,8 @@
       },
       {
         "also": [
-          "camp_sheet"
+          "camp_sheet",
+          "camp_sheet_items"
         ],
         "box": [
           74,
@@ -2050,11 +2108,30 @@
     "WISH-2/l4g-b2/b2/shots/07-loaded_menu.png": [
       "loaded_menu"
     ],
+    "WISH-2/r9-l4-gcamp/b1/shots/17-camp_sheet_5.png": [
+      "camp_sheet_5",
+      "camp_sheet_items_5"
+    ],
+    "WISH-2/r9-l4-gcamp/b1/shots/21-camp_sheet_items.png": [
+      "camp_sheet_items"
+    ],
+    "WISH-2/r9-l4-gcamp/b1/shots/22-camp_items.png": [
+      "camp_items"
+    ],
+    "WISH-2/r9-l4-gcamp/b1/shots/23-camp_sheet_items.png": [
+      "camp_sheet_items"
+    ],
+    "WISH-2/r9-l4-gcamp/b2/shots/12-world.png": [
+      "place_x11_y4_f2",
+      "world"
+    ],
     "WISH-2/r9-l4/b1/shots/12-world.png": [
-      "place_x11_y3_f2"
+      "place_x11_y3_f2",
+      "world"
     ],
     "WISH-2/r9-l4/b1/shots/13-world.png": [
-      "place_x11_y4_f2"
+      "place_x11_y4_f2",
+      "world"
     ],
     "WISH-2/wish2-a1a/accept1/shots/12-world.png": [
       "place_x2_y2_f1"

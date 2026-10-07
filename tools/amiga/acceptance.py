@@ -70,6 +70,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_DISK2_SHA256,
     DARKNESS_DISK3_SHA256,
     DARKNESS_RELOAD,
+    DARKNESS_RELOAD_LOADED,
     DARKNESS_UNSTARTED,
     DARKNESS_UNSTARTED_LOADED,
     DARKNESS_VAULT,
@@ -141,6 +142,8 @@ ISSUE_ARGUMENT = re.compile(r"\d+|WISH-\d+")
 #: The manifest modes of a Pools of Darkness run on a disk 3 that Wish wrote.
 PUBLISHED_DISK_THREE_MODE = "published_disk_three"
 PUBLISHED_DISK_THREE_RELOAD_MODE = "published_disk_three_reload"
+#: A reload of the disk 3 a Pools of Darkness substitute accept run fetched; it runs as `DARKNESS_RELOAD`.
+SUBSTITUTE_RELOAD_MODE = "substitute_reload"
 #: Pinned Save As sources a published disk-one run may start from, as a set of SHA-256 values per
 #: title and port. The Silver Blades pair and the Curse C64 pair each hold one party of share 0 and
 #: one of share 1.
@@ -4371,6 +4374,129 @@ def prepare_published_disk_three_reload(
     return path
 
 
+def prepare_substitute_reload(
+        run_id: str, substitute_manifest: pathlib.Path, fetched: pathlib.Path, fetched_sha256: str,
+        accept_summary: pathlib.Path, issue: str | None = None) -> pathlib.Path:
+    """Prepare a reload run on the disk 3 a successful Pools of Darkness substitute accept run fetched.
+
+    `substitute_manifest` is that run's `prepare.json`, whose working disk 3 (the registered disk
+    3 with the substitute in its loaded slot) is what the game loaded from. Blocks a file that does
+    not hash to `fetched_sha256`, a summary that is not a successful accept run on that manifest
+    whose fetched disk 3 has that hash, a disk that is not the working disk 3 plus exactly the
+    control and after saves, saves that do not decode to the substituted party, and two saves at
+    one place. The manifest runs as `DARKNESS_RELOAD`: it loads the after slot and compares the
+    control slot's place.
+    """
+    if not HOLDER.fullmatch(run_id):
+        raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
+    substitute_manifest, fetched, accept_summary = (
+        pathlib.Path(p) for p in (substitute_manifest, fetched, accept_summary))
+    for path in (substitute_manifest, fetched, accept_summary):
+        if not path.is_file():
+            raise RouteError(f"the file {path} is missing")
+    try:
+        manifest = json.loads(substitute_manifest.read_text())
+        loaded, names = manifest["loaded_letter"], manifest["names_a"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RouteError(f"the manifest {substitute_manifest} is unreadable: {exc}") from exc
+    if (manifest.get("title") != "darkness" or not isinstance(manifest.get("substitute"), dict)
+            or manifest.get("mode") is not None):
+        raise RouteError("the manifest is not a Pools of Darkness substitute run")
+    issue = _wish_issue(issue) if issue is not None else ISSUE
+    try:
+        base_path = _input(manifest["disks"], "disk3")
+    except KeyError as exc:
+        raise RouteError(f"the manifest lacks {exc.args[0]!r}") from exc
+    except RouteError as exc:
+        raise RouteError("the substitute run's disk 3 is missing or changed from "
+                         "preparation") from exc
+    if sha256(fetched) != fetched_sha256:
+        raise RouteError(f"the disk 3 SHA-256 differs: {sha256(fetched)}")
+    try:
+        summary = json.loads(accept_summary.read_text())
+        summary_sha, summary_input = summary["fetched"]["disk3"]["sha256"], summary["input"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RouteError(f"the accept summary {accept_summary} is unreadable: {exc}") from exc
+    if summary.get("success") is not True or summary.get("accept") is not True:
+        raise RouteError("the summary is not a successful accept run")
+    if pathlib.Path(summary_input).resolve() != substitute_manifest.resolve():
+        raise RouteError("the summary is of a run on another manifest")
+    if summary_sha != fetched_sha256:
+        raise RouteError("the summary's fetched disk 3 is another disk")
+    save, base = _verified_disk(fetched), _verified_disk(base_path)
+    if save.volume_name != DARKNESS_VOLUME:
+        raise RouteError(f"disk 3 is not a verified {DARKNESS_VOLUME} disk")
+    control, after = DARKNESS.control_letter, DARKNESS.after_letter
+    if loaded in (control, after) or after != DARKNESS_RELOAD_LOADED:
+        raise RouteError(f"the substitute run loaded slot {loaded}, which the reload route "
+                         "cannot keep")
+    written = {c: DARKNESS.slot_files(save, c) for c in (control, after)}
+    added = {f"/save/{name}".lower() for files in written.values() for name in files}
+    have, before = _disk_files(save), _disk_files(base)
+    # The game writes the loaded slot's vault over the vault file of each new letter, so those two
+    # files are compared as vaults below and not byte for byte.
+    rewritten = {_slot_paths(c)[1] for c in (control, after)}
+    if len(added) != 2 or set(have) != set(before) | added or any(
+            have[name] != data for name, data in before.items() if name not in rewritten):
+        raise RouteError(f"disk 3 is not the substitute run's disk 3 plus slots {control} and {after}")
+    loaded_vault = amiga_savegame.pod_read_vault(base, loaded)
+    for c in (control, after):
+        if amiga_savegame.pod_read_vault(save, c) != loaded_vault:
+            raise RouteError(f"vault {c} is not the loaded slot's vault")
+    reading = {c: DARKNESS.read_slot(save, c) for c in (control, after)}
+    for c, one in reading.items():
+        if "place" not in one:
+            raise RouteError(f"slot {c} does not decode: {one}")
+        if one["names"] != names:
+            raise RouteError(f"slot {c} names another party than the substituted slot {loaded}")
+    outdoors = {c: outdoor_square(one) for c, one in reading.items()}
+    if reading[control]["place"] == reading[after]["place"] and outdoors[control] == outdoors[after]:
+        raise RouteError(f"slots {control} and {after} are at one place, which the screen "
+                         "cannot tell apart")
+    run = scratch.cache_dir("acceptance", issue, run_id)
+    if run.exists():
+        raise RouteError(f"run folder already exists: {run}")
+    wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
+    images = _find_images(wanted)
+    scratch.ensure(run)
+    try:
+        disks: dict[str, dict[str, str]] = {}
+        for key in wanted:
+            working = run / f"{key}.adf"
+            working.write_bytes(images[key][1])
+            disks[key] = _entry(working)
+        working = run / "disk3.adf"
+        shutil.copyfile(fetched, working)
+        disks["disk3"] = _entry(working)
+        if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()):
+            raise RouteError("a working copy differs from the pinned disk")
+        if disks["disk3"]["sha256"] != fetched_sha256 or sha256(fetched) != fetched_sha256:
+            raise RouteError("the working disk 3 differs from the input")
+    except BaseException:
+        _remove_run_folder(run)
+        raise
+    result = {
+        "mode": SUBSTITUTE_RELOAD_MODE, "issue": issue, "title": "darkness-reload",
+        "disks": disks,
+        "registered": {"accept_disk3": _entry(fetched), "substitute_disk3": _entry(base_path)},
+        "sources": {key: {"label": images[key][0], "sha256": wanted[key]} for key in wanted},
+        "loaded_letter": after, "state_a": reading[after]["place"],
+        "names_a": reading[after]["names"],
+        "other_letter": control, "other_place": reading[control]["place"],
+        **({"wilderness_a": outdoors[after], "wilderness_other": outdoors[control]}
+           if outdoors[after] or outdoors[control] else {}),
+        "slot_sha256": {c: one["sha256"] for c, one in reading.items()},
+        "vault_sha256": {c: hashlib.sha256(have[_slot_paths(c)[1]]).hexdigest()
+                         for c in (control, after)},
+        "accept_summary": _entry(accept_summary),
+        "substitute_run": {"manifest": _entry(substitute_manifest),
+                           "loaded_letter": loaded, "substitute": manifest["substitute"]},
+    }
+    path = run / "prepare.json"
+    path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return path
+
+
 def _summary(result: dict[str, Any], manifest: pathlib.Path, attempt: str) -> str:
     path = str(manifest.parent / attempt / "summary.json")
     if result.get("diagnose"):
@@ -4733,6 +4859,10 @@ def main(argv: list[str] | None = None) -> int:
                         "this, Silver Blades in place of --source")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
+    p.add_argument("--substitute-manifest", type=pathlib.Path, default=None,
+                   help="darkness-reload only: the prepare.json of the Pools of Darkness "
+                        "--substitute accept run whose fetched disk 3 --disk3 is; with "
+                        "--disk3-sha256 and --accept-summary")
     b = sub.add_parser("boot", help="claim a lane, put a prepared run's disks on it and start WinUAE; "
                                     "leaves it running for amigadrive.py, noencounters.py and "
                                     "fasttravelrun.py under --holder until `halt`")
@@ -4838,6 +4968,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "diagnose" and (not silver_blades or not args.published_disk_one
                                            or args.deadline > 600 or args.boot_limit > 300):
             raise RouteError("diagnose needs published Silver Blades and bounded limits")
+        if args.command == "prepare" and args.substitute_manifest is not None:
+            if args.title != "darkness-reload":
+                raise RouteError("--substitute-manifest is for --title darkness-reload")
+            if any((args.published_disk_one, args.published_disk_three, args.saveas_report,
+                    args.published_manifest, args.substitute, args.source, args.staged_from,
+                    args.stage_place, args.camp, args.temple, args.encounter,
+                    args.stage_record, args.save_count is not None)):
+                raise RouteError("a substitute reload takes only --substitute-manifest, --disk3, "
+                                 "--disk3-sha256, --accept-summary and --issue")
+            if not all((args.disk3, args.disk3_sha256, args.accept_summary)):
+                raise RouteError("a substitute reload needs --disk3, --disk3-sha256 and "
+                                 "--accept-summary")
+            with terminating():
+                print(prepare_substitute_reload(
+                    args.run_id, args.substitute_manifest, args.disk3, args.disk3_sha256,
+                    args.accept_summary, args.issue))
+            return 0
         if args.command == "prepare" and args.published_disk_three:
             if args.published_disk_one:
                 raise RouteError("--published-disk-one and --published-disk-three are two routes")
