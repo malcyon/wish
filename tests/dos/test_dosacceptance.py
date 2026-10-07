@@ -12704,3 +12704,45 @@ def test_temple_raise_stops_at_a_screen_it_does_not_know(tmp_path, text_rows,
     with pytest.raises(da.StepFailed, match="arrival question"):
         d.temple_raise(1)
     assert game.keys == []
+
+
+def test_map_lets_camp_and_save_follow_a_press_in_darkness():
+    da.validate_steps(_steps("load", "press j", "map", "camp", "save E", "read"),
+                      "darkness")
+
+
+def test_camp_straight_after_a_press_still_fails():
+    with pytest.raises(ValueError, match="may come after a press"):
+        da.validate_steps(_steps("load", "press j", "camp", "save E", "read"),
+                          "darkness")
+
+
+@pytest.mark.parametrize("title,steps", [
+    ("pool", ("load", "press j", "map")),
+    ("curse", ("load", "press j", "map")),
+    ("darkness", ("load", "map")),
+    ("darkness", ("load", "press j", "map", "map")),
+])
+def test_map_is_for_darkness_straight_after_a_press(title, steps):
+    with pytest.raises(ValueError, match="map"):
+        da.validate_steps(_steps(*steps), title)
+
+
+def test_at_map_stops_on_a_bar_that_is_not_a_measured_map_bar(tmp_path):
+    game, d = _pod_driver(tmp_path)
+    game.mode = "camp"
+    with pytest.raises(da.StepFailed, match="map"):
+        d.at_map()
+    assert d.where != "map"
+
+
+def test_at_map_takes_the_dungeon_bar_as_the_world_bar(tmp_path):
+    game, d = _pod_driver(tmp_path)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.where = "pressed"
+    game.mode = "map"
+    got = d.at_map()
+    assert d.where == "map" and got["map_kind"] == "dungeon"
+    assert d.world_sig == da.POD_MAP_BARS["dungeon"] == got["map_bar"]
+    assert [n["map"] for n in d.logged if n.get("event") == "map_bar"] == ["dungeon"]

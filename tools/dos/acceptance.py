@@ -75,6 +75,7 @@ a source whose title does not match `--title`:
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
+| `map` | Pools of Darkness, after `press` steps that left the party on a map (the tester's JUMP): the screen settled (quiet 1.5 s, at most 30 s), its bar required to be one of `POD_MAP_BARS` and taken as the world bar, so `camp` and `save` may follow |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it.  A `snapshot` after a `press` is taken only once the screen has held unchanged for `Driver.SNAPSHOT_QUIET` seconds (30 s at most) and fails if it never does or changes while the state is written; its digest is recorded as `screen`, and a `restore` of that name fails unless the same screen comes back |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot`, `read`, `snapshot` and `restore` may come after it, and none of the last two after a `prayer-watch` |
@@ -2320,7 +2321,7 @@ STEP_HELP = ("load, begin, vault, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp,
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
              "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
-             "'snapshot NAME', 'restore NAME', 'deposit 5 2', read")
+             "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, read")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
 #: 0x0CB8), upper case.
 CHANGE_CLASSES = ("CLERIC", "DRUID", "FIGHTER", "PALADIN", "RANGER", "MAGIC-USER",
@@ -2332,7 +2333,7 @@ def parse_step(text: str) -> Step:
     if not words:
         raise ValueError("an empty step")
     kind = words[0].lower()
-    if kind in ("load", "begin", "camp", "leave", "display", "vault",
+    if kind in ("load", "begin", "camp", "leave", "display", "vault", "map",
                 "read") and len(words) == 1:
         return Step(kind, text)
     deposit = parse_deposit(words, text)
@@ -2456,7 +2457,8 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         if where == "first-bar":
             raise ValueError(f"only shot and read may come after fight "
                              f"{FIRST_BAR}: {step.text!r}")
-        if where == "pressed" and k not in ("press", "snapshot", "restore"):
+        if (where == "pressed" and k not in ("press", "snapshot", "restore")
+                and not (k == "map" and title == "darkness")):
             raise ValueError(f"only press, shot and read, or a snapshot or restore, "
                              f"may come after a press: {step.text!r}")
         if watched and k in ("snapshot", "restore"):
@@ -2466,6 +2468,14 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             raise ValueError(f"{k} needs load first: {step.text!r}")
         if k == "press":
             where = "pressed"
+            continue
+        if k == "map":
+            if title != "darkness":
+                raise ValueError(f"map is driven in darkness only, not {title}")
+            if where != "pressed":
+                raise ValueError(f"map follows a press, which left the party "
+                                 f"on a map: {step.text!r}")
+            where = "map"
             continue
         if k == "load":
             if where != "boot":
@@ -4069,6 +4079,35 @@ class Driver:
         return {"slot": self.slot, "party_menu": self.party_sig,
                 "questions_answered": len(answered), "menu_rows": self.pod_rows}
 
+    def pod_map_kind(self, screen, label: str) -> str:
+        """Which of `POD_MAP_BARS` the screen shows, noted as `map_bar`; any
+        other screen stops the run under `label`."""
+        kind = next((k for k, bar in POD_MAP_BARS.items()
+                     if bar_signature(screen) == bar), None)
+        if kind is None:
+            if not POD_MAP_BARS:
+                raise self.fail(label, "no Pools of Darkness map bar "
+                                "has been measured yet (POD_MAP_BARS), so the "
+                                "screen Begin reached is not taken for the map")
+            raise self.fail(label, "the screen reached is not "
+                            "a measured map bar of POD_MAP_BARS (a story "
+                            f"screen or a message this driver does not know): "
+                            f"{self.bar_named(screen)}")
+        self.note(event="map_bar", map=kind, bar=POD_MAP_BARS[kind])
+        return kind
+
+    def at_map(self) -> dict:
+        """Pools of Darkness, after `press` steps that left the party on a
+        map (the tester's JUMP): wait for the screen to settle, require a
+        measured map bar and take it as the world bar, so `camp` and `save`
+        may follow."""
+        screen = self.s.settle(quiet=1.5, timeout=self.bounded(30.0, "map"))
+        kind = self.pod_map_kind(screen, "map")
+        self.record_world(screen)
+        self.shot("map")
+        self.where = "map"
+        return {"map_bar": self.world_sig, "map_kind": kind}
+
     def begin(self) -> dict:
         if self.where != "party":
             if self.title.key == "pool" and self.where == "map":
@@ -4135,17 +4174,7 @@ class Driver:
             raise self.fail("begin", "the party menu is still showing")
         kind = None
         if self.title.key == "darkness":
-            kind = next((k for k, bar in POD_MAP_BARS.items()
-                         if bar_signature(screen) == bar), None)
-            if kind is None:
-                if not POD_MAP_BARS:
-                    raise self.fail("begin-screen", "no Pools of Darkness map bar "
-                                    "has been measured yet (POD_MAP_BARS), so the "
-                                    "screen Begin reached is not taken for the map")
-                raise self.fail("begin-screen", "the screen Begin reached is not "
-                                "a measured map bar of POD_MAP_BARS (a story "
-                                "screen or a message this driver does not know)")
-            self.note(event="map_bar", map=kind, bar=POD_MAP_BARS[kind])
+            kind = self.pod_map_kind(screen, "begin-screen")
         elif self.title.key == "pool":
             kind = pool_map_kind(screen)
             if kind is None:
@@ -7875,6 +7904,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.load()
                 elif step.kind == "begin":
                     r = d.begin()
+                elif step.kind == "map":
+                    r = d.at_map()
                 elif step.kind == "camp":
                     r = d.camp()
                 elif step.kind == "vault":
