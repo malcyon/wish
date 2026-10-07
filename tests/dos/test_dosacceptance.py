@@ -12519,7 +12519,8 @@ def test_temple_raise_at_runtime_needs_the_arrival_question(tmp_path, text_rows)
 
 def _temple_args(**kw):
     import argparse
-    base = dict(xp=[], add_node=[], stage_control=[], stage_side=[], stage_record=[])
+    base = dict(xp=[], add_node=[], stage_control=[], stage_side=[], stage_record=[],
+                stage_var=[], stage_place=None)
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -12533,6 +12534,10 @@ def test_a_temple_run_stages_only_gold_and_constitution():
     assert "1:0x015" in why
     assert "--stage-control" in da.temple_staging_rejection(
         _temple_args(stage_control=["1=0x80"]), steps)
+    assert "--stage-var" in da.temple_staging_rejection(
+        _temple_args(stage_var=["4C2D=1"]), steps)
+    assert "--stage-place" in da.temple_staging_rejection(
+        _temple_args(stage_place="6,14,0"), steps)
     # Without a temple step nothing here limits the staging.
     assert da.temple_staging_rejection(_temple_args(stage_record=["1:0x15=18"]),
                                        steps[:2]) is None
