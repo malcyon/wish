@@ -888,6 +888,17 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/04-disk2_prompt.png",
       "sha256": "d27a9a57ec0044d5179669bbe44bfd49ed23a81c5fee4c92c85f95fc64d68377"
     },
+    "disk3_prompt": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        540,
+        430
+      ],
+      "example": "WISH-2/wish2-spare-r1/r1/shots/04-disk3_prompt.png",
+      "sha256": "dcf7b49dce41cae070cb4090df821d725eda803a3b7ab7e66b591c2963eb5925"
+    },
     "elminster_menu": {
       "also": [],
       "box": [
@@ -2239,6 +2250,9 @@
     ],
     "WISH-2/wish2-s5/accept2/shots/13-world.png": [
       "place_x3_y2_f1"
+    ],
+    "WISH-2/wish2-spare-r1/r1/shots/04-disk3_prompt.png": [
+      "disk3_prompt"
     ],
     "WISH-2/wish317-lower/accept317/shots/12-world.png": [
       "place_x4_y7_f1_w22_5"

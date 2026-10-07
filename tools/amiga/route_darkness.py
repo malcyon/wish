@@ -287,6 +287,118 @@ def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTi
 
 DARKNESS_VAULT = vault_title()
 
+#: The manifest key of a second save disk, staged with `prepare --spare-disk` and put in DF1 by
+#: the route's `swap-df1` steps. The game saves to whichever disk with a `SAVE` drawer is in DF1.
+SPARE = "spare"
+#: `INSERT DISK 3 AND PRESS A KEY`, which the game shows after loading a slot from a disk that is
+#: not disk 3, in the strip where it asks for disk 2.
+DISK3_PROMPT = "disk3_prompt"
+#: What `T` shows on the vault bar of a vault with no items and no coins; no guard is cut for it.
+VAULT_EMPTY = "vault_empty"
+_CAMP_SAVE = ("S", "camp_save_picker", "key")
+_QUIT_NO = ("N", "camp", "key")
+
+
+def swap_df1(disk_key: str, step: tuple) -> tuple:
+    """The route step `swap-df1 <disk_key>`: put that disk in DF1, then press `step`'s key.
+
+    It is an `insert` step on drive 1, so the screen before it must be a strict state.
+    """
+    key, state, kind = step
+    if kind != "key":
+        raise RouteError(f"swap-df1 goes before a key step, not {step!r}")
+    return ((1, disk_key, key), state, "insert")
+
+
+def spare_save_title(title: AmigaTitle) -> AmigaTitle:
+    """`title` with its camp save made on the spare disk instead of disk 3.
+
+    `swap-df1 spare` comes before the `S` that opens the camp save picker and `swap-df1 disk3`
+    before the `N` that answers the quit question after the save. The control save at the
+    loaded menu stays on disk 3, so one boot saves the same party to both disks.
+    """
+    def swapped(route: tuple) -> tuple:
+        if _CAMP_SAVE not in route:
+            raise RouteError("the route has no camp save to make on the spare disk")
+        out: list[tuple] = []
+        for step in route:
+            if step == _CAMP_SAVE:
+                out.append(swap_df1(SPARE, step))
+            elif step == _QUIT_NO and out and out[-1][1] == "exit_game":
+                out.append(swap_df1("disk3", step))
+            else:
+                out.append(step)
+        return tuple(out)
+
+    if SPARE in title.disk_keys:
+        raise RouteError("the route already has a spare disk")
+    return dataclasses.replace(title, spares=(*title.spares, SPARE), route=swapped(title.route),
+                               measure_route=swapped(title.measure_route))
+
+
+def spare_reload_title(loaded: str, items: int, coins: bool,
+                       kept: tuple[str, ...] = ()) -> AmigaTitle:
+    """Load `loaded` from the spare disk and open Elminster's vault, writing nothing.
+
+    `swap-df1 spare` comes before `L` at the party menu, so the load picker lists the spare's
+    slots; after the slot letter the game asks for disk 3, which `swap-df1 disk3` answers, and
+    then for disk 2 in DF0. The vault steps list `items` rows; a vault with none goes as far as
+    the screen `T` opens, which settles unguarded. Like `DARKNESS_UNSTARTED` it runs as
+    `measure`, so it names two free letters as its save letters and never presses them.
+    """
+    control, after, _kept = published_letters(loaded, (loaded, *kept))
+    vault = (vault_steps(items, coins) if items
+             else (("S", VAULT_STORAGE, "key"), ("T", VAULT_EMPTY, "key")))
+    route = (
+        ("P", "party_menu", "key"), swap_df1(SPARE, ("L", "load_from", "key")),
+        ("P", "load_picker", "key"), (loaded, DISK3_PROMPT, "key"),
+        swap_df1("disk3", ("SPACE", "disk2_prompt", "key")), DISK2_INSERT,
+        ("V", "sheet", "key"), ("E", "loaded_menu", "key"),
+        ("B", "journal", "key"), ("X", "journal_answer", "key"), ("RET", VAULT_MENU, "key"),
+        *vault,
+    )
+    states = {state for _, state, _ in vault}
+    return dataclasses.replace(
+        DARKNESS_RELOAD, spares=(*DARKNESS.spares, SPARE), save_disk=SPARE,
+        route=route, measure_route=route, kept_letters=tuple(kept),
+        control_letter=control, after_letter=after,
+        plain_keys=tuple(e for e in _SIMPLE_KEY_STATES[:2] if e[0] in kept),
+        strict=frozenset({"party_menu", "load_from", "load_picker", DISK3_PROMPT, "disk2_prompt",
+                          "loaded_menu", "sheet", "journal", "journal_answer", VAULT_MENU}),
+        interstitials=(DARKNESS_INTRO,), interstitial_letters=(), move_again_after=frozenset(),
+        min_waits={**DARKNESS.min_waits, DISK3_PROMPT: 10.0, VAULT_MENU: 45.0,
+                   **{state: 10.0 for state in states}, VAULT_ROW: route_camp.ROW_WAIT},
+    )
+
+
+def vault_evidence(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any] | None:
+    """`_vault_reading` of `letter`'s vault on `disk`, or None when the disk holds no such file."""
+    try:
+        disk.lookup(amiga_savegame.pod_vault_path(letter))
+    except amiga_adf.AmigaDiskError:
+        return None
+    return _vault_reading(disk, letter)
+
+
+def _check_spare(spare: pathlib.Path) -> dict[str, Any]:
+    """A spare save disk that verifies, has a `SAVE` drawer and holds no saved game: its record."""
+    spare = pathlib.Path(spare)
+    if not spare.is_file():
+        raise RouteError(f"the spare disk {spare} is missing")
+    try:
+        disk = amiga_adf.AmigaDisk.open(spare)
+        problems = disk.verify()
+        if problems:
+            raise RouteError(f"the spare disk {spare} fails ADF verification: {problems}")
+        held = _darkness_slot_letters(disk)
+        files = sorted(path for path, _entry in disk.walk())
+    except amiga_adf.AmigaDiskError as exc:
+        raise RouteError(f"the spare disk {spare} has no readable SAVE drawer: {exc}") from exc
+    if held:
+        raise RouteError(f"the spare disk {spare} already holds saved games {held}")
+    return {"path": str(spare), "sha256": sha256(spare), "volume": disk.volume_name,
+            "files": files}
+
 
 def _darkness_import_slot(dest: amiga_adf.AmigaDisk, dest_letter: str,
                           source: amiga_adf.AmigaDisk, source_letter: str) -> bytes:
@@ -345,7 +457,8 @@ def _vault_reading(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
 
 def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
                       loaded: str = DARKNESS_LOADED, *, substitute: pathlib.Path | None = None,
-                      substitute_letter: str = "A", vault: bool = False) -> dict[str, Any]:
+                      substitute_letter: str = "A", vault: bool = False,
+                      spare: pathlib.Path | None = None) -> dict[str, Any]:
     """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists.
 
     `substitute`, a disk some other tool wrote a party onto, has its `substitute_letter` slot
@@ -356,7 +469,12 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     With `vault`, the substitute's vault is copied into the loaded letter's vault as well, the
     run stops before any disk is written when that vault holds no items, and the manifest's
     `vault` records its rows, coins and hash.
+
+    `spare`, a save disk with a `SAVE` drawer and no saved game, is copied into the run as the
+    disk `SPARE`, which the route puts in DF1 for the camp save (`spare_save_title`); the
+    manifest's `spare` records where it came from.
     """
+    spare_record = _check_spare(spare) if spare is not None else None
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
               "disk3": DARKNESS_DISK3_SHA256}
     if override is not None:
@@ -420,6 +538,12 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     if any(disks[key]["sha256"] != pinned for key, pinned in wanted.items()
            if not (key == "disk3" and substituted)):
         raise RouteError("a working copy differs from the pinned disk")
+    if spare_record is not None:
+        path = run / f"{SPARE}.adf"
+        shutil.copyfile(spare_record["path"], path)
+        disks[SPARE] = {"path": str(path), "sha256": sha256(path)}
+        if disks[SPARE]["sha256"] != spare_record["sha256"]:
+            raise RouteError("the working spare disk differs from the input")
     manifest = {
         "title": "darkness", "disks": disks, "registered": {},
         "sources": {key: {"label": label, "sha256": wanted[key]}
@@ -431,6 +555,8 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         manifest["substitute"] = substituted
     if held:
         manifest["vault"] = held
+    if spare_record is not None:
+        manifest[SPARE] = spare_record
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
     if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
         raise RouteError("a registered image changed during preparation")
@@ -521,6 +647,99 @@ def _prepare_darkness_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha25
         "slot_sha256": {letter: one["sha256"] for letter, one in reading.items()},
         "accept_summary": {"path": str(accept_summary), "sha256": sha256(accept_summary)},
     }
+
+
+def _prepare_darkness_spare_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha256: str,
+                                   accept_summary: pathlib.Path,
+                                   spare: pathlib.Path) -> dict[str, Any]:
+    """Prepare a run that loads the one saved game on the spare disk a spare accept run fetched.
+
+    Raises on a disk 3 that does not hash to `disk3_sha256`, a summary that is not a successful
+    accept run whose fetched disk 3 and spare are these two files, a spare that does not hold
+    exactly one saved game, and a saved game that does not decode. The manifest's `spare_vault`
+    is that slot's vault on the spare, which the route's vault steps list.
+    """
+    disk3, accept_summary, spare = (pathlib.Path(p) for p in (disk3, accept_summary, spare))
+    for path in (disk3, accept_summary, spare):
+        if not path.is_file():
+            raise RouteError(f"the file {path} is missing")
+    if sha256(disk3) != disk3_sha256:
+        raise RouteError(f"the disk 3 SHA-256 differs: {sha256(disk3)}")
+    try:
+        summary = json.loads(accept_summary.read_text())
+        fetched = {key: summary["fetched"][key]["sha256"] for key in ("disk3", SPARE)}
+    except (ValueError, KeyError, TypeError) as exc:
+        raise RouteError(f"the accept summary {accept_summary} is unreadable or has no fetched "
+                         f"spare: {exc!r}") from exc
+    if summary.get("success") is not True or summary.get("accept") is not True:
+        raise RouteError("the summary is not a successful accept run")
+    if fetched != {"disk3": disk3_sha256, SPARE: sha256(spare)}:
+        raise RouteError("the summary's fetched disk 3 or spare is another disk")
+    try:
+        save = amiga_adf.AmigaDisk(spare.read_bytes())
+        if save.verify():
+            raise RouteError(f"the spare disk {spare} fails ADF verification")
+        letters = _darkness_slot_letters(save)
+    except amiga_adf.AmigaDiskError as exc:
+        raise RouteError(f"the spare disk {spare} has no readable SAVE drawer: {exc}") from exc
+    if len(letters) != 1:
+        raise RouteError(f"the spare disk holds {letters}, not one saved game")
+    loaded = letters[0]
+    reading = DARKNESS.read_slot(save, loaded)
+    if "place" not in reading:
+        raise RouteError(f"slot {loaded} on the spare does not decode: {reading}")
+    try:
+        held = vault_evidence(save, loaded)
+    except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
+        raise RouteError(f"vault {loaded} on the spare cannot be read: {exc}") from exc
+    wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256}
+    images = _find_images(wanted)
+    scratch.ensure(run)
+    disks: dict[str, dict[str, str]] = {}
+    for key in wanted:
+        path = run / f"{key}.adf"
+        path.write_bytes(images[key][1])
+        disks[key] = {"path": str(path), "sha256": sha256(path)}
+    for key, source in (("disk3", disk3), (SPARE, spare)):
+        path = run / f"{key}.adf"
+        shutil.copyfile(source, path)
+        disks[key] = {"path": str(path), "sha256": sha256(path)}
+    if (any(disks[key]["sha256"] != pinned for key, pinned in wanted.items())
+            or disks["disk3"]["sha256"] != disk3_sha256
+            or disks[SPARE]["sha256"] != fetched[SPARE]):
+        raise RouteError("a working copy differs from its input")
+    return {
+        "title": "darkness-reload", "disks": disks,
+        "registered": {"accept_disk3": {"path": str(disk3), "sha256": disk3_sha256},
+                       "accept_spare": {"path": str(spare), "sha256": fetched[SPARE]}},
+        "sources": {key: {"label": images[key][0], "sha256": wanted[key]} for key in wanted},
+        "loaded_letter": loaded, "state_a": reading["place"], "names_a": reading["names"],
+        SPARE: {"path": str(spare), "sha256": fetched[SPARE]},
+        "spare_vault": held or {"items": 0, "coins": [0, 0, 0], "sha256": None},
+        "accept_summary": {"path": str(accept_summary), "sha256": sha256(accept_summary)},
+    }
+
+
+def spare_title_for(name: str, manifest: dict, title: AmigaTitle, command: str) -> AmigaTitle:
+    """The route a manifest prepared with a spare disk runs: `title` itself when it has none.
+
+    `darkness` and `darkness-vault` make their camp save on the spare; `darkness-reload` loads
+    from it and writes nothing, so it runs as `measure` only.
+    """
+    if SPARE not in manifest:
+        return title
+    if name in ("darkness", "darkness-vault"):
+        return spare_save_title(title)
+    if name == "darkness-reload":
+        if command != "measure":
+            raise RouteError("a reload from the spare disk writes nothing and runs as measure")
+        try:
+            held = manifest["spare_vault"]
+            return spare_reload_title(manifest["loaded_letter"], held["items"],
+                                      any(held["coins"]))
+        except (KeyError, TypeError) as exc:
+            raise RouteError(f"the spare reload manifest lacks {exc!r}") from exc
+    raise RouteError(f"{name} takes no spare disk")
 
 
 #: The letters a published disk 3 run saves to, in the order they are taken. The game's own save

@@ -75,11 +75,15 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_UNSTARTED_LOADED,
     DARKNESS_VAULT,
     DARKNESS_VOLUME,
+    SPARE,
     _prepare_darkness,
     _prepare_darkness_reload,
+    _prepare_darkness_spare_reload,
     camp_in_place_title,
     published_reload_title,
     published_title,
+    spare_title_for,
+    vault_evidence,
     vault_steps,
     vault_title,
 )
@@ -1094,12 +1098,52 @@ def _vault_problems(fetched: amiga_adf.AmigaDisk, staged: pathlib.Path, loaded: 
             if amiga_savegame.pod_read_vault(fetched, c) != staged_vault]
 
 
+def _spare_vault(disk3: amiga_adf.AmigaDisk, spare: amiga_adf.AmigaDisk,
+                 staged: amiga_adf.AmigaDisk, loaded: str, control: str,
+                 after: str) -> dict[str, Any]:
+    """Where the after save's vault went: that letter's vault on each fetched disk, against the staged one.
+
+    Each reading is `route_darkness.vault_evidence` (None: no file). The comparisons are of
+    decoded vaults, since the game pads a vault it writes with its own template table.
+    """
+    def decoded(disk: amiga_adf.AmigaDisk, letter: str) -> Any:
+        return amiga_savegame.pod_read_vault(disk, letter)
+
+    staged_vault = decoded(staged, loaded)
+    return {
+        "letter": after, "loaded_letter": loaded, "control_letter": control,
+        "staged": vault_evidence(staged, loaded),
+        "spare": vault_evidence(spare, after),
+        "spare_loaded": vault_evidence(spare, loaded),
+        "disk3": vault_evidence(disk3, after),
+        "disk3_control": vault_evidence(disk3, control),
+        "spare_matches_staged": decoded(spare, after) == staged_vault,
+        "disk3_matches_staged": decoded(disk3, after) == staged_vault,
+        "disk3_control_matches_staged": decoded(disk3, control) == staged_vault,
+    }
+
+
+def _spare_vault_verdict(found: dict[str, Any]) -> str:
+    """One line naming what the after save's vault holds on the spare disk."""
+    held = found["spare"]
+    what = ("no vault file" if held is None
+            else f"{held['items']} item rows and coins {held['coins']}")
+    same = "the same as" if found["spare_matches_staged"] else "not"
+    return (f"vault {found['letter']} on the spare disk: {what}, {same} the vault staged in "
+            f"slot {found['loaded_letter']}")
+
+
 def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 out: pathlib.Path, disks: dict[str, pathlib.Path],
                 registered: dict[str, pathlib.Path], kept_before: dict[str, dict],
                 loaded: str, accept: bool, measure: bool, steps: tuple,
                 reload: bool = False) -> None:
-    """Compare the fetched disks with the manifest, read the saves and set `success`."""
+    """Compare the fetched disks with the manifest, read the saves and set `success`.
+
+    A spare run's after slot is read from the fetched spare, which must have changed and hold
+    no other saved game; where its vault went is recorded in `spare_vault` and judges nothing.
+    """
+    spare = SPARE in manifest and SPARE in title.disk_keys
     result["registered_unchanged"] = {
         key: sha256(path) == manifest["registered"][key]["sha256"]
         for key, path in registered.items()}
@@ -1124,7 +1168,10 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     manifest, control, letter=title.control_letter,
                     names=manifest["names_a"], extra_problems=_no_problems)
             if accept:
-                after = title.read_slot(fetched, title.after_letter)
+                # A spare run makes its camp save on the spare disk, in DF1 at that moment.
+                after_disk = (_verified_disk(out / f"fetched-{SPARE}.adf") if spare
+                              else fetched)
+                after = title.read_slot(after_disk, title.after_letter)
                 result["after_sha256"] = after.get("sha256")
                 result["camp_save_problems"] = menu_save_problems(
                     manifest, after, letter=title.after_letter, check_place=False,
@@ -1169,7 +1216,15 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 if "vault" in manifest:
                     result["vault_problems"] = _vault_problems(
                         fetched, disks[title.save_disk], loaded,
-                        (title.control_letter, title.after_letter))
+                        (title.control_letter,) if spare
+                        else (title.control_letter, title.after_letter))
+                if spare:
+                    result["spare_extra_saves"] = sorted(
+                        set(title.slot_letters(after_disk)) - {title.after_letter})
+                    result["spare_vault"] = _spare_vault(
+                        fetched, after_disk, _verified_disk(disks[title.save_disk]), loaded,
+                        title.control_letter, title.after_letter)
+                    verdicts.append(_spare_vault_verdict(result["spare_vault"]))
                 result["kept_unchanged"] = {
                     c: title.slot_files(fetched, c) == before
                     for c, before in kept_before.items()}
@@ -1203,7 +1258,7 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
     result.setdefault("read", {"verdicts": [
         f"slots {title.control_letter} and {title.after_letter} were not read from the "
         f"fetched save disk"]})
-    others = [k for k in title.disk_keys if k != title.save_disk]
+    others = [k for k in title.disk_keys if k != title.save_disk and not (spare and k == SPARE)]
     rest = bool(
         not result["error"] and result["completed"] and not result["unguarded"]
         and every_disk_fetched and all(result["registered_unchanged"].values())
@@ -1218,7 +1273,9 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         and result.get("expected_after_matches") is not False
         and bool(result.get("kept_unchanged")) == bool(kept_before)
         and all(result.get("kept_unchanged", {}).values())
-        and result.get("extra_saves") == [])
+        and result.get("extra_saves") == []
+        and (not spare or (result["disks_unchanged"].get(SPARE) is False
+                           and result.get("spare_extra_saves") == [])))
     if manifest.get("mode") == "published_disk_one":
         rest = bool(rest and result.get("published_files_preserved")
                     and result.get("control_clock_matches")
@@ -1909,6 +1966,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError(f"screen guard map lacks {missing}")
     if title is not None:
         disks, registered, letter = _title_inputs(manifest, title)
+        if SPARE in manifest and SPARE not in title.disk_keys:
+            raise RouteError("a manifest with a spare disk runs only a route that puts it in DF1")
         if "staged_record" in manifest:
             try:
                 staged = manifest["staged_record"]
@@ -2281,6 +2340,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if accept and answer is None and journal_python is not None:
         answer = functools.partial(run_journal_answer, journal_python)
     claimed = start_attempted = copied = stopped = False
+    # The disks a drive has held this run, which a spare run hashes again before an insert.
+    been_in_drive = set() if title is None else {k for k in title.mounted if k is not None}
     begun = time.monotonic()
     cleanup_window = min(300.0, deadline_seconds / 2)
     route_end = begun + deadline_seconds - cleanup_window
@@ -2525,9 +2586,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def insert(drive: int, disk_key: str, why: Any) -> None:
         entry = (manifest if title is None else manifest["disks"])[disk_key]
+        want = entry["sha256"]
+        if title is not None and SPARE in manifest and disk_key in been_in_drive:
+            # The game may have saved to it while it was in a drive, and the guest inserts a
+            # file only at the hash it is given: hash the copy as it is now.
+            local = out / f"swap-{why}-{disk_key}.adf"
+            guest.get(remotes[disk_key], local, timeout=route_limit(60))
+            want = sha256(local)
+            result["events"].append({"rehashed": disk_key, "for": why, "sha256": want})
+            log("rehash", disk=disk_key, sha256=want)
         try:
             receipt = guest.insert(holder, drive, remotes[disk_key], timeout=route_limit(60),
-                                   sha256=entry["sha256"])
+                                   sha256=want)
         except BaseException as exc:
             result["events"].append({"insert": disk_key, "drive": drive, "for": why,
                                      "error": str(exc),
@@ -2536,6 +2606,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         result["events"].append({"insert": disk_key, "drive": drive, "for": why,
                                  "receipt": receipt})
         log("insert", disk=disk_key, drive=drive, receipt=receipt)
+        been_in_drive.add(disk_key)
 
     def settle_unguarded(state: str, name: str) -> str:
         """One settled capture of a state nobody has measured, marked as such."""
@@ -3507,12 +3578,16 @@ _SUBSTITUTABLE = frozenset(
 #: The titles whose own accept route (not a published one) takes camp steps from its manifest.
 CAMP_TITLES = frozenset({"darkness", "pool"})
 
+#: The titles `prepare --spare-disk` stages a second save disk for.
+SPARE_TITLES = frozenset({"darkness", "darkness-vault", "darkness-reload"})
+
 
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,
             specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None,
             substitute: pathlib.Path | None = None, substitute_letter: str = "A",
             camp: tuple[str, ...] = (), issue: str | None = None, temple: bool = False,
-            encounter: bool = False, stage_record: str | None = None) -> pathlib.Path:
+            encounter: bool = False, stage_record: str | None = None,
+            spare: pathlib.Path | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -3533,6 +3608,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     `route_pool.POOL_TEMPLE`: the party must stand on its start square with its first member dead,
     and the stage record must give member 1 constitution and at least the raise's price in gold.
     `encounter` (Pool only) runs `route_pool.POOL_ENCOUNTER` with the `fight` command.
+    `spare` (a title in `SPARE_TITLES`, no camp steps) stages a second save disk: `darkness` and
+    `darkness-vault` make their camp save on it, and `darkness-reload` takes the spare a spare
+    accept run fetched, with that run's disk 3 and summary, and loads the slot it holds.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -3545,6 +3623,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError(f"{name} takes no disk 3 hash or accept summary")
     if substitute is not None and name not in _SUBSTITUTABLE:
         raise RouteError(f"{name} takes no substitute slot")
+    if spare is not None and (name not in SPARE_TITLES or camp):
+        raise RouteError(f"--spare-disk is for {', '.join(sorted(SPARE_TITLES))}, without camp "
+                         "steps")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
     if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
@@ -3557,11 +3638,15 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     run = scratch.cache_dir("acceptance", issue or ISSUE, run_id)
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
-    if reload:
+    if reload and spare is not None:
+        manifest = _prepare_darkness_spare_reload(run, specimen, specimen_sha256, accept_summary,
+                                                  spare)
+    elif reload:
         manifest = _PREPARE[name](run, specimen, specimen_sha256, accept_summary)
     elif name in _SUBSTITUTABLE:
         manifest = _PREPARE[name](run, specimen, substitute=substitute,
-                                  substitute_letter=substitute_letter)
+                                  substitute_letter=substitute_letter,
+                                  **({"spare": spare} if spare is not None else {}))
     else:
         manifest = _PREPARE[name](run, specimen)
     if camp:
@@ -3762,6 +3847,18 @@ def _vault_title_for(manifest_path: pathlib.Path) -> AmigaTitle:
         return vault_title(held["items"], any(held["coins"]))
     except (KeyError, TypeError) as exc:
         raise RouteError(f"the manifest {manifest_path} records no vault: {exc!r}") from exc
+
+
+def _spare_title(manifest_path: pathlib.Path, name: str, title: AmigaTitle,
+                 command: str) -> AmigaTitle:
+    """`route_darkness.spare_title_for` on the manifest at `manifest_path`, which may not exist yet."""
+    try:
+        manifest = json.loads(pathlib.Path(manifest_path).read_text())
+    except (OSError, ValueError):
+        return title
+    if not isinstance(manifest, dict):
+        return title
+    return spare_title_for(name, manifest, title, command)
 
 
 def _substitute_mode(manifest_path: pathlib.Path) -> bool:
@@ -4806,6 +4903,8 @@ def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, di
             title = _vault_title_for(args.manifest)
         if args.title in ("darkness", "darkness-reload"):
             title = published_darkness_title(args.manifest, args.title) or title
+        if args.title in SPARE_TITLES:
+            title = _spare_title(args.manifest, args.title, title, args.command)
     # A Silver Blades substitute prepared with camp steps, or whose party has not set out,
     # runs as a title; any other Silver Blades manifest runs the legacy route.
     substituted = bool(silver_blades and not args.published_disk_one
@@ -4887,6 +4986,10 @@ def main(argv: list[str] | None = None) -> int:
                         "Amiga output, whose --substitute-letter slot replaces the route's "
                         "loaded slot; Pool, Curse, Pools of Darkness and Silver Blades accept "
                         "this, Silver Blades in place of --source")
+    p.add_argument("--spare-disk", type=pathlib.Path, default=None,
+                   help="darkness or darkness-vault: a save disk with a SAVE drawer and no saved "
+                        "game, put in DF1 for the camp save; darkness-reload: the spare a spare "
+                        "accept run fetched, with --disk3, --disk3-sha256 and --accept-summary")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     p.add_argument("--substitute-manifest", type=pathlib.Path, default=None,
@@ -5015,6 +5118,11 @@ def main(argv: list[str] | None = None) -> int:
                     args.run_id, args.substitute_manifest, args.disk3, args.disk3_sha256,
                     args.accept_summary, args.issue))
             return 0
+        if args.command == "prepare" and args.spare_disk is not None and (
+                args.published_disk_one or args.published_disk_three
+                or args.title not in SPARE_TITLES):
+            raise RouteError(f"--spare-disk is for {', '.join(sorted(SPARE_TITLES))}, "
+                             "not a published disk")
         if args.command == "prepare" and args.published_disk_three:
             if args.published_disk_one:
                 raise RouteError("--published-disk-one and --published-disk-three are two routes")
@@ -5132,7 +5240,8 @@ def main(argv: list[str] | None = None) -> int:
                               substitute=args.substitute,
                               substitute_letter=args.substitute_letter,
                               camp=args.camp, issue=args.issue, temple=args.temple,
-                              encounter=args.encounter, stage_record=args.stage_record))
+                              encounter=args.encounter, stage_record=args.stage_record,
+                              **({"spare": args.spare_disk} if args.spare_disk else {})))
                 return 0
             title, manifest, legacy = _route_title(args, silver_blades)
             attempt = args.attempt or ("recon1" if args.command == "measure" else
