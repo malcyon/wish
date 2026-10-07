@@ -6555,7 +6555,16 @@ class PoolRun:
         text = [r.rstrip() for r in rows[17:24]]
         self.capture("site-menu", rows)
         dx, dy = COMPASS[digit]
-        site = self.travel_place()
+        try:
+            with sess.mon(5) as m:
+                inside = m.read(S.INDOORS_AT, 1)[0]
+                site = list(m.read(S.TRAVEL_XY, 2))
+        except (OSError, S.MonitorError) as e:
+            raise self.fail("site", f"{step}: could not read the site "
+                                    f"square: {e}") from e
+        if inside:
+            raise self.fail("site", f"{step}: the indoors flag reads {inside} "
+                                    f"at the site square, not 0")
         if site[:2] != [before[0] + dx, before[1] + dy]:
             raise self.fail("site", f"{step}: the travel pair went from "
                                     f"{before[:2]} to {site[:2]}, not one "
@@ -6598,6 +6607,11 @@ class PoolRun:
                                     f"area {running}")
         self.capture("site-arrived")
         if not self.to_world():
+            screen = sess.screen()
+            row = screen.row(24) if screen is not None else ""
+            if S.ENCOUNTER_FIGHT in row:
+                raise self.fail("site", f"{step}: an encounter began after "
+                                        f"{word} was picked: {row.strip()}")
             raise self.fail("world", f"{step}: the world bar never came back "
                                      f"after the arrival")
         return {"digit": digit, "word": word, "before": before,

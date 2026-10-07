@@ -13311,8 +13311,11 @@ class OutdoorSession(WalkSession):
 
     def __init__(self, x=8, y=27, area=26, blocked=(), inside=0, site_at=None,
                  prompt_side="1", encounter_on_move=False, second_prompt=False,
-                 arrival_encounter=False):
+                 arrival_encounter=False, site_inside=False,
+                 leave_encounter=False):
         super().__init__(x=x, y=y, facing=0)
+        self.site_inside = site_inside
+        self.leave_encounter = leave_encounter
         self.site_at = site_at
         self.encounter_on_move = encounter_on_move
         self.second_prompt = second_prompt
@@ -13382,6 +13385,9 @@ class OutdoorSession(WalkSession):
         return True
 
     def leave_move(self):
+        if self.leave_encounter and self.indoors():
+            self.state = "encounter"
+            return False
         self.state = "world"
         return True
 
@@ -13406,6 +13412,8 @@ class OutdoorSession(WalkSession):
         self.x, self.y = to
         if to == self.site_at:
             self.state = "site"
+            if self.site_inside:
+                self.inside = 1
         return True
 
     def walk_one(self, move, *a, **k):
@@ -13679,6 +13687,23 @@ def test_a_site_prompt_for_a_side_that_is_not_the_areas_disk_is_not_answered(
 
 def test_an_encounter_menu_on_the_site_arrival_fails_the_step(tmp_path, monkeypatch):
     sess, run, log = _site_run(tmp_path, monkeypatch, arrival_encounter=True)
+    with pytest.raises(A.StepFailed, match="an encounter began after SOUTH"):
+        run.site("7>SOUTH")
+    log.close()
+
+
+def test_a_site_step_fails_when_the_indoors_flag_is_set_at_the_site_square(
+        tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch, site_inside=True)
+    with pytest.raises(A.StepFailed, match="indoors flag reads 1 at the site square"):
+        run.site("7>SOUTH")
+    log.close()
+    assert sess.picked == []
+
+
+def test_an_encounter_bar_on_the_final_return_to_the_world_fails_the_site_step(
+        tmp_path, monkeypatch):
+    sess, run, log = _site_run(tmp_path, monkeypatch, leave_encounter=True)
     with pytest.raises(A.StepFailed, match="an encounter began after SOUTH"):
         run.site("7>SOUTH")
     log.close()
