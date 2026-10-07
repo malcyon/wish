@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import copy
 import datetime
 import functools
@@ -4154,6 +4155,90 @@ NO_ENCOUNTERS_HELP = ("turn the title's random encounters off in memory for the 
                       "changed script")
 
 
+def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | None, *,
+              guest: Any, holder: str, audio_proof: pathlib.Path | None,
+              wait_lane: float = 0.0, timeout: float = 120.0) -> dict[str, Any]:
+    """Claim a lane, put a prepared run's disks on it, start the title's WinUAE and return, leaving it running.
+
+    The disks are the manifest's, each checked against its hash; no key is pressed and the
+    encounter switch is left alone, so `noencounters.py` and `amigadrive.py` take it from here
+    under `holder`. A failure after the claim stops WinUAE, if it was started, and releases the lane.
+    `halt_lane` is the matching end.
+    """
+    if not HOLDER.fullmatch(holder):
+        raise RouteError("holder must use a simple lane-safe name")
+    if title is None:
+        raise RouteError("this manifest runs the legacy Silver Blades route, which has no title to boot")
+    if title is POOL:
+        title = pool_title_for(manifest)
+    if not guest.silence(audio_proof):
+        raise RouteError("the Windows VM audio mute has not been verified")
+    disks, _registered, _letter = _title_inputs(manifest, title)
+    remotes = {key: guest.remote_path(title.issue, holder, key) for key in title.disk_keys}
+    result: dict[str, Any] = {"holder": holder, "input": str(manifest_path), "remotes": remotes}
+    claimed = start_attempted = False
+    try:
+        receipt = guest.claim(holder, timeout=30 if wait_lane > 0 else timeout,
+                              **_wait_option(wait_lane))
+        if receipt != f"ok claimed by {holder}":
+            raise RouteError(f"claim was not new: {receipt!r}; already yours is not a lane grant")
+        claimed = True
+        result["claim"] = receipt
+        for key, local in disks.items():
+            guest.put(local, remotes[key], timeout=timeout)
+        _require_silence(guest, audio_proof, wait_lane, timeout)
+        start_attempted = True
+        result["start"] = guest.start(
+            holder, *(None if key is None else remotes[key] for key in title.mounted),
+            timeout=timeout, options=title.options)
+    except BaseException:
+        if claimed:
+            with contextlib.suppress(Exception):
+                if start_attempted:
+                    guest.stop(holder, timeout=30)
+            with contextlib.suppress(Exception):
+                guest.release(holder, timeout=30)
+        raise
+    return result
+
+
+def halt_lane(guest: Any, holder: str, timeout: float = 30.0) -> dict[str, str]:
+    """Stop `holder`'s WinUAE and release its lane; the release is tried even when the stop fails."""
+    result: dict[str, str] = {}
+    problems: list[str] = []
+    for name, step in (("stop", guest.stop), ("release", guest.release)):
+        try:
+            result[name] = step(holder, timeout=timeout)
+        except Exception as exc:  # noqa: BLE001 - say every step that failed, not only the first
+            problems.append(f"{name}: {exc}")
+    if problems:
+        raise RouteError("; ".join(problems))
+    return result
+
+
+def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, dict | None, bool]:
+    """The title description the manifest runs under, the published manifest if there is one, and whether this is the legacy Silver Blades route."""
+    manifest = None
+    if args.published_disk_one:
+        manifest, title = _published_manifest(args.manifest, args.title)
+    else:
+        title = None if silver_blades else TITLES[args.title]
+        if args.title == "darkness-vault":
+            title = _vault_title_for(args.manifest)
+        if args.title in ("darkness", "darkness-reload"):
+            title = published_darkness_title(args.manifest, args.title) or title
+    # A Silver Blades substitute prepared with camp steps, or whose party has not set out,
+    # runs as a title; any other Silver Blades manifest runs the legacy route.
+    substituted = bool(silver_blades and not args.published_disk_one
+                       and _substitute_mode(args.manifest))
+    if substituted:
+        if args.command == "measure" and (args.route or args.write_keys):
+            raise RouteError("a substitute prepared as a title run uses its own route")
+        title = route_silver_blades.title_for_substitute(json.loads(args.manifest.read_text()))
+    legacy = silver_blades and not args.published_disk_one and not substituted
+    return title, manifest, legacy
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -4217,6 +4302,13 @@ def main(argv: list[str] | None = None) -> int:
                         "this, Silver Blades in place of --source")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
+    b = sub.add_parser("boot", help="claim a lane, put a prepared run's disks on it and start WinUAE; "
+                                    "leaves it running for amigadrive.py, noencounters.py and "
+                                    "fasttravelrun.py under --holder until `halt`")
+    common(b, emulator=False)
+    b.add_argument("--timeout", type=float, default=120, help="seconds for each guest call")
+    h = sub.add_parser("halt", help="stop the WinUAE a `boot` started and release its lane")
+    h.add_argument("--holder", required=True)
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
     common(m)
     m.add_argument("--guards", type=pathlib.Path, default=None,
@@ -4265,6 +4357,27 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--guards", required=True, type=pathlib.Path)
     d.add_argument("--boot-limit", type=float, default=300)
     args = parser.parse_args(argv)
+    if args.command in ("boot", "halt"):
+        try:
+            with terminating():
+                if args.command == "halt":
+                    result = halt_lane(WinGuest(), args.holder)
+                else:
+                    if args.holder is None:
+                        parser.error("boot needs --holder, the name every later command passes")
+                    if args.audio_proof is None:
+                        parser.error("--audio-proof is required: the VM's audio mute proof")
+                    title, manifest, _legacy = _route_title(args, args.title == "ssb")
+                    if manifest is None:
+                        manifest = json.loads(args.manifest.read_text())
+                    result = boot_lane(args.manifest, manifest, title, guest=WinGuest(),
+                                       holder=args.holder, audio_proof=args.audio_proof,
+                                       wait_lane=args.wait_lane, timeout=args.timeout)
+        except (RouteError, OSError, ValueError) as exc:
+            print(f"acceptance: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=1, sort_keys=True))
+        return 0
     if args.command == "prepare":
         try:
             args.camp = _camp_steps(args.camp, args.title) if args.camp else ()
@@ -4398,23 +4511,7 @@ def main(argv: list[str] | None = None) -> int:
                               substitute_letter=args.substitute_letter,
                               camp=args.camp, issue=args.issue))
                 return 0
-            if args.published_disk_one:
-                manifest, title = _published_manifest(args.manifest, args.title)
-            else:
-                title = None if silver_blades else TITLES[args.title]
-                if args.title == "darkness-vault":
-                    title = _vault_title_for(args.manifest)
-                if args.title in ("darkness", "darkness-reload"):
-                    title = published_darkness_title(args.manifest, args.title) or title
-            # A Silver Blades substitute prepared with camp steps, or whose party has not set out,
-            # runs as a title; any other Silver Blades manifest runs the legacy route.
-            substituted = bool(silver_blades and not args.published_disk_one
-                               and _substitute_mode(args.manifest))
-            if substituted:
-                if args.command == "measure" and (args.route or args.write_keys):
-                    raise RouteError("a substitute prepared as a title run uses its own route")
-                title = route_silver_blades.title_for_substitute(json.loads(args.manifest.read_text()))
-            legacy = silver_blades and not args.published_disk_one and not substituted
+            title, manifest, legacy = _route_title(args, silver_blades)
             attempt = args.attempt or ("recon1" if args.command == "measure" else
                                        "gfx705-directdraw1" if args.command == "diagnose" else
                                        "accept1")
