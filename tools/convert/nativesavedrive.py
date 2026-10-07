@@ -135,7 +135,12 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int,
         raise SystemExit(f"{base}: no roster row {who}; the party has "
                          f"{len(members)} members")
     for name in fields:
-        if not members[who].record.is_stored(name):
+        try:
+            stored = members[who].record.is_stored(name)
+        except KeyError:
+            # The C64 and DOS records raise for a name they have no field for.
+            stored = False
+        if not stored:
             raise SystemExit(f"{out}: this title's record does not store {name!r}")
     readied = readied or {}
     for pos in (*items, *readied, *deletes):
@@ -266,6 +271,8 @@ def main(argv=None) -> int:
         name, sep, value = spec.partition("=")
         if not sep or not name or not value.lstrip("-").isdigit():
             ap.error(f"--set wants FIELD=VALUE, got {spec!r}")
+        if name in fields:
+            ap.error(f"{name} is given twice")
         fields[name] = int(value)
     if not (fields or items or readied or args.delete_item):
         ap.error("give at least one of --gold, --strength, --set, --item, "

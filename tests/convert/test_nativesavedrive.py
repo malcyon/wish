@@ -345,3 +345,28 @@ def test_set_and_delete_item_on_a_played_amiga_disk_change_only_its_slot_file(
     old, new = AmigaDisk(data), AmigaDisk(out.read_bytes())
     changed = [n for n, _e in old.walk() if old.read_file(n) != new.read_file(n)]
     assert [n.lower().rsplit("/", 1)[-1] for n in changed] == ["savgamb.pty"]
+
+
+
+def test_an_unknown_field_exits_cleanly_on_a_c64_record(tmp_path):
+    from gamedata import synthetic_save
+
+    base = synthetic_save(tmp_path, item=True)
+    out = tmp_path / "saves" / "edited.D64"
+
+    with pytest.raises(SystemExit, match="does not store 'nosuchfield'"):
+        nativesavedrive.drive(base, out, who=0, items={},
+                              fields={"nosuchfield": 1})
+
+    assert not out.exists()
+
+
+def test_a_set_that_repeats_gold_or_strength_is_a_usage_error(tmp_path):
+    for flag, name in (("--gold", "gold"), ("--strength", "strength")):
+        out = tmp_path / name
+        with pytest.raises(SystemExit) as caught:
+            nativesavedrive.main([
+                "--base", str(tmp_path / "x"), "--out", str(out),
+                "--who", "0", flag, "2", "--set", f"{name}=1"])
+        assert caught.value.code == 2
+        assert not out.exists()
