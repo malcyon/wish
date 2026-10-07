@@ -222,6 +222,64 @@ def test_a_prompt_while_looking_for_a_fight_is_the_crossing(tmp_path, monkeypatc
     assert run.walk_crossed["side"] == "7"
 
 
+class _QuietSession(_Session):
+    """No fight ever opens, so a wait that goes on after the crossing runs
+    to its timeout and fails."""
+
+    walk_encounter = None
+    prep = False
+
+    def in_combat(self):
+        return False
+
+    def mode(self):
+        return A.COMBAT_PREP if self.prep else 1
+
+    def walk_stop(self, wait=0.0):
+        return None
+
+
+def _quiet_site(tmp_path, monkeypatch, prep=False):
+    sess = _QuietSession()
+    sess.prep = prep
+    return sess, _run(tmp_path, monkeypatch, sess)
+
+
+def test_the_crossing_move_key_is_not_sent_again_into_the_new_area(tmp_path, monkeypatch):
+    sess, run = _quiet_site(tmp_path, monkeypatch)
+    run.leave_arrival = lambda *a: None
+    run.position = lambda: [15, 4, 1]
+    sent = []
+    run._walk_fight_key = lambda *a, **k: sent.append("I") or False
+    got = run._walk_fight("I", None)
+    assert sent == [] and got["moves"][-1]["crossed"] is True
+    assert got["position"] == [14, 27, None]
+
+
+def test_the_wait_for_a_loading_encounter_ends_at_a_crossing(tmp_path, monkeypatch):
+    sess, run = _quiet_site(tmp_path, monkeypatch)
+    assert run._await_side_encounter("KKII", *LAST[:2], LAST[2]) is None
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_the_wait_for_an_encounter_to_draw_ends_at_a_crossing(tmp_path, monkeypatch):
+    sess, run = _quiet_site(tmp_path, monkeypatch)
+    assert run._await_encounter("KKII", LAST, "FIGHT") == (None, False, True)
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_the_wait_after_a_press_bar_ends_at_a_crossing(tmp_path, monkeypatch):
+    sess, run = _quiet_site(tmp_path, monkeypatch)
+    assert run._await_fight_after_press("KKII", LAST, 3, "I", LAST[2], "FIGHT") is None
+    assert run.walk_crossed["side"] == "7"
+
+
+def test_the_look_for_a_fight_ends_at_a_crossing(tmp_path, monkeypatch):
+    sess, run = _quiet_site(tmp_path, monkeypatch, prep=True)
+    run._look_for_fight("KKII", LAST)
+    assert run.walk_crossed["side"] == "7"
+
+
 def test_the_waits_still_fail_a_foreign_side_off_the_last_move(tmp_path, monkeypatch):
     sess, run = _crossing_site(tmp_path, monkeypatch)
     with pytest.raises(A.StepFailed, match="side 7 mid-walk"):

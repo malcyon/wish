@@ -7212,6 +7212,16 @@ class PoolRun:
             self.answer_side_prompt(route, last, "was up before the next move",
                                     crossing=self.crossing_move(route, n, move))
             before = last[2]
+            if self.walk_crossed is not None:
+                # The answer loaded the next area: the key was the move that
+                # crossed, and sending it again would walk on in the new area.
+                after = self.walk_crossed["position"]
+                self.log.emit("move", move=move, n=n, before=before,
+                              after=after, resent=False,
+                              row24=self.bar().strip(), crossed=True)
+                moves.append({"move": move, "before": before, "after": after,
+                              "moved": True, "resent": False, "crossed": True})
+                continue
             resent = False
             sends = unsent = 0
             while True:
@@ -7338,6 +7348,8 @@ class PoolRun:
             self.answer_side_prompt(route, (n, move, before),
                                     "came up while the encounter loaded",
                                     crossing=self.crossing_move(route, n, move))
+            if self.walk_crossed is not None:
+                return None
             if sess.in_combat():
                 return None
             stop = sess.walk_stop(wait=0.0)
@@ -7428,8 +7440,12 @@ class PoolRun:
             if ambush:
                 stop = self._await_fight_after_press(
                     route, last, n, move, before, word)
+                if self.walk_crossed is not None:
+                    return False
             else:
                 self._look_for_fight(route, last)
+            if self.walk_crossed is not None:
+                return False
             if stop is None and not sess.in_combat():
                 # Kept after the ambush wait: a menu can be raised through
                 # `walk_stop` while row 24 still shows the world bar.
@@ -7441,9 +7457,13 @@ class PoolRun:
                 ambush = True
                 stop = self._await_fight_after_press(
                     route, last, n, move, before, word)
+                if self.walk_crossed is not None:
+                    return False
         if (stop is None and not sess.in_combat()
                 and self.side_answered_since(mark)):
             stop = self._await_side_encounter(route, n, move, before)
+            if self.walk_crossed is not None:
+                return False
         if stop is not None and self._take_stop(
                 route, n, move, before, stop, pressed, answer, word, flees):
             return False
@@ -7707,6 +7727,8 @@ class PoolRun:
             self.budget(1, f"{self.walk_verb} {route}")
             self.answer_side_prompt(route, last, "started an encounter",
                                     crossing=self.crossing_move(route, *last[:2]))
+            if self.walk_crossed is not None:
+                return None, False, True
             if sess.mode() in (S.COMBAT, COMBAT_PREP):
                 return None, False, False
             screen = sess.screen()
@@ -7812,6 +7834,8 @@ class PoolRun:
             self.budget(1, f"{self.walk_verb} {route}")
             self.answer_side_prompt(route, last, "ran the square's event",
                                     crossing=self.crossing_move(route, *last[:2]))
+            if self.walk_crossed is not None:
+                return None
             mode = getattr(sess, "mode", lambda: None)()
             screen = sess.screen()
             row = "" if screen is None else screen.row(24)
@@ -7899,6 +7923,8 @@ class PoolRun:
             self.budget(1, f"{self.walk_verb} {route}")
             self.answer_side_prompt(route, last, "ran the square's event",
                                     crossing=self.crossing_move(route, *last[:2]))
+            if self.walk_crossed is not None:
+                return
             preparing = getattr(self.sess, "mode", lambda: None)() == COMBAT_PREP
             if preparing and self.clock() >= start + FIGHT_OPENS_SECONDS:
                 raise self.fail(
