@@ -796,10 +796,13 @@ def _p(id: int, geos: tuple[str, ...], arrival: Arrival | None = None,
 #: from a table or does not write one stores None. Every square is PROBABLE.
 #: A name is the place name the title prints on the way in, and None where it
 #: prints none. Rows 1-4 are the developers' menu, two test fights and the
-#: opening scene, not places. The 17 rows with no `GEO` of their own are
-#: entered from a parent area and use its map, so they are not Fast Travel
-#: destinations: a trip there loads no map. WISH-1 comment 7b9be95c has
-#: the evidence for each row.
+#: opening scene, not places. Rows with no `GEO` of their own that are
+#: entered from a parent area use its map, so they are not Fast Travel
+#: destinations: a trip there loads no map. Areas 17, 25, 51 and 80 are
+#: overlands instead: at entry 4 each sets the overland view (`$24` = 1,
+#: `$22` = 0) and draws a full-screen picture of its own (240, 245, 242 and
+#: 241). 17 and 25 are offered; 51 and 80 stay unoffered as story
+#: dimensions. WISH-1 comment 7b9be95c has the evidence for each row.
 AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(1, ("GEO01",), fasttravelable=False),
     _p(2, (), fasttravelable=False),

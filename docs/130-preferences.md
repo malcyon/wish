@@ -712,6 +712,8 @@ this dialog, one per title.
   title that gains a table gains a page in `preferences.ui`. A title with no
   table has no tab. The dialog opens on the open title's tab, or the first
   when the open title has none, and remembers nothing.
+* **The Pools of Darkness tab exists only while an Amiga backend flag is on,
+  and it opens with nothing ticked.** No other platform lists its areas.
 * **The title tabs never scroll, and the dialog is at least as wide as the
   bar.** A `QTabWidget` whose bar has scroll arrows reports a size hint and a
   minimum that leave the bar's width out, so the dialog can settle a few
