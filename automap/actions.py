@@ -2356,6 +2356,8 @@ class FastTravel(Action):
                            "through area %d and came back to area %d",
                            pending.through, pending.from_area)
                 self.pending = None
+                # The trip did not happen, so Back has nothing to return to.
+                self.back = None
                 return None
             # Still where it started: the handler is asking its question, or
             # was answered no. Five of the exits start a fight on the way out,
@@ -2387,6 +2389,7 @@ class FastTravel(Action):
                 return Outcome(False, self.LEFT_ANOTHER_WAY.format(name=name))
             _log.debug("two-hop fast travel dropped: the game went to area "
                        "%d, not %d", area_now, pending.through)
+            self.back = None
             return None
         if not self._idle_verdict(target, addr):
             # An idle check that fails for one poll is normal, a fight on the

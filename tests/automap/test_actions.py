@@ -1356,6 +1356,30 @@ def test_an_area_that_is_no_door_of_the_start_is_still_dropped_silently():
     assert ft.pending is None
 
 
+def test_an_area_that_is_no_door_of_the_start_also_clears_back():
+    target = two_hop_machine(13)
+    ft = actions.FastTravel()
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    assert ft.back is not None
+    target.memory[fasttravel.POOL_OF_RADIANCE.slot] = bytes([20])
+    assert ft.continue_pending(target) is None
+    assert ft.back is None
+
+
+def test_coming_back_after_the_door_also_clears_back():
+    target = two_hop_machine(13)
+    addr = fasttravel.POOL_OF_RADIANCE
+    ft = actions.FastTravel()
+    assert ft.run(target, area=actions.area_by_id(0)).ok
+    assert ft.back is not None
+    target.memory[addr.slot] = bytes([27 | 0x80])
+    assert ft.continue_pending(target) is None
+    target.memory[addr.slot] = bytes([13])
+    assert ft.continue_pending(target) is None
+    assert ft.pending is None
+    assert ft.back is None
+
+
 def test_a_backend_that_cannot_reenter_never_starts_a_two_hop():
     addr = fasttravel.POOL_OF_RADIANCE
 

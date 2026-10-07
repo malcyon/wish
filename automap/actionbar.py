@@ -162,6 +162,14 @@ def in_key_wait(pc: int, addresses) -> bool:
 COLUMNS = 3
 
 
+def _capital(text: str) -> str:
+    """`text` with its first letter capitalised, for a tooltip a person reads.
+
+    Done at display: the reasons are also used mid-sentence and in tests.
+    """
+    return text[:1].upper() + text[1:]
+
+
 class ActionBar(QObject):
     """One button per action, and the watcher's checkbox."""
 
@@ -959,7 +967,8 @@ class FastTravelBar(QObject):
             back = self._asked(self.fasttravel.back_verdict, once)
             self.back_button.setEnabled(back.ok)
             self.back_button.setToolTip(
-                back.reason or "return to the area the last trip started in")
+                _capital(back.reason)
+                or "Return to the area the last trip started in")
 
     # -- running one -------------------------------------------------------
 

@@ -744,7 +744,7 @@ def test_the_button_carries_its_rejection_in_its_tooltip(app):
     assert "not available during a fight" in row.button.toolTip()
     assert "$6E11" not in row.button.toolTip()
     assert not row.back_button.isEnabled()
-    assert "nothing to go back to" in row.back_button.toolTip()
+    assert "Nothing to go back to" in row.back_button.toolTip()
 
 
 def test_with_nothing_attached_the_row_is_disabled_rather_than_inert(app):

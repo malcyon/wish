@@ -504,3 +504,9 @@ def test_a_c64_back_watches_for_the_attached_titles_area(title):
     assert actionbar.FastTravelBar.run_back(stub).ok
     assert watched == [engine.area_by_id(0x21, title)]
     assert watched[0] is not None
+
+
+def test_the_back_tooltip_opens_with_a_capital(lengths):
+    window, _ = attached(CURSE, GUILD, ticked=(TILVERTON, GUILD))
+    tip = window.fasttravel_bar.back_button.toolTip()
+    assert tip and tip[0].isupper()
