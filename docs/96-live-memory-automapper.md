@@ -947,6 +947,26 @@ that no statement from another entry covers, enough for the 52-byte message,
 with that risk; PROBABLE, because that count does not look for operands naming
 those bytes.
 
+**Pool of Radiance's areas 1 and 28 hold the trip in their init span.**
+CONFIRMED from the code (`/program`, sha1 `469ab418200b`); not yet run live.
+The init entry (the fifth header `GOTO`) is `$B6A0` in area 1 and `$B693` in
+area 28, so the span to the buffer's end is `0x1DA0`-`0x1DFF` (96 bytes, 87 of
+them the script's) and `0x1D93`-`0x1DFF` (109 bytes, 96 of them the script's).
+Walked with Pool's own operand counts (`POOL_SKIP_GROUPS` and `POOL_HANDLERS` in
+`tripspace.py`, which are the loader calls of the dispatcher at `0x2ACE2` and
+of the false-`IF` chain at `0xB33E`), no statement reachable from entries 0-3
+covers or names a byte of either span, and no `RANDOM` lies in them.
+`automap/amigatrip.py`'s `INIT_ROOM` records each span's offsets and the SHA-1
+of its bytes on the disk, which `tripspace.py refs pool-of-radiance` re-derives
+and `tests/amiga/test_tripspace.py` checks on the player's disks. The trip's
+statements go at the init entry and the message after them; the entry words are
+derived only by `vm_init_ecl` (`0x954E`), which a block load and the load path
+call, and the init entry runs only at `0x2B052` and `0x2B234`. The world menu
+cannot take the forward key without running the step entry first, and no save
+holds the entry words, so no save is made while a trip is armed except in the
+instant between two of an arm's writes. Wish journals those writes and puts
+them back on the next attach.
+
 **Pool of Radiance's world menu leaves its gadgets on the window.** CONFIRMED
 from the code and live, but the gadgets are no marker: `displayInput` (`0x319FE`) adds one boolean gadget per menu
 word to the game window (`[h32+0x28]`) with `AddGadget` at position 0, and

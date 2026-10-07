@@ -95,6 +95,9 @@ class AmigaFastTravel(engine.FastTravel):
         self.key = key
         self.disks = disks
         self._lengths: dict[int, int] | None = None
+        self._init_areas: frozenset[int] | None = None
+        #: The machine whose journal of a half-made trip was last looked at.
+        self._repaired = None
         self.game = None
         self.addresses = None
         self.back: engine.Waypoint | None = None
@@ -126,6 +129,20 @@ class AmigaFastTravel(engine.FastTravel):
                 self._lengths = {}
         return self._lengths
 
+    def init_areas(self, row) -> frozenset[int]:
+        """The areas whose init span matches the player's disks, read once
+        with the lengths."""
+        if self._init_areas is None:
+            try:
+                self._init_areas = (trips.init_rooms(row, self.disks)
+                                    if self.disks is not None
+                                    else frozenset())
+            except (OSError, ValueError):
+                _log.warning("amiga fast travel: reading the disks failed",
+                             exc_info=True)
+                self._init_areas = frozenset()
+        return self._init_areas
+
     def _row(self, id: int):
         return engine.area_by_id(id, self.title)
 
@@ -138,7 +155,7 @@ class AmigaFastTravel(engine.FastTravel):
         """Whether the trip `here` to `to` is held, by a difference, by the
         disks or by the room past the departing script."""
         if trips.leg_held(row, here, to, back, self.lengths(row),
-                          self._outdoors(to)):
+                          self._outdoors(to), self.init_areas(row)):
             return engine.Verdict(False, self.not_built)
         return engine.Verdict(True)
 
@@ -201,9 +218,10 @@ class AmigaFastTravel(engine.FastTravel):
                         + trips.departure_prologue(self.key, here, to,
                                                    self._outdoors(to), read))
             trip = trips.plan(to, arrival, overland, prologue=prologue)
-            tier = trips.free_tail(row, here, lengths, trip)
+            init = self.init_areas(row)
+            tier = trips.free_tail(row, here, lengths, trip, init)
             if tier == 1:
-                placement = trips.place(row, here, lengths, trip)
+                placement = trips.place(row, here, lengths, trip, init)
         except trips.GuardUnreadable:
             return engine.Outcome(False, NOT_HAPPENED)
         except ValueError:
@@ -215,6 +233,12 @@ class AmigaFastTravel(engine.FastTravel):
                           placement=placement)
         try:
             armed = trips.arm(target, row, plan)
+        except trips.ArmIncomplete as exc:
+            # Kept with its deadline passed, so the next poll puts it back.
+            _log.warning("amiga fast travel: %s", exc)
+            self.trip = _Trip(exc.armed, row, here, to, name, 0.0,
+                              previous_back)
+            return engine.Outcome(False, NOT_HAPPENED)
         except Exception:
             _log.warning("amiga fast travel: arming failed", exc_info=True)
             armed = None
@@ -279,7 +303,7 @@ class AmigaFastTravel(engine.FastTravel):
         # Checked before the first hop, so a second leg that is held leaves
         # the party where it is.
         if trips.leg_held(row, through, to, False, self.lengths(row),
-                          self._outdoors(to)):
+                          self._outdoors(to), self.init_areas(row)):
             return engine.Outcome(False, self.not_built)
         return self._door_hop(target, row, here, through, route, name,
                               _Hop(here, through, area, arrival))
@@ -369,6 +393,7 @@ class AmigaFastTravel(engine.FastTravel):
             return None
         trip = self.trip
         if trip is None:
+            self._repair(target)
             return None if self.pending is None else self._continue_hop(target)
         try:
             fired = trips.trip_fired(target, trip.armed)
@@ -397,6 +422,21 @@ class AmigaFastTravel(engine.FastTravel):
         self.trip = None
         self.back = trip.previous_back
         return engine.Outcome(False, NOT_HAPPENED)
+
+    def _repair(self, target) -> None:
+        """Put back an init trip a crashed run left in the game, once for
+        each machine, from the journal `amigatrip` keeps."""
+        if self._repaired is target:
+            return
+        try:
+            trips.repair(target)
+        except Exception:
+            _log.warning("amiga fast travel: repairing a journalled trip "
+                         "failed", exc_info=True)
+            return
+        if getattr(target, "data_base", None) is not None:
+            # A target not yet located cannot say which boot a journal is of.
+            self._repaired = target
 
     def _in_fight(self, target, row) -> bool:
         party = amigaparty.ROWS.get(self.key)

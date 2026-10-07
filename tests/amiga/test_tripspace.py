@@ -5,6 +5,7 @@ switch and the scripts are assembled from their documented formats.
 """
 
 import datetime
+import hashlib
 import pathlib
 import struct
 import sys
@@ -270,3 +271,117 @@ def test_another_entry_running_inside_the_init_bytes_is_reported():
     shared = script([0x8015] + [0x801B] * 3 + [0x8014], bytes.fromhex(INIT))
     m = model()
     assert t.init_overlap(t.DARKNESS, m, m, shared)[1] == [0x15]
+
+
+# -- Pool of Radiance ----------------------------------------------------------
+
+#: The opcodes whose handler loads no operand, as the dispatcher at `0x2ACE2`
+#: has them, and the four whose skip steps one byte over a counted run.
+POOL_NO_OPERANDS = {0x00, 0x0D, 0x13, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
+                    0x24, 0x31, 0x33, 0x3A, 0x3D}
+POOL_COUNTED = {0x15, 0x25, 0x26, 0x2B}
+
+
+def pool_script(entries, body: bytes) -> bytes:
+    """A Pool script: five `GOTO`s from `$9900`, then `body` at offset 20."""
+    head = b"".join(bytes((0x01, 0x01)) + struct.pack("<H", 0x9900 + at)
+                    for at in entries)
+    return head + body
+
+
+def test_pools_walk_counts_are_the_handlers_and_its_skip_counts_the_chains():
+    model, skip = t.pool_models()
+    assert len(model) == len(skip) == t.POOL_OPCODES
+    # The skip steps one byte over the counted four; the handlers load a run.
+    assert {op for op in range(t.POOL_OPCODES) if skip[op] == (0, False)} \
+        == POOL_NO_OPERANDS | POOL_COUNTED
+    assert [model[op] for op in sorted(POOL_COUNTED)] == [
+        (3, True), (2, True), (2, True), (2, True)]
+    # Where the handlers load more than the chain skips.
+    assert (skip[0x0C], model[0x0C]) == ((2, False), (3, False))
+    assert (skip[0x36], model[0x36]) == ((1, False), (2, False))
+    assert skip[0x29] == model[0x29] == (14, False)
+    # `$1F` has no handler, so a walk steps over no operand there.
+    assert (skip[0x1F], model[0x1F]) == ((2, False), (0, False))
+    assert {model[op][0] for op in range(t.POOL_OPCODES)} \
+        == {0, 1, 2, 3, 4, 5, 6, 8, 14}
+
+
+def test_pool_scripts_run_from_9900():
+    model, skip = t.pool_models()
+    body = pool_script([20] * 5, bytes.fromhex("00"))
+    found, bad = t.walk(t.POOL, model, skip, body)
+    assert sorted(found) == [20] and not bad
+
+
+def test_a_pool_init_span_with_no_other_way_in_is_free():
+    model, skip = t.pool_models()
+    body = pool_script([20] * 4 + [32], b"\x00".ljust(12, b"\x00")
+                       + bytes.fromhex("200005") + bytes(5))
+    space = t.init_space(t.POOL, model, skip, 3, body)
+    assert (space.start, space.covers, space.names) == (32, (), ())
+    assert space.free and space.size == len(body) - 32
+    assert space.sha1 == hashlib.sha1(body[32:]).hexdigest()
+
+
+def test_pool_statements_that_cover_or_name_the_span_are_found():
+    model, skip = t.pool_models()
+    tail = bytes.fromhex("200005") + bytes(5)
+    # Entry 0 jumps into the init entry.
+    jump = pool_script([20] + [26] * 3 + [32],
+                       bytes.fromhex("01012099") + bytes(6) + b"\x00"
+                       + bytes(5) + tail)
+    assert t.init_space(t.POOL, model, skip, 3, jump).covers == (32,)
+    # Entry 0 saves into the span's second byte.
+    named = pool_script([20] + [26] * 3 + [32],
+                        bytes.fromhex("090001012199") + b"\x00" + bytes(5)
+                        + tail)
+    space = t.init_space(t.POOL, model, skip, 3, named)
+    assert space.names == (20,) and not space.free
+
+
+def _pool_libraries():
+    for _t, _label, path, lib in t.disk_files(t.images(None),
+                                              {t.POOL: t.LIBRARY[t.POOL]}):
+        yield path, lib
+
+
+def test_the_players_disks_give_the_init_spans_automap_records():
+    from automap import amigatrip
+    model, skip = t.pool_models()
+    seen = 0
+    for _path, lib in _pool_libraries():
+        blocks = dict(t.amiga_dax.blocks(lib, t.LIBRARY[t.POOL]))
+        for (key, area), room in amigatrip.INIT_ROOM.items():
+            assert key == t.POOL
+            body = blocks[area][t.POOL_HEADER:]
+            space = t.init_space(t.POOL, model, skip, area, body)
+            got = (space.start, t.BUFFER, space.size, space.sha1)
+            assert got == (room.start, room.end, room.size, room.sha1), area
+            # Nothing reachable from entries 0-3 covers or names the span.
+            assert space.free, area
+            found, bad = t.walk(t.POOL, model, skip, body)
+            assert not bad and not t.tail_references(
+                found, len(body), t.BASES[t.POOL]), area
+            # No RANDOM statement lies in it, which `noencounters` patches.
+            assert all(s.op != 0x08 for s in found.values()
+                       if s.at >= room.start), area
+            seen += 1
+    if not seen:
+        pytest.skip("needs the player's Amiga Pool of Radiance disks")
+
+
+def test_the_players_disks_give_pools_statement_counts_in_every_script():
+    model, skip = t.pool_models()
+    counts = {}
+    for _path, lib in _pool_libraries():
+        for area, block in t.amiga_dax.blocks(lib, t.LIBRARY[t.POOL]):
+            found, bad = t.walk(t.POOL, model, skip, block[t.POOL_HEADER:])
+            if area in (1, 17, 28):
+                assert not bad, area
+            counts[area] = len(found)
+        break
+    if not counts:
+        pytest.skip("needs the player's Amiga Pool of Radiance disks")
+    assert (counts[1], counts[17], counts[28]) == (582, 624, 487)
+    assert len(counts) == 29

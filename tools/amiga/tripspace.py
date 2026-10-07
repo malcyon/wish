@@ -18,8 +18,11 @@ leftovers as free space.
 operand counts read from the title's own executable, and reports any operand
 naming a byte past the script's end, and for each area with fewer than
 `NEWECL_BYTES` free whether its init entry's first bytes are reached from any
-other entry. Pool of Radiance's `/program` has no skip switch to read, so
-`refs` does not cover it.
+other entry. Pool of Radiance's `/program` has no skip switch to read, so its
+walk uses `POOL_SKIP_GROUPS` and `POOL_HANDLERS`, and `refs pool-of-radiance`
+also prints each area's init span: the room from the init entry to the end of
+the buffer, the statements of entries 0-3 that cover or name it, and the SHA-1
+of the span's disk bytes that `automap/amigatrip.py`'s `INIT_ROOM` records.
 
 Everything is read from the disks at run time; nothing here holds a script
 byte, a length or an operand table copied from the game.
@@ -271,6 +274,48 @@ HANDLER_COUNTS = {
                     0x2B: (2, True), 0x34: (2, False), 0x36: (2, False)},
 }
 
+#: Pool of Radiance's operand counts, as its interpreter has them
+#: (`/program`, disk 1). A false `IF` calls the if-chain at `0xB33E`, whose
+#: groups are `count: opcodes` below; an opcode in none of them steps one byte.
+#: Four opcodes are not in the chain because the skip steps one byte over them
+#: while their handler loads a counted run. The counts are the engine's own
+#: loader calls, not game data.
+POOL_SKIP_GROUPS = {
+    1: (0x01, 0x02, 0x0A, 0x0E, 0x11, 0x12, 0x1D, 0x20, 0x2D, 0x32, 0x34,
+        0x36, 0x38, 0x39, 0x3C),
+    2: (0x03, 0x08, 0x09, 0x0C, 0x0F, 0x10, 0x1F, 0x22),
+    3: (0x04, 0x05, 0x06, 0x07, 0x0B, 0x21, 0x28, 0x2A, 0x2F, 0x30, 0x35,
+        0x37, 0x3B),
+    4: (0x14, 0x23),
+    5: (0x2E,),
+    6: (0x1E, 0x2C),
+    8: (0x27,),
+    14: (0x29,),
+}
+#: Where the dispatcher at `0x2ACE2`'s handlers load more than the chain
+#: skips: `$0C` and `$36` one operand more, and `$15`, `ONGOTO`, `ONGOSUB` and
+#: `HORIZMENU` a fixed count followed by as many more as the last gives. `$1F`
+#: has no handler, and no script statement uses it.
+POOL_HANDLERS = {0x0C: (3, False), 0x36: (2, False), 0x15: (3, True),
+                 0x25: (2, True), 0x26: (2, True), 0x2B: (2, True)}
+#: Pool of Radiance's opcodes run from `$00` to `CLEAR BOX` (`$3D`).
+POOL_OPCODES = 0x3E
+
+
+def pool_models():
+    """`(model, skip)` for Pool of Radiance: the counts a walk follows and the
+    counts a false `IF` skips with, in the form `decode` reads."""
+    skip = [(0, False)] * POOL_OPCODES
+    for n, ops in POOL_SKIP_GROUPS.items():
+        for op in ops:
+            skip[op] = (n, False)
+    model = list(skip)
+    model[0x1F] = (0, False)
+    for op, counts in POOL_HANDLERS.items():
+        model[op] = counts
+    return tuple(model), tuple(skip)
+
+
 EXIT, GOTO, GOSUB, RETURN, NEWECL = 0x00, 0x01, 0x02, 0x13, 0x20
 ONGOTO, ONGOSUB = 0x25, 0x26
 CONDITIONS = range(0x16, 0x1C)
@@ -279,8 +324,10 @@ CONDITIONS = range(0x16, 0x1C)
 STOPS = {EXIT, GOTO, RETURN, NEWECL}
 EXTRA_STOPS = {DARKNESS: {0x23}}
 
-#: Every SAS/C title runs its scripts from ECL address `$8000`.
+#: Every SAS/C title runs its scripts from ECL address `$8000`; Pool of
+#: Radiance's, as its DOS and C64 versions, from `$9900`.
 SCRIPT_BASE = 0x8000
+BASES = {POOL: 0x9900}
 ENTRIES = 5
 
 
@@ -339,11 +386,12 @@ def walk(title: str, model, skip, body: bytes, entries=range(ENTRIES)):
     found: dict[int, Statement] = {}
     bad: set[int] = set()
     stops = STOPS | EXTRA_STOPS.get(title, set())
+    base = BASES.get(title, SCRIPT_BASE)
     work = []
     for n in entries:
         head = decode(model, body, 4 * n)
         if head is not None and head.op == GOTO and head.address(0) is not None:
-            work.append(head.address(0) - SCRIPT_BASE)
+            work.append(head.address(0) - base)
     while work:
         i = work.pop()
         if i in found or i in bad:
@@ -355,9 +403,9 @@ def walk(title: str, model, skip, body: bytes, entries=range(ENTRIES)):
         found[i] = s
         nxt = []
         if s.op in (GOTO, GOSUB) and s.address(0) is not None:
-            nxt.append(s.address(0) - SCRIPT_BASE)
+            nxt.append(s.address(0) - base)
         if s.op in (ONGOTO, ONGOSUB):
-            nxt += [s.address(k) - SCRIPT_BASE
+            nxt += [s.address(k) - base
                     for k in range(2, len(s.operands)) if s.address(k) is not None]
         if s.op not in stops:
             nxt.append(s.end)
@@ -369,21 +417,24 @@ def walk(title: str, model, skip, body: bytes, entries=range(ENTRIES)):
     return found, bad
 
 
-def tail_references(found, length: int) -> list[tuple[int, int, int]]:
+def tail_references(found, length: int,
+                    base: int = SCRIPT_BASE) -> list[tuple[int, int, int]]:
     """`(statement offset, opcode, address)` for every operand naming a byte
     of the buffer past the script."""
     out = []
     for s in found.values():
         for kind, value in s.operands:
             if kind not in (0x00, 0x80) and \
-                    SCRIPT_BASE + length <= value < SCRIPT_BASE + BUFFER:
+                    base + length <= value < base + BUFFER:
                 out.append((s.at, s.op, value))
     return out
 
 
 def init_overlap(title: str, model, skip, body: bytes,
-                 span: int = NEWECL_BYTES) -> tuple[int, list[int], list[int]]:
-    """Whether the first `span` bytes of the init entry are dead outside it.
+                 span: int | None = NEWECL_BYTES
+                 ) -> tuple[int, list[int], list[int]]:
+    """Whether the first `span` bytes of the init entry (to the buffer's end,
+    where `span` is None) are dead outside it.
 
     Returns the init entry's offset, every statement reachable from the other
     four entries that covers one of those bytes, and every operand of those
@@ -391,15 +442,45 @@ def init_overlap(title: str, model, skip, body: bytes,
     init entry, which the engine runs only straight after loading the script,
     reaches those bytes.
     """
+    base = BASES.get(title, SCRIPT_BASE)
     head = decode(model, body, 4 * (ENTRIES - 1))
-    init = head.address(0) - SCRIPT_BASE
+    init = head.address(0) - base
+    if span is None:
+        span = BUFFER - init
     found, _bad = walk(title, model, skip, body, range(ENTRIES - 1))
     covers = sorted(s.at for s in found.values()
                     if s.at < init + span and s.end > init)
     names = sorted(s.at for s in found.values() for kind, value in s.operands
                    if kind not in (0x00, 0x80)
-                   and init <= value - SCRIPT_BASE < init + span)
+                   and init <= value - base < init + span)
     return init, covers, names
+
+
+@dataclasses.dataclass(frozen=True)
+class InitSpace:
+    """An area's init span, from its init entry to the buffer's end."""
+
+    area: int
+    start: int
+    #: Statements of entries 0-3 covering, or naming, a byte of the span.
+    covers: tuple[int, ...]
+    names: tuple[int, ...]
+    #: The script's bytes in the span on the disk, and their SHA-1.
+    size: int
+    sha1: str
+
+    @property
+    def free(self) -> bool:
+        """Nothing outside the init entry reaches the span."""
+        return not self.covers and not self.names
+
+
+def init_space(title: str, model, skip, area: int, body: bytes) -> InitSpace:
+    """The init span of one area's `body` (its script, header dropped)."""
+    init, covers, names = init_overlap(title, model, skip, body, span=None)
+    disk = body[init:]
+    return InitSpace(area, init, tuple(covers), tuple(names), len(disk),
+                     hashlib.sha1(disk).hexdigest())
 
 
 # -- the command -------------------------------------------------------------
@@ -427,11 +508,39 @@ def table(args) -> int:
     return 0
 
 
+def pool_refs(args) -> int:
+    """`refs` for Pool of Radiance: the walk of every script, and each area's
+    init span with who reaches it and the SHA-1 of its disk bytes."""
+    model, skip = pool_models()
+    status = 1
+    for _t, _label, path, lib in disk_files(images(args.disks),
+                                            {POOL: LIBRARY[POOL]}):
+        status = 0
+        print(f"{path} sha256 {hashlib.sha256(lib).hexdigest()[:12]}")
+        for area, block in amiga_dax.blocks(lib, LIBRARY[POOL]):
+            body = block[POOL_HEADER:]
+            got, bad = walk(POOL, model, skip, body)
+            hits = tail_references(got, len(body), BASES[POOL])
+            space = init_space(POOL, model, skip, area, body)
+            line = (f"  area {area:3} len {len(body):5} free "
+                    f"{BUFFER - len(body):4}: {len(got):4} statements, "
+                    f"{len(bad)} undecodable, {len(hits)} tail refs")
+            if BUFFER - len(body) < FULL_BYTES and not space.covers:
+                line += (f"; init {BASES[POOL] + space.start:#06x}, span "
+                         f"{space.start:#06x}-{BUFFER:#06x}, entries 0-3 cover "
+                         f"{len(space.covers)} statements and name "
+                         f"{len(space.names)}, {space.size} disk bytes "
+                         f"sha1 {space.sha1}")
+            print(line)
+    if status:
+        print("No Pool of Radiance script library found on the disks.")
+    return status
+
+
 def refs(args) -> int:
     title = args.title
     if title == POOL:
-        print("Pool of Radiance's /program has no skip switch to read.")
-        return 1
+        return pool_refs(args)
     found = list(disk_files(images(args.disks), {title: EXECUTABLE[title]}))
     models = {}
     for _t, label, path, body in found:
@@ -489,7 +598,7 @@ def main(argv=None) -> int:
                         "default: the registry's amiga entry")
     sub = parser.add_subparsers(dest="command")
     r = sub.add_parser("refs", help="walk each script for tail references")
-    r.add_argument("title", choices=TITLES[1:])
+    r.add_argument("title", choices=TITLES)
     parser.add_argument("--title", choices=TITLES)
     args = parser.parse_args(argv)
     if args.command == "refs":

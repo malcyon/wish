@@ -1,6 +1,7 @@
 """Amiga Fast Travel and Return, on the real trip table and a fake machine."""
 
 import dataclasses
+import hashlib
 import logging
 import struct
 from types import SimpleNamespace
@@ -87,6 +88,8 @@ def disks(monkeypatch):
     """Every area's script is 0x1000 bytes long, so every tail is free."""
     table = {i: 0x1000 for i in range(0x80)}
     monkeypatch.setattr(trips, "script_lengths", lambda row, d: dict(table))
+    # No made-up disk has an init span to match.
+    monkeypatch.setattr(trips, "init_rooms", lambda row, d: frozenset())
     return table
 
 
@@ -363,7 +366,13 @@ def test_a_write_error_while_arming_reports_the_failure(disks, caplog):
     with caplog.at_level(logging.WARNING):
         out = t.apply(m, area(7))
     assert not out.ok and out.message == aft.NOT_HAPPENED
-    assert t.trip is None and t.back is None and bytes(m.ram) == before
+    assert t.back is None and bytes(m.ram) == before
+    # The put-back failed with the write, so the records are kept for the
+    # next poll, which puts back what landed once the machine answers.
+    assert t.trip is not None and t.trip.armed.records
+    m.fail_write = False
+    t.continue_pending(m)
+    assert t.trip is None and bytes(m.ram) == before
 
 
 def test_an_arm_that_raises_is_reported_and_logged(disks, monkeypatch, caplog):
@@ -974,3 +983,125 @@ def test_return_never_goes_through_the_door_path(disks, pool_gate, monkeypatch):
     t.back = engine.Waypoint(0, None, (1, 1, 0))
     assert t.apply_back(m).ok
     assert not t.trip.door
+
+
+# -- trips written into an init span ------------------------------------------
+
+INIT_START = 0x1DA0
+#: A made-up script whose last 9 bytes are free, as Buccaneer Base's are.
+INIT_LENGTH = trips.BUFFER_SIZE - 9
+
+
+@pytest.fixture
+def init_span(disks, pool_gate, monkeypatch, tmp_path):
+    """Area 1 with a made-up init span the disks are said to match, and the
+    journal in `tmp_path`."""
+    size = INIT_LENGTH - INIT_START
+    room = trips.InitRoom(INIT_START, trips.BUFFER_SIZE, size,
+                          hashlib.sha1(b"\xee" * size).hexdigest())
+    monkeypatch.setattr(trips, "INIT_ROOM", {**trips.INIT_ROOM, (POOL, 1): room})
+    monkeypatch.setattr(trips, "init_rooms", lambda row, d: frozenset({1}))
+    monkeypatch.setattr(trips, "journal_dir", lambda: tmp_path / "journal")
+    disks[1] = INIT_LENGTH
+    row = trips.ROWS[POOL]
+    m = pool(1)
+    m.ram[BUFFER:BUFFER + INIT_LENGTH] = b"\xee" * INIT_LENGTH
+    m.at(row.step_entry + 8, (row.ecl_origin + INIT_START).to_bytes(2, "big"))
+    stage(m, {0x4AA9: 1})
+    m.room = room
+    m.journal = tmp_path / "journal"
+    return m
+
+
+def test_a_trip_out_of_an_area_with_an_init_span_is_offered_and_writes_it(
+        init_span, monkeypatch):
+    m = init_span
+    t = pool_travel(monkeypatch)
+    assert t.legality(m, area(0))
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert out.ok and t.trip is not None
+    assert [w.kind for w in t.trip.armed.records] == [
+        "init", "init", "entry", "trigger"]
+    assert m.read(BUFFER + INIT_START, 6) == trips.save(254, 0x4AA9)
+    assert trips.newecl(0) in statements_written(out)
+    assert list(m.journal.iterdir())
+
+
+def test_the_departure_save_of_an_init_trip_follows_its_guard(
+        init_span, monkeypatch):
+    m = init_span
+    stage(m, {0x4AA9: 0})
+    t = pool_travel(monkeypatch)
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert out.ok
+    assert trips.save(254, 0x4AA9) not in statements_written(out)
+    assert m.read(BUFFER + INIT_START, 1) == bytes([trips.SAVE])
+
+
+def test_without_the_matching_disks_the_trip_stays_held(init_span, monkeypatch):
+    monkeypatch.setattr(trips, "init_rooms", lambda row, d: frozenset())
+    t = pool_travel(monkeypatch)
+    verdict = t.legality(init_span, area(0))
+    assert not verdict and verdict.reason == t.not_built
+
+
+def test_an_init_trip_that_does_not_fire_is_put_back_and_the_journal_goes(
+        init_span, monkeypatch):
+    m = init_span
+    before = bytes(m.ram)
+    t = pool_travel(monkeypatch)
+    assert t.run(m, area(0), arrival=(1, 2, 0)).ok
+    t.trip.deadline = 0.0
+    out = t.continue_pending(m)
+    assert out is not None and out.message == aft.NOT_HAPPENED
+    assert t.trip is None
+    assert bytes(m.ram) == before and not list(m.journal.iterdir())
+
+
+def test_a_half_written_init_trip_is_kept_and_put_back_on_the_next_poll(
+        init_span, monkeypatch):
+    m = init_span
+    before = bytes(m.ram)
+    t = pool_travel(monkeypatch)
+    real = m.write
+    state = {"dead": False, "done": False}
+
+    def write(addr, data, verify=True):
+        if state["dead"]:
+            raise NotConnected("the emulator went away")
+        real(addr, data, verify)
+        if addr == BASE + trips.ROWS[POOL].step_entry and not state["done"]:
+            state["dead"] = state["done"] = True    # the entry word landed
+            raise NotConnected("the emulator went away")
+
+    m.write = write
+    out = t.run(m, area(0), arrival=(1, 2, 0))
+    assert not out.ok and out.message == aft.NOT_HAPPENED
+    assert t.trip is not None and bytes(m.ram) != before
+    state["dead"] = False
+    assert t.continue_pending(m).message == aft.NOT_HAPPENED
+    assert t.trip is None and bytes(m.ram) == before
+    assert not list(m.journal.iterdir())
+
+
+def test_attaching_after_a_crash_puts_the_init_trip_back(init_span, monkeypatch):
+    m = init_span
+    before = bytes(m.ram)
+    first = pool_travel(monkeypatch)
+    assert first.run(m, area(0), arrival=(1, 2, 0)).ok
+    assert bytes(m.ram) != before
+    # Wish is gone; a new one polls the same machine.
+    second = pool_travel(monkeypatch)
+    assert second.continue_pending(m) is None
+    assert bytes(m.ram) == before and not list(m.journal.iterdir())
+    # It looks once for each machine.
+    assert second._repaired is m
+
+
+def test_a_journal_is_not_looked_for_while_a_trip_is_armed(
+        init_span, monkeypatch):
+    m = init_span
+    t = pool_travel(monkeypatch)
+    assert t.run(m, area(0), arrival=(1, 2, 0)).ok
+    t.continue_pending(m)
+    assert t.trip is not None and t._repaired is None

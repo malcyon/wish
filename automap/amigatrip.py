@@ -32,6 +32,17 @@ says whether that fits past the departing area's script:
   never answers 2 until a live run sets `direct_confirmed`;
 * tier 3, no trip from that area.
 
+**The init span.** An area whose script leaves too little tail (Pool of
+Radiance's Buccaneer Base and Zhentil Outpost) has its **init entry**, the
+fifth header word, run only when the loader has just filled the buffer, and
+nothing else reaches it. The statements and the message go at that entry's
+bytes, the last ones of the script, and `INIT_ROOM` names each such span by
+its offset and the SHA-1 of its bytes on the disk. A trip is placed there only
+for a disk whose span hashes to it, and armed only while the live span still
+reads as the disk's. A save made while such a trip is armed would run it on
+loading, so every write is journalled to a file first, and `repair` puts it
+back after a crash.
+
 **A trip that does not fire is put back.** `disarm` writes back every word that
 still holds what `arm` wrote, newest first, and leaves alone any the game has
 since changed. **Silver Blades and Pools of Darkness do not clear the buffer
@@ -42,8 +53,12 @@ read as written and lie past the arriving area's script.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 import logging
+import os
 import pathlib
+import re
 import struct
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -240,6 +255,29 @@ DOORS_PROVEN = frozenset({(7, 5), (13, 27), (14, 26), (16, 27)})
 ENTRY_WORDS = 5
 
 
+@dataclass(frozen=True)
+class InitRoom:
+    """An area's init span: the buffer offsets `start` to `end`, of which the
+    first `size` bytes are the script's on the disk (SHA-1 `sha1`) and the
+    rest are zero in the buffer."""
+
+    start: int
+    end: int
+    size: int
+    sha1: str
+
+
+#: The init spans `tools/amiga/tripspace.py refs pool-of-radiance` derives:
+#: nothing reachable from entries 0-3 covers or names a byte of them, and no
+#: `RANDOM` statement lies in them. Keyed by `(title key, area)`.
+INIT_ROOM: Mapping[tuple[str, int], InitRoom] = MappingProxyType({
+    ("pool-of-radiance", 1): InitRoom(
+        0x1DA0, BUFFER_SIZE, 87, "fdc435c680775b7416869785d01877ce796e6b98"),
+    ("pool-of-radiance", 28): InitRoom(
+        0x1D93, BUFFER_SIZE, 96, "68732fae8431cdd654fb89b9ec56e6f4b60e1379"),
+})
+
+
 def entry_words(target, row: TripRow) -> bytes:
     """The step entry and, on Pool of Radiance, the four words after it. A new
     area can share the first (areas 14 and 27 do) but not all five. The
@@ -309,10 +347,11 @@ def departure_prologue(key: str, here: int | None, to: int,
 
 
 def leg_held(row: TripRow, here: int | None, to: int, back: bool,
-             lengths: Mapping[int, int], to_overland: bool | None = None
-             ) -> bool:
+             lengths: Mapping[int, int], to_overland: bool | None = None,
+             init_areas: frozenset[int] = frozenset()) -> bool:
     """Whether the trip `here` to `to` is held, by a difference, by the
-    disks or by the room past the departing script."""
+    disks or by the room past the departing script. `init_areas` are the
+    areas whose init span the player's disks match (`init_rooms`)."""
     if any(d.covers(here, to, back) and not d.offered
            for d in row.differences):
         return True
@@ -328,7 +367,7 @@ def leg_held(row: TripRow, here: int | None, to: int, back: bool,
     except ValueError:
         return True
     smallest = plan(to, (0, 0, 0), prologue=prologue)
-    return free_tail(row, here, lengths, smallest) not in (1, 2)
+    return free_tail(row, here, lengths, smallest, init_areas) not in (1, 2)
 
 
 def _square(machine: amiga.AmigaMachine) -> tuple[Spot, Spot, Spot]:
@@ -525,6 +564,8 @@ class Placement:
 
     statements_at: int
     message_at: int | None
+    #: The init span the trip is written into, or None past the script.
+    room: InitRoom | None = None
 
 
 @dataclass(frozen=True)
@@ -607,13 +648,16 @@ def _direct_spots(row: TripRow, p: Plan) -> list[tuple[Spot, int]] | None:
 
 
 def place(row, area: int | None, lengths: Mapping[int, int],
-          trip: Plan) -> Placement | None:
+          trip: Plan, init_areas: frozenset[int] = frozenset()
+          ) -> Placement | None:
     """Where a tier-1 `trip` from `area` goes, or None when it does not fit.
 
     The default layout (statements at the buffer's end, the message below
     them) is tried first. On a title with a message, the packed layout then
     puts the statements at the script's end and the message after them, which
-    saves the message's alignment and the gap before the statements.
+    saves the message's alignment and the gap before the statements. Last, for
+    an area in `init_areas`, the statements go at its init entry and the
+    message after them, inside the span.
     """
     row = row_for(row)
     length = None if area is None else lengths.get(area)
@@ -628,11 +672,17 @@ def place(row, area: int | None, lengths: Mapping[int, int],
     message_at = (length + size + 3) & ~3
     if message_at + MESSAGE_SIZE <= BUFFER_SIZE:
         return Placement(length, message_at)
+    room = INIT_ROOM.get((row.key, area)) if area in init_areas else None
+    if room is not None:
+        message_at = (room.start + size + 3) & ~3
+        if message_at + MESSAGE_SIZE <= room.end:
+            return Placement(room.start, message_at, room)
     return None
 
 
 def free_tail(row, area: int | None, lengths: Mapping[int, int],
-              trip: Plan | None = None) -> int:
+              trip: Plan | None = None,
+              init_areas: frozenset[int] = frozenset()) -> int:
     """The tier a trip from `area` gets: 1, 2 or 3 (none).
 
     `lengths` is `script_lengths`' table for the player's disks. Without
@@ -644,7 +694,7 @@ def free_tail(row, area: int | None, lengths: Mapping[int, int],
     if length is None:
         return 3
     trip = trip or _SMALLEST
-    if place(row, area, lengths, trip) is not None:
+    if place(row, area, lengths, trip, init_areas) is not None:
         return 1
     if (row.direct_confirmed and _direct_spots(row, trip) is not None
             and _lowest(row, len(trip.prologue + newecl(trip.area))) >= length):
@@ -652,10 +702,12 @@ def free_tail(row, area: int | None, lengths: Mapping[int, int],
     return 3
 
 
-def _script_blocks(row: TripRow, data: bytes) -> dict[int, int]:
+def _script_bodies(row: TripRow, data: bytes) -> dict[int, bytes]:
+    """`{area: the script's bytes in the buffer}` of one copy of the script
+    file: each block less the bytes the loader skips."""
     if row.script_file.lower().endswith(".dax"):
         from goldbox import amiga_dax
-        return {area: len(block) - row.script_header
+        return {area: block[row.script_header:]
                 for area, block in amiga_dax.blocks(data, row.script_file)}
     blocks = amiga.glib_blocks(data)
     if not blocks:
@@ -665,12 +717,35 @@ def _script_blocks(row: TripRow, data: bytes) -> dict[int, int]:
     if len(table) < 2 + 4 * count:
         raise ValueError(f"{row.script_file} block 0 counts {count} areas "
                          f"in {len(table)} bytes")
-    out = {}
+    out: dict[int, bytes] = {}
     for area, block in struct.iter_unpack(">HH", table[2:2 + 4 * count]):
         if 1 <= block < len(blocks):
-            out[area] = max(out.get(area, 0),
-                            len(blocks[block]) - row.script_header)
+            body = blocks[block][row.script_header:]
+            if len(body) >= len(out.get(area, b"")):
+                out[area] = body
     return out
+
+
+def _script_copies(row: TripRow, disks):
+    """The `{area: script}` table of every copy of the script file on
+    `disks`, which is a folder of ADFs or an iterable of image paths or
+    image bytes."""
+    from goldbox.amiga_adf import AmigaDisk
+    if isinstance(disks, (str, pathlib.Path)):
+        folder = pathlib.Path(disks)
+        images = sorted(folder.glob("*.adf")) + sorted(folder.glob("*.ADF"))
+    else:
+        images = list(disks)
+    want = row.script_file.upper()
+    for n, image in enumerate(images):
+        try:
+            disk = (AmigaDisk(image) if isinstance(image, (bytes, bytearray))
+                    else AmigaDisk.open(str(image)))
+            paths = [p for p, _e in disk.walk() if p.upper() == want]
+            for path in paths:
+                yield _script_bodies(row, disk.read_file(path))
+        except Exception as exc:              # not a disk, or not this title's
+            _log.debug("disk %d gave no %s: %s", n, row.script_file, exc)
 
 
 def script_lengths(row, disks) -> dict[int, int]:
@@ -680,27 +755,34 @@ def script_lengths(row, disks) -> dict[int, int]:
     bytes. Every copy of the script file found is read, and an area two files
     disagree on takes the longer length, which leaves the smaller tail.
     """
-    from goldbox.amiga_adf import AmigaDisk
     row = row_for(row)
-    if isinstance(disks, (str, pathlib.Path)):
-        folder = pathlib.Path(disks)
-        images = sorted(folder.glob("*.adf")) + sorted(folder.glob("*.ADF"))
-    else:
-        images = list(disks)
-    want = row.script_file.upper()
     out: dict[int, int] = {}
-    for n, image in enumerate(images):
-        try:
-            disk = (AmigaDisk(image) if isinstance(image, (bytes, bytearray))
-                    else AmigaDisk.open(str(image)))
-            paths = [p for p, _e in disk.walk() if p.upper() == want]
-            for path in paths:
-                for area, length in _script_blocks(
-                        row, disk.read_file(path)).items():
-                    out[area] = max(out.get(area, 0), length)
-        except Exception as exc:              # not a disk, or not this title's
-            _log.debug("disk %d gave no %s: %s", n, row.script_file, exc)
+    for bodies in _script_copies(row, disks):
+        for area, body in bodies.items():
+            out[area] = max(out.get(area, 0), len(body))
     return out
+
+
+def init_rooms(row, disks) -> frozenset[int]:
+    """The areas whose init span `INIT_ROOM` records and whose bytes on the
+    player's disks hash to the record, in every copy of the script file that
+    has the area."""
+    row = row_for(row)
+    wanted = {area: room for (key, area), room in INIT_ROOM.items()
+              if key == row.key}
+    if not wanted:
+        return frozenset()
+    good: set[int] = set()
+    bad: set[int] = set()
+    for bodies in _script_copies(row, disks):
+        for area, room in wanted.items():
+            body = bodies.get(area)
+            if body is None:
+                continue
+            same = (len(body) - room.start == room.size
+                    and hashlib.sha1(body[room.start:]).hexdigest() == room.sha1)
+            (good if same else bad).add(area)
+    return frozenset(good - bad)
 
 
 # -- reading the game --------------------------------------------------------
@@ -853,9 +935,11 @@ def gate(target, row) -> bool:
 #: The kinds of write `arm` and `arm_door` make, in their order. The buffer kinds are put back
 #: and zeroed byte by byte; the rest while they read as ours, whole or as the
 #: prefix a write that failed part way left over the original.
-KINDS = ("square", "wall", "attribute", "statements", "message", "entry",
-         "came_from", "trigger")
-_BYTEWISE = ("statements", "message")
+KINDS = ("square", "wall", "attribute", "statements", "message", "init",
+         "entry", "came_from", "trigger")
+#: `init` is a statements or message write into an init span, whose original
+#: bytes are the script's own and are put back, not zeroed.
+_BYTEWISE = ("statements", "message", "init")
 
 
 @dataclass(frozen=True)
@@ -889,6 +973,15 @@ class ArmError(RuntimeError):
     """`arm` found the game not ready, before writing anything."""
 
 
+class ArmIncomplete(RuntimeError):
+    """A write failed and putting back what had been written failed too.
+    `armed` holds every record made, for a later `disarm`."""
+
+    def __init__(self, armed: "Armed", why: str):
+        super().__init__(why)
+        self.armed = armed
+
+
 def _prepare(target, row: TripRow, p: Plan) -> tuple[int, list]:
     """The writes for `p`, in order, as `(address, data, kind)`."""
     base = _base(target)
@@ -899,6 +992,7 @@ def _prepare(target, row: TripRow, p: Plan) -> tuple[int, list]:
     elif p.tier != 1:
         raise ArmError(f"tier {p.tier} arms no trip")
     statements = _statements(row, p)
+    room = None if p.placement is None else p.placement.room
     if p.placement is not None:
         at, message_at = p.placement.statements_at, p.placement.message_at
     else:
@@ -908,7 +1002,8 @@ def _prepare(target, row: TripRow, p: Plan) -> tuple[int, list]:
     if p.tier == 2:
         writes += [(_address(target, spot), _encode_spot(spot, value),
                     "square") for spot, value in spots]
-    writes.append((buffer + at, statements, "statements"))
+    writes.append((buffer + at, statements,
+                   "statements" if room is None else "init"))
     if message_at is not None:
         if (buffer + message_at) % 4:
             raise ArmError(f"the script buffer at {buffer:#x} is not "
@@ -916,7 +1011,7 @@ def _prepare(target, row: TripRow, p: Plan) -> tuple[int, list]:
         port = _port(target, row)
         window = _long(target, base + row.window_pointer)
         writes.append((buffer + message_at, rawkey_message(port, window),
-                       "message"))
+                       "message" if room is None else "init"))
         trigger = (port + PORT_LIST, link(buffer + message_at), "trigger")
     else:
         trigger = (base + row.key_buffer, FORWARD_KEY, "trigger")
@@ -937,8 +1032,24 @@ def _check(row: TripRow, writes: list, originals: list[bytes]) -> None:
                     raise ArmError("the window's port has a message waiting")
             elif was[0] != 0:
                 raise ArmError("a key is already waiting")
-        elif kind in _BYTEWISE and row.clears_buffer and any(was):
+        elif (kind in _BYTEWISE and kind != "init" and row.clears_buffer
+              and any(was)):
             raise ArmError(f"the script buffer is not free at {address:#x}")
+
+
+def _check_init(target, row: TripRow, buffer: int, room: InitRoom) -> None:
+    """Whether the live init span is the one `room` records: the script's
+    bytes then zeros, and the init entry word pointing at its start."""
+    base = _base(target)
+    entry = row.step_entry + 2 * (ENTRY_WORDS - 1)
+    live, word = target.read_blocks([(buffer + room.start,
+                                      room.end - room.start),
+                                     (base + entry, 2)])
+    if (hashlib.sha1(live[:room.size]).hexdigest() != room.sha1
+            or any(live[room.size:])):
+        raise ArmError("the init span is not the script's on the disk")
+    if int.from_bytes(word, "big") != row.ecl_origin + room.start:
+        raise ArmError("the init entry does not point at the span")
 
 
 def arm(target, row, p: Plan) -> Armed | None:
@@ -948,8 +1059,9 @@ def arm(target, row, p: Plan) -> Armed | None:
     None, with nothing left written, when the game is not at its world menu,
     the plan goes nowhere new, or a write fails and everything it and the
     earlier ones left could be put back. A failure that cannot be put back
-    raises. If the area changed while putting back (a half-linked message the
-    game took), the trip happened: the `Armed` is returned for `fired`.
+    raises `ArmIncomplete`. If the area changed while putting back (a
+    half-linked message the game took), the trip happened: the `Armed` is
+    returned for `fired`.
     """
     row = row_for(row)
     if _base(target) is None or not gate(target, row):
@@ -961,6 +1073,9 @@ def arm(target, row, p: Plan) -> Armed | None:
         buffer, writes = _prepare(target, row, p)
         originals = target.read_blocks([(a, len(d)) for a, d, _k in writes])
         _check(row, writes, originals)
+        if p.placement is not None and p.placement.room is not None:
+            _check_init(target, row, buffer, p.placement.room)
+            journal_write(target, row, here, buffer, writes, originals)
     except ArmError as exc:
         _log.debug("amiga trip not armed: %s", exc)
         return None
@@ -982,7 +1097,13 @@ def _write_all(target, row: TripRow, p: Plan, here: int, buffer: int,
             # Part of it may have landed, so it is put back like the rest.
             done.append(Written(address, was, data, kind))
             armed = Armed(row, p, here, buffer, tuple(done))
-            return None if _put_back(target, armed) else armed
+            try:
+                put_back = _put_back(target, armed)
+            except (NotConnected, ValueError) as again:
+                raise ArmIncomplete(armed, f"the {kind} write failed and "
+                                    f"putting back failed too: {again}"
+                                    ) from again
+            return None if put_back else armed
         done.append(Written(address, was, data, kind))
     return Armed(row, p, here, buffer, tuple(done))
 
@@ -1158,6 +1279,7 @@ def _put_back(target, armed: Armed) -> bool:
     if fired(target, armed):
         return False
     _restore(target, [w for w in armed.records if w.kind != "trigger"])
+    journal_clear(target, armed)
     return True
 
 
@@ -1179,6 +1301,7 @@ def tidy(target, armed: Armed, new_area: int | None,
     area, or a buffer that moved, is left alone. Returns the bytes written.
     """
     row = armed.row
+    journal_clear(target, armed)
     length = None if new_area is None else lengths.get(new_area)
     # A door that was answered NO leaves the area loaded, so its message
     # stays in a buffer the loader would otherwise have cleared.
@@ -1202,3 +1325,98 @@ def tidy(target, armed: Armed, new_area: int | None,
             target.write(w.address + start, bytes(end - start))
             zeroed += end - start
     return zeroed
+
+
+# -- the journal -------------------------------------------------------------
+
+
+def journal_dir() -> pathlib.Path:
+    """Where a trip written into an init span is recorded, beside the other
+    tools' caches (`tools/registry/scratch.py`'s `cache_dir`, which `automap`
+    does not import)."""
+    return pathlib.Path.home() / ".cache" / "wish" / "amigatrip"
+
+
+def connection_name(target) -> str:
+    """A file-name-safe name for the machine `target` reads: its lane holder,
+    its host and port, or `local`."""
+    debugger = getattr(getattr(target, "target", target), "debugger", None)
+    holder = getattr(debugger, "holder", None)
+    host, port = getattr(debugger, "host", None), getattr(debugger, "port", None)
+    name = holder or (f"{host}-{port}" if host else "local")
+    return re.sub(r"[^A-Za-z0-9._-]", "-", str(name)).strip(".") or "local"
+
+
+def journal_path(target) -> pathlib.Path:
+    return journal_dir() / f"{connection_name(target)}.json"
+
+
+def journal_write(target, row: TripRow, here: int, buffer: int, writes: list,
+                  originals: list[bytes]) -> None:
+    """Record `writes` and what they will overwrite, before the first is made.
+    An unwritable journal is an `ArmError`: nothing is armed that a crash
+    could leave in the game."""
+    saved = {"title": row.key, "from_area": here, "data_base": _base(target),
+             "buffer": buffer,
+             "records": [{"address": a, "original": was.hex(),
+                          "data": d.hex(), "kind": k}
+                         for (a, d, k), was in zip(writes, originals)]}
+    path = journal_path(target)
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_text(json.dumps(saved), encoding="utf-8")
+        os.replace(temp, path)
+    except OSError as exc:
+        raise ArmError(f"the journal {path} cannot be written: {exc}") from exc
+    finally:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def journal_clear(target, armed: Armed) -> None:
+    """Delete the journal once an init trip has fired or been put back."""
+    if not any(w.kind == "init" for w in armed.records):
+        return
+    try:
+        journal_path(target).unlink(missing_ok=True)
+    except OSError:
+        _log.warning("amiga trip: the journal could not be deleted",
+                     exc_info=True)
+
+
+def repair(target) -> bool:
+    """Put back an init trip that an earlier run of Wish left armed, from its
+    journal. True when a journal was found and dealt with.
+
+    A journal for another boot of the game (the data hunk moved) or for an
+    area the party has left holds nothing to undo and is deleted. Otherwise
+    each recorded word that still reads as written is put back, newest
+    first, as `disarm` does. A machine that cannot be read or written leaves
+    the journal for the next attempt.
+    """
+    path = journal_path(target)
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        row = ROWS[saved["title"]]
+        records = tuple(Written(r["address"], bytes.fromhex(r["original"]),
+                                bytes.fromhex(r["data"]), r["kind"])
+                        for r in saved["records"])
+        here, base, buffer = (saved["from_area"], saved["data_base"],
+                              saved["buffer"])
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, KeyError, TypeError):
+        _log.warning("amiga trip: the journal %s cannot be read, so a trip "
+                     "may still be in the game", path, exc_info=True)
+        return False
+    if _base(target) is None:
+        return False
+    if base == _base(target) and records:
+        armed = Armed(row, Plan(here, None, None), here, buffer, records)
+        if not fired(target, armed):
+            _put_back(target, armed)
+    path.unlink(missing_ok=True)
+    return True

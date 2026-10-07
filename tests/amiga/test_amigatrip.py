@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 import struct
 
 import pytest
@@ -731,15 +733,22 @@ def test_every_pool_departing_area_but_two_fits_a_trip_on_the_players_disks():
     pool = trip.ROWS["pool-of-radiance"]
     areas = (0, 1, 2, 3, 9, 13, 14, 16, 17, 18, 21, 22, 23, 25, 26, 27, 28)
     # The scripts of areas 1 and 28 leave no room for their departure
-    # statements, so those trips are held rather than skipping the departure.
-    no_room = (1, 28)
+    # statements past the script, so those trips go in the init span.
+    no_room = ()
     for image in _images():
         lengths = trip.script_lengths("pool-of-radiance", [image])
         if not all(a in lengths for a in areas):
             continue
+        init = trip.init_rooms(pool, [image])
+        assert init == {1, 28}
         for here in areas:
-            held = trip.leg_held(pool, here, 0, False, lengths)
+            held = trip.leg_held(pool, here, 0, False, lengths, None, init)
             assert held is (here in no_room), here
+            if here in no_room:
+                assert not trip.leg_held(pool, here, 0, False, lengths)
+        # Without the match a trip out of areas 1 and 28 is still held.
+        assert trip.leg_held(pool, 1, 0, False, lengths)
+        assert trip.leg_held(pool, 28, 0, False, lengths)
         return
     pytest.skip("needs the player's Amiga Pool of Radiance disks")
 
@@ -1271,3 +1280,274 @@ def test_the_proven_door_routes_are_pinned(here, to, square):
     route = fasttravel.EXIT_ROUTES[(here, to)]
     assert (here, to) in trip.DOORS_PROVEN and not route.combat
     assert tuple(route.square) == square
+
+
+# -- the init span -------------------------------------------------------------
+
+INIT_AREA = 1
+#: A made-up area: a 9-byte tail, with the init entry 0x57 bytes before the end.
+INIT_LENGTH = trip.BUFFER_SIZE - 9
+INIT_START = 0x1DA0
+
+
+def init_room(monkeypatch, area=INIT_AREA, size=INIT_LENGTH - INIT_START):
+    """`INIT_ROOM` for `area`, hashing the made-up script bytes `machine`
+    lays down, so no game byte is involved."""
+    room = trip.InitRoom(INIT_START, trip.BUFFER_SIZE, size,
+                         hashlib.sha1(b"\xee" * size).hexdigest())
+    monkeypatch.setitem(trip.INIT_ROOM, (POOL, area), room) \
+        if isinstance(trip.INIT_ROOM, dict) else monkeypatch.setattr(
+            trip, "INIT_ROOM", {**trip.INIT_ROOM, (POOL, area): room})
+    return room
+
+
+@pytest.fixture
+def journal(tmp_path, monkeypatch):
+    monkeypatch.setattr(trip, "journal_dir", lambda: tmp_path / "journal")
+    return tmp_path / "journal"
+
+
+def init_machine(room):
+    """A Pool machine in the init area, whose script is `0xEE` to the end of
+    the disk bytes, its tail zero, and whose fifth entry word is the span's."""
+    m = machine(POOL, length=INIT_LENGTH, area=INIT_AREA)
+    row = trip.ROWS[POOL]
+    m.at(row.step_entry + 2 * (trip.ENTRY_WORDS - 1),
+         (row.ecl_origin + room.start).to_bytes(2, "big"))
+    return m
+
+
+def init_plan(room, prologue=b"\x09\x00\x00\x01\x00\x00"):
+    pool = trip.ROWS[POOL]
+    p = trip.plan(0, (1, 2, 3), prologue=prologue)
+    assert len(trip._statements(pool, p)) == 27
+    return p, trip.place(pool, INIT_AREA, {INIT_AREA: INIT_LENGTH}, p,
+                         frozenset({INIT_AREA}))
+
+
+def test_a_trip_from_a_nine_byte_tail_has_no_placement_without_the_span(
+        monkeypatch):
+    init_room(monkeypatch)
+    pool = trip.ROWS[POOL]
+    p = trip.plan(0, (1, 2, 3))
+    lengths = {INIT_AREA: INIT_LENGTH, 0: 100}
+    assert trip.place(pool, INIT_AREA, lengths, p) is None
+    assert trip.free_tail(pool, INIT_AREA, lengths, p) == 3
+    assert trip.leg_held(pool, INIT_AREA, 0, False, lengths)
+
+
+def test_the_init_span_takes_the_statements_at_its_start_and_the_message_after(
+        monkeypatch):
+    room = init_room(monkeypatch)
+    pool = trip.ROWS[POOL]
+    p, placed = init_plan(room)
+    # 27 bytes from 0x1DA0 end at 0x1DBB; the message follows on a longword.
+    assert placed == trip.Placement(0x1DA0, 0x1DBC, room)
+    assert placed.message_at + trip.MESSAGE_SIZE <= room.end
+    lengths = {INIT_AREA: INIT_LENGTH, 0: 100}
+    assert trip.free_tail(pool, INIT_AREA, lengths, p,
+                          frozenset({INIT_AREA})) == 1
+    assert not trip.leg_held(pool, INIT_AREA, 0, False, lengths, None,
+                             frozenset({INIT_AREA}))
+    # The span is offered only for an area the disks matched.
+    assert trip.place(pool, INIT_AREA, lengths, p, frozenset()) is None
+
+
+def test_an_init_trip_writes_into_the_span_and_disarm_restores_it_exactly(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    before = bytes(m.ram)
+    p, placed = init_plan(room)
+    armed = trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    assert armed is not None
+    assert kinds(armed) == ["init", "init", "entry", "trigger"]
+    statements, message, entry, _trigger = armed.records
+    assert statements.address == BUFFER + room.start
+    assert BUFFER + room.start < message.address
+    assert message.address + trip.MESSAGE_SIZE <= BUFFER + room.end
+    assert message.address % 4 == 0
+    assert int.from_bytes(entry.data, "big") == (
+        trip.ROWS[POOL].ecl_origin + room.start)
+    # The originals are the script's bytes, which a put-back writes again.
+    assert statements.original == b"\xee" * len(statements.data)
+    assert trip.disarm(m, armed) is True
+    assert bytes(m.ram) == before
+    assert not journal.exists() or not list(journal.iterdir())
+
+
+@pytest.mark.parametrize("what", ["hash", "tail", "init word"])
+def test_a_span_that_is_not_the_disks_arms_nothing(monkeypatch, journal, what):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    row = trip.ROWS[POOL]
+    if what == "hash":
+        m.poke(BUFFER + room.start + 3, b"\x01")
+    elif what == "tail":
+        m.poke(BUFFER + room.size + room.start + 1, b"\x01")
+    else:
+        m.at(row.step_entry + 8, (row.ecl_origin + 0x1000).to_bytes(2, "big"))
+    p, placed = init_plan(room)
+    assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed)) is None
+    assert m.log == []
+    assert not journal.exists()
+
+
+def test_a_journal_that_cannot_be_written_arms_nothing(monkeypatch, tmp_path):
+    room = init_room(monkeypatch)
+    blocker = tmp_path / "file"
+    blocker.write_text("not a folder")
+    monkeypatch.setattr(trip, "journal_dir", lambda: blocker / "journal")
+    m = init_machine(room)
+    p, placed = init_plan(room)
+    assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed)) is None
+    assert m.log == []
+
+
+def test_an_init_trip_is_journalled_before_the_first_write(monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    seen = []
+    m.on_write = lambda addr, data: seen.append(
+        json.loads(next(journal.iterdir()).read_text())) if not seen else None
+    p, placed = init_plan(room)
+    armed = trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    saved = seen[0]
+    assert saved["from_area"] == INIT_AREA and saved["title"] == POOL
+    assert [r["kind"] for r in saved["records"]] == kinds(armed)
+    first = saved["records"][0]
+    assert first["address"] == BUFFER + room.start
+    assert first["original"] == (b"\xee" * len(armed.records[0].data)).hex()
+
+
+def test_the_journal_goes_once_the_trip_has_fired_or_been_put_back(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    row = trip.ROWS[POOL]
+    p, placed = init_plan(room)
+    plan = dataclasses.replace(p, placement=placed)
+    m = init_machine(room)
+    armed = trip.arm(m, POOL, plan)
+    assert list(journal.iterdir())
+    trip.disarm(m, armed)
+    assert not list(journal.iterdir())
+    armed = trip.arm(m, POOL, plan)
+    m.at(row.area, b"\x00")                  # the game ran it
+    trip.tidy(m, armed, 0, {0: 100})
+    assert not list(journal.iterdir())
+
+
+def test_a_crashed_run_is_repaired_from_its_journal(monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    before = bytes(m.ram)
+    p, placed = init_plan(room)
+    assert trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    # Wish stops here, with the trip written and the key linked.
+    assert bytes(m.ram) != before
+    assert trip.repair(m) is True
+    assert bytes(m.ram) == before
+    assert not list(journal.iterdir())
+    assert trip.repair(m) is False
+
+
+def test_a_journalled_trip_the_game_has_run_is_forgotten_not_undone(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    p, placed = init_plan(room)
+    trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    m.at(trip.ROWS[POOL].area, b"\x00")
+    now = bytes(m.ram)
+    assert trip.repair(m) is True
+    assert bytes(m.ram) == now and not list(journal.iterdir())
+
+
+def test_a_journal_of_another_boot_is_forgotten_not_undone(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    p, placed = init_plan(room)
+    trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    now = bytes(m.ram)
+    m.data_base += 0x100
+    assert trip.repair(m) is True
+    assert bytes(m.ram) == now and not list(journal.iterdir())
+
+
+def test_a_machine_that_cannot_be_written_leaves_the_journal_for_next_time(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    before = bytes(m.ram)
+    p, placed = init_plan(room)
+    trip.arm(m, POOL, dataclasses.replace(p, placement=placed))
+    m.fail_at = BUFFER + room.start
+    with pytest.raises(NotConnected):
+        trip.repair(m)
+    assert list(journal.iterdir())
+    assert trip.repair(m) is True
+    assert bytes(m.ram) == before
+
+
+def test_a_put_back_that_fails_too_raises_with_the_records_and_disarm_finishes(
+        monkeypatch, journal):
+    room = init_room(monkeypatch)
+    m = init_machine(room)
+    before = bytes(m.ram)
+    p, placed = init_plan(room)
+    plan = dataclasses.replace(p, placement=placed)
+    _buffer, writes = trip._prepare(m, trip.ROWS[POOL], plan)
+    dead = {"on": False, "done": False}
+    real = m.write
+
+    def write(addr, data, verify=True):
+        if dead["on"]:
+            raise NotConnected("the emulator went away")
+        real(addr, data, verify)
+        if addr == writes[2][0] and not dead["done"]:
+            # The entry word has landed, and the machine goes away.
+            dead["on"] = dead["done"] = True
+            raise NotConnected("the emulator went away")
+
+    m.write = write
+    with pytest.raises(trip.ArmIncomplete) as err:
+        trip.arm(m, POOL, plan)
+    assert kinds(err.value.armed) == ["init", "init", "entry"]
+    dead["on"] = False
+    assert trip.disarm(m, err.value.armed) is True
+    assert bytes(m.ram) == before
+
+
+def test_init_rooms_match_a_span_by_its_hash_in_every_copy(monkeypatch):
+    room = init_room(monkeypatch, area=17)
+    pool = trip.ROWS[POOL]
+    body = b"\x11" * 0x1DA0 + b"\xee" * room.size
+    other = body[:-1] + b"\x00"
+
+    def copies(bodies):
+        monkeypatch.setattr(trip, "_script_copies",
+                            lambda row, disks: iter(bodies))
+
+    copies([{17: body}, {17: body, 3: b"x"}])
+    assert trip.init_rooms(pool, None) == {17}
+    copies([{17: body}, {17: other}])
+    assert trip.init_rooms(pool, None) == frozenset()
+    copies([{3: body}])
+    assert trip.init_rooms(pool, None) == frozenset()
+    copies([{17: body + b"\x00"}])
+    assert trip.init_rooms(pool, None) == frozenset()
+    assert trip.init_rooms("curse-of-the-azure-bonds", None) == frozenset()
+
+
+def test_a_connection_is_named_by_its_lane_holder_or_its_address():
+    class Debugger:
+        holder = "w/1"
+
+    class Target:
+        debugger = Debugger()
+
+    assert trip.connection_name(Target()) == "w-1"
+    Target.debugger = type("D", (), {"host": "127.0.0.1", "port": 6520})()
+    assert trip.connection_name(Target()) == "127.0.0.1-6520"
+    assert trip.connection_name(object()) == "local"
