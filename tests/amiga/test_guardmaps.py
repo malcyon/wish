@@ -971,3 +971,54 @@ def test_the_darkness_guard_map_checks_clean_over_the_kept_crops():
     if not all((root / path).is_file() for path in wanted):
         pytest.skip('the kept Pools of Darkness acceptance crops are not on this machine')
     assert guardmaps.main(['check', '--title', 'darkness']) == 0
+
+
+def test_kept_interstitial_restore_and_again_crops_are_named_for_the_screen_they_show(tmp_path):
+    """A crop's name gives the screen it shows, not the awaited state, for the copies an accept run keeps."""
+    root = tmp_path / 'root'
+    shot = _run(root, '1', 'run', 'ssb', 'title')
+    names = {
+        '15-camp_save_picker-journal-1.png': ('journal',),
+        'title-credits-1.png': ('credits',),
+        '21-camp-after-restore.png': ('camp',),
+        '05-camp-again-1.png': ('camp',),
+        '07-world-resumed.png': ('world',),
+        '09-camp-again-1-journal-2.png': ('journal',),
+        'journal-0.png': (),
+        '03-post_write.png': ('loaded_menu',),
+    }
+    for name in names:
+        _crop(shot.parent / name)
+    states = {crop.relative.rsplit('/', 1)[1]: crop.states for crop in guardmaps.scan_crops(root)}
+    assert {name: states[name] for name in names} == names
+
+
+def test_silver_blades_line_one_item_list_identity_declares_the_party_menu_items():
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'ssb')
+    rules = [rule for rule in spec['identity']['camp_items']
+             if 'uc__u_l1_items' in rule['example'] or 'uc__c_l1_items' in rule['example']]
+    assert len(rules) >= 2
+    for rule in rules:
+        assert 'items' in rule['also'], rule['example']
+
+
+def _checks_clean_over(title, wanted):
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    if not all((root / path).is_file() for path in wanted):
+        pytest.skip(f'the kept {title} acceptance crops are not on this machine')
+    assert guardmaps.main(['check', '--title', title]) == 0
+
+
+def test_the_curse_guard_map_checks_clean_over_the_kept_crops():
+    _checks_clean_over('curse', ['628/263-amiga-live/accept1/shots/21-camp-after-restore.png'])
+
+
+def test_the_silver_blades_guard_map_checks_clean_over_the_kept_crops():
+    runs = [f'449/rb449-{run}/accept1/shots' for run in ('s3-3', 's3-4', 's4-1')]
+    wanted = [f'{run}/{name}' for run in runs
+              for name in ('title-credits-1.png', '15-camp_save_picker-journal-1.png')]
+    wanted += [f'{run}/accept1/shots/05-items.png' for run in
+               ('282/live3', '4/ssb-stage4-u', '4/ssb-stage4-c', '4/ssb-substitute-camp')]
+    _checks_clean_over('ssb', wanted)
