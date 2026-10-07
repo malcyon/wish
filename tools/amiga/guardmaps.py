@@ -190,12 +190,25 @@ def _path(maps: pathlib.Path, title: str) -> pathlib.Path:
     return maps / f'guards_{FILES[title]}.json'
 
 
+def _valid_part(part, keys: set[str]) -> bool:
+    return (isinstance(part, dict) and set(part) == keys
+            and isinstance(part['box'], list) and len(part['box']) == 4
+            and all(type(n) is int for n in part['box'])
+            and isinstance(part['sha256'], str)
+            and re.fullmatch('[0-9a-f]{64}', part['sha256']) is not None)
+
+
+def _parts(rule: dict) -> list[dict]:
+    """The rule's own box and the further boxes it requires, all of which must match."""
+    return [rule, *rule.get('and', ())]
+
+
 def _valid_rule(rule) -> bool:
-    return (isinstance(rule, dict) and set(rule) == {'box', 'sha256', 'example', 'also'}
-            and isinstance(rule['box'], list) and len(rule['box']) == 4
-            and all(type(n) is int for n in rule['box'])
-            and isinstance(rule['sha256'], str)
-            and re.fullmatch('[0-9a-f]{64}', rule['sha256']) is not None
+    base = {'box', 'sha256', 'example', 'also'}
+    return (isinstance(rule, dict) and set(rule) - {'and'} == base
+            and _valid_part({k: rule[k] for k in ('box', 'sha256')}, {'box', 'sha256'})
+            and isinstance(rule.get('and', []), list)
+            and all(_valid_part(part, {'box', 'sha256'}) for part in rule.get('and', []))
             and (rule['example'] is None or isinstance(rule['example'], str))
             and isinstance(rule['also'], list)
             and all(isinstance(s, str) for s in rule['also']))
@@ -245,8 +258,8 @@ def _check(args, crops: list[Crop]) -> int:
     print(f'{len(crops)} crops')
     failed = False
     specs = {title: _load(args.maps, title) for title in args.title or FILES}
-    boxes = {tuple(rule['box']) for spec in specs.values() for kind in ('guards', 'identity')
-             for value in spec[kind].values() for rule in screens.rules_of(value)}
+    boxes = {tuple(part['box']) for spec in specs.values() for kind in ('guards', 'identity')
+             for value in spec[kind].values() for rule in screens.rules_of(value) for part in _parts(rule)}
     digests = cached_digests(args.root, crops, boxes)
     crops = [c for c in crops if c.relative in digests]
     for title in args.title or FILES:
@@ -262,7 +275,8 @@ def _check(args, crops: list[Crop]) -> int:
                     matched = False
                     for index, rule in enumerate(alternatives):
                         name = state if len(alternatives) == 1 else f'{state}[{index}]'
-                        if digests[crop.relative][tuple(rule['box'])] != rule['sha256']:
+                        if any(digests[crop.relative][tuple(part['box'])] != part['sha256']
+                               for part in _parts(rule)):
                             continue
                         matched = True
                         hits[index] += 1
@@ -274,7 +288,8 @@ def _check(args, crops: list[Crop]) -> int:
                 for index, rule in enumerate(alternatives):
                     name = state if len(alternatives) == 1 else f'{state}[{index}]'
                     example = rule['example']
-                    if example and (example not in digests or digests[example][tuple(rule['box'])] != rule['sha256']):
+                    if example and (example not in digests or any(
+                            digests[example][tuple(part['box'])] != part['sha256'] for part in _parts(rule))):
                         print(f'{title} {kind}/{name} stale {example}')
                         problems += 1
                     suffix = f' misses {misses}' if index == len(alternatives) - 1 else ''
@@ -293,9 +308,13 @@ def _add(args, crops: list[Crop]) -> int:
     if not _owned(selected, args.title, spec):
         raise ValueError(f'{crop} does not belong to {args.title}')
     box = [int(n) for n in args.box.split(',')]
+    if args.and_box and (args.alternative or args.replace):
+        raise ValueError('--and-box adds to the existing rule; it takes neither --alternative nor --replace')
+    if args.and_box and (args.state not in spec[args.map] or len(screens.rules_of(spec[args.map][args.state])) != 1):
+        raise ValueError(f'--and-box needs {args.state} to hold exactly one rule')
     if args.alternative and args.replace:
         raise ValueError('--alternative and --replace are exclusive')
-    if args.state in spec[args.map] and not (args.replace or args.alternative):
+    if args.state in spec[args.map] and not (args.replace or args.alternative or args.and_box):
         raise ValueError(f'{args.state} already exists; pass --replace or --alternative')
     if args.alternative and args.state not in spec[args.map]:
         raise ValueError(f'{args.state} does not exist; --alternative adds to an existing state')
@@ -312,7 +331,12 @@ def _add(args, crops: list[Crop]) -> int:
     negatives = [c.path for c in candidates if c.relative in same and same[c.relative][tuple(box)] == wanted]
     rule = screens.checked_rule(crop, box, args.state, negatives)
     rule = {**rule, 'example': selected.relative, 'also': sorted(args.also)}
-    if args.alternative:
+    if args.and_box:
+        held = spec[args.map][args.state]
+        if any(part['box'] == rule['box'] for part in _parts(held)):
+            raise ValueError(f'{args.state} already requires box {rule["box"]}')
+        held['and'] = [*held.get('and', []), {'box': rule['box'], 'sha256': rule['sha256']}]
+    elif args.alternative:
         if any((r['box'], r['sha256']) == (rule['box'], rule['sha256'])
                for r in screens.rules_of(spec[args.map][args.state])):
             raise ValueError(f'{args.state} already has this box and picture')
@@ -333,7 +357,7 @@ def _export(args) -> int:
     for kind in ('guards', 'identity'):
         rules = {}
         for state, value in spec[kind].items():
-            exported = [{'box': rule['box'], 'sha256': rule['sha256']}
+            exported = [{key: rule[key] for key in ('box', 'sha256', 'and') if key in rule}
                         for rule in screens.rules_of(value)]
             rules[state] = exported[0] if len(exported) == 1 else exported
         (args.out / f'{kind}.json').write_text(json.dumps(rules, indent=2, sort_keys=True) + '\n')
@@ -400,6 +424,8 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument('--box', required=True)
     add.add_argument('--also', action='append', default=[])
     add.add_argument('--replace', action='store_true')
+    add.add_argument('--and-box', action='store_true',
+                     help='require this box too, on top of the existing rule; all of its boxes must match')
     add.add_argument('--alternative', action='store_true',
                      help='append a second rule to an existing state; either one matches')
     export = sub.add_parser('export')

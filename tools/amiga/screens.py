@@ -149,7 +149,9 @@ class PixelGuards:
 
     A state holds one rule, or a list of alternatives when the same screen looks
     different by party (a sheet with an item row and one without), and matches
-    when any of them does.
+    when any of them does. A rule may also carry `and`, further boxes that must
+    all match too, so a screen drawn in stages is recognised only once its last
+    part is on screen.
     """
 
     def __init__(self, path: pathlib.Path):
@@ -161,6 +163,10 @@ class PixelGuards:
                     or not re.fullmatch(r"[0-9a-f]{64}", str(rule.get("sha256")))
                     for rule in alternatives):
                 raise RouteError(f"screen guard for {state} needs a box and a sha256")
+            if any(not isinstance(extra, dict) or not isinstance(extra.get("box"), list)
+                   or not re.fullmatch(r"[0-9a-f]{64}", str(extra.get("sha256")))
+                   for rule in alternatives for extra in rule.get("and", ())):
+                raise RouteError(f"screen guard for {state} needs a box and a sha256 in each `and`")
 
     def __contains__(self, state: str) -> bool:
         return state in self.rules
@@ -169,7 +175,8 @@ class PixelGuards:
         value = self.rules.get(state)
         if value is None:
             return False
-        return any(_box_digest(image_path, rule["box"], state) == rule["sha256"]
+        return any(all(_box_digest(image_path, part["box"], state) == part["sha256"]
+                       for part in (rule, *rule.get("and", ())))
                    for rule in rules_of(value))
 
 

@@ -173,6 +173,17 @@
       "also": [
         "camp_sheet_items"
       ],
+      "and": [
+        {
+          "box": [
+            60,
+            418,
+            128,
+            432
+          ],
+          "sha256": "6aef020906533f7dbb54f13a4f9934cc6631e0683e5faa5ce9e32511780661d8"
+        }
+      ],
       "box": [
         70,
         146,
@@ -522,6 +533,9 @@
     ],
     "amiga-grab-crops/wish303-a1__33-combat_bar.png": [
       "combat_bar"
+    ],
+    "amiga-grab-crops/wish303-l2__06-sheet_drawn.png": [
+      "sheet"
     ]
   }
 }

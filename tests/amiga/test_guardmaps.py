@@ -67,7 +67,7 @@ def test_export_loads_as_pixel_guards(tmp_path, title):
     for kind in ('guards', 'identity'):
         exported = json.loads((out / f'{kind}.json').read_text())
         assert exported
-        assert all(set(rule) == {'box', 'sha256'}
+        assert all(set(rule) - {'and'} == {'box', 'sha256'}
                    for value in exported.values() for rule in rules_of(value))
         assert PixelGuards(out / f'{kind}.json').rules == exported
     assert guardmaps.main(['export', '--title', title, '--out', str(out)]) == 2
