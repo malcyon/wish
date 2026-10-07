@@ -1095,3 +1095,36 @@ def test_the_darkness_loaded_menu_identity_matches_the_vault_party_and_not_the_o
     for path in others:
         assert path.relative_to(root).as_posix() in matching(path)
         assert 'WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png' not in matching(path)
+
+
+def _reload_run(root, name, *, shown=True, completed=True):
+    run = root / '2' / name
+    run.mkdir(parents=True, exist_ok=True)
+    place = {'area': 5, 'facing': 1, 'x': 5, 'y': 10}
+    (run / 'prepare.json').write_text(json.dumps({'title': 'darkness-reload', 'state_a': place}))
+    shots = run / 'reload' / 'shots'
+    for stem in ('10-world', '11-place'):
+        _crop(shots / f'{stem}.png')
+    # The summary records the crop at the path the run wrote, which need not be this machine's.
+    (run / 'reload' / 'summary.json').write_text(json.dumps({
+        'success': True, 'measure': False, 'completed': completed, 'argv': ['reload'],
+        'reload': {'shown': shown, 'place': place, 'crop': '/elsewhere/shots/11-place.png'}}))
+    return shots
+
+
+def test_a_reload_runs_world_and_place_crops_are_named_for_the_square_it_proved(tmp_path):
+    """A completed reload run's place crop, and a world crop with the same pixels, show the loaded square."""
+    root = tmp_path / 'root'
+    shots = _reload_run(root, 'proved')
+    image = Image.open(shots / '10-world.png')
+    image.putpixel((0, 0), (1, 1, 1))
+    image.save(shots / '12-world.png')
+    _reload_run(root, 'unshown', shown=False)
+    _reload_run(root, 'unfinished', completed=False)
+    states = {crop.relative: crop.states for crop in guardmaps.scan_crops(root)}
+    assert states['2/proved/reload/shots/10-world.png'] == ('world', 'place_x5_y10_f1')
+    assert states['2/proved/reload/shots/11-place.png'] == ('place', 'place_x5_y10_f1')
+    assert states['2/proved/reload/shots/12-world.png'] == ('world',)
+    for name in ('unshown', 'unfinished'):
+        assert states[f'2/{name}/reload/shots/10-world.png'] == ('world',)
+        assert states[f'2/{name}/reload/shots/11-place.png'] == ('place',)

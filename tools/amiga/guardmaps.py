@@ -72,7 +72,29 @@ def _states(path: pathlib.Path) -> tuple[str, ...]:
             return ()
     if state in ('post_write', 'post-write'):
         state = 'loaded_menu'
-    return (state,)
+    square = _reload_square(path, summary) if state in ('world', 'place') else None
+    return (state, square) if square else (state,)
+
+
+def _reload_square(path: pathlib.Path, summary: dict) -> str | None:
+    """The square guard a reload run proved its place crop shows, for that crop and a byte-identical world crop."""
+    reload = summary.get('reload')
+    if not summary.get('completed') or not isinstance(reload, dict) or reload.get('shown') is not True:
+        return None
+    place, crop = reload.get('place'), reload.get('crop')
+    if not isinstance(place, dict) or not isinstance(crop, str):
+        return None
+    shown = path.parent / pathlib.PurePath(crop).name
+    try:
+        manifest = json.loads((path.parent.parent.parent / 'prepare.json').read_text())
+        if path.name != shown.name and path.read_bytes() != shown.read_bytes():
+            return None
+        from tools.amiga.acceptance import place_state  # noqa: PLC0415
+
+        wilderness = manifest.get('wilderness_a') if isinstance(manifest, dict) else None
+        return place_state(place, wilderness)
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        return None
 
 
 def scan_crops(root: pathlib.Path) -> list[Crop]:
