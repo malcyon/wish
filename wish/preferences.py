@@ -211,7 +211,7 @@ def _dos_installed_titles(where: pathlib.Path,
     """The title whose DOS install `where` is, whichever title the window is
     on: `game`, the Commodore 64 titles and the Amiga-only titles are tried."""
     wanted = [game] if game is not None else []
-    wanted += [t for t in c64_port.GAMES + tuple(maps.AMIGA_ONLY_TITLES)
+    wanted += [t for t in c64_port.GAMES + tuple(backends.amiga_only_titles())
                if t not in wanted]
     return [t for t in wanted if _is_dos_install(where, t)]
 

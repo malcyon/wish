@@ -770,7 +770,7 @@ def test_another_titles_dos_install_does_not_name_the_title(tmp_path,
 
 @pytest.mark.parametrize("game", [None, POOL])
 def test_the_titles_line_names_a_dos_install_on_any_title(tmp_path, monkeypatch,
-                                                          game):
+                                                          amiga_on, game):
     nowhere(tmp_path, monkeypatch)
     folder = dos_install(tmp_path / "dos")
     rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
@@ -857,9 +857,32 @@ def test_a_c64_disk_folder_keeps_its_disk_count(tmp_path, monkeypatch):
 
 
 def test_a_pools_of_darkness_dos_install_is_still_named_alone(tmp_path,
-                                                              monkeypatch):
+                                                              monkeypatch,
+                                                              amiga_on):
     nowhere(tmp_path, monkeypatch)
     folder = dos_install(tmp_path / "dos")
     rows = dict(preferences.report(Settings(), flag=str(folder), game=CURSE))
     assert rows["Titles"] == POD.title
     assert title_folder_report(str(folder), POD) == preferences.DOS_INSTALL_NOTE
+
+
+@pytest.mark.parametrize("game", [None, POOL])
+def test_with_both_flags_off_a_pools_dos_install_is_not_named(tmp_path,
+                                                              monkeypatch,
+                                                              game):
+    nowhere(tmp_path, monkeypatch)
+    folder = dos_install(tmp_path / "dos")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
+    assert POD.title not in rows["Titles"]
+
+
+@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV,
+                                 POD_CONVERT_ENV])
+@pytest.mark.parametrize("game", [None, POOL])
+def test_with_either_flag_on_a_pools_dos_install_is_named(tmp_path, monkeypatch,
+                                                          env, game):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(env, "1")
+    folder = dos_install(tmp_path / "dos")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
+    assert rows["Titles"] == POD.title
