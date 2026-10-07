@@ -72,7 +72,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game rejecting the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
-| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` it rests in the camp the scribe left open, since every camp exit cancels the scribe queue, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
+| `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` or a `memorize` it rests in the camp that step left open, since every camp exit cancels the scribe queue and the memorize choice, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (an `I` or `M` that leaves the square unchanged with a `PRESS` bar or a blank row 24 fails the walk as an encounter or a square's text, not as `blocked`; Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]` |
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
@@ -80,6 +80,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster, animated target and its eligible id-32 row at index 63 before input; captures the target prompt, all party and effect-row bytes before and after, and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
+| `memorize WHO>SPELL[,SPELL...]` | Pool only: camp `MAGIC > MEMORIZE` for WHO (a name), the book `<NAME>'S BOOK OF SPELLS` turned with `NEXT`/`PREV` to each SPELL's page, its `MEMORIZE`, SPELL's row highlighted and picked (Return, then a KERNAL Return when nothing moved), the pick prompt's `EXIT` row, the book's `EXIT`, the `CHOSEN SPELLS` page kept and checked, `OKAY` at the confirmation, and back to the camp bar, where the party stays so a `rest` next learns them, since leaving camp drops the choice. Every action is a key and nothing is written. WHO's memorised list is read from the live record before, after each pick and at the end: each pick must add one entry, the spell's id (any id the title's spell table draws SPELL for) with bit 7 set; `<NAME> CAN'T MEMORIZE` (no slot of that level left), a pick that adds nothing, a spell in no page of the book, a choice already pending, or an end list other than the start list plus those entries fails the step. The `rest` after it adds `memorised` (the list, `learned`, `still_pending`) and fails when it ran its full time in that camp and an entry is still pending |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
 | `ready WHO>LABEL`, `ready WHO>#N` | Pool and Curse (Curse reads its own record, item and roster blocks, `roster_diff` added, and no effect array): `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee`; under `--fast-flee` the party's movement is raised from the first turn |
@@ -182,6 +183,7 @@ player's disks are only read.
 from __future__ import annotations
 
 import argparse
+import collections
 import contextlib
 import dataclasses
 import hashlib
@@ -210,6 +212,7 @@ from goldbox import (  # noqa: E402
     c64_save,
     effects,
     savegame,
+    spell_names,
     traits,
     world_state,
 )
@@ -422,6 +425,32 @@ SCRIBE_REDRAW_SECONDS = 15.0
 #: How long the list must stand unchanged after a pick when no message was
 #: seen, so that a message drawn just after the count rose is not missed.
 SCRIBE_QUIET_SECONDS = 2.0
+
+#: `MAGIC > MEMORIZE`'s screens, read in Pool of Radiance (`CAMP $184A`):
+#: the spellbook, headed `<NAME>'S BOOK OF SPELLS` over `MEMORIZE NEXT EXIT`
+#: and paged with `NEXT` and `PREV`; its `MEMORIZE` puts up the pick prompt
+#: with an `EXIT` row under the page shown.  A pick draws `<NAME> WILL
+#: MEMORIZE` or `<NAME> CAN'T MEMORIZE` with the spell and `SPELLS LEFT TO
+#: MEMORIZE:` over the page's foot, then the pick prompt again, or the
+#: book's bar once no slot is left (`CAN'T MEMORIZE ANY MORE SPELLS`).  The
+#: book's `EXIT` shows `<NAME>'S CHOSEN SPELLS` over `EXIT`, then the
+#: confirmation `SCRIBE` also uses; with a choice already pending, MEMORIZE
+#: opens on the chosen spells instead of the book.
+BOOK_OF_SPELLS = "'S BOOK OF SPELLS"
+PICK_MEMORIZE = "PICK A SPELL TO MEMORIZE"
+WILL_MEMORIZE = "WILL MEMORIZE"
+CANT_MEMORIZE = "CAN'T MEMORIZE"
+#: A memorised-list entry chosen and not yet rested for carries this bit
+#: (`CAMP $18C9 ORA #$80`); a completed rest clears it, and leaving camp or
+#: an interrupted rest drops the entry.
+MEMORISE_PENDING = 0x80
+#: How many book pages `memorize` turns looking for a spell before failing.
+MEMORIZE_PAGES = 8
+#: How long a pick is given to add its entry, or to draw a rejection.
+MEMORIZE_PICK_SECONDS = 6.0
+#: How long the screen after a pick is given to settle on the pick prompt
+#: or the book's bar.
+MEMORIZE_REDRAW_SECONDS = 15.0
 
 #: The paladin's cure timer that a `cure` starts, as the effect id of its row.
 CURE_TIMER_ID = 141
@@ -716,7 +745,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "scribe": "must", "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
          "fight-flee": "may", "snapshot": "must", "restore": "must",
-         "fight-cast": "must"}
+         "fight-cast": "must", "memorize": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -1061,6 +1090,30 @@ def parse_scribe(arg: str) -> tuple[str, str]:
     return m.group(1).strip(), m.group(2).strip().upper()
 
 
+def parse_memorize(arg: str) -> tuple[str, list[str]]:
+    """`WHO>SPELL[,SPELL...]`: the member's name, and each spell as the book
+    draws it, in the order they are picked."""
+    m = re.fullmatch(r"([^:>,]+)>([^:>]+)", arg.strip())
+    spells = ([s.strip().upper() for s in m.group(2).split(",")]
+              if m is not None else [])
+    if m is None or not m.group(1).strip() or not all(spells):
+        raise ValueError(f"memorize {arg!r}: say memorize WHO>SPELL[,SPELL...]")
+    who = m.group(1).strip()
+    if who.isdigit():
+        raise ValueError(f"memorize {arg!r}: name the member, since his "
+                         "memorised list is read by name")
+    return who, spells
+
+
+def book_owner(rows: list[str], title: str = BOOK_OF_SPELLS) -> str:
+    """Whose list it is, from a title `<NAME>'S BOOK OF SPELLS` (or TITLE)."""
+    for row in rows[1:3]:
+        text = row[1:39].strip()
+        if text.endswith(title):
+            return text[:-len(title)].upper()
+    return ""
+
+
 def scribe_list(rows: list[str]) -> list[dict]:
     """The scroll list's spells, each under the level heading above it; the
     `EXIT` row the pick prompt adds is left out."""
@@ -1142,6 +1195,8 @@ def parse_steps(texts) -> list[Step]:
             parse_ready(arg)
         elif verb == "scribe":
             parse_scribe(arg)
+        elif verb == "memorize":
+            parse_memorize(arg)
         elif verb == "temple-probe" and arg not in TEMPLE_PROBE_ARGS:
             raise ValueError("temple-probe requires one of: "
                              + ", ".join(TEMPLE_PROBE_ARGS))
@@ -2325,6 +2380,7 @@ class PoolRun:
     #: What a step sets that a later step or a `validate_*` call reads, and
     #: so what a resumed run must put back (`resume_state`): the party-menu
     #: flag and directory, the `remove` count, the scribe flag and square,
+    #: the spells a `memorize` left pending,
     #: `mercy_before`, `lost_reading`, `returns_sent`, `flee_escaped`, the
     #: capture counter `shots` (so a later screen never reuses a name) and
     #: `gate_reports`.  `walk_verb`, `walk_side_prompts`, `walk_side_open` and
@@ -2333,7 +2389,7 @@ class PoolRun:
     #: run with step snapshots does not take (`resume_blocker`), so none of
     #: them is saved.
     RESUME_ATTRS = ("at_menu", "directory", "removes", "scribing", "scribe_square",
-                    "mercy_before", "lost_reading", "returns_sent", "flee_escaped",
+                    "memorize_pending", "mercy_before", "lost_reading", "returns_sent", "flee_escaped",
                     "shots")
 
     def resume_state(self) -> dict:
@@ -4172,6 +4228,276 @@ class PoolRun:
                 "queue_after": [after["at"], after["count"]],
                 "queue_entries": after["entries"]}
 
+    #: From a `memorize` until the next step that is not a `rest`: the member,
+    #: his party slot and the memorised-list entries the step left pending
+    #: (`MEMORISE_PENDING` set), which that `rest` checks were learned.
+    memorize_pending: dict | None = None
+    #: Spell name to every id the title's table draws it for, read once.
+    _spell_ids: dict | None = None
+
+    def spell_ids(self) -> dict[str, set[int]]:
+        """Each spell name the title's own table draws, with every id drawn
+        that way (Pool draws ANIMATE DEAD for cleric 36 and magic-user 90),
+        read off the slot's copies of the game disks."""
+        if self._spell_ids is None:
+            names = spell_names.load_c64_spell_names(pathlib.Path(self.sess.here),
+                                                     self.game)
+            ids: dict[str, set[int]] = {}
+            for number, name in names.items():
+                ids.setdefault(name.strip().upper(), set()).add(number)
+            self._spell_ids = ids
+        return self._spell_ids
+
+    def memorised_entries(self, slot: int) -> list[int]:
+        """Party SLOT's memorised list as the live record holds it, every
+        entry not zero, `MEMORISE_PENDING` kept: the record page a pick writes
+        back to (`CAMP $18F4`), not the resident record, which a rejected
+        pick also writes."""
+        with self.sess.mon(10) as m:
+            record = bytes(route_pool.live_record(m, slot))
+            m.resume()
+        rec = CharacterRecord(record.ljust(RECORD_SIZE, b"\0"),
+                              stored_size=len(record))
+        return [n for n in c64_codec.get_memorised(rec, self.game) if n]
+
+    @staticmethod
+    def _book_bar(rows: list[str]) -> bool:
+        """The spellbook with its own bar up: `MEMORIZE`, `EXIT` and no pick
+        prompt; the MAGIC bar also holds both words, and `SCRIBE` too."""
+        words = rows[24].split()
+        return (_has(rows[1:3], BOOK_OF_SPELLS) and "MEMORIZE" in words
+                and "EXIT" in words and "SCRIBE" not in words
+                and PICK_MEMORIZE not in rows[24])
+
+    @staticmethod
+    def _memorize_message(rows: list[str]) -> list[str]:
+        """The message a pick draws over the page's foot, rows 17 to 22, or
+        nothing when those rows hold none of its words."""
+        shown = [t for t in (_inner(r) for r in rows[17:23])
+                 if t and not _is_frame(t)]
+        if any(w in t for t in shown
+               for w in (WILL_MEMORIZE, CANT_MEMORIZE, "SPELLS LEFT")):
+            return shown
+        return []
+
+    def _memorize_settled(self, rows: list[str]) -> bool:
+        """The pick prompt with its `EXIT` row and no message, or the book's
+        bar: where a pick's message ends."""
+        if self._memorize_message(rows):
+            return False
+        return self._book_bar(rows) or (
+            PICK_MEMORIZE in rows[24] and scribe_row(rows, "EXIT") is not None)
+
+    def _memorize_settle(self, seconds: float) -> list[str]:
+        """Wait until two reads in a row are the same settled screen."""
+        limit = self.clock() + self.budget(seconds, "the pick's message")
+        last = None
+        while True:
+            rows = self.rows()
+            if rows and self._memorize_settled(rows):
+                if rows == last:
+                    return rows
+                last = rows
+            else:
+                last = None
+            if self.clock() >= limit:
+                self.capture("memorize-message", rows or None)
+                raise self.fail("memorize-message", "the pick prompt or the book "
+                                f"did not come back within {seconds:g} s")
+            time.sleep(0.3)
+
+    def _memorize_page(self, spell: str) -> int:
+        """Turn the book with `NEXT`, then `PREV`, until SPELL is on the page
+        shown; returns how many pages were turned."""
+        direction, turned = "NEXT", 0
+        for _ in range(2 * MEMORIZE_PAGES):
+            rows = self.rows()
+            if spell in [s["spell"] for s in scribe_list(rows)]:
+                return turned
+            words = rows[24].split()
+            if direction not in words:
+                if direction == "PREV" or "PREV" not in words:
+                    self.capture("memorize-not-in-book", rows)
+                    raise self.fail("memorize-book", f"{spell} is on no page of "
+                                    "the book")
+                direction = "PREV"
+            if not self.choose_bar(direction, timeout=15) or self.wait_rows(
+                    lambda r, was=rows: r != was and self._book_bar(r), 20,
+                    "the next page") is None:
+                raise self.fail("memorize-page", f"{direction} did not turn the book")
+            turned += 1
+        raise self.fail("memorize-book", f"{spell} was not found in "
+                        f"{2 * MEMORIZE_PAGES} page turns")
+
+    def _memorize_pick(self, spell: str, slot: int, ids: set[int]) -> dict:
+        """Pick the highlighted SPELL and judge it by the record: one new
+        entry, an id the name is drawn for with `MEMORISE_PENDING`.  A
+        `<NAME> CAN'T MEMORIZE` message fails the step; so does a screen that
+        moved on with no entry added.  A Return that changed nothing is
+        followed by a KERNAL Return."""
+        before = self.memorised_entries(slot)
+        for key in ("xtest-return", "kernal-return"):
+            was = self.rows()
+            self._send_pick(key)
+            limit = self.clock() + self.budget(MEMORIZE_PICK_SECONDS, "the pick")
+            moved, messages = False, []
+            while self.clock() < limit:
+                rows = self.rows()
+                shown = self._memorize_message(rows) if rows else []
+                for text in shown:
+                    if text not in messages:
+                        messages.append(text)
+                if any(t.endswith(CANT_MEMORIZE) for t in shown):
+                    self.capture("memorize-rejected", rows)
+                    raise self.fail("memorize-rejected", "the game rejected: "
+                                    + " ".join(shown))
+                moved = moved or bool(shown) or (bool(rows) and rows != was)
+                now = self.memorised_entries(slot)
+                added = list((collections.Counter(now)
+                              - collections.Counter(before)).elements())
+                if added:
+                    if (len(added) != 1 or not added[0] & MEMORISE_PENDING
+                            or added[0] & ~MEMORISE_PENDING & 0xFF not in ids):
+                        raise self.fail("memorize-entry", f"picking {spell} "
+                                        f"added {added}, not one pending entry "
+                                        f"for id {sorted(ids)}")
+                    settled = self._memorize_settle(MEMORIZE_REDRAW_SECONDS)
+                    return {"spell": spell, "entry": added[0],
+                            "id": added[0] & ~MEMORISE_PENDING & 0xFF, "key": key,
+                            "messages": messages,
+                            "after": "pick" if PICK_MEMORIZE in settled[24]
+                            else "book"}
+                time.sleep(0.3)
+            if moved:
+                self.capture("memorize-no-entry")
+                raise self.fail("memorize-rejected", f"picking {spell} added no "
+                                "entry to the memorised list"
+                                + (f"; the game drew: {' '.join(messages)}"
+                                   if messages else ""))
+        raise self.fail("memorize-pick", f"neither Return picked {spell}")
+
+    def _memorize_leave_pick(self) -> None:
+        """The pick prompt's `EXIT` row, back to the book's bar."""
+        self._scribe_walk("EXIT")
+        for key in ("xtest-return", "kernal-return"):
+            self._send_pick(key)
+            if self.wait_rows(self._book_bar, 8, "the book's bar") is not None:
+                return
+        raise self.fail("memorize-exit-row", "the pick prompt's EXIT row did nothing")
+
+    def _memorize_one(self, spell: str, slot: int, ids: set[int]) -> dict:
+        """One spell from the book's bar or from the pick prompt a pick
+        before it left up: to its page, the pick prompt, its row, the pick."""
+        rows = self.rows()
+        turned = 0
+        if PICK_MEMORIZE in rows[24] and scribe_row(rows, spell) is None:
+            self._memorize_leave_pick()
+            rows = self.rows()
+        if PICK_MEMORIZE not in rows[24]:
+            turned = self._memorize_page(spell)
+            if not self.choose_bar("MEMORIZE", timeout=20) or self.wait_rows(
+                    lambda r: PICK_MEMORIZE in r[24]
+                    and scribe_row(r, "EXIT") is not None, 15) is None:
+                raise self.fail("memorize-prompt", f"{PICK_MEMORIZE} never came up")
+        # A key sent before the game polls its input routine is thrown away.
+        self.sess.settle(1)
+        self.capture(f"memorize-pick-{spell}")
+        self._scribe_walk(spell)
+        return {**self._memorize_pick(spell, slot, ids), "pages_turned": turned}
+
+    def memorize(self, arg: str) -> dict:
+        """`memorize WHO>SPELL[,SPELL...]`: Pool camp `MAGIC > MEMORIZE` for
+        WHO, each SPELL found in the book (turning pages), highlighted and
+        picked, the chosen spells kept, `OKAY` at the confirmation, and back to
+        the camp bar, where the party stays so a `rest` next can learn them.
+
+        Every action is a key; nothing is written.  WHO's memorised list is
+        read from the live record before, after each pick and at the end:
+        each pick must add one entry, the spell's id with `MEMORISE_PENDING`;
+        a rejection (`<NAME> CAN'T MEMORIZE`, no slot of that level), a spell
+        not in the book, a choice already pending, or an end list that is not
+        the start list plus those entries fails the step."""
+        who, spells = parse_memorize(arg)
+        if self.game.key != "pool-of-radiance":
+            raise self.fail("memorize", "memorize is measured on Pool of Radiance only")
+        known = self.spell_ids()
+        unknown = [s for s in spells if s not in known]
+        if unknown:
+            raise self.fail("memorize-spell", f"{', '.join(unknown)}: no spell "
+                            "of this title is drawn so")
+        before = self.reading()
+        members = [p for p in before.get("party", [])
+                   if p.get("name", "").upper() == who.upper()]
+        if len(members) != 1:
+            raise self.fail("memorize-member", f"{who} is not one named party member")
+        slot, held = members[0]["slot"], list(members[0]["memorised"])
+        if any(n & MEMORISE_PENDING for n in held):
+            raise self.fail("memorize-pending", f"{who} already has a choice "
+                            "pending, and MEMORIZE would open on it")
+        self.scribe_square = self.position()
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        index = self.panel_index(who)
+        if not self.sess.select_party(index):
+            raise self.fail("panel", f"the panel highlight would not go onto {who}")
+        self._scribe_selected(who, index)
+        if not self.choose_bar("MAGIC", timeout=20) or self.wait_rows(
+                lambda r: MAGIC_BAR in r[24], 30) is None:
+            raise self.fail("magic", "MAGIC never put up its bar")
+        self._scribe_selected(who, index)
+        if not self.choose_bar("MEMORIZE", timeout=20):
+            raise self.fail("memorize", "MEMORIZE could not be chosen")
+        rows = self.wait_rows(lambda r: self._book_bar(r)
+                              or _has(r[1:3], CHOSEN_SPELLS), 60, "the spellbook")
+        if rows is None:
+            raise self.fail("memorize-book", "the spellbook never came up")
+        if _has(rows[1:3], CHOSEN_SPELLS):
+            self.capture("memorize-chosen-first", rows)
+            raise self.fail("memorize-pending", "MEMORIZE opened on a choice "
+                            "already pending")
+        owner = book_owner(rows)
+        if owner not in {who.upper(), screens.as_drawn(who).upper()}:
+            raise self.fail("memorize-book-member", f"the book is {owner!r}'s, "
+                            f"not {who}'s")
+        self.sess.settle(1)
+        book = [{"spell": s["spell"], "level": s["level"]}
+                for s in scribe_list(self.capture("memorize-book"))]
+        picks = [self._memorize_one(spell, slot, known[spell]) for spell in spells]
+        if PICK_MEMORIZE in self.bar():
+            self._memorize_leave_pick()
+        if not self.choose_bar("EXIT", timeout=15):
+            raise self.fail("memorize-exit", "EXIT could not be chosen on the book")
+        rows = self.wait_rows(lambda r: _has(r[1:3], CHOSEN_SPELLS)
+                              and r[24].split() == ["EXIT"], 20, "the chosen spells")
+        if rows is None:
+            raise self.fail("memorize-chosen", "the chosen spells never came up")
+        self.sess.settle(1)
+        chosen = [s["spell"] for s in scribe_list(self.capture("memorize-chosen"))]
+        if sorted(chosen) != sorted(spells):
+            raise self.fail("memorize-chosen", f"the chosen spells are {chosen}, "
+                            f"not {spells}")
+        if not self.choose_bar("EXIT", timeout=15) or self.wait_rows(
+                lambda r: SCRIBE_CONFIRM in r[24], 20) is None:
+            raise self.fail("memorize-confirm", "the confirmation never came up")
+        self.capture("memorize-confirm")
+        if not self.choose_bar(SCRIBE_OKAY, timeout=15) or self.wait_rows(
+                lambda r: MAGIC_BAR in r[24] and "CAST" in r[24], 20) is None:
+            raise self.fail("memorize-okay", "OKAY never brought back the MAGIC bar")
+        if not self.choose_bar("EXIT", timeout=15) or self.wait_rows(
+                lambda r: CAMP_BAR in r[24], 20) is None:
+            raise self.fail("memorize-camp", "the camp bar never came back")
+        after = self.memorised_entries(slot)
+        entries = [p["entry"] for p in picks]
+        if collections.Counter(after) != collections.Counter(held + entries):
+            raise self.fail("memorize-list", f"{who}'s memorised list is {after}, "
+                            f"not {held} with {entries} added")
+        self.scribing = True
+        self.memorize_pending = {"who": who, "slot": slot, "entries": entries}
+        return {"who": who, "slot": slot, "spells": spells, "panel_row": index + 1,
+                "book_first_page": book, "picks": picks, "chosen": chosen,
+                "memorised_before": held, "memorised_after": after,
+                "pending": entries}
+
     def camp_list(self, who: str) -> dict:
         self.open_display(lambda r: WHOM in r[24], "DISPLAY never asked on whom")
         return self.whom_lists(who)
@@ -4487,9 +4813,11 @@ class PoolRun:
 
     def rest(self, arg: str) -> dict:
         minutes, hours = parse_rest(arg)
-        # A pending scribe survives only a rest taken in the same camp.
+        # A pending scribe or memorize survives only a rest taken in the
+        # same camp.
         in_camp = self.scribing and CAMP_BAR in self.bar()
         self.scribing = False
+        pending, self.memorize_pending = self.memorize_pending, None
         if in_camp:
             square_before = self.scribe_square
         else:
@@ -4560,7 +4888,29 @@ class PoolRun:
                 prompts=prompts, text=text)
         if events:
             result["state_cleared"] = list(WATCH_GO_CLEARS)
+        if pending is not None:
+            result["memorised"] = self._memorize_learned(pending, in_camp,
+                                                         completed)
         return result
+
+    def _memorize_learned(self, pending: dict, in_camp: bool,
+                          completed: bool | None) -> dict:
+        """After a rest that followed a `memorize`: the member's list, and
+        whether every entry it left pending is now learned, its id with
+        `MEMORISE_PENDING` clear.  A rest that ran its full time in the same
+        camp and left one unlearned fails the step."""
+        now = self.memorised_entries(pending["slot"])
+        want = collections.Counter(e & ~MEMORISE_PENDING & 0xFF
+                                   for e in pending["entries"])
+        learned = not (want - collections.Counter(now))
+        got = {"who": pending["who"], "pending_before": pending["entries"],
+               "after": now, "learned": learned,
+               "still_pending": [n for n in now if n & MEMORISE_PENDING]}
+        if in_camp and completed and not learned:
+            raise self.fail("rest-memorize", f"the rest ran its full time and "
+                            f"{pending['who']}'s list is {now}, without "
+                            f"{sorted(want.elements())} learned")
+        return got
 
     def rest_fight(self, rows: list[str]) -> bool:
         """True when an interrupted rest has run into a fight: the encounter
@@ -8823,9 +9173,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             log.emit("step", step=step.text)
             log.say(f"-- {step.text}")
             entered = None
-            # Only a `rest` taken straight after the scribe can finish it.
-            if step.verb not in ("rest", "scribe"):
+            # Only a `rest` taken straight after the scribe or the memorize
+            # can finish it.
+            if step.verb not in ("rest", "scribe", "memorize"):
                 pool.scribing = False
+                pool.memorize_pending = None
             if step.verb not in ("load", "remove") and getattr(pool, "at_menu", False):
                 entered = pool.enter_world()
             if getattr(pool, "fast_flee", False) and \
@@ -8876,6 +9228,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.ready(step.arg)
             elif step.verb == "scribe":
                 got = pool.scribe(step.arg)
+            elif step.verb == "memorize":
+                got = pool.memorize(step.arg)
             elif step.verb == "temple-probe":
                 leaves = (step.arg in TEMPLE_SAVE_ARGS
                           and steps[-1].verb == "save")

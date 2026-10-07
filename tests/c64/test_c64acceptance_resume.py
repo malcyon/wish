@@ -363,7 +363,9 @@ def test_a_state_value_json_would_change_stops_the_snapshot_and_is_named(drive, 
 
 def test_every_saved_attribute_round_trips_exactly():
     values = {"at_menu": False, "directory": [{"name": "A", "size": 3}], "removes": 2,
-              "scribing": True, "scribe_square": [3, 4, 0], "mercy_before": 7,
+              "scribing": True, "scribe_square": [3, 4, 0],
+              "memorize_pending": {"who": "DIRTEN", "slot": 7, "entries": [164]},
+              "mercy_before": 7,
               "lost_reading": {"step": "fight", "after": {"counts": {"a": 1}}},
               "returns_sent": 1, "flee_escaped": None, "shots": 9,
               "first_bar_done": True, "attack_evidence": {"row": [25, 1, 2]},
