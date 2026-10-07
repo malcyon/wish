@@ -2372,6 +2372,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if digest:
                 look_for_messages(crop, name)
                 hit = recognise(state, crop, done)
+                if digest != unchanged_from:
+                    stale = False
                 if hit and digest == unchanged_from:
                     stale = True
                 elif hit:

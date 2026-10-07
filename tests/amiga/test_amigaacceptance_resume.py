@@ -197,6 +197,33 @@ def test_a_normal_run_writes_no_record_and_takes_no_snapshot(
     assert not (tmp_path / "recon1" / "resume").exists()
 
 
+def test_a_late_change_that_never_matches_is_a_missed_guard_with_a_record(
+        tmp_path, clock, readings):  # noqa: F811
+    class Lagging(ResumeAcceptGuest):
+        """The first grab after the fourth key still shows the screen before it."""
+
+        lag = False
+
+        def press(self, holder, key, timeout=None):
+            super().press(holder, key, timeout)
+            self.lag = len(measure._keys(self)) == 4
+
+        def grab(self, state, raw, cropped, timeout=None):
+            if self.lag:
+                self.lag, self.presses = False, self.presses - 1
+                try:
+                    return super().grab(state, raw, cropped, timeout)
+                finally:
+                    self.presses += 1
+            return super().grab(state, raw, cropped, timeout)
+
+    # Only the screen before the fourth key, which that first grab shows, matches the sheet guard.
+    guard = MapGuard(on={"sheet": lambda path: path.read_bytes() == b"frame 3"})
+    _, result = _accept(tmp_path, clock, guest=Lagging(clock), guard=guard)
+    assert result["error"].startswith("GuardMissed: ") and "KeyUnchanged" not in result["error"]
+    assert _record(result)["step"]["n"] == 4
+
+
 def test_a_title_wait_miss_writes_no_record_and_says_why(tmp_path, clock, readings):  # noqa: F811
     guest = ResumeAcceptGuest(clock)
     _, result = _accept(tmp_path, clock, guest=guest,
