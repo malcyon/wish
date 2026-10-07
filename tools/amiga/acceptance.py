@@ -1130,7 +1130,7 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     gold_after = manifest["staged_record"]["fields"]["gold"]["after"]
                     walk = temple_verdict(
                         manifest["state_a"], control, after, manifest["temple"]["member"],
-                        expected_gold=gold_after - POOL_RAISE_PRICE,
+                        staged_gold=gold_after,
                         control=title.control_letter, after=title.after_letter)
                 else:
                     walk = walk_verdict(

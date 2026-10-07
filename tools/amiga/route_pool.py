@@ -336,24 +336,27 @@ def pool_temple_title(manifest: dict) -> AmigaTitle:
     return POOL_TEMPLE
 
 
-#: Gold pieces in one platinum piece: the temple took 5,500 of the payer's staged 6,000 gold and
-#: the game wrote back gold 0 and platinum 100 (measured in the run's slot D and on his sheet).
-PLATINUM_IN_GOLD = 5
-#: The coins the raise left alone in the measured run; a change to any of them is not judged paid.
-_COINS_KEPT = ("copper", "silver", "electrum", "gems", "jewelry")
+#: Each coin's value in copper pieces: platinum 5 gold, gold 20 silver, electrum half a gold.
+#: Two raises fit it: 6,000 gold paid 5,500 and got 100 platinum back, and 6,000 gold with 102
+#: silver got 101 platinum and no silver, where only 17 to 20 silver to the gold makes 505.
+COPPER_PER = {"copper": 1, "silver": 10, "electrum": 100, "gold": 200, "platinum": 1000}
+#: Gems and jewelry, which a payment does not count and left alone in both raises.
+_COINS_KEPT = ("gems", "jewelry")
 
 
-def _gold_value(money: dict[str, int]) -> int:
-    return money["gold"] + PLATINUM_IN_GOLD * money["platinum"]
+def purse_in_gold(money: dict[str, int]) -> int:
+    """A purse's coins in whole gold pieces, rounded down, as the temple counts them."""
+    return sum(money[coin] * per for coin, per in COPPER_PER.items()) // COPPER_PER["gold"]
 
 
 def temple_payment(b: dict[str, Any], d: dict[str, Any], member: str, *,
-                   expected_gold: int) -> tuple[bool, str]:
+                   staged_gold: int) -> tuple[bool, str]:
     """Whether `member` paid `POOL_RAISE_PRICE` between slot readings `b` and `d`, and why not.
 
-    The game takes the price from the payer's own purse and writes the change back in platinum,
-    so paid means: his gold plus `PLATINUM_IN_GOLD` times his platinum fell by exactly the price
-    to `expected_gold`, his other coins did not change, and no other member's purse did.
+    The game counts the payer's own coins in whole gold pieces (`purse_in_gold`), takes the price,
+    and writes the change back as platinum, so the part of a gold piece below the change is
+    lost (two raises measured). Paid means: slot `b` holds `staged_gold` gold, his coins in gold fell by
+    exactly the price, his gems and jewelry did not change, and no other member's purse did.
     """
     def purses(reading: dict[str, Any]) -> dict[str, dict[str, int] | None]:
         return {m.get("name"): m.get("money") for m in reading.get("members", [])}
@@ -362,11 +365,14 @@ def temple_payment(b: dict[str, Any], d: dict[str, Any], member: str, *,
     mine_before, mine_after = before.get(member), after.get(member)
     if mine_before is None or mine_after is None:
         return False, f"{member}'s purse was not read in both slots"
-    value_before, value_after = _gold_value(mine_before), _gold_value(mine_after)
-    if value_before - value_after != POOL_RAISE_PRICE or value_after != expected_gold:
-        return False, (f"{member} held {value_before} gold in value and then {value_after} "
-                       f"(gold {mine_after['gold']}, platinum {mine_after['platinum']}), "
-                       f"expected {expected_gold} after paying {POOL_RAISE_PRICE}")
+    if mine_before["gold"] != staged_gold:
+        return False, f"{member} held {mine_before['gold']} gold before, not the staged {staged_gold}"
+    held_before, held_after = purse_in_gold(mine_before), purse_in_gold(mine_after)
+    coins = ", ".join(f"{coin} {mine_after[coin]}" for coin in COPPER_PER if mine_after[coin])
+    if held_before - held_after != POOL_RAISE_PRICE:
+        return False, (f"{member} held {held_before} gold in coins and then {held_after} "
+                       f"({coins or 'no coins'}), expected {held_before - POOL_RAISE_PRICE} "
+                       f"after paying {POOL_RAISE_PRICE}")
     moved = [coin for coin in _COINS_KEPT if mine_before[coin] != mine_after[coin]]
     if moved:
         return False, f"{member}'s {', '.join(moved)} changed"
@@ -374,16 +380,16 @@ def temple_payment(b: dict[str, Any], d: dict[str, Any], member: str, *,
                     if name != member and before.get(name) != after.get(name))
     if others:
         return False, f"the purse of {', '.join(others)} changed"
-    return True, f"{member} paid {POOL_RAISE_PRICE}"
+    return True, f"{member} paid {POOL_RAISE_PRICE} and holds {coins or 'no coins'}"
 
 
 def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: str, *,
-                   expected_gold: int, control: str = "C", after: str = "D") -> dict[str, Any]:
+                   staged_gold: int, control: str = "C", after: str = "D") -> dict[str, Any]:
     """Judge a temple run's saves: `control` unmoved at `before`; `after` on the temple square with `member` raised.
 
     Raised is what the game writes for a living character: status byte 0, a control byte below
-    `$80` (the player's), no effect node 32, and the temple paid (`temple_payment`): his purse,
-    counted in gold pieces, comes to `expected_gold`. The keys match `walk_verdict`'s, so the run's
+    `$80` (the player's), no effect node 32, and the temple paid (`temple_payment`) out of the
+    `staged_gold` he held in slot `control`. The keys match `walk_verdict`'s, so the run's
     other checks read it the same way.
     """
     verdicts: list[str] = []
@@ -403,7 +409,7 @@ def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: s
         else:
             row = rows[0]
             nodes = [n for n in (d.get("effects") or {}).get(member, []) if n and n[0] == 32]
-            paid, payment = temple_payment(b, d, member, expected_gold=expected_gold)
+            paid, payment = temple_payment(b, d, member, staged_gold=staged_gold)
             raised = {"status": row["status_bytes"][0], "control": row["control"],
                       "node_32": bool(nodes), "gold": row.get("gold"),
                       "platinum": (row.get("money") or {}).get("platinum"), "paid": paid}

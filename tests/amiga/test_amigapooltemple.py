@@ -200,11 +200,13 @@ def test_pool_route_picks_the_temple_the_fight_or_the_walk(monkeypatch):
 
 
 STAGED_GOLD = 6000
-PAID_GOLD = STAGED_GOLD - route_pool.POOL_RAISE_PRICE
 COINS = ("copper", "silver", "electrum", "gold", "platinum", "gems", "jewelry")
-#: The payer's purse before the raise, and after it as the game writes it: the change in platinum.
+#: The payer's purse before and after the raise in the two measured runs (synthetic copies of
+#: the figures, no game bytes): gold only, and gold with 102 silver whose change lost 2 silver.
 STAGED = dict.fromkeys(COINS, 0) | {"gold": STAGED_GOLD}
-PAID = dict.fromkeys(COINS, 0) | {"platinum": PAID_GOLD // route_pool.PLATINUM_IN_GOLD}
+PAID = dict.fromkeys(COINS, 0) | {"platinum": 100}
+STAGED_SILVER = dict(STAGED, silver=102)
+PAID_SILVER = dict(PAID, platinum=101)
 #: A second member whose purse the raise leaves alone.
 OTHER = dict.fromkeys(COINS, 0) | {"silver": 103, "gold": 2, "platinum": 1}
 
@@ -223,41 +225,59 @@ SQUARE = dict(route_pool.POOL_TEMPLE_SQUARE)
 
 
 def _verdict(b, d):
-    return route_pool.temple_verdict(START, b, d, "BRUTUS", expected_gold=PAID_GOLD)
+    return route_pool.temple_verdict(START, b, d, "BRUTUS", staged_gold=STAGED_GOLD)
 
 
-def test_a_raised_member_on_the_temple_square_passes():
-    walk = _verdict(_slot(START, status=6, money=STAGED), _slot(SQUARE))
-    assert walk["b_ok"] and walk["d_ok"]
+@pytest.mark.parametrize(("money", "expected"), [
+    (dict.fromkeys(COINS, 0), 0), (STAGED, 6000), (STAGED_SILVER, 6005), (PAID_SILVER, 505),
+    (dict.fromkeys(COINS, 0) | {"copper": 199, "silver": 19, "electrum": 1}, 2),
+    (dict.fromkeys(COINS, 0) | {"gems": 10, "jewelry": 10}, 0)])
+def test_a_purse_counts_in_whole_gold_pieces_at_the_coin_rates(money, expected):
+    assert route_pool.purse_in_gold(money) == expected
+
+
+@pytest.mark.parametrize(("staged", "paid", "platinum"), [
+    (STAGED, PAID, 100), (STAGED_SILVER, PAID_SILVER, 101)])
+def test_a_raised_member_on_the_temple_square_passes(staged, paid, platinum):
+    walk = _verdict(_slot(START, status=6, money=staged), _slot(SQUARE, money=paid))
+    assert walk["b_ok"] and walk["d_ok"], walk["verdicts"]
     assert walk["area_crossed"] == {"from": 20, "to": 0}
     assert walk["raised"] == {"status": 0, "control": 0, "node_32": False, "gold": 0,
-                              "platinum": 100, "paid": True}
+                              "platinum": platinum, "paid": True}
+    assert walk["verdicts"][-1].endswith(f"BRUTUS paid 5500 and holds platinum {platinum}")
 
 
 def test_change_left_in_gold_is_the_same_payment():
     assert _verdict(_slot(START, money=STAGED),
-                    _slot(SQUARE, money=dict(STAGED, gold=PAID_GOLD)))["d_ok"]
+                    _slot(SQUARE, money=dict(STAGED, gold=500)))["d_ok"]
 
 
 @pytest.mark.parametrize("after", [
     _slot(SQUARE, status=6), _slot(SQUARE, control=0xB3), _slot(SQUARE, nodes=[(32, 0, 5, 1)]),
     _slot(dict(SQUARE, y=4)), {"missing": True},
     # The money moved wrongly: nothing paid, gold left as staged with platinum added, too much
-    # taken, another coin changed, another member paid, or the purse is not read.
-    _slot(SQUARE, money=STAGED), _slot(SQUARE, money=dict(STAGED, platinum=100)),
-    _slot(SQUARE, money=dict(PAID, platinum=99)), _slot(SQUARE, money=dict(PAID, silver=1)),
-    _slot(SQUARE, other=dict(OTHER, platinum=0)),
+    # taken, a gem gone, another member paid, or the purse is not read.
+    _slot(SQUARE, money=STAGED_SILVER), _slot(SQUARE, money=dict(STAGED_SILVER, platinum=101)),
+    _slot(SQUARE, money=PAID), _slot(SQUARE, money=dict(PAID_SILVER, platinum=102)),
+    _slot(SQUARE, money=dict(PAID_SILVER, gems=1)),
+    _slot(SQUARE, money=PAID_SILVER, other=dict(OTHER, platinum=0)),
     {**_slot(SQUARE), "members": [{"name": "BRUTUS", "status_bytes": [0, 1, 0, 0],
                                    "control": 0, "gold": 0}]}])
 def test_a_member_not_raised_elsewhere_or_not_paid_fails(after):
-    assert not _verdict(_slot(START, status=6, money=STAGED), after)["d_ok"]
+    assert not _verdict(_slot(START, status=6, money=STAGED_SILVER), after)["d_ok"]
 
 
-def test_a_purse_whose_value_is_right_but_not_after_the_price_fails():
-    # Slot C already held the paid purse: nothing changed, so nothing was paid.
-    walk = _verdict(_slot(START, money=PAID), _slot(SQUARE))
+def test_a_payment_one_platinum_short_names_the_change_expected():
+    walk = _verdict(_slot(START, money=STAGED_SILVER), _slot(SQUARE, money=PAID))
     assert not walk["d_ok"] and not walk["raised"]["paid"]
-    assert "expected 500 after paying 5500" in walk["verdicts"][-1]
+    assert ("held 6005 gold in coins and then 500 (platinum 100), expected 505 after paying "
+            "5500") in walk["verdicts"][-1]
+
+
+def test_a_control_slot_without_the_staged_gold_fails():
+    walk = _verdict(_slot(START, money=PAID), _slot(SQUARE))
+    assert not walk["d_ok"]
+    assert "held 0 gold before, not the staged 6000" in walk["verdicts"][-1]
 
 
 def test_a_control_save_that_moved_fails():
