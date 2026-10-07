@@ -266,8 +266,18 @@ def test_the_last_row_is_not_deposited(tmp_path):
     game, d = _driver(tmp_path, _vault_file(3), {2: [("DAGGER +4", False)]})
     d.vault()
     game.keys.clear()
-    with pytest.raises(da.StepFailed, match="draws 1 rows"):
+    with pytest.raises(da.StepFailed, match="row 1 is the last of the 1 rows"):
         d.deposit(2, 1)
+    assert "d" not in game.keys
+
+
+def test_the_last_row_of_a_longer_list_is_not_deposited(tmp_path):
+    game, d = _driver(tmp_path, _vault_file(3),
+                      {2: [("DAGGER +4", False), ("SHORT SWORD", False)]})
+    d.vault()
+    game.keys.clear()
+    with pytest.raises(da.StepFailed, match="row 2 is the last of the 2 rows"):
+        d.deposit(2, 2)
     assert "d" not in game.keys
 
 

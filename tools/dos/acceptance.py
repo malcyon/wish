@@ -4328,9 +4328,10 @@ class Driver:
             raise self.fail(f"{label}-ready", f"row {row} ({name}) is "
                             + ("readied, and the game deposits only an item "
                                "that is not" if ready else "not read as YES or NO"))
-        if rows_before is None or rows_before < 2:
-            raise self.fail(f"{label}-rows", f"the list draws {rows_before} rows; "
-                            "what DEPOSIT does with the last item is not measured")
+        if rows_before is None or row >= rows_before:
+            raise self.fail(f"{label}-rows", f"row {row} is the last of the "
+                            f"{rows_before} rows the list draws; what DEPOSIT "
+                            "does with the last item is not measured")
         self.s.key(VAULT_DEPOSIT)
         self.s.wait_for(lambda sc: item_rows(sc) != rows_before,
                         self.bounded(10.0, f"{label}-deposit"))
