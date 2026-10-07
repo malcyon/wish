@@ -12743,3 +12743,39 @@ def test_at_map_takes_the_dungeon_bar_as_the_world_bar(tmp_path):
     assert d.where == "map" and got["map_kind"] == "dungeon"
     assert d.world_sig == da.POD_MAP_BARS["dungeon"] == got["map_bar"]
     assert [n["map"] for n in d.logged if n.get("event") == "map_bar"] == ["dungeon"]
+
+
+def test_continue_presses_return_on_the_continue_bar_only(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode, game.continues = "cont", 1
+    d.where = "pressed"
+    got = d.continue_bar()
+    assert game.into_cont == ["Return"] and game.mode == "map"
+    assert got["answered"] == "Return" and d.where == "pressed"
+
+
+def test_continue_on_another_bar_fails_and_presses_nothing(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False)
+    game.mode = "map"
+    d.where = "pressed"
+    with pytest.raises(da.StepFailed, match="lost-continue"):
+        d.continue_bar()
+    assert game.keys == [] and game.mode == "map"
+
+
+def test_continue_fails_when_the_bar_does_not_go(tmp_path, pod_continue):
+    game, d = _pod_driver(tmp_path, question=False, dead_return=True)
+    game.mode, game.continues = "cont", 1
+    d.where = "pressed"
+    with pytest.raises(da.StepFailed, match="still showing"):
+        d.continue_bar()
+
+
+def test_continue_is_allowed_after_a_press_in_darkness_only():
+    da.validate_steps(_steps("load", "begin", "press Down", "continue", "map"), "darkness")
+    da.validate_steps(_steps("load", "begin", "press Down", "continue", "continue"),
+                      "darkness")
+    with pytest.raises(ValueError, match="in darkness"):
+        da.validate_steps(_steps("load", "press Down", "continue"), "pool")
+    with pytest.raises(ValueError, match="follows a press"):
+        da.validate_steps(_steps("load", "begin", "continue"), "darkness")
