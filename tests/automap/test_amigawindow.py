@@ -188,7 +188,7 @@ def test_each_failing_condition_greys_the_button_with_its_reason(measured):
     target.fail_at.add(BASE + amigaparty.ROWS[POOL].mode)
     window._refresh_roster()
     assert enabled(window) == set()
-    assert states(window)["heal"] == (False, "the machine is not readable right now")
+    assert states(window)["heal"] == (False, "The machine is not readable right now")
 
     # An action the title's row does not confirm.
     window, _ = attached(POOL)
