@@ -1018,6 +1018,23 @@ def test_a_question_with_no_answer_left_fails_clearly():
         drv.trip(18, "t")
 
 
+def test_the_bar_just_answered_may_linger_for_two_looks_but_not_three():
+    for lingering, fails in ((2, False), (3, True)):
+        shown = ["YES NO"] * lingering + ["ENCAMP"]
+        drv, sess, _, _, _, _ = build(answer=["YES", "NO"])
+        sess.screen = lambda shown=shown: Screen(shown.pop(0))
+        drv.answers_used = 2
+
+        def look_all(drv=drv, count=len(shown)):
+            for _ in range(count):
+                drv.service(["YES", "NO"], 0)
+        if fails:
+            with pytest.raises(ftr.DriverError, match="all 2 --answer words are used"):
+                look_all()
+        else:
+            look_all()
+
+
 def test_then_save_saves_after_the_gates_are_back_and_keeps_the_disk(monkeypatch):
     from tools.c64 import session as S
     copied = []

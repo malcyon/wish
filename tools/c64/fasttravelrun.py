@@ -418,13 +418,13 @@ class Driver:
                     self._unanswered = ("", 0)
                     return "answer", row
             if self.question_bar(words):
-                if self.answers_used >= len(answer):
-                    raise DriverError(
-                        f"the game asks a question ({row}) and all {len(answer)} --answer words are used")
                 # The bar just answered can still be up for a look or two; only a bar that stays is unanswerable.
                 looks = self._unanswered[1] + 1 if self._unanswered[0] == row else 1
                 self._unanswered = (row, looks)
                 if looks >= UNANSWERED_LOOKS:
+                    if self.answers_used >= len(answer):
+                        raise DriverError(
+                            f"the game asks a question ({row}) and all {len(answer)} --answer words are used")
                     self.log("question-unanswerable", words=words, wanted=answer[self.answers_used])
                     raise DriverError(
                         f"the game asks a question ({row}) and the next --answer word "
