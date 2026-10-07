@@ -2557,12 +2557,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         A state that is not `strict` and never matches falls back to a settled capture.
         A match whose digest is `unchanged_from` is not accepted: the guard may match the screen
         before the key as well, so polling goes on, and the limit raises `KeyUnchanged`.
+        A match whose identity rule fails is also polled on, because a list's first frame can
+        be drawn before its rows; the limit raises that identity error if no frame passes.
         """
         wait(first_wait)
         started = time.monotonic()
         done: dict[str, int] = {}
         crop = shots / f"{name}.png"
         stale = False
+        wrong_party: RouteError | None = None
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
@@ -2573,17 +2576,23 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 if hit and digest == unchanged_from:
                     stale = True
                 elif hit:
-                    check_identity(hit, crop)
-                    observe(hit, name, crop)
-                    landed["state"] = hit
-                    result["events"][-1]["recognized"] = hit
-                    log("recognized", state=hit, name=name)
-                    return digest
+                    try:
+                        check_identity(hit, crop)
+                    except RouteError as exc:
+                        wrong_party = exc
+                    else:
+                        observe(hit, name, crop)
+                        landed["state"] = hit
+                        result["events"][-1]["recognized"] = hit
+                        log("recognized", state=hit, name=name)
+                        return digest
                 if interstitial(state, crop, done):
                     # The limit measures waiting for the screen, not the time spent acting on
                     # a screen; each interstitial row's count and the route deadline bound it.
                     started = time.monotonic()
             if time.monotonic() - started >= limit:
+                if wrong_party is not None:
+                    raise wrong_party
                 if stale:
                     raise KeyUnchanged(f"{state} matched only unchanged within {limit:.0f}s;"
                                        f" kept {crop}")

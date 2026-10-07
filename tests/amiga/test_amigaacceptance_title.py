@@ -1077,6 +1077,36 @@ def test_a_world_screen_showing_another_party_stops_the_run_with_a_readable_erro
     assert result["lost"] is None  # a rejection, not a run that was lost to a KeyError
 
 
+class _LateIdentity(_WorldIdentity):
+    """`world` fails its identity rule on its first `wrong` looks and passes after."""
+
+    def __init__(self, wrong):
+        super().__init__()
+        self.wrong = wrong
+        self.looks = 0
+
+    def __call__(self, state, path):
+        if state != "world":
+            return True
+        self.looks += 1
+        return self.looks > self.wrong
+
+
+def test_an_identity_that_fails_on_the_first_frame_and_passes_on_a_later_one_continues(
+        tmp_path, clock):
+    identity = _LateIdentity(wrong=1)
+    _, result = _run(tmp_path, clock, identity=identity)
+    assert identity.looks >= 2
+    assert result["error"] == "" and result["success"] is True
+
+
+def test_an_identity_that_never_passes_stops_the_run_at_the_guard_limit(tmp_path, clock):
+    identity = _LateIdentity(wrong=10 ** 6)
+    _, result = _run(tmp_path, clock, identity=identity)
+    assert identity.looks >= 2
+    assert result["error"] == "RouteError: world shows a party other than the prepared party"
+
+
 def test_the_named_identity_messages_are_unchanged(tmp_path, clock):
     assert acceptance.IDENTITY_MESSAGES == {"sheet": "sheet shows another member",
                                        "loaded_menu": "loaded_menu shows another party"}
