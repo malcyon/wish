@@ -60,7 +60,8 @@ def _states(path: pathlib.Path) -> tuple[str, ...]:
     if isinstance(argv, list) and argv and argv[0] == 'diagnose':
         return ()
     state = re.sub(r'^\d+-', '', path.stem)
-    for pattern in (r'([a-z0-9_]+)-again-\d+', r'.+-([a-z][a-z0-9_]*)-\d+',
+    for pattern in (r'([a-z0-9_]+)-again-\d+',
+                    r'([a-z0-9_-]+)-after-\d+', r'.+-([a-z][a-z0-9_]*)-\d+',
                     r'([a-z0-9_]+)-(?:after-restore|resumed)'):
         found = re.fullmatch(pattern, state)
         if found:
