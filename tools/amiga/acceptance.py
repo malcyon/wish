@@ -205,13 +205,15 @@ PUBLISHED_SOURCES_BY_ISSUE = {
     },
     # The game-written DOS Pools of Darkness saves the Save As to the Amiga disk 3 route starts
     # from: slot C after Lay on Hands and a one-hour rest, then the seven-member vault party, the
-    # overland party and the party the DOS game created itself.
+    # overland party, the party the DOS game created itself, and slot E of
+    # wish331-pod-tester-anpc-113-dos with the joined companion PRIAM as its seventh member.
     "2": {
         ("darkness", "dos"): frozenset({
             "ee979bf89164742816841c9ad2dc5a550f35b3a52eec2ad3fae138c9a1653918",
             "416df285086ae434bbad4efcd2943bb419b94b287d2382fe9f5706bbb15ed371",
             "ed4a9f68f9e2f9064d229872bce0a2f87e017c8865123159f9af54a6d8a25bb8",
-            "e913382f73be2ace0c95642d8a7742f5478ade09302f0abfe46f6259db30c11c"}),
+            "e913382f73be2ace0c95642d8a7742f5478ade09302f0abfe46f6259db30c11c",
+            "8740fe5b6f068f6199cca4dee537046437ac2409b5b9ea6e2ae60441fdabb872"}),
     },
     # The DOS Silver Blades save with the Quarter Staff in the joined party's lists, which the
     # leave-behind and joined-scroll Save As route converts to the Amiga.

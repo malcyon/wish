@@ -1681,17 +1681,30 @@
       "example": "WISH-2/wish2-a2-capture/sheets2/shots/43-camp_sheet_6.png",
       "sha256": "9ac29b23bc52978b62a572fee505112aa118accd30d8319bd820766865a2ae43"
     },
-    "camp_sheet_7": {
-      "also": [],
-      "box": [
-        74,
-        46,
-        330,
-        62
-      ],
-      "example": "WISH-2/wish2-a2-capture/sheets2/shots/48-camp_sheet_7.png",
-      "sha256": "ad76cbf44d309d6f978ecb5a1dfadee50b3a522d117773df1a7533b09a0472cd"
-    },
+    "camp_sheet_7": [
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/wish2-a2-capture/sheets2/shots/48-camp_sheet_7.png",
+        "sha256": "ad76cbf44d309d6f978ecb5a1dfadee50b3a522d117773df1a7533b09a0472cd"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/wish2-npc-r11/cap2/shots/16-camp_sheet_7.png",
+        "sha256": "53b47915ed8df00184c321af1bee21fdd6b63ff82482b7078b87adde9a36fa3f"
+      }
+    ],
     "camp_sheet_heal": {
       "also": [
         "camp_sheet",
@@ -1918,6 +1931,17 @@
         ],
         "example": "WISH-2/l4-r6-control/control/shots/05-loaded_menu.png",
         "sha256": "5eb702a18d0deb25ab184ab0e63bf366aaf184bef15c860ceea77bc7e886bfb5"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "WISH-2/wish2-npc-r11/cap1/shots/05-loaded_menu.png",
+        "sha256": "892855a6ee4dc66d296e9d25a3d757c49903aa61a19ac3f80af5218a187bc9a7"
       }
     ],
     "sheet": [
@@ -2016,6 +2040,19 @@
         ],
         "example": "WISH-2/l4g-b1/b1/shots/06-sheet.png",
         "sha256": "dd122a3a955b85f58433fea7064b4ac2ca3beb3d5bd813d891c041dc25a76dc4"
+      },
+      {
+        "also": [
+          "camp_sheet"
+        ],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/wish2-npc-r11/cap1/shots/06-sheet.png",
+        "sha256": "eee7edff2d0fedfe570e7223dba139c4a2f1f1194895129a7faa9c66c59d64fd"
       }
     ]
   },

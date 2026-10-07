@@ -3788,7 +3788,7 @@ def test_the_vault_check_passes_saves_that_hold_the_staged_vault_and_names_one_t
         "vault F differs from the vault staged in slot B"]
 
 
-#: The three game-written DOS saves that the Darkness Save As route starts from besides the
+#: The game-written DOS saves that the Darkness Save As route starts from besides the
 #: Lay on Hands slot, as `(specimen directory, SAVGAMD.PTY SHA-256)`.
 DARKNESS_DOS_SOURCES = (
     ("pod-650-savgamb-walked-vault-dos",
@@ -3797,7 +3797,18 @@ DARKNESS_DOS_SOURCES = (
      "ed4a9f68f9e2f9064d229872bce0a2f87e017c8865123159f9af54a6d8a25bb8"),
     ("pod-stage3a-default-begin-walked-dos",
      "e913382f73be2ace0c95642d8a7742f5478ade09302f0abfe46f6259db30c11c"),
+    ("WISH-SPEC-wish331-pod-tester-anpc-113-dos",
+     "8740fe5b6f068f6199cca4dee537046437ac2409b5b9ea6e2ae60441fdabb872"),
 )
+
+
+def test_the_pinned_companion_source_is_the_specimen_on_disk():
+    name, sha = DARKNESS_DOS_SOURCES[-1]
+    root = gamedata.specimen_root()
+    path = None if root is None else root / "pod-dos" / name / "SAVGAME.PTY"
+    if path is None or not path.is_file():
+        pytest.skip(f"needs the specimen {name}")
+    assert staging.sha256(path) == sha
 
 
 @pytest.mark.parametrize("name,sha", DARKNESS_DOS_SOURCES)
@@ -3840,6 +3851,34 @@ def test_the_darkness_guards_recognise_the_seven_member_loaded_menu_of_the_a2_pa
         rules = [r for r in screens.rules_of(spec[kind]["loaded_menu"]) if r["example"] == example]
         assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == []
         assert screens.box_digests(crop, [tuple(box)], "loaded_menu")[tuple(box)] == rules[0]["sha256"]
+
+
+#: The identity rules taken from the companion party's own run (PRIAM joined as line 7), as
+#: `(state, example, box, also, SHA-256)`.
+COMPANION_IDENTITY = (
+    ("loaded_menu", "WISH-2/wish2-npc-r11/cap1/shots/05-loaded_menu.png", [74, 94, 690, 192], [],
+     "892855a6ee4dc66d296e9d25a3d757c49903aa61a19ac3f80af5218a187bc9a7"),
+    ("sheet", "WISH-2/wish2-npc-r11/cap1/shots/06-sheet.png", [74, 46, 330, 62], ["camp_sheet"],
+     "eee7edff2d0fedfe570e7223dba139c4a2f1f1194895129a7faa9c66c59d64fd"),
+    ("camp_sheet_7", "WISH-2/wish2-npc-r11/cap2/shots/16-camp_sheet_7.png", [74, 46, 330, 62], [],
+     "53b47915ed8df00184c321af1bee21fdd6b63ff82482b7078b87adde9a36fa3f"),
+)
+
+
+@pytest.mark.parametrize("state,example,box,also,digest", COMPANION_IDENTITY)
+def test_the_darkness_identity_map_recognises_the_companion_party(state, example, box, also, digest):
+    from tools.amiga import screens
+
+    spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
+    rules = screens.rules_of(spec["identity"][state])
+    assert len(rules) >= 2, "the companion rule is an alternative beside the earlier parties' rules"
+    mine = [r for r in rules if r["example"] == example]
+    assert len(mine) == 1 and mine[0]["box"] == box and mine[0]["also"] == also
+    assert mine[0]["sha256"] == digest
+    crop = scratch.cache_dir("acceptance") / example
+    if not crop.is_file():
+        pytest.skip(f"needs the WISH-2 companion run shot {example}")
+    assert screens.box_digests(crop, [tuple(box)], state)[tuple(box)] == digest
 
 
 def test_the_darkness_guards_recognise_the_first_member_sheet_of_the_a2_party():
