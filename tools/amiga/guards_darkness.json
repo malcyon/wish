@@ -1049,16 +1049,64 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/title.png",
       "sha256": "3067b860a75e1b749371aeddd2c5ea3eb2f5537f6d63e1c39fbf0f3e5541b425"
     },
-    "vault_bar": {
+    "vault_bar": [
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-6/wish6-a5/a5m1/shots/11-vault_bar.png",
+        "sha256": "e856a4b133a6ad5e927b0434fea593a80637ee17cc9e30ffa7469cd504529bf9"
+      },
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-6/wish6-l1/measure2/shots/11-vault_bar.png",
+        "sha256": "84f0d38ca6dadb80fc638929ef1cc58f3cd7053c1d8d558e0d38ef28ab1d4a19"
+      }
+    ],
+    "vault_items": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        300,
+        62
+      ],
+      "example": "WISH-6/wish6-l1/measure2/shots/13-vault_items.png",
+      "sha256": "33f83b6d6d3593dede22d0d23bac0078ad2e0a380dfe8ae0d2b7e11e8e5aeba6"
+    },
+    "vault_row": {
+      "also": [
+        "vault_items"
+      ],
+      "box": [
+        58,
+        402,
+        340,
+        430
+      ],
+      "example": "WISH-6/wish6-l1/measure2/shots/14-vault_row.png",
+      "sha256": "bece1fe670d74a4cddf3e6d8600a45cdb3d4038fb2436c3c9f72b533be7d47cb"
+    },
+    "vault_take": {
       "also": [],
       "box": [
         58,
         402,
-        698,
+        420,
         430
       ],
-      "example": "WISH-6/wish6-a5/a5m1/shots/11-vault_bar.png",
-      "sha256": "e856a4b133a6ad5e927b0434fea593a80637ee17cc9e30ffa7469cd504529bf9"
+      "example": "WISH-6/wish6-l1/measure2/shots/12-vault_take.png",
+      "sha256": "47446e5fe857ff5e1483a73454da432a012cd1551ed73e6645f41b07431982b0"
     },
     "world": [
       {
@@ -1556,6 +1604,150 @@
     ],
     "WISH-2/wish2-s5/accept2/shots/13-world.png": [
       "place_x3_y2_f1"
+    ],
+    "WISH-6/wish6-a5/a5m1/shots/11-vault_bar.png": [
+      "vault_bar"
+    ],
+    "WISH-6/wish6-a5b/a5bm2/shots/11-vault_bar.png": [
+      "vault_bar"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/10-elminster_menu.png": [
+      "elminster_menu"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/11-vault_bar.png": [
+      "vault_bar"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/12-vault_take.png": [
+      "vault_take"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/13-vault_items.png": [
+      "vault_items"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/14-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/15-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/16-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/17-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/18-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/19-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/20-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/21-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/22-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/23-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/24-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/25-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/26-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/27-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/28-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/29-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/30-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/31-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/32-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/33-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/34-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/35-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/36-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/37-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/38-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/39-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/40-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/41-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/42-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/43-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/44-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/45-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/46-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/47-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/48-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/49-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/50-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/51-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/52-vault_row.png": [
+      "vault_row"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/53-vault_take.png": [
+      "vault_take"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/54-vault_bar.png": [
+      "vault_bar"
+    ],
+    "WISH-6/wish6-l1/measure2/shots/55-elminster_menu.png": [
+      "elminster_menu"
     ],
     "amiga-grab-crops/wish9-b1__01-party_menu.png": [
       "party_menu"

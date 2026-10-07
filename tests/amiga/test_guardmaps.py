@@ -832,3 +832,42 @@ def test_the_darkness_camp_save_picker_guard_recognises_the_seven_member_party_p
             if screens.box_digests(crop, {box})[box] == rule['sha256']:
                 matching.add(state)
     assert matching == {'camp_save_picker'}
+
+
+def test_the_darkness_vault_guards_match_their_screens_and_not_the_neighbours(tmp_path):
+    """Reads crops kept from the vault measure boot, so it skips on a machine without them.
+
+    The bar guard matches the bar with and without the TAKE word; the row guard
+    matches the list's bar at every highlight position the route presses.
+    """
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    shots = 'WISH-6/wish6-l1/measure2/shots/'
+    empty_bar = 'WISH-6/wish6-a5/a5m1/shots/11-vault_bar.png'
+    seen = {
+        'vault_bar': [shots + '11-vault_bar.png', shots + '54-vault_bar.png', empty_bar],
+        'vault_take': [shots + '12-vault_take.png', shots + '53-vault_take.png'],
+        'vault_items': [shots + '13-vault_items.png'],
+        'vault_row': [shots + f'{n}-vault_row.png' for n in range(14, 53)],
+    }
+    others = [shots + '10-elminster_menu.png', shots + '55-elminster_menu.png', shots + '56-camp.png']
+    if not all((root / crop).is_file() for crops in (*seen.values(), others) for crop in crops):
+        pytest.skip('the kept vault measure crops are not on this machine')
+    maps = guardmaps.pathlib.Path(guardmaps.__file__).parent
+    out = tmp_path / 'darkness'
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'darkness', '--out', str(out)]) == 0
+    guard = screens.PixelGuards(out / 'guards.json')
+    for state, crops in seen.items():
+        for crop in crops:
+            assert guard(state, root / crop), (state, crop)
+        # vault_row shares its bar with the first list screen, which vault_items also names.
+        ignore = {'vault_row': {'vault_items'}, 'vault_items': set()}.get(state, set())
+        for other, other_crops in seen.items():
+            if other == state or other in ignore:
+                continue
+            for crop in other_crops:
+                assert not guard(state, root / crop), (state, crop)
+        for crop in others:
+            assert not guard(state, root / crop), (state, crop)
