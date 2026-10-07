@@ -783,3 +783,36 @@ def test_another_titles_dos_install_is_not_named_with_no_title(tmp_path,
     curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
     rows = dict(preferences.report(Settings(), flag=str(curse)))
     assert POD.title not in rows["Titles"]
+
+
+@pytest.mark.parametrize("value", ["0", "off", "", "junk"])
+def test_a_forgotten_conversion_setting_adds_no_title_to_try(monkeypatch, value):
+    monkeypatch.setenv(POD_CONVERT_ENV, value)
+    assert bk.amiga_only_titles() == ()
+
+
+def test_the_conversion_flag_alone_makes_the_pools_folder_the_one_in_use(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(POD_CONVERT_ENV, "1")
+    folder = dos_install(tmp_path / "DARKNESS")
+    settings = Settings(game_folders={POD.key: str(folder)})
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
+    rows = dict(preferences.report(settings))
+    assert rows["In use"] == str(folder)
+    assert rows["Titles"] == POD.title
+    win = window(app, maps=None, settings=settings)
+    try:
+        assert str(win.disks) == str(folder)
+        assert str(win.editor.disks) == str(folder)
+    finally:
+        win.close()
+
+
+def test_the_conversion_flag_alone_shows_no_amiga_titles_in_the_scan(
+        tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv(POD_CONVERT_ENV, "1")
+    folder = tmp_path / "pod"
+    adf(folder, "a.adf", "POD 1")
+    assert preferences._scan(str(folder), bk.amiga_enabled())["titles"] == []
