@@ -1,4 +1,4 @@
-"""Where the script variables of an Amiga title sit in memory, read-only.
+"""Maps engine script variables of an Amiga title to guest addresses, for reading and for staging writes.
 
 Each variable range is a table whose address is a 32-bit pointer held in the
 title's data hunk, so a variable's address is the pointer's value plus an index
@@ -12,6 +12,8 @@ about thirty offsets) carries a `note` into every reading.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from automap import amiga
 
 
 @dataclass(frozen=True)
@@ -101,6 +103,10 @@ class VarError(Exception):
     """A variable that has no guest address, with the reason."""
 
 
+class DataBaseNotLocated(VarError):
+    """The title's data hunk has not been located, so no address can be built."""
+
+
 def resolve(target, title: str, var: int) -> tuple[int, VarRange]:
     """The guest address and range of script variable `var` on `title`."""
     table = MAPS.get(title)
@@ -113,9 +119,16 @@ def resolve(target, title: str, var: int) -> tuple[int, VarRange]:
         if rng.first <= var <= rng.last:
             base = target.data_base
             if base is None:
-                raise VarError("data base not located")
+                raise DataBaseNotLocated("data base not located")
             head = int.from_bytes(target.read(base + rng.pointer, 4), "big")
-            return head + rng.size * (var - rng.origin), rng
+            if head == 0:
+                raise VarError(f"the table pointer for ${var:04X} is zero")
+            address = head + rng.size * (var - rng.origin)
+            memory = getattr(target, "memory", amiga.MEMORY)
+            if not amiga._in_memory(address, rng.size, memory):
+                raise VarError(f"${var:04X} resolves to {address:#x}, "
+                               "outside the guest's memory")
+            return address, rng
     raise VarError(f"${var:04X} is in no range mapped for {title}")
 
 
@@ -126,7 +139,7 @@ def read_variable(target, title: str, var: int) -> VarReading:
     except VarError as exc:
         size = 0
         table = MAPS.get(title)
-        if table is not None and str(exc) == "data base not located":
+        if table is not None and isinstance(exc, DataBaseNotLocated):
             size = next(r.size for r in table.ranges if r.first <= var <= r.last)
         return VarReading(var, None, size, None, str(exc))
     value = int.from_bytes(target.read(address, rng.size), "big")

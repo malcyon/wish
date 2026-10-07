@@ -131,3 +131,19 @@ def test_resolve_gives_the_address_and_range_and_blocks_an_unmapped_variable():
     assert (address, rng.size) == (0x40000 + 2 * 0x1B5, 2)
     with pytest.raises(amigavars.VarError, match="no range"):
         amigavars.resolve(m, "pool-of-radiance", 0x100)
+
+
+@pytest.mark.parametrize("pointer", [0, 0x900000])
+def test_resolve_blocks_a_table_pointer_that_is_zero_or_outside_memory(pointer):
+    m = make({0x98: pointer})
+    with pytest.raises(amigavars.VarError):
+        amigavars.resolve(m, "pool-of-radiance", 0x4AB5)
+
+
+def test_an_unlocated_data_base_is_a_typed_error_and_reports_the_size():
+    m = Memory()
+    m.data_base = None
+    with pytest.raises(amigavars.DataBaseNotLocated):
+        amigavars.resolve(m, "pool-of-radiance", 0x4AB5)
+    reading = amigavars.read_variable(m, "pool-of-radiance", 0x4AB5)
+    assert (reading.size, reading.address) == (2, None)

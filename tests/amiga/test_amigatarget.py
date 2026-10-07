@@ -1317,3 +1317,51 @@ def test_poke_var_wider_than_the_variable_writes_nothing(var_target, capsys):
     assert rc == 1
     assert "fit" in json.loads(capsys.readouterr().out)["error"]
     assert var_target.mem == before
+
+
+def test_poke_var_with_no_data_base_writes_nothing(var_target, capsys):
+    var_target.data_base = None
+    before = dict(var_target.mem)
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "4AB5", "--value", "1"])
+    assert rc == 1
+    assert "data base" in json.loads(capsys.readouterr().out)["error"]
+    assert var_target.mem == before
+
+
+@pytest.mark.parametrize("pointer", [0, 0x900000])
+def test_poke_var_through_a_bad_table_pointer_writes_nothing(var_target, capsys,
+                                                             pointer):
+    for i, b in enumerate(pointer.to_bytes(4, "big")):
+        var_target.mem[var_target.data_base + 0x98 + i] = b
+    before = dict(var_target.mem)
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "4AB5", "--value", "1"])
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out)["var"] == "$4AB5"
+    assert var_target.mem == before
+
+
+@pytest.mark.parametrize("extra", [
+    ["--at", "0x1000", "--var", "4AB5"],
+    ["--at", "0x1000", "--hex", "00", "--var", "4AB5", "--value", "1"],
+    ["--var", "4AB5"],
+    ["--at", "0x1000"],
+])
+def test_poke_wants_at_with_hex_or_var_with_value_not_a_mix(var_target, extra):
+    before = dict(var_target.mem)
+    with pytest.raises(SystemExit) as stop:
+        amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                          "poke", *extra])
+    assert stop.value.code == 2
+    assert var_target.mem == before
+
+
+def test_poke_var_error_in_the_guest_names_the_variable(var_target, capsys):
+    def broken(address, data):
+        raise amigatarget.amiga.GuestError("gone")
+    var_target.write = broken
+    rc = amigatarget.main(["--holder", "h", "--title", "pool-of-radiance",
+                           "poke", "--var", "4AB5", "--value", "1"])
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out)["var"] == "$4AB5"

@@ -13,7 +13,7 @@ the thing to reach for when an address stops answering.  Five commands
     tools/amiga/amigatarget.py --holder wish37 automap --out DIR \\
         --polls 6 --walk 'NP8 NP4 NP8'
 
-`party`, `pool` and `poke --at ADDR --hex BYTES` go over WinUAE's own pipe
+`party`, `pool`, `poke --at ADDR --hex BYTES` and `poke --var VAR --value N` go over WinUAE's own pipe
 (`automap.amiga.WinuaePipe`) and print one JSON row, as the FS-UAE `session`
 verbs of the same names do.
 
@@ -646,8 +646,9 @@ def main(argv: list[str] | None = None) -> int:
                                bytes.fromhex(args.digits))
             except (ValueError, OSError, amiga.GuestError,
                     amigaeffects.EffectError) as exc:
-                row = {"address": args.at,
-                       "error": f"{type(exc).__name__}: {exc}"}
+                row = ({"var": f"${args.var:04X}"} if args.var is not None
+                       else {"address": args.at})
+                row["error"] = f"{type(exc).__name__}: {exc}"
         else:
             row = (fsuaegdb.party_row if args.command == "party"
                    else fsuaegdb.pool_row)(target, layout)
