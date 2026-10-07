@@ -768,3 +768,22 @@ def test_fresh_on_any_verb_but_restore_fails_before_the_verb_runs():
     line = "if ($Fresh -and $Cmd -ne 'restore') { 'fail -Fresh belongs to restore only'; exit 1 }"
     assert line in PS1
     assert PS1.index(line) < PS1.index("switch ($Cmd)")
+
+
+def test_the_restore_proof_is_chosen_from_the_counts_and_not_from_the_fresh_flag():
+    body = _body("Test-RestoreBack")
+    assert "$Fresh" not in body
+    assert "function Test-RestoreBack([uint64]$Before, [uint64]$Snap, [uint64]$After)" in PS1
+    assert "if ($Before -lt $Snap) { return ($After -ge $Snap) }" in body
+    assert "if ($Before -gt $Snap) { return ($After -ge $Snap -and $After -lt $Before) }" in body
+    assert "$false" in body.split("$Before -gt $Snap")[1]
+    assert "Test-RestoreBack $before $snap $after" in PS1
+    assert "Test-RestoreBack $Fresh" not in PS1
+
+
+def test_a_restore_whose_count_before_equals_the_snapshots_fails_before_anything_is_sent():
+    body = _body("Invoke-State")
+    check = body.index("if ($before -eq $snap) {")
+    assert "unproven" in body[check:check + 200]
+    assert check < body.index("Send-Logged $pipe $sw $tags 0 'restore'")
+    assert "if ($Fresh -and $before -ge $snap)" not in body

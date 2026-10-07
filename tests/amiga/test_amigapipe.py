@@ -1184,20 +1184,32 @@ def test_a_restore_that_is_not_fresh_does_not_send_the_flag():
     assert "-Fresh" not in guest.calls[0][2]
 
 
-def test_a_fresh_restore_into_a_machine_that_ran_past_the_snapshot_is_an_error():
-    with pytest.raises(amiga.SnapshotError, match="run longer than the snapshot"):
-        fresh_restore(LaneGuest(restored(counts=(900, 950, 920))))
+def test_a_fresh_restore_into_a_machine_past_the_snapshot_uses_the_range_proof():
+    receipt = fresh_restore(LaneGuest(restored(counts=(900, 950, 920))))
+    assert receipt.tags["count_after"] == "920"
 
 
-def test_a_fresh_restore_that_read_below_the_snapshot_afterwards_is_an_error():
-    """A reset during the restore reads below the count before it."""
+@pytest.mark.parametrize("flag", [restore, fresh_restore])
+def test_a_restore_from_below_the_snapshot_is_proved_without_the_fresh_flag(flag):
+    """An earlier machine time than the snapshot's: the count after is at least the snapshot's."""
+    assert flag(LaneGuest(restored(counts=(900, 100, 905)))).tags["count_after"] == "905"
+
+
+@pytest.mark.parametrize("flag", [restore, fresh_restore])
+def test_a_restore_from_below_the_snapshot_that_reads_below_it_afterwards_is_an_error(flag):
     with pytest.raises(amiga.SnapshotError, match="not 900 or more"):
-        fresh_restore(LaneGuest(restored(counts=(900, 100, 50))))
+        flag(LaneGuest(restored(counts=(900, 100, 50))))
 
 
-def test_the_default_rule_still_fails_a_count_that_rose_past_the_count_before():
-    with pytest.raises(amiga.SnapshotError, match="not between 900 and 100"):
-        restore(LaneGuest(restored(counts=(900, 100, 905))))
+@pytest.mark.parametrize("flag", [restore, fresh_restore])
+def test_a_restore_with_the_count_before_equal_to_the_snapshots_is_unproven(flag):
+    with pytest.raises(amiga.SnapshotError, match="unproven"):
+        flag(LaneGuest(restored(counts=(900, 900, 900))))
+
+
+def test_the_range_proof_still_fails_a_count_that_rose_past_the_count_before():
+    with pytest.raises(amiga.SnapshotError, match="not between 900 and 1000"):
+        restore(LaneGuest(restored(counts=(900, 1000, 1005))))
 
 
 def staged(sha="ab" * 32, file=SNAP_FILE, marker=MARKER):
@@ -1392,17 +1404,17 @@ def test_a_restore_reads_the_count_then_sends_then_polls():
     assert before < sent < loop < polled
 
 
-def test_the_fresh_rule_is_before_below_snap_and_after_at_or_above_it():
+def test_the_rule_is_chosen_from_the_counts_and_not_from_the_flag():
     rule = _body("Test-RestoreBack")
-    assert "if ($Fresh) { return ($Before -lt $Snap -and $After -ge $Snap) }" in rule
+    assert "if ($Before -lt $Snap) { return ($After -ge $Snap) }" in rule
     assert "($After -ge $Snap -and $After -lt $Before)" in rule
-    assert "$back = Test-RestoreBack $Fresh $before $snap $after" in _body("Invoke-State")
+    assert "$back = Test-RestoreBack $before $snap $after" in _body("Invoke-State")
 
 
-def test_a_fresh_machine_past_the_snapshot_fails_before_anything_is_sent():
+def test_a_count_before_equal_to_the_snapshots_fails_before_anything_is_sent():
     body = _body("Invoke-State")
-    gate = body.index("if ($Fresh -and $before -ge $snap)")
-    assert "the fresh machine has run longer than the snapshot; restore earlier" in body[gate:gate + 200]
+    gate = body.index("if ($before -eq $snap)")
+    assert "unproven" in body[gate:gate + 200]
     assert gate < body.index("Send-Logged $pipe $sw $tags 0 'restore'")
 
 

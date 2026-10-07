@@ -1492,9 +1492,12 @@ Write-Output '<<end>>'
         between the snapshot and the restore stays on the disk while memory goes
         back, so the run must treat that image as changed.
 
-        `fresh` is for a machine that has only just booted, whose count is below
-        the snapshot's: the proof is `before < snap <= after`, which a reset
-        during the restore cannot pass because a reset reads below `before`.
+        The proof is chosen from the counts. Where `before < snap` (a machine
+        just booted, or at an earlier machine time than the snapshot) it is
+        `before < snap <= after`, which a reset during the restore cannot pass
+        because a reset reads below `before`; where `before > snap` it is the
+        range above; where they are equal nothing is proven. `fresh` is still
+        sent to the guest and changes nothing.
         """
         folder, file = snapshot_place(holder, name)
         receipt = self._state_verb("restore", holder, name, token,
@@ -1510,11 +1513,10 @@ Write-Output '<<end>>'
         except (KeyError, ValueError) as exc:
             raise SnapshotError(f"The restore of {file} reported no Exec counts, so "
                                 "it was not verified", receipt.as_dict()) from exc
-        if fresh:
-            if before >= snap:
-                raise SnapshotError("The fresh machine has run longer than the snapshot; "
-                                    f"restore earlier (count {before}, snapshot {snap})",
-                                    receipt.as_dict())
+        if before == snap:
+            raise SnapshotError(f"The restore of {name} is unproven: Exec's count reads "
+                                f"{before}, the snapshot's own", receipt.as_dict())
+        if before < snap:
             if after < snap:
                 raise SnapshotError(f"The machine was not seen to go back to {name}: "
                                     f"Exec's count read {after}, not {snap} or more",

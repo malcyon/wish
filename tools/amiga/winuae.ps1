@@ -580,10 +580,12 @@ function Why-NotRun([string]$Name) {
 # as the marker says; then `CFG statefile <file>`, and Exec's idle and dispatch
 # counts are read until they fall back to between the snapshot's value and the
 # value read just before the restore, which is the proof the machine went back.
-# `restore -Fresh` is for a machine that has only just booted, whose count is
-# below the snapshot's: the proof is `before < snap <= after`, and a reset during
-# the restore cannot pass it because a reset reads below `before`. A fresh machine
-# that already reads `snap` or more fails before anything is sent.
+# The proof is chosen from the counts, not from `-Fresh`: when the count before is
+# below the snapshot's (a machine just booted, or one at an earlier machine time)
+# it is `before < snap <= after`, which a reset during the restore cannot pass
+# because a reset reads below `before`; when above, `snap <= after < before`.
+# Equal counts fail before anything is sent, because neither proof can tell a
+# restore from no change. `-Fresh` is still accepted and changes nothing.
 # stage-snapshot <name> <sha256> <count>: installs a state file put at
 # `C:\Amiga\Disks\wish<digits>-<holder>-state.uss` as snapshot <name>, with no
 # emulator running, so a restore can follow in a new process.
@@ -684,12 +686,15 @@ function Replace-StateFolder([string]$Part, [string]$Dir, [string]$Backup) {
   if ($had) { Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# Whether the count read after a restore proves the machine went back: below the
-# value read before it and no lower than the snapshot's, or, on a fresh boot,
-# where the count before is below the snapshot's, at or above the snapshot's.
-function Test-RestoreBack([bool]$Fresh, [uint64]$Before, [uint64]$Snap, [uint64]$After) {
-  if ($Fresh) { return ($Before -lt $Snap -and $After -ge $Snap) }
-  ($After -ge $Snap -and $After -lt $Before)
+# Whether the count read after a restore proves the machine went back. Where the
+# count before is below the snapshot's, the machine was at an earlier machine
+# time, so the proof is a count at or above the snapshot's; where it is above,
+# the proof is a count below the one before and no lower than the snapshot's.
+# Equal counts prove nothing.
+function Test-RestoreBack([uint64]$Before, [uint64]$Snap, [uint64]$After) {
+  if ($Before -lt $Snap) { return ($After -ge $Snap) }
+  if ($Before -gt $Snap) { return ($After -ge $Snap -and $After -lt $Before) }
+  $false
 }
 
 function Invoke-State([string]$Verb) {
@@ -765,8 +770,8 @@ function Invoke-State([string]$Verb) {
       $tags.Add("<<marker>> $marker") | Out-Null
       $tags.Add("<<count_snapshot>> $snap") | Out-Null
       $tags.Add("<<count_before>> $before") | Out-Null
-      if ($Fresh -and $before -ge $snap) {
-        $verdict = "fail the fresh machine has run longer than the snapshot; restore earlier (Exec's count reads $before, the snapshot's is $snap)"
+      if ($before -eq $snap) {
+        $verdict = "fail the restore of $name is unproven because Exec's count reads $before, the snapshot's own"
       }
     }
     if (-not $verdict -and $Verb -eq 'restore') {
@@ -776,7 +781,7 @@ function Invoke-State([string]$Verb) {
       while (-not $back -and $sw.ElapsedMilliseconds -lt $until) {
         Start-Sleep -Milliseconds $StatePollMs
         # A read can fail while the state is being loaded; that is "not back yet".
-        try { $after = Read-ExecCount $pipe; $back = Test-RestoreBack $Fresh $before $snap $after }
+        try { $after = Read-ExecCount $pipe; $back = Test-RestoreBack $before $snap $after }
         catch { $readError = $_.Exception.Message }
       }
       if ($null -ne $after) { $tags.Add("<<count_after>> $after") | Out-Null }
@@ -786,7 +791,7 @@ function Invoke-State([string]$Verb) {
       } elseif ($null -eq $after) {
         $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s, because no read of Exec's count succeeded; the last error was: $readError"
       } else {
-        $wanted = if ($Fresh) { "not $snap or more" } else { "not between $snap and $before" }
+        $wanted = if ($before -lt $snap) { "not $snap or more" } else { "not between $snap and $before" }
         $tail = if ($readError) { "; the last read error was: $readError" } else { '' }
         $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, $wanted$tail"
       }
