@@ -724,3 +724,45 @@ def test_another_titles_dos_install_counts_as_neither(tmp_path):
         "none; no .adf disk images here")
     assert title_folder_report(str(curse), POOL) == (
         f"none; no {preferences._pretty(POOL.disk_glob)} here")
+
+
+def test_the_titles_line_names_the_title_for_a_dos_install(tmp_path,
+                                                           monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    folder = dos_install(tmp_path / "dos")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=POD))
+    assert rows["Titles"] == POD.title
+
+
+def test_the_titles_line_and_the_row_agree_on_a_dos_install(tmp_path,
+                                                            monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    folder = dos_install(tmp_path / "dos")
+    assert preferences._is_dos_install(folder, POD)
+    assert title_folder_report(str(folder), POD) == preferences.DOS_INSTALL_NOTE
+    assert not preferences._is_dos_install(folder, POOL)
+
+
+def test_the_titles_line_of_an_empty_folder_is_unchanged(tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    rows = dict(preferences.report(Settings(), flag=str(empty), game=POD))
+    assert rows["Titles"] == "none; no .adf disk images here"
+
+
+def test_the_titles_line_of_an_amiga_folder_is_unchanged(tmp_path, monkeypatch,
+                                                         amiga_on):
+    nowhere(tmp_path, monkeypatch)
+    folder = tmp_path / "pod"
+    adf(folder, "a.adf", "POD 1")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=POD))
+    assert rows["Titles"] == "Pools of Darkness (1 disk)"
+
+
+def test_another_titles_dos_install_does_not_name_the_title(tmp_path,
+                                                            monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
+    rows = dict(preferences.report(Settings(), flag=str(curse), game=POD))
+    assert rows["Titles"] == "none; no .adf disk images here"

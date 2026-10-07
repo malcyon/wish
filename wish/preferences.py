@@ -196,6 +196,15 @@ def pod_folder_row_wanted() -> bool:
 DOS_INSTALL_NOTE = ""
 
 
+def _is_dos_install(where: pathlib.Path,
+                    game: c64_port.C64Container | titles.Title | None) -> bool:
+    """Whether `where` holds this title's DOS install, which has no `.adf`
+    images to count. Both `title_folder_report` and `report` ask this, so the
+    row and the Titles line cannot disagree."""
+    return (isinstance(game, titles.Title) and where.is_dir()
+            and titles.dos_folder_title(where) == game.key)
+
+
 def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
     """The titles that have a folder row in this run: the three above, then
     the titles with no C64 container while `pod_folder_row_wanted`."""
@@ -255,8 +264,7 @@ def title_folder_report(folder: str,
         return ""
     where = pathlib.Path(folder)
     n = len(_images(where, game)) if where.is_dir() else 0
-    if (isinstance(game, titles.Title) and where.is_dir()
-            and titles.dos_folder_title(where) == game.key):
+    if _is_dos_install(where, game):
         if not n:
             return DOS_INSTALL_NOTE
         return "\n".join(line for line in (
@@ -386,9 +394,13 @@ def report(settings, flag=None, beside=None,
                         f"none; nowhere with {patterns} in it was found")]
 
     present = _scan(str(where), backends.amiga_enabled())["titles"]
-    if present:
-        titles_line = " · ".join(f"{g.title} ({n} disk{'' if n == 1 else 's'})"
-                                      for g, n in present)
+    names = [f"{g.title} ({n} disk{'' if n == 1 else 's'})"
+             for g, n in present]
+    if (_is_dos_install(pathlib.Path(where), game)
+            and all(g.key != game.key for g, _n in present)):
+        names.append(game.title)
+    if names:
+        titles_line = " · ".join(names)
     else:
         titles_line = f"none; no {patterns} here"
     return rows + [("Titles", titles_line)]
