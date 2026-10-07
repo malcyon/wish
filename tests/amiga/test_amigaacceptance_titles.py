@@ -3800,7 +3800,7 @@ def test_the_darkness_guards_recognise_the_overland_world_bar_of_the_a3_party():
 
     spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
     example = "WISH-2/wish2-a3/measure-a3-7/shots/10-world.png"
-    assert spec["labels"][example] == ["world"]
+    assert spec["labels"][example] == ["world", "place_x4_y7_f1_w22_5"]
     crop = scratch.cache_dir("acceptance") / example
     if not crop.is_file():
         pytest.skip("needs the stage 8 A3 measure shot 10 of WISH-2")
@@ -3933,7 +3933,7 @@ def test_the_darkness_guards_recognise_the_dungeon_world_bar_of_the_a2_party():
 
     spec = json.loads((pathlib.Path(foundation.__file__).parent / "guards_darkness.json").read_text())
     example = "WISH-2/wish2-a2/measure5/shots/10-world.png"
-    assert spec["labels"][example] == ["world"]
+    assert spec["labels"][example] == ["world", "place_x4_y10_f1"]
     crop = scratch.cache_dir("acceptance") / example
     if not crop.is_file():
         pytest.skip("needs the stage 8 A2 measure5 shot 10 of WISH-2")
