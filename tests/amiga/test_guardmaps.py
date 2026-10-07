@@ -1022,3 +1022,30 @@ def test_the_silver_blades_guard_map_checks_clean_over_the_kept_crops():
     wanted += [f'{run}/accept1/shots/05-items.png' for run in
                ('282/live3', '4/ssb-stage4-u', '4/ssb-stage4-c', '4/ssb-substitute-camp')]
     _checks_clean_over('ssb', wanted)
+
+
+def test_the_darkness_loaded_menu_identity_matches_the_vault_party_and_not_the_other_parties():
+    """Reads crops kept from live runs, so it skips on a machine without them."""
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    vault = root / 'WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png'
+    others = [root / name for name in (
+        'WISH-2/wish2-a2/measure1/shots/05-loaded_menu.png',
+        'WISH-2/wish2-a3/accept1/shots/05-loaded_menu.png',
+        'WISH-2/wish2-a4/measure-a4-33/shots/05-loaded_menu.png',
+        'amiga-grab-crops/wish9-b1__05-loaded_menu.png')]
+    if not vault.is_file() or not all(path.is_file() for path in others):
+        pytest.skip('the kept Darkness loaded-menu crops are not on this machine')
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    rules = screens.rules_of(spec['identity']['loaded_menu'])
+
+    def matching(crop):
+        return {rule['example'] for rule in rules
+                if screens.box_digests(crop, {tuple(rule['box'])})[tuple(rule['box'])] == rule['sha256']}
+
+    assert matching(vault) == {'WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png'}
+    for path in others:
+        assert path.relative_to(root).as_posix() in matching(path)
+        assert 'WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png' not in matching(path)

@@ -1448,6 +1448,17 @@
         ],
         "example": "WISH-2/wish2-a4/measure-a4-33/shots/05-loaded_menu.png",
         "sha256": "9d5fc20803198cd2d90a42322e8f0d13739d202497221b8a9ff356e95a86846d"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          94,
+          690,
+          192
+        ],
+        "example": "WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png",
+        "sha256": "8939d6af13bce8a031a1d5846b6f841659e8c56a5cc3299610e39e888281f8b5"
       }
     ],
     "sheet": [
@@ -1672,6 +1683,9 @@
     ],
     "WISH-6/wish6-a5b/a5bm2/shots/11-vault_bar.png": [
       "vault_bar"
+    ],
+    "WISH-6/wish6-accept1/wish6-accept1/shots/05-loaded_menu.png": [
+      "loaded_menu"
     ],
     "WISH-6/wish6-l1/measure2/shots/10-elminster_menu.png": [
       "elminster_menu"
