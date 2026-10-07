@@ -278,6 +278,16 @@ TEMPLE_CONTROL_SHA256 = (
 #: status `$03`, trait 32 still on him and no effect row for it.
 TEMPLE_DISPELLED_SHA256 = (
     "eb29193039aa8223d60197c83792ee51659c8f36431824ac72fc0bf9ffaf5d10")
+#: Wish's own DOS-to-C64 conversion of the game-written DOS slot C saves of
+#: the dispelled-zombie specimen (L1), the active zombie (L2) and the
+#: ordinary dead control (L3), BRUTUS in slot 5 at the temple route's start.
+#: L1 and L3 come back as status `$83` with no id-32 row; L2 stays a zombie.
+TEMPLE_DOS_RETURN_L1_SHA256 = (
+    "43f0e044b5990de20fd8dcedb52f64854b53767b607377b7f790f220cef7df1a")
+TEMPLE_DOS_RETURN_L2_SHA256 = (
+    "0e07f93720aa299a8e16047a7e43e2cfbf0003e6ffb590bc5aec969f919fe697")
+TEMPLE_DOS_RETURN_L3_SHA256 = (
+    "db68fd850e467ee4174039b4a3504f580e684f1736b16cef76b2221f8fcca8a0")
 TEMPLE_ROUTE = (
     ("K", (0x14, 15, 4, 3), (0x14, 15, 4, 0)),
     ("K", (0x14, 15, 4, 0), (0x14, 15, 4, 1)),
@@ -837,6 +847,18 @@ TEMPLE_SOURCES = {
         TEMPLE_ROUTE, "BRUTUS", 5, None,
         {"": (), " HEAL": (), " RAISE POOL": TEMPLE_POOL_STAGING},
         kind="dispelled", issue="303"),
+    TEMPLE_DOS_RETURN_L1_SHA256: TempleSource(
+        TEMPLE_ROUTE, "BRUTUS", 5, None,
+        {" RAISE CONTROL": TEMPLE_CONTROL_STAGING},
+        kind="dead", issue="303"),
+    TEMPLE_DOS_RETURN_L2_SHA256: TempleSource(
+        TEMPLE_ROUTE, "BRUTUS", 5, _TEMPLE_ROW,
+        {"": (), " HEAL": (), " RAISE POOL": TEMPLE_POOL_STAGING},
+        kind="animated", issue="303"),
+    TEMPLE_DOS_RETURN_L3_SHA256: TempleSource(
+        TEMPLE_ROUTE, "BRUTUS", 5, None,
+        {" RAISE CONTROL": TEMPLE_CONTROL_STAGING},
+        kind="dead", issue="303"),
 }
 
 #: Every `temple-probe` argument, for parsing only: which source it runs on

@@ -14569,12 +14569,35 @@ def test_temple_sources_named_brutus_resolve_by_digest_to_their_own_kind():
              if src.name == "BRUTUS"}
     assert kinds == {A.TEMPLE_BRUTUS_SHA256: "animated",
                      A.TEMPLE_CONTROL_SHA256: "dead",
-                     A.TEMPLE_DISPELLED_SHA256: "dispelled"}
+                     A.TEMPLE_DISPELLED_SHA256: "dispelled",
+                     A.TEMPLE_DOS_RETURN_L1_SHA256: "dead",
+                     A.TEMPLE_DOS_RETURN_L2_SHA256: "animated",
+                     A.TEMPLE_DOS_RETURN_L3_SHA256: "dead"}
     assert {d: A.TEMPLE_SOURCES[d].issue for d in kinds} == {
         A.TEMPLE_BRUTUS_SHA256: "700", A.TEMPLE_CONTROL_SHA256: "700",
-        A.TEMPLE_DISPELLED_SHA256: "303"}
+        A.TEMPLE_DISPELLED_SHA256: "303",
+        A.TEMPLE_DOS_RETURN_L1_SHA256: "303",
+        A.TEMPLE_DOS_RETURN_L2_SHA256: "303",
+        A.TEMPLE_DOS_RETURN_L3_SHA256: "303"}
     assert A.TEMPLE_SOURCES[A.TEMPLE_DISPELLED_SHA256].row is None
     assert not hasattr(A, "temple_source_named")
+
+
+def test_temple_dos_return_sources_resolve_by_digest_with_their_kind_and_modes():
+    dead_modes = {" RAISE CONTROL": A.TEMPLE_CONTROL_STAGING}
+    for digest, kind in ((A.TEMPLE_DOS_RETURN_L1_SHA256, "dead"),
+                         (A.TEMPLE_DOS_RETURN_L2_SHA256, "animated"),
+                         (A.TEMPLE_DOS_RETURN_L3_SHA256, "dead")):
+        src = A.TEMPLE_SOURCES[digest]
+        assert (src.kind, src.issue, src.name, src.slot) == (
+            kind, "303", "BRUTUS", 5)
+        assert src.route == A.TEMPLE_ROUTE
+        assert (src.row is None) == (kind == "dead")
+        assert (src.staging == dead_modes) == (kind == "dead")
+    assert A.temple_staging(A.TEMPLE_DOS_RETURN_L1_SHA256,
+                            "BRUTUS RAISE CONTROL") == A.TEMPLE_CONTROL_STAGING
+    with pytest.raises(KeyError):
+        A.temple_staging(A.TEMPLE_DOS_RETURN_L2_SHA256, "BRUTUS RAISE CONTROL")
 
 
 def test_temple_probe_dispelled_passes_only_a_dispelled_reading(
