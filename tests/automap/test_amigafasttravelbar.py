@@ -51,9 +51,11 @@ def isolated(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def frozen_clock(monkeypatch):
     """An armed trip's deadline never passes on a slow runner; a test moves the
-    returned list's one entry to pass it."""
+    returned list's one entry to pass it. Only amigafasttravel sees the held
+    clock, so a real wait loop elsewhere still runs."""
     now = [1000.0]
-    monkeypatch.setattr(amigafasttravel.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(amigafasttravel, "time",
+                        SimpleNamespace(monotonic=lambda: now[0]))
     return now
 
 
