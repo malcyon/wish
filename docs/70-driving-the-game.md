@@ -791,9 +791,17 @@ reaches the restored machine. No window, key or dialog is involved and the
 machine runs on.
 
 **What the count proves, and where it does not apply.** Exec's IdleCount and
-DispCount only rise while the machine runs, so a reading below the one taken
-just before the restore means the machine went back, and a reading at or above
-the snapshot's means it went back no further than the snapshot. Measured on
+DispCount only rise while the machine runs, so when the
+count read just before the restore is above the snapshot's, a reading at or
+above the snapshot's and below that earlier reading (`snap <= after < before`)
+proves the machine went back, and no further back than the snapshot. When the
+count is at or below the snapshot's, a restore leaves it no lower than it was,
+so the range cannot tell it from no restore. The proof is then a stamp: the
+snapshot step writes 8 bytes at $3F8 of guest RAM, the first 8 bytes of the
+SHA-256 of `wish-restore <count>`, before the state is saved, and the restore
+step writes 8 random bytes there first. After the restore the stamp must read
+as the snapshot's, which only the state file holds, and the count must be at
+least the snapshot's. Measured on
 both titles under WinUAE 6.0.3, with the sum rising across every sample:
 
 | Title | Screens sampled | Rise |
@@ -807,12 +815,18 @@ passed on both titles, with the restored count about 10 to 50 above the
 snapshot's and 100 to 4,000 below the reading before. The proof does not apply,
 and the restore fails rather than passing, when the counts do not move: a
 machine stopped in WinUAE's debugger, or a program that stops Exec switching
-tasks. It cannot tell a restore from a reset: a machine that was reset after the
-snapshot reads low counts, so a restore attempted while its count is still
-below the snapshot's fails, and a snapshot taken in the first seconds after a
-boot has a count so small that a reset during the restore's 5 s could pass it.
-It also says the machine went back to some moment after the snapshot was
-requested, not that every byte matches the state file.
+tasks. Snapshots and restores write those 8 bytes of guest RAM. $3F8 is the
+68000's vector 254, which no Amiga interrupt uses. Whether a game writes there is not
+yet checked; if one does, a restore from a count at or below the snapshot's
+fails and never passes falsely. A snapshot taken before the stamp existed holds
+none and must be taken again.
+
+The count cannot tell a restore from a reset: a machine that was reset after the
+snapshot reads low counts, so a reset passes the range proof only if its count
+reaches the snapshot's within the 5 s, and a snapshot taken in the first seconds
+after a boot has a count so small that a reset could reach it. The proof also
+says the machine went back to some moment after the snapshot was requested, not
+that every byte matches the state file.
 
 The state holds each drive's image path, not the disk's contents, so a restore
 puts the recorded image back in each drive and an image written since the
