@@ -750,7 +750,7 @@ def test_the_button_carries_its_rejection_in_its_tooltip(app):
 def test_with_nothing_attached_the_row_is_disabled_rather_than_inert(app):
     row = bar(app)
     assert not row.button.isEnabled()
-    assert "no emulator attached" in row.button.toolTip()
+    assert "No emulator attached" in row.button.toolTip()
 
 
 def test_no_disk_is_named_anywhere_in_the_row(app):

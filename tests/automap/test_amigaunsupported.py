@@ -111,7 +111,7 @@ def test_no_emulator_attached_still_says_so():
     window.actions_bar.attach(None)
     window.fasttravel_bar.attach(None)
     for button in window.actions_bar.buttons.values():
-        assert button.toolTip() == "no emulator attached"
+        assert button.toolTip() == "No emulator attached"
         assert not button.isEnabled()
     ft = window.fasttravel_bar
     assert "Amiga" not in ft.button.toolTip()
@@ -167,7 +167,7 @@ def test_leaving_the_amiga_gives_all_three_controls_back_their_own_text(leave):
         assert card.level_up.toolTip() == card.level_up_default_tip
     if leave == "wrong-game":
         for button in window.actions_bar.buttons.values():
-            assert button.toolTip() == "no emulator attached"
+            assert button.toolTip() == "No emulator attached"
     # And attaching again greys them once more.
     window.mapper.target = FakeAmiga(memory(), amiga.MACHINES[key])
     window._refresh_roster()
@@ -215,4 +215,4 @@ def test_the_wrong_game_path_on_a_c64_is_unchanged():
     assert window.fasttravel_bar.unsupported is None
     assert not window.roster.unsupported
     for button in window.actions_bar.buttons.values():
-        assert button.toolTip() == "no emulator attached"
+        assert button.toolTip() == "No emulator attached"

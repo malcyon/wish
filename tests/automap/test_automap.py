@@ -2867,7 +2867,7 @@ def test_with_nothing_attached_the_buttons_are_disabled_not_inert(app):
     bar = ActionBar(make_root())
     bar.attach(None)
     assert not any(b.isEnabled() for b in bar.buttons.values())
-    assert bar.buttons["heal"].toolTip() == "no emulator attached"
+    assert bar.buttons["heal"].toolTip() == "No emulator attached"
 
 
 def _test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):

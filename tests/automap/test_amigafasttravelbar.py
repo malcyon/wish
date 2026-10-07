@@ -144,7 +144,7 @@ def test_the_combo_and_button_enable_only_for_an_offered_trip(lengths):
     # so another area can be picked.
     pick(window, GUILD)
     assert not bar.button.isEnabled()
-    assert bar.button.toolTip() == "the party is already in that area"
+    assert bar.button.toolTip() == "The party is already in that area"
     assert bar.combo.isEnabled()
 
 
@@ -295,7 +295,7 @@ def test_a_read_that_fails_is_the_machine_not_being_readable(lengths):
     window.fasttravel_bar.refresh()                    # does not raise
     bar = window.fasttravel_bar
     assert not bar.button.isEnabled()
-    assert bar.button.toolTip() == bar.LOST_WHILE_WAITING
+    assert bar.button.toolTip() == "The machine is not readable right now"
 
 
 # -- a trip that fires, and one that does not -----------------------------------
@@ -320,7 +320,7 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     pick(window, FIRE_KNIFE)
     assert bar.button.isEnabled()
     pick(window, SEWERS)                               # now where the party is
-    assert bar.button.toolTip() == "the party is already in that area"
+    assert bar.button.toolTip() == "The party is already in that area"
     # Curse's Return is no longer a held trip.
     assert bar.back_button.isEnabled()
     # Only the arming line was said; a trip that happened adds none.
@@ -510,3 +510,19 @@ def test_the_back_tooltip_opens_with_a_capital(lengths):
     window, _ = attached(CURSE, GUILD, ticked=(TILVERTON, GUILD))
     tip = window.fasttravel_bar.back_button.toolTip()
     assert tip and tip[0].isupper()
+
+
+def test_the_combo_and_go_button_tooltips_open_with_a_capital(lengths):
+    window, _ = attached(CURSE, GUILD, ticked=(TILVERTON, GUILD))
+    bar = window.fasttravel_bar
+    pick(window, GUILD)
+    assert bar.button.toolTip()[0].isupper()
+    bar.attach_unsupported("not this game")
+    assert bar.combo.toolTip()[0].isupper()
+
+
+def test_the_combo_gate_tooltip_opens_with_a_capital(lengths):
+    window, target = attached(CURSE, GUILD, ticked=(SEWERS,))
+    target.fail_at.add(BASE + trips.ROWS[CURSE].mode)
+    window.fasttravel_bar.refresh()
+    assert window.fasttravel_bar.combo.toolTip()[0].isupper()

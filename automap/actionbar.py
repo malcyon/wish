@@ -211,7 +211,7 @@ class ActionBar(QObject):
             button = root.findChild(ElidingButton, name)
             if button is not None:
                 button.setText(action.label)
-                button.setToolTip(action.description)
+                button.setToolTip(_capital(action.description))
                 button.setEnabled(False)          # nothing attached yet
                 button.clicked.connect(
                     lambda _checked=False, a=action: self.run(a))
@@ -286,7 +286,7 @@ class ActionBar(QObject):
         if self.unsupported is not None:
             for button in self.buttons.values():
                 button.setEnabled(False)
-                button.setToolTip(self.unsupported)
+                button.setToolTip(_capital(self.unsupported))
             return
         once = None
         if target is not None:
@@ -299,7 +299,7 @@ class ActionBar(QObject):
             button = self.buttons.get(action.name)
             if button is not None:
                 button.setEnabled(verdict.ok)
-                button.setToolTip(verdict.reason or action.description)
+                button.setToolTip(_capital(verdict.reason or action.description))
 
     def watch(self, target) -> engine.Outcome | None:
         """One tick of the quickfight watcher. Fires on the 2-to-not-2 edge."""
@@ -931,7 +931,7 @@ class FastTravelBar(QObject):
             for widget in (self.combo, self.button, self.back_button):
                 if widget is not None:
                     widget.setEnabled(False)
-                    widget.setToolTip(self.unsupported)
+                    widget.setToolTip(_capital(self.unsupported))
             return
         once = self._idle_poll()
         area = self.area()
@@ -940,7 +940,7 @@ class FastTravelBar(QObject):
                 gate = (self._any_offered(once, area) if self._amiga
                         else self.combat_verdict(once))
                 self.combo.setEnabled(gate.ok)
-                self.combo.setToolTip(gate.reason)
+                self.combo.setToolTip(_capital(gate.reason))
             else:
                 self.combo.setEnabled(False)
                 self.combo.setToolTip("")
@@ -962,7 +962,7 @@ class FastTravelBar(QObject):
                 # `DANGER` when it is enabled, the rejection when it is not: the
                 # warning is about making a trip, and a disabled button is not
                 # about to make one.
-                self.button.setToolTip(verdict.reason or DANGER)
+                self.button.setToolTip(_capital(verdict.reason or DANGER))
         if self.back_button is not None:
             back = self._asked(self.fasttravel.back_verdict, once)
             self.back_button.setEnabled(back.ok)
