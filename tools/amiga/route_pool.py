@@ -134,6 +134,12 @@ POOL = AmigaTitle(
         ("E", "camp", "key"), ("S", "camp_save_picker", "key"),
     ),
     boot_span=150.0,
+    # The title wait runs twice: from the start to the code wheel, while the AmigaDOS window
+    # shows `type mes` and `program` loads, and from the wheel's RETURN through the intro
+    # pages to the title. No key shortens the first, and the driver presses none in the
+    # second. On a loaded VM the first took more than 182 s
+    # and the second more than 186 s, where most boots take under 110 s for each.
+    title_limit=300.0,
     control_letter="C", after_letter="D", kept_letters=(POOL_LATER,), turn="about",
     strict=frozenset({"party_menu", "load_picker", "sheet", "world", "camp_save_picker"}),
     min_waits={"party_menu": 20.0, "load_picker": 10.0, "world": 20.0,

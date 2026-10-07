@@ -90,6 +90,12 @@ def _darkness_slot_files(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, by
 # recognised the loaded menu 24 to 25 s after the key.
 DISK2_INSERT = ((0, "disk2", "SPACE"), "loaded_menu", "insert")
 
+#: ESC on a picture page of the intro ends the intro and shows the PLAY / DEMO / QUIT title within
+#: about two seconds. Left alone, the intro's pages brought the title 238 to 408 s after the start,
+#: and a boot on a loaded VM was still on them at 420 s. At most three presses, only while waiting
+#: for the title.
+DARKNESS_INTRO = ("intro", ("keys", "ESC"), frozenset({"title"}), 3)
+
 DARKNESS = AmigaTitle(
     issue=ISSUE,
     mounted=("disk1", "disk3"), spares=("disk2",),
@@ -140,6 +146,7 @@ DARKNESS = AmigaTitle(
                # Copied from Curse, which meets the same quit question after its camp save.
                "exit_game": 20.0},
     interstitials=(
+        DARKNESS_INTRO,
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),
         # FLEE's key is the control letter, so the row presses it only where the `encounter`
@@ -256,8 +263,8 @@ def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTi
         plain_keys=(("E", "loaded_menu"), *((("E", VAULT_TAKE),) if coins else ()),
                     ("E", VAULT_STORAGE), ("E", VAULT_MENU)),
         strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
-        # The route never expects `world`, the only state the two inherited rows answer.
-        interstitials=(), interstitial_letters=(), move_again_after=frozenset(),
+        # The route never expects `world`, the only state the other inherited rows answer.
+        interstitials=(DARKNESS_INTRO,), interstitial_letters=(), move_again_after=frozenset(),
         min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,
                    **{state: 10.0 for state in states}, VAULT_ROW: route_camp.ROW_WAIT},
     )

@@ -87,7 +87,7 @@ def _run(tmp_path, clock, *, guest=None, start=START, expected_after=LATER, **kw
         kw.setdefault("identity", _IdentityMap())
     result = foundation.run_recon(
         _manifest(tmp_path, start, expected_after), guest=guest, holder="wish679-test",
-        audio_proof=_audio_proof(tmp_path), title=_title(), **kw)
+        audio_proof=_audio_proof(tmp_path), title=kw.pop("title", None) or _title(), **kw)
     return guest, result
 
 
@@ -1010,8 +1010,9 @@ def test_darkness_accept_route_answers_the_journal_with_explicit_steps_and_asks_
         ("N", "camp", "key"))
     assert {"journal", "journal_answer", "world", "camp", "exit_game"} <= darkness.strict
     assert darkness.min_waits["exit_game"] == 20.0
-    assert [row[0] for row in darkness.interstitials] == ["yes_no", "continue", "encounter"]
+    assert [row[0] for row in darkness.interstitials] == ["intro", "yes_no", "continue", "encounter"]
     assert darkness.interstitials == (
+        ("intro", ("keys", "ESC"), frozenset({"title"}), 3),
         ("yes_no", ("keys", "N"), frozenset({"world"}), 1),
         ("continue", ("keys", "RET"), frozenset({"world"}), 3),
         ("encounter", ("keys", "F"), frozenset({"world"}), 1))
@@ -1239,14 +1240,14 @@ def test_darkness_stops_at_the_move_again_cap_and_writes_no_slot_g(tmp_path, clo
 
 def test_a_run_records_the_interstitial_screens_its_guard_map_cannot_recognise(tmp_path, clock):
     _, result = _dark_run(tmp_path, clock)
-    assert result["interstitials_without_guard"] == ["continue", "encounter", "yes_no"]
+    assert result["interstitials_without_guard"] == ["continue", "encounter", "intro", "yes_no"]
     events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
     logged = [e for e in events if e["event"] == "interstitials_without_guard"]
-    assert [e["screens"] for e in logged] == [["continue", "encounter", "yes_no"]]
+    assert [e["screens"] for e in logged] == [["continue", "encounter", "intro", "yes_no"]]
     other = tmp_path / "other"
     other.mkdir()
     _, result = _dark_run(other, clock, guard=_dark_guard("continue", ["12-world"], world=1))
-    assert result["interstitials_without_guard"] == ["encounter", "yes_no"]
+    assert result["interstitials_without_guard"] == ["encounter", "intro", "yes_no"]
 
 
 def test_the_unguarded_interstitials_come_back_sorted_whatever_order_the_title_lists_them(
@@ -1263,7 +1264,7 @@ def test_the_unguarded_interstitials_come_back_sorted_whatever_order_the_title_l
         _dark_manifest(tmp_path), guest=guest,
         guard=MapGuard(states=DARK_STATES, on=DARK_FIRST_SCREEN), holder="wish679-test",
         audio_proof=_audio_proof(tmp_path), title=title, accept=True, identity=_IdentityMap())
-    assert result["interstitials_without_guard"] == sorted([*names, "continue", "encounter", "yes_no"])
+    assert result["interstitials_without_guard"] == sorted([*names, "continue", "encounter", "intro", "yes_no"])
 
 
 def test_a_strict_timeout_names_the_interstitial_screens_with_no_guard(tmp_path, clock):
@@ -1273,7 +1274,7 @@ def test_a_strict_timeout_names_the_interstitial_screens_with_no_guard(tmp_path,
     assert "continue" in result["error"] and "yes_no" in result["error"]
     other = tmp_path / "other"
     other.mkdir()
-    both = MapGuard(states=(*DARK_STATES, "continue", "encounter", "yes_no"),
+    both = MapGuard(states=(*DARK_STATES, "continue", "encounter", "intro", "yes_no"),
                     on={"world": _never})
     _, result = _dark_run(other, clock, guard=both)
     assert result["interstitials_without_guard"] == []
@@ -1394,7 +1395,7 @@ def test_darkness_has_no_disk_prompt_interstitial_and_pins_its_boot_span_as_a_gu
     # With disk 3 mounted no prompt appeared. The 225 s span puts the first key near the title in
     # the one measured boot; that timing is a guess until a title guard recognises the screen.
     assert [row[0] for row in foundation.DARKNESS.interstitials] == [
-        "yes_no", "continue", "encounter"]
+        "intro", "yes_no", "continue", "encounter"]
     assert foundation.DARKNESS.boot_span == 225.0
     first_four = (("P", "party_menu", "key"), ("L", "load_from", "key"),
                   ("P", "load_picker", "key"), ("B", "disk2_prompt", "key"))
@@ -1417,6 +1418,34 @@ def test_curse_leaves_the_intro_with_one_escape_and_only_while_waiting_for_the_t
                                         "intro": _on("01-load_picker")})
     guest, _ = _curse_run(other, clock, guard=guard)
     assert "ESC" not in _keys(guest)
+
+
+def test_darkness_leaves_the_intro_with_escape_and_only_while_waiting_for_the_title(
+        tmp_path, clock):
+    """A loaded VM kept the Pools of Darkness boot on the intro past the 420 s title wait."""
+    states = (*DARK_STATES, "intro")
+    guard = MapGuard(states=states, on={"title": _never, "intro": _on("title")})
+    guest, result = _dark_run(tmp_path, clock, guard=guard)
+    assert _keys(guest) == ["ESC"] * 3 and "title screen was not recognized" in result["error"]
+    other = tmp_path / "skipped"
+    other.mkdir()
+    guard = MapGuard(states=states, on={"intro": lambda p: p.read_bytes() == b"frame 0",
+                                        "title": lambda p: p.read_bytes() == b"frame 1"})
+    guest, result = _dark_run(other, clock, guard=guard)
+    assert _keys(guest) == ["ESC", *DARK_KEYS]
+    assert result["success"] is True, result.get("error")
+    third = tmp_path / "later"
+    third.mkdir()
+    guard = MapGuard(states=states, on={"intro": _on("03-load_picker")})
+    guest, _ = _dark_run(third, clock, guard=guard)
+    assert "ESC" not in _keys(guest)
+
+
+def test_every_darkness_route_presses_escape_on_the_intro():
+    for title in (route_darkness.DARKNESS, route_darkness.DARKNESS_RELOAD,
+                  route_darkness.DARKNESS_UNSTARTED, route_darkness.DARKNESS_VAULT):
+        assert route_darkness.DARKNESS_INTRO in title.interstitials
+    assert route_darkness.DARKNESS_INTRO == ("intro", ("keys", "ESC"), frozenset({"title"}), 3)
 
 
 def test_curse_measure_with_a_title_guard_presses_the_boot_escapes_and_skips_them(
@@ -1443,6 +1472,34 @@ def test_pool_measure_with_a_title_guard_presses_the_wheel_return_and_skips_it(t
     assert _keys(guest) == "RET RET L RET A V E NP2 NP8 E S".split()
     assert result["success"] is True, result.get("error")
     assert {"skipped": "RET", "step": 1} in result["events"]
+
+
+def _slow_pool_boot(clock, *, wheel_after, title_after):
+    """The code wheel first shows `wheel_after` s into the boot, the title `title_after` s later."""
+    start = clock.now
+    return MapGuard(states=STATES, on={
+        "wheel": lambda p: p.read_bytes() == b"frame 0" and clock.now - start >= wheel_after,
+        "title": lambda p: (p.read_bytes() != b"frame 0"
+                            and clock.now - start >= wheel_after + title_after)})
+
+
+def test_pool_waits_for_a_slow_disk_load_before_the_wheel_and_a_slow_intro_after_it(
+        tmp_path, clock):
+    """A loaded VM kept the AmigaDOS loading window up for more than 180 s before the wheel, and
+    another boot took more than 186 s from the wheel to the title; nothing takes a key there."""
+    assert foundation.POOL.title_limit == 300.0
+    assert route_pool.POOL_FORWARD.title_limit == route_pool.POOL_TOUR.title_limit == 300.0
+    guard = _slow_pool_boot(clock, wheel_after=250, title_after=250)
+    guest, result = _run(tmp_path, clock, guard=guard)
+    assert result["success"] is True, result.get("error")
+    assert _keys(guest)[:2] == ["RET", "RET"]  # the wheel's RETURN, then the route's first key
+    other = tmp_path / "old_limit"
+    other.mkdir()
+    guard = _slow_pool_boot(clock, wheel_after=250, title_after=250)
+    guest, result = _run(other, clock, guard=guard,
+                         title=dataclasses.replace(_title(), title_limit=180.0))
+    assert "title screen was not recognized within 180s" in result["error"]
+    assert _keys(guest) == []
 
 
 def _sb_published_manifest(tmp_path):
@@ -3611,9 +3668,9 @@ def test_a_vault_run_of_two_hundred_items_builds_a_title():
     assert ("E", "vault_take") not in title.plain_keys
 
 
-def test_the_vault_title_answers_no_interstitial_row_because_it_never_expects_the_world():
-    assert foundation.DARKNESS_VAULT.interstitials == ()
-    assert route_darkness.vault_title(200, False).interstitials == ()
+def test_the_vault_title_answers_no_world_row_because_it_never_expects_the_world():
+    assert foundation.DARKNESS_VAULT.interstitials == (route_darkness.DARKNESS_INTRO,)
+    assert route_darkness.vault_title(200, False).interstitials == (route_darkness.DARKNESS_INTRO,)
 
 
 _HELD = {"items": 40, "coins": [1750, 495, 82], "sha256": "ab"}

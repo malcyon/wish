@@ -820,6 +820,41 @@
       "example": "628/darkness-P1a/accept1/shots/18-heal_whom.png",
       "sha256": "fc44343aed245f011a39a3db877400282b9f40cf1bbd6dfffa9398c60b727aae"
     },
+    "intro": [
+      {
+        "also": [],
+        "box": [
+          300,
+          36,
+          440,
+          80
+        ],
+        "example": "amiga-grab-crops/wish347-podprobe__intro_summoned.png",
+        "sha256": "16fd2115b8ed5ef417e6f12566fef5d7c9e42a554a388ed5f4047a2b7361d218"
+      },
+      {
+        "also": [],
+        "box": [
+          300,
+          36,
+          440,
+          80
+        ],
+        "example": "amiga-grab-crops/wish347-a3r3__intro_followers.png",
+        "sha256": "0cab27d24e1dd6e484ef084ee47fa198670aef16d60c49fe44f536a3207fb961"
+      },
+      {
+        "also": [],
+        "box": [
+          300,
+          36,
+          440,
+          80
+        ],
+        "example": "amiga-grab-crops/wish347-a3r3c__intro_grasp.png",
+        "sha256": "7feb25a9354673b7bb8883433e0aea260e51bc9938ed67a2d6f78b1b746adc31"
+      }
+    ],
     "journal": [
       {
         "also": [
@@ -2060,6 +2095,15 @@
     ],
     "WISH-6/wish6-l1/measure2/shots/55-elminster_menu.png": [
       "elminster_menu"
+    ],
+    "amiga-grab-crops/wish347-a3r3__intro_followers.png": [
+      "intro"
+    ],
+    "amiga-grab-crops/wish347-a3r3c__intro_grasp.png": [
+      "intro"
+    ],
+    "amiga-grab-crops/wish347-podprobe__intro_summoned.png": [
+      "intro"
     ],
     "amiga-grab-crops/wish9-b1__01-party_menu.png": [
       "party_menu"
