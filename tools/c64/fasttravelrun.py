@@ -319,6 +319,11 @@ def fasttravel_addresses(game):
     return found
 
 
+STEP_TRIES = 4
+#: Compass digits tried, in order, on the travel grid.
+OUTDOOR_STEP_KEYS = "3715"
+
+
 class Driver:
     """The trips of one session."""
 
@@ -330,8 +335,10 @@ class Driver:
                  peeks: list[tuple[int, int]] | None = None,
                  stages: list[tuple[int, int, int]] | None = None,
                  party_reader: Callable[[object, object], object] | None = None,
-                 no_encounters: bool = False, gates: dict | None = None):
+                 no_encounters: bool = False, gates: dict | None = None,
+                 step_after: bool = False):
         self.no_encounters = no_encounters
+        self.step_after = step_after
         #: `ENCOUNTER_GATES`, or None to take it from `tools/c64/session.py`.
         self.gates = gates
         #: (came-from, cache slot) when the switch was last applied in this leg.
@@ -455,9 +462,43 @@ class Driver:
             self.ft.cancel_pending()
         self.sleep(SETTLE_SECONDS)
         self.note_state(tag, "after")
+        if self.step_after and summary["result"] == "arrived":
+            self.step(tag)
         self.log("areas-seen", tag=tag, areas_seen=summary["areas_seen"])
         self.shot(tag + "-final")
         return summary
+
+    def step(self, tag: str) -> None:
+        """Try up to `STEP_TRIES` moves on the arrived party and log the first that moves it.
+
+        Indoors the live square is read, because `square()` there is the last
+        save's and does not move; on the travel grid it is `square()` and the
+        keys are compass digits. A party that never moves is logged, not failed.
+        """
+        sess = self.sess
+        grid = sess.indoors() is False
+        if grid:
+            read = sess.square
+            tries = [(key,) for key in OUTDOOR_STEP_KEYS]
+        else:
+            def read():
+                live = sess.live_square()
+                return None if live is None else tuple(live[:2])
+            tries = [("I",)] + [(turn, "I") for turn in "JKM"]
+        before = read()
+        key, after, moved = None, before, False
+        for keys in tries[:STEP_TRIES]:
+            key = "".join(keys)
+            for press in keys:
+                if grid:
+                    sess.walk_outdoors(press)
+                else:
+                    sess.walk_one(press)
+            after = read()
+            moved = before is not None and after is not None and after != before
+            if moved:
+                break
+        self.log("step", tag=tag, key=key, before=before, after=after, moved=moved)
 
     @staticmethod
     def see(summary: dict, raw_area: int) -> None:
@@ -698,6 +739,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-encounters", action="store_true",
                         help="hold the running area's random encounters off before each leg "
                              "(the gates are put back when the run ends; the driver saves nothing)")
+    parser.add_argument("--step-after", action="store_true",
+                        help="after each leg arrives, try up to four moves and log a `step` event")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
                         help="seconds each leg may take")
     parser.add_argument("--disks", help="the folder of the title's disk images")
@@ -745,7 +788,8 @@ def main(argv: list[str] | None = None) -> int:
                     driver = Driver(sess, lambda: ViceTarget(port=sess.mon_port),
                                     action, out, log, answer=args.answer,
                                     budget=args.budget, game=game, peeks=peeks,
-                                    stages=stages, no_encounters=args.no_encounters)
+                                    stages=stages, no_encounters=args.no_encounters,
+                                    step_after=args.step_after)
                     driver.shot("0-start")
                     driver.run(args.to)
                     driver.shot("final")

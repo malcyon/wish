@@ -87,6 +87,31 @@ class Session:
         self.bars.append(label)
         return True
 
+    #: Stepping: the square the party stands on, the keys that move it, and whether it is outdoors.
+    pos = (5, 5)
+    moves_on = None
+    outdoors = False
+    pressed = ()
+
+    def indoors(self):
+        return not self.outdoors
+
+    def square(self):
+        return self.pos
+
+    def live_square(self):
+        return (*self.pos, 0)
+
+    def _press(self, key):
+        self.pressed += (key,)
+        if self.moves_on is not None and self.pressed.count(key) >= 1 \
+                and self.pressed[-len(self.moves_on):] == self.moves_on:
+            self.pos = (self.pos[0] + 1, self.pos[1])
+        return True
+
+    walk_one = _press
+    walk_outdoors = _press
+
 
 class Memory:
     """A target whose bytes are a function of the clock."""
@@ -812,3 +837,50 @@ def test_curse_load_steps_are_logged_under_the_loaders_own_event_keyword(monkeyp
         ftr.bring_up("curse-of-the-azure-bonds", Sess(), tmp_path, tmp_path, log)
     assert events(stream)[0]["event"] == "load-yes"
     assert events(stream)[0]["attempt"] == "first"
+
+
+def _step_events(stream):
+    return [e for e in events(stream) if e["event"] == "step"]
+
+
+def test_step_after_logs_the_move_that_changed_the_square():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    sess.moves_on = ("J", "I")
+    drv.run([18])
+    (step,) = _step_events(stream)
+    assert step["key"] == "JI" and step["moved"] is True
+    assert step["before"] == [5, 5] and step["after"] == [6, 5]
+    assert sess.pressed == ("I", "J", "I")
+
+
+def test_step_after_logs_moved_false_after_four_tries_and_the_leg_still_arrives():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    results = drv.run([18])
+    (step,) = _step_events(stream)
+    assert step["moved"] is False and step["before"] == step["after"]
+    assert sess.pressed == ("I", "J", "I", "K", "I", "M", "I")
+    assert results[0]["result"] == "arrived"
+
+
+def test_step_after_on_the_travel_grid_uses_compass_digits():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.step_after = True
+    sess.outdoors = True
+    sess.moves_on = ("7",)
+    drv.run([18])
+    (step,) = _step_events(stream)
+    assert step["key"] == "7" and step["moved"] is True
+    assert sess.pressed == ("3", "7")
+
+
+def test_no_step_without_the_flag():
+    drv, sess, _ft, _mem, _clock, stream = build()
+    drv.run([18])
+    assert _step_events(stream) == [] and sess.pressed == ()
+
+
+def test_step_after_flag_reaches_the_driver():
+    import inspect
+    assert "step_after" in inspect.signature(ftr.Driver).parameters
