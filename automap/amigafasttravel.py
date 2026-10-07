@@ -180,7 +180,10 @@ class AmigaFastTravel(engine.FastTravel):
         if area is None:
             return engine.Verdict(False, "choose an area")
         if not getattr(area, "fasttravelable", True):
-            return engine.Verdict(False, self.ATTRACT_TRAP)
+            # A party that left from inside such a child area must see the
+            # Return sentence, not the attract-mode one.
+            return engine.Verdict(False, self.not_built if back
+                                  else self.ATTRACT_TRAP)
         here = trips.area_id(target, row)
         if here is None:
             return engine.Verdict(False, self.not_built)

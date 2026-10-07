@@ -1145,7 +1145,15 @@ def test_pools_of_darkness_rows_have_no_disk_side():
 
 def test_pools_of_darkness_developer_rows_are_not_fasttravelable():
     table = {a.id: a for a in areas.TABLES[POD]}
-    assert [i for i, a in table.items() if not a.fasttravelable] == [1, 2, 3, 4]
+    assert [i for i, a in table.items() if not a.fasttravelable] == sorted(
+        [1, 2, 3, 4, *POD_MAPLESS])
+
+
+def test_pools_of_darkness_rows_without_a_map_are_not_destinations():
+    table = {a.id: a for a in areas.TABLES[POD]}
+    assert all(not table[i].fasttravelable for i in POD_MAPLESS)
+    assert all(a.fasttravelable for i, a in table.items()
+               if a.geos and i not in (1, 4))
 
 
 def test_pools_of_darkness_scripts_without_a_map_use_their_parents():

@@ -239,8 +239,11 @@ class Area:
     #: caller with no arrival square should write none for these two and let
     #: the arriving script place the party, which is what it does.
     dynamic_geo: bool = False
-    #: Whether a debug fasttravel may enter this area at all. False for `ECL1E`
-    #: alone: it is the attract-mode demo, and fasttraveling there ends the session.
+    #: Whether a debug fasttravel may enter this area at all. False for a
+    #: script that is not a place a trip may end in: an attract-mode demo,
+    #: developer scripts, or a scene that runs on its parent's map and loads
+    #: none of its own. `ECL1E` is the attract-mode demo, and fasttraveling
+    #: there ends the session:
     #: `$C04B`-`$C04D` read `254, 127, 16`, no `GEO` is resident, no status
     #: line and no command bar appear, and the program counter never returns
     #: to `DUNGEON`'s key-wait loop, so **no later fasttravel can be started**
@@ -794,7 +797,8 @@ def _p(id: int, geos: tuple[str, ...], arrival: Arrival | None = None,
 #: A name is the place name the title prints on the way in, and None where it
 #: prints none. Rows 1-4 are the developers' menu, two test fights and the
 #: opening scene, not places. The 17 rows with no `GEO` of their own are
-#: entered from a parent area and use its map. WISH-1 comment 7b9be95c has
+#: entered from a parent area and use its map, so they are not Fast Travel
+#: destinations: a trip there loads no map. WISH-1 comment 7b9be95c has
 #: the evidence for each row.
 AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(1, ("GEO01",), fasttravelable=False),
@@ -808,7 +812,7 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(20, ("GEO14",)),
     _p(21, ("GEO15",), Arrival(7, 15, 0), name="Steading near Dragonhorn Gap"),
     _p(22, ("GEO16",), Arrival(7, 15, 0), name="Taydome's Keep"),
-    _p(23, (), dynamic_geo=True),
+    _p(23, (), dynamic_geo=True, fasttravelable=False),
     _p(24, ("GEO11",), Arrival(0, 5, 1)),
     _p(25, ()),
     _p(26, ("GEO13",), Arrival(0, 3, 1), name="The Black City of Mulmaster"),
@@ -821,17 +825,17 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(37, ("GEO25",), Arrival(0, 8, 1)),
     _p(38, ("GEO24",), Arrival(4, 12, 3), name="Arcam's Cave"),
     _p(39, ("GEO27",), Arrival(3, 7, 1)),
-    _p(40, (), dynamic_geo=True),
-    _p(41, (), Arrival(4, 11), dynamic_geo=True),
-    _p(42, (), dynamic_geo=True),
+    _p(40, (), dynamic_geo=True, fasttravelable=False),
+    _p(41, (), Arrival(4, 11), dynamic_geo=True, fasttravelable=False),
+    _p(42, (), dynamic_geo=True, fasttravelable=False),
     _p(48, ("GEO30",), None, name="Manshoon's Tower"),
-    _p(49, (), dynamic_geo=True),
+    _p(49, (), dynamic_geo=True, fasttravelable=False),
     _p(50, ("GEO32",), None, name="Temple of Tyr"),
-    _p(51, (), dynamic_geo=True),
+    _p(51, (), dynamic_geo=True, fasttravelable=False),
     _p(52, ("GEO34",), None, name="Moander"),
     _p(53, ("GEO35",), None, name="Moander's Heart"),
     _p(54, ("GEO32",), Arrival(7, 13, 2)),
-    _p(55, (), dynamic_geo=True),
+    _p(55, (), dynamic_geo=True, fasttravelable=False),
     _p(64, ("GEO40",), Arrival(13, 0, 3), name="Bane's Land"),
     _p(65, ("GEO41",), Arrival(0, 0, 1), name="Palace of Gothmenes"),
     _p(66, ("GEO42",), Arrival(15, 4, 3), name="Myth Drannor"),
@@ -839,20 +843,20 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(68, ("GEO44",), Arrival(7, 15, 0)),
     _p(69, ("GEO45",), Arrival(8, 15, 0), name="Drow Temple"),
     _p(70, ("GEO46", "GEO47"), Arrival(4, 15, 0), name="Garden of the Red Tower"),
-    _p(71, (), dynamic_geo=True),
-    _p(72, (), dynamic_geo=True),
-    _p(73, (), dynamic_geo=True),
+    _p(71, (), dynamic_geo=True, fasttravelable=False),
+    _p(72, (), dynamic_geo=True, fasttravelable=False),
+    _p(73, (), dynamic_geo=True, fasttravelable=False),
     _p(74, ("GEO41",), Arrival(0, 0, 1), name="Palace of Gothmenes"),
-    _p(75, (), dynamic_geo=True),
-    _p(76, (), dynamic_geo=True),
-    _p(77, (), dynamic_geo=True),
-    _p(80, (), dynamic_geo=True),
+    _p(75, (), dynamic_geo=True, fasttravelable=False),
+    _p(76, (), dynamic_geo=True, fasttravelable=False),
+    _p(77, (), dynamic_geo=True, fasttravelable=False),
+    _p(80, (), dynamic_geo=True, fasttravelable=False),
     _p(81, ("GEO51",), None, name="Testing Ground"),
     _p(82, ("GEO52", "GEO54"), None, name="Kalistes' Parlor"),
     _p(83, ("GEO53",), None, name="Kalistes Land"),
-    _p(84, (), dynamic_geo=True),
-    _p(85, (), dynamic_geo=True),
-    _p(86, (), dynamic_geo=True),
+    _p(84, (), dynamic_geo=True, fasttravelable=False),
+    _p(85, (), dynamic_geo=True, fasttravelable=False),
+    _p(86, (), dynamic_geo=True, fasttravelable=False),
 )
 
 

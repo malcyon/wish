@@ -14,6 +14,7 @@ from automap import amiga, amigaactions
 from automap import amigafasttravel as aft
 from automap import amigatrip as trips
 from automap.target import NotConnected
+from goldbox import areas
 
 CURSE = "curse-of-the-azure-bonds"
 POD = "pools-of-darkness"
@@ -164,6 +165,21 @@ def test_return_is_offered_on_curse_and_held_on_pools_of_darkness(disks):
         assert not out.ok
         assert out.message == amigaactions.unsupported(
             aft.amiga.MACHINES[key].title)
+
+
+def test_a_pools_of_darkness_area_with_no_map_is_not_a_destination(disks):
+    row = areas.area_in(84, areas.POOLS_OF_DARKNESS)
+    verdict = travel(POD).legality(machine(POD, area=0x13), row)
+    assert not verdict
+    assert verdict.reason == engine.FastTravel.ATTRACT_TRAP
+
+
+def test_return_from_an_area_with_no_map_says_the_title_is_unsupported(disks):
+    t = aft.AmigaFastTravel(POD, object())
+    t.back = engine.Waypoint(41, None, (4, 11, 0))
+    t._row = lambda id: areas.area_in(id, areas.POOLS_OF_DARKNESS)
+    assert t.back_verdict(machine(POD, area=0x13)).reason == (
+        amigaactions.unsupported(aft.amiga.MACHINES[POD].title))
 
 
 def test_a_decided_difference_is_offered(disks, monkeypatch):

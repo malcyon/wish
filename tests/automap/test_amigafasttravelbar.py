@@ -251,6 +251,11 @@ def test_pools_ticks_alone_leave_pools_of_darkness_with_nothing_ticked(lengths):
     assert labels(window) == [actionbar.NOTHING_TICKED]
 
 
+def test_pools_of_darkness_does_not_list_an_area_with_no_map(lengths):
+    window, _ = attached(POD, 48, ticked=(33, 41, 84))
+    assert labels(window) == ["Aerie"]
+
+
 def test_the_dropdown_lists_the_machines_title_not_the_windows(lengths):
     """The window was set up for Pool of Radiance; a Curse machine is attached."""
     window, _ = attached(CURSE, GUILD, ticked=(SEWERS,))
