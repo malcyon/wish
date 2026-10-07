@@ -74,6 +74,7 @@ class _Session:
         self.bars, self.memory, self.kbd = bars, memory, _Keyboard()
         self.combatants, self.shown = combatants, None
         self.writes = 0
+        self.polls, self.between, self.outcome = [], {}, A.S.WON
 
     def screen(self):
         return self.shown
@@ -88,16 +89,26 @@ class _Session:
     def mon(self, timeout):
         return _Monitor(self.memory)
 
-    def fight(self, budget, tactic, stop=None):
+    def fight(self, budget, tactic, stop=None, poll=1.0):
+        self.polls.append(poll)
         for bar, panel in self.bars:
             self.shown = _Screen(bar, panel)
             tactic(self, A.S.CombatBar(A.S.BAR_COMMAND, bar))
-        return A.S.FightResult(A.S.WON, len(self.bars), 1.0, [], [])
+            # Messages the engine prints for a turn it runs, between two bars.
+            for row in self.between.get(bar + panel, []):
+                shown = _Screen("", "")
+                shown.rows[20] = row
+                stop(self, shown)
+        return A.S.FightResult(self.outcome, len(self.bars), 1.0, ["VIEW MOVE DONE"],
+                               ["BRUTUS HITS"])
 
 
-def _run(tmp_path, monkeypatch, combatants, watch="brutus"):
+def _run(tmp_path, monkeypatch, combatants, watch="brutus", between=None,
+         outcome=A.S.WON):
     sess = _Session([("VIEW MOVE DONE", "ROLAND"), ("VIEW MOVE DONE", "BRUTUS")],
                     _memory(), combatants)
+    sess.between = between or {}
+    sess.outcome = outcome
     run = A.PoolRun(sess, A.Log(tmp_path), tmp_path, POOL_OF_RADIANCE, {})
     run.fight_watch = watch
     run.to_world = lambda: True
@@ -105,7 +116,10 @@ def _run(tmp_path, monkeypatch, combatants, watch="brutus"):
     run.walk_side_prompts, run.walk_side_open = [], set()
     melee = []
     monkeypatch.setattr(A.S.Session, "melee_turn", lambda s, bar: melee.append(bar) or "MOVE")
-    run._fight_out(0, [], [], False, A.S.ENCOUNTER_FIGHT, 0)
+    try:
+        run._fight_out(0, [], [], False, A.S.ENCOUNTER_FIGHT, 0)
+    except A.StepFailed:
+        pass
     run.log.close()
     events = [json.loads(line) for line in (tmp_path / "run.jsonl").read_text().splitlines()]
     return run, sess, melee, events
@@ -146,10 +160,31 @@ def test_without_the_option_the_fight_is_fought_with_melee_turn_alone(tmp_path, 
     sess = _Session([], {}, [])
     run = A.PoolRun(sess, A.Log(tmp_path), tmp_path, POOL_OF_RADIANCE, {})
     seen = []
-    sess.fight = lambda budget, tactic, stop=None: (
-        seen.append(tactic), A.S.FightResult(A.S.WON, 0, 1.0, [], []))[1]
+    sess.fight = lambda budget, tactic, stop=None, **kw: (
+        seen.append((tactic, kw)), A.S.FightResult(A.S.WON, 0, 1.0, [], []))[1]
     run.to_world = lambda: True
     run.position = lambda: [5, 5, 0]
     run.walk_side_prompts, run.walk_side_open = [], set()
     run._fight_out(0, [], [], False, A.S.ENCOUNTER_FIGHT, 0)
-    assert seen == [A.S.Session.melee_turn]
+    assert seen == [(A.S.Session.melee_turn, {})]
+
+
+def test_a_message_between_two_bars_is_logged_and_captured_at_the_faster_poll(
+        tmp_path, monkeypatch):
+    party = [_who("ROLAND", 0), _who("BRUTUS", 5)]
+    between = {"VIEW MOVE DONEROLAND": ["BRUTUS HITS THE ORC", "THE ORC MISSES"]}
+    run, sess, _, events = _run(tmp_path, monkeypatch, party, between=between)
+    lines = [e for e in events if e.get("kind") == "fight-watch-line"]
+    assert [(e["text"], e["after_bar"], e["named"]) for e in lines] == [
+        ("BRUTUS HITS THE ORC", 0, True)]
+    assert (tmp_path / f"{lines[0]['screen']}.png").exists()
+    assert sess.polls == [A.WATCH_POLL_SECONDS] and A.WATCH_POLL_SECONDS < 1.0
+
+
+def test_a_lost_fight_still_logs_its_lines_and_the_watched_hit_points(
+        tmp_path, monkeypatch):
+    party = [_who("ROLAND", 0), _who("BRUTUS", 5)]
+    _, _, _, events = _run(tmp_path, monkeypatch, party, outcome=A.S.LOST)
+    (end,) = [e for e in events if e.get("kind") == "fight-watch-end"]
+    assert end["lines"] == ["BRUTUS HITS"] and end["outcome"] == A.S.LOST
+    assert (end["hp"], end["status"]) == (11, 3)

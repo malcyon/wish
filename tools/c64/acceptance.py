@@ -1218,6 +1218,9 @@ ENCOUNTER_DRAW_SECONDS = 30.0
 #: How long `walk-fight` waits for a fight to open after it has answered an
 #: encounter menu or a `YES NO`.
 FIGHT_OPENS_SECONDS = 60.0
+#: `--fight-watch`'s poll of the fight's message rows, in seconds; the
+#: default is one.
+WATCH_POLL_SECONDS = 0.25
 #: The game sides `walk-fight` answers a disk prompt for: side 2 is the only
 #: one seen loading a fight; any other prompt stops the step.
 WALK_SIDES = ("2",)
@@ -2035,6 +2038,11 @@ class PoolRun:
     #: The fight in progress and how many of its command bars were recorded.
     watch_fight = 0
     watch_bars = 0
+    #: The rows of the last command bar's screen, the rows of the previous
+    #: read, and how many in-between message rows were logged this fight.
+    watch_bar_rows: frozenset = frozenset()
+    watch_prev_rows: frozenset = frozenset()
+    watch_lines = 0
     #: The stem `capture` last wrote, which the watch events name.
     last_stem = ""
 
@@ -6265,11 +6273,22 @@ class PoolRun:
         number = len(fights)
         self.capture(f"fight-{number}-start")
         self.watch_fight, self.watch_bars = number, 0
-        result = sess.fight(budget=self.walk_fight_seconds,
-                            tactic=(self.watch_tactic() if self.fight_watch
-                                    else S.Session.melee_turn),
-                            stop=self._treasure_capture())
+        self.watch_bar_rows = self.watch_prev_rows = frozenset()
+        self.watch_lines = 0
+        if self.fight_watch:
+            # The engine runs a character between two command bars, so its
+            # messages show for less than the default one-second poll.
+            result = sess.fight(budget=self.walk_fight_seconds,
+                                tactic=self.watch_tactic(),
+                                stop=self.watch_stop(self._treasure_capture()),
+                                poll=WATCH_POLL_SECONDS)
+        else:
+            result = sess.fight(budget=self.walk_fight_seconds,
+                                tactic=S.Session.melee_turn,
+                                stop=self._treasure_capture())
         self.capture(f"fight-{number}-end")
+        if self.fight_watch:
+            self.watch_end(result)
         if result.outcome == S.LOST:
             raise self.fight_lost(result)
         if result.outcome == S.BUDGET:
@@ -6298,6 +6317,52 @@ class PoolRun:
 
         return tactic
 
+    def watch_stop(self, inner):
+        """A `Session.fight` stop hook that logs each message row appearing
+        between two command bars, then asks `inner` (`--fight-watch`)."""
+        def hook(sess, screen) -> bool:
+            if screen is not None:
+                self.watch_read(screen)
+            return inner(sess, screen)
+
+        return hook
+
+    def watch_read(self, screen) -> None:
+        """Log every row of SCREEN that was not on the previous read and is
+        not part of the last command bar's screen; a row naming the watched
+        character also gets a screenshot."""
+        rows = [screen.row(r) for r in range(25)]
+        now = frozenset(r.strip() for r in rows if r.strip())
+        new = sorted(now - self.watch_prev_rows - self.watch_bar_rows,
+                     key=lambda text: [r.strip() for r in rows].index(text))
+        self.watch_prev_rows = now
+        name = self.fight_watch.upper()
+        for text in new:
+            named = name in text.upper()
+            if named:
+                self.capture(f"fight-{self.watch_fight}-line-{self.watch_lines}", rows)
+            self.log.emit("fight-watch-line", fight=self.watch_fight,
+                          after_bar=self.watch_bars - 1, time=self.clock(),
+                          text=text, named=named,
+                          screen=self.last_stem if named else None)
+            self.watch_lines += 1
+
+    def watch_end(self, result) -> None:
+        """Log the fight's collected message lines, bars and outcome with the
+        watched character's reads and hit points, for a lost fight as for a
+        won one."""
+        name = self.fight_watch.upper()
+        reads, hp = {}, None
+        with contextlib.suppress(Exception):
+            reads = self.watch_reads(name)
+        with contextlib.suppress(Exception):
+            battle = self.sess.battle()
+            hp = next((c.hp for c in (battle.combatants if battle is not None else ())
+                       if c.name.strip().upper() == name), None)
+        self.log.emit("fight-watch-end", fight=self.watch_fight, name=name,
+                      outcome=result.outcome, lines=list(result.lines),
+                      bars=list(result.bars), hp=hp, **reads)
+
     def watch_bar(self, sess, bar) -> None:
         """Log the battlefield, its text, whose bar this is and the watched
         character's combat state.  Only reads: no memory is written."""
@@ -6318,6 +6383,8 @@ class PoolRun:
                              "position": [c.x, c.y], "on_map": c.on_map, "hp": c.hp,
                              "side": c.side, "party": c.is_party}
                             for c in (battle.combatants if battle is not None else ())])
+        self.watch_bar_rows = self.watch_prev_rows = frozenset(
+            r.strip() for r in rows if r.strip())
         self.capture(f"fight-{self.watch_fight}-bar-{self.watch_bars}", rows)
         self.log.emit(
             "fight-watch", fight=self.watch_fight, bar_number=self.watch_bars,
