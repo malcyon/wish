@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -1538,3 +1539,107 @@ def test_a_step_off_a_map_edge_lands_in_the_area_the_exit_row_names():
     assert not walk(place(20, 0), edge_exits=rows)["d_ok"]
     assert not walk(place(29, 0), edge_exits=rows)["d_ok"]
     assert walk(place(20, 0))["d_ok"] and walk(place(20, 0))["area_crossed"] is None
+
+
+class DroppingGuest(TitleGuest):
+    """The emulator loses the key presses numbered in `drop`, counting from 1; the screen stays as it was."""
+
+    def __init__(self, clock, drop, **kw):
+        super().__init__(clock, **kw)
+        self.drop, self.count = set(drop), 0
+
+    def press(self, holder, key, timeout=None):
+        self.count += 1
+        if self.count in self.drop:
+            self.calls.append(("press", holder, key))
+            return
+        super().press(holder, key, timeout)
+
+
+def test_a_dropped_key_stops_the_run_at_its_step(tmp_path, clock):
+    # The route's second press is L, the key that opens the load picker.
+    guest, result = _run(tmp_path, clock, guest=DroppingGuest(clock, {2}))
+    assert result["completed"] is False and result["success"] is False
+    assert result["error"].startswith("KeyUnchanged: step 2 (load_picker): L left the screen unchanged")
+    assert {"unchanged": "L", "step": 2} in result["events"]
+    assert _keys(guest) == ["P", "L"]
+    assert not result.get("resume_record") and not result.get("resumable")
+    assert [c[0] for c in guest.calls].count("stop") == 1
+    assert any(c[0] == "get" for c in guest.calls)
+
+
+def test_a_guard_that_matches_before_the_redraw_is_not_a_failure(tmp_path, clock):
+    class Lagging(TitleGuest):
+        """The first grab after `L` still shows the screen before it."""
+
+        lag = False
+
+        def press(self, holder, key, timeout=None):
+            super().press(holder, key, timeout)
+            self.lag = key == "L"
+
+        def grab(self, state, raw, cropped, timeout=None):
+            if self.lag:
+                self.lag, self.presses = False, self.presses - 1
+                try:
+                    return super().grab(state, raw, cropped, timeout)
+                finally:
+                    self.presses += 1
+            return super().grab(state, raw, cropped, timeout)
+
+    guest, result = _run(tmp_path, clock, guest=Lagging(clock))
+    assert result["error"] == "" and result["success"] is True, result["read"]
+    assert [c[1] for c in guest.calls if c[0] == "grab"].count("02-load_picker") == 2
+
+
+def test_a_dropped_move_press_is_not_checked(tmp_path, clock):
+    # The route's seventh press is the move NP8; its picture is evidence only.
+    guest, result = _run(tmp_path, clock, guest=DroppingGuest(clock, {7}))
+    assert result["completed"] is True and "KeyUnchanged" not in result["error"]
+    assert not any("unchanged" in e for e in result["events"])
+    assert _keys(guest)[-1] == "D"
+
+
+def test_a_dropped_first_vault_row_press_stops_the_vault_route(tmp_path, clock):
+    from tests.amiga.test_amigaacceptance_titles import (
+        DARK_STATES,
+        DarkGuest,
+        _dark_manifest,
+    )
+    from tools.amiga import route_darkness
+
+    class Dropping(DarkGuest):
+        seen = 0
+
+        def press(self, holder, key, timeout=None):
+            if key == "NP2":
+                self.seen += 1
+                if self.seen == 1:
+                    self.calls.append(("press", holder, key))
+                    return
+            super().press(holder, key, timeout)
+
+    vault = route_darkness.vault_title(3, True)
+    vault = dataclasses.replace(vault, read_slot=_read_slot, slot_letters=_letters,
+                                slot_files=_files)
+    states = {*DARK_STATES, *(state for _, state, _ in vault.route)}
+    guest = Dropping(clock, save_key="disk3")
+    guest.place = dict(START)
+    result = acceptance.run_recon(
+        _dark_manifest(tmp_path), guest=guest, guard=MapGuard(states=tuple(states)),
+        identity=_IdentityMap(), holder="wish679-test", audio_proof=_audio_proof(tmp_path),
+        title=vault, accept=True)
+    assert result["completed"] is False
+    assert result["error"].startswith("KeyUnchanged: step ") and "NP2 left the screen" in result["error"]
+    assert _keys(guest)[-1] == "NP2" and _keys(guest).count("NP2") == 1
+
+
+def test_ready_that_leaves_the_item_list_unchanged_is_not_a_dropped_key(tmp_path, clock):
+    # READY redraws the list with the same row highlighted, whatever it did to the item.
+    steps = (*ROUTE[:8], ("R", "camp_items_row7", "key"), *ROUTE[8:])
+    title = make_title(route=steps, measure_route=steps)
+    guest = DroppingGuest(clock, {9})
+    _, result = _run(tmp_path, clock, title=title, guest=guest,
+                     guard=MapGuard(states=("title", *STATES, "camp_items_row7")))
+    assert _keys(guest)[8] == "R" and _keys(guest)[-1] == "D"
+    assert result["completed"] is True and "KeyUnchanged" not in result["error"]

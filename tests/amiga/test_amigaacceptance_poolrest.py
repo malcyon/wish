@@ -170,7 +170,8 @@ POOL_STATES = ("title", "party_menu", "save_path", "load_picker", "world", "shee
                "camp_save_picker", "quit_prompt", "rest_menu", "camp_magic", "camp_display")
 
 
-def _rest_run(tmp_path, clock, *, guard_states=POOL_STATES, identity=None, on=None):
+def _rest_run(tmp_path, clock, *, guard_states=POOL_STATES, identity=None, on=None,
+              guest_class=RestingGuest):
     base = dataclasses.replace(route_pool.POOL, read_slot=_read_slot, slot_letters=_letters,
                                slot_files=_files)
     slots = [("A", _slot(START, {name: [BLESS] for name in NAMES})), ("B", b"kept slot")]
@@ -182,7 +183,7 @@ def _rest_run(tmp_path, clock, *, guard_states=POOL_STATES, identity=None, on=No
                 "loaded_letter": "A", "state_a": START, "names_a": NAMES, "camp": list(STEPS)}
     path = tmp_path / "prepare.json"
     path.write_text(json.dumps(manifest))
-    guest = RestingGuest(clock)
+    guest = guest_class(clock)
     result = acceptance.run_recon(
         path, guest=guest, guard=MapGuard(states=guard_states, on=on),
         identity=identity or DisplayIdentity(), holder="wish273-test",
@@ -279,3 +280,20 @@ def test_a_rest_menu_with_no_guard_is_measured_and_fails_the_run(tmp_path, clock
     assert result["unguarded"] == ["rest_menu"]
     assert result["completed"] is True and result["success"] is False
     assert _keys(guest).count("F") == 1
+
+
+class StillRestMenuGuest(RestingGuest):
+    """The rest menu's `S` and `D` land on a field already chosen, so they leave the screen as it was."""
+
+    def press(self, holder, key, timeout=None):
+        if self.resting and key in ("S", "D"):
+            self.calls.append(("press", holder, key))
+            return
+        super().press(holder, key, timeout)
+
+
+def test_a_rest_whose_s_and_d_leave_the_menu_unchanged_still_completes(tmp_path, clock):
+    guest, result = _rest_run(tmp_path, clock, guest_class=StillRestMenuGuest)
+    assert result["error"] == "" and result["success"] is True, result["read"]
+    assert not any("unchanged" in e for e in result["events"])
+    assert _keys(guest).count("S") >= 3

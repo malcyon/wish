@@ -418,7 +418,7 @@ def test_a_highlight_that_did_not_move_stops_the_run_before_j(tmp_path, clock, m
     guest, result = _run(tmp_path, clock, monkeypatch, ("join 2 3",),
                          guest=ItemsGuest(clock, stuck=True))
     assert result["success"] is False
-    assert "camp_items_2_row2 shows a party other than the prepared party" in result["error"]
+    assert result["error"].startswith("KeyUnchanged: step 18 (camp_items_2_row2): NP2 left")
     assert "J" not in _camp_keys(guest)
     assert "F" not in _camp_keys(guest)
 
@@ -484,3 +484,21 @@ def test_a_guard_map_with_no_scrolls_dropped_rule_reads_nothing_about_the_load(
                                       "shown": None, "shot": None}
     assert ("the guard map holds no SCROLLS DROPPED! rule, so the load message was not read"
             in result["read"]["verdicts"])
+
+
+class SilentJoinGuest(ItemsGuest):
+    """`J` draws nothing: the list stays as it was, so JOIN's first grab shows the screen before the key."""
+
+    def press(self, holder, key, timeout=None):
+        if key == "J" and self.screen == "items":
+            self.calls.append(("press", holder, key))
+            return
+        super().press(holder, key, timeout)
+
+
+def test_a_join_whose_first_grab_is_unchanged_is_not_a_dropped_key(tmp_path, clock, monkeypatch):
+    guest, result = _run(tmp_path, clock, monkeypatch, ("join 2 3",),
+                         guest=SilentJoinGuest(clock, answer="join_too_many"))
+    assert "KeyUnchanged" not in result["error"]
+    assert not any("unchanged" in e for e in result["events"])
+    assert "J" in _camp_keys(guest)

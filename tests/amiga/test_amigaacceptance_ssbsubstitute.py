@@ -472,8 +472,10 @@ class SubstituteGuest(measure.ScreenGuest):
 
     def _shown(self):
         tail = "" if self.line == 1 else f"_{self.line}"
-        return {"camp_sheet": f"camp_sheet_items{tail}", "camp_list": f"camp_items{tail}"}.get(
+        shown = {"camp_sheet": f"camp_sheet_items{tail}", "camp_list": f"camp_items{tail}"}.get(
             self.screen, self.screen)
+        # The camp's highlight moves with the line, so the screen differs on each line.
+        return shown + " " * (self.line - 1) if self.screen == "camp" else shown
 
     def press(self, holder, key, timeout=None):
         super().press(holder, key, timeout)
@@ -519,7 +521,7 @@ class SubstituteGuard:
         return state in SUB_STATES
 
     def __call__(self, state, path):
-        return path.read_bytes() == state.encode()
+        return path.read_bytes().rstrip(b" ") == state.encode()
 
 
 class SubstituteIdentity:

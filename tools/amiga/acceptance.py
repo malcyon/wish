@@ -389,6 +389,14 @@ RESUME = "resume"
 RESUME_SNAPSHOT_SECONDS = 60.0
 
 
+class KeyUnchanged(RouteError):
+    """A route key's screen matched its guard only unchanged from the screen before the key.
+
+    Not a `GuardMissed`: a resumed run does not press the step's key again, so it would go on
+    from the wrong screen, and no walk retry may catch it.
+    """
+
+
 class GuardMissed(RouteError):
     """A guarded state's screen did not match within its limit.
 
@@ -1532,6 +1540,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     so no save is made while it is on, and again after the route or an error before the guest
     stops. The summary's `no_encounters` records whether it was given.
 
+    Outside measure, a `key` step whose screen matches its guard only unchanged from the screen
+    before it stops the run with `KeyUnchanged`, except the steps `route_camp.may_keep_screen`
+    names; a measure run records the same event and ends the route.
+
     A `move` step that answered an interstitial in the title's `move_again_after` presses its key
     again, at most `MOVE_AGAIN_LIMIT` times, listing each press in `result["moves_again"]`; a
     further answer stops the run with a `RouteError`.
@@ -1976,7 +1988,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def machine_step(verb: str, name: str, n: int) -> None:
         """Save the machine under `name`, or put it back as that left it and on its screen."""
-        nonlocal previous_state, previous_world
+        nonlocal previous, previous_state, previous_world
         # The machine goes back to what the snapshot held, so the snapshot must not hold the
         # changed script: a restore into a switch that is off would leave it there for a save.
         encounter_gate("off")
@@ -1984,10 +1996,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         key = name.lower()
         if verb == "snapshot":
             seen[key] = {"state": previous_state, "world": previous_world, "sent": len(sent),
+                         "digest": previous,
                          "result": {k: copy.deepcopy(result[k]) for k in memory if k in result}}
         else:
             was = seen[key]
             previous_state, previous_world = was["state"], was["world"]
+            previous = was["digest"]
             # The keys since the snapshot are undone with the machine.
             del sent[was["sent"]:]
             for field in memory:
@@ -2004,7 +2018,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             # Strict wherever the state has a guard: a restore that landed on another screen
             # must stop the run, not be settled and typed into.
             try:
-                reach(previous_state, f"{n:02d}-{previous_state}-after-restore", 0, strict=True)
+                previous = reach(previous_state, f"{n:02d}-{previous_state}-after-restore", 0,
+                                 strict=True)
             except RouteError as exc:
                 raise RouteError(f"after restoring {name}: {exc}") from exc
 
@@ -2339,21 +2354,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         return next((s for s in wanted if guard(s, crop)), None)
 
     def until_guard(state: str, name: str, first_wait: float,
-                    poll: float, limit: float, *, strict: bool = True) -> str:
+                    poll: float, limit: float, *, strict: bool = True,
+                    unchanged_from: str | None = None) -> str:
         """Wait, then grab every `poll` seconds until the guard matches; keep the last crop.
 
         A state that is not `strict` and never matches falls back to a settled capture.
+        A match whose digest is `unchanged_from` is not accepted: the guard may match the screen
+        before the key as well, so polling goes on, and the limit raises `KeyUnchanged`.
         """
         wait(first_wait)
         started = time.monotonic()
         done: dict[str, int] = {}
         crop = shots / f"{name}.png"
+        stale = False
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
                 look_for_messages(crop, name)
                 hit = recognise(state, crop, done)
-                if hit:
+                if hit and digest == unchanged_from:
+                    stale = True
+                elif hit:
                     check_identity(hit, crop)
                     observe(hit, name, crop)
                     landed["state"] = hit
@@ -2365,6 +2386,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     # a screen; each interstitial row's count and the route deadline bound it.
                     started = time.monotonic()
             if time.monotonic() - started >= limit:
+                if stale:
+                    raise KeyUnchanged(f"{state} matched only unchanged within {limit:.0f}s;"
+                                       f" kept {crop}")
                 if not strict:
                     return settle_unguarded(state, name)
                 missing = result.get("interstitials_without_guard")
@@ -2373,13 +2397,18 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                                  + (f"; the guard map has no rule for {missing}" if missing else ""))
             wait(poll)
 
-    def reach(state: str, name: str, first_wait: float, *, strict: bool) -> str:
+    def reach(state: str, name: str, first_wait: float, *, strict: bool,
+              unchanged_from: str | None = None) -> str:
         if _guards(guard, state):
             limit = title.wait_limits.get(state, GUARD_LIMIT) if title else GUARD_LIMIT
-            return until_guard(state, name, first_wait, GUARD_POLL, limit, strict=strict)
+            return until_guard(state, name, first_wait, GUARD_POLL, limit, strict=strict,
+                               unchanged_from=unchanged_from)
         wait(first_wait)
         done: dict[str, int] = {}
         digest = settle_unguarded(state, name)
+        if unchanged_from is not None and digest == unchanged_from:
+            raise KeyUnchanged(f"{state} settled on the screen before the key; kept "
+                               f"{shots / f'{name}.png'}")
         for again in range(1, 4):
             if not interstitial(state, shots / f"{name}.png", done, inserts_only=measure):
                 break
@@ -2782,7 +2811,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["route_changed"] = changed
         else:
             if earlier is None:
-                until_guard("title", "title", 0, TITLE_POLL, title_limit)
+                previous = until_guard("title", "title", 0, TITLE_POLL, title_limit)
                 previous_world = ""
                 previous_state = ""
             # Leaving the credits with ESC can land on the party menu, which `P` opens.
@@ -2838,10 +2867,17 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     try:
                         digest = reach(state, name, 0 if at_resume else first_wait,
                                        strict=at_resume or not accept or state in strict_states
-                                       or in_leg)
+                                       or in_leg,
+                                       unchanged_from=(previous if kind == "key" and not at_resume
+                                                       and not route_camp.may_keep_screen(key, state)
+                                                       else None))
                     except GuardMissed as miss:
                         miss.resume_step, miss.resume_name = n, name
                         raise
+                    except KeyUnchanged as exc:
+                        result["events"].append({"unchanged": key, "step": n})
+                        raise KeyUnchanged(
+                            f"step {n} ({state}): {key} left the screen unchanged: {exc}") from exc
                     if kind == "move" and title is not None and title.move_again_after:
                         again = 0
                         while (answered := next(
@@ -2871,14 +2907,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     if route_camp.is_join(state):
                         # JOIN's message is gone after its delay; the list it redrew is read now.
                         after = route_camp.joined_after(state)
-                        reach(after, f"{n:02d}-{after}",
-                              min_waits.get(after, route_camp.JOINED_WAIT),
-                              strict=not accept or after in strict_states)
+                        digest = reach(after, f"{n:02d}-{after}",
+                                       min_waits.get(after, route_camp.JOINED_WAIT),
+                                       strict=not accept or after in strict_states)
                     if (key, state, previous_state) == (
                             route_camp.REST_GO, route_camp.CAMP, route_camp.REST_MENU):
                         # A sheet counts as showing a rest's result only if it comes after it.
                         result["sheets_before_last_rest"] = len(result.get("camp_sheets", []))
                     previous_state = state
+                    previous = digest
                     if kind == "move":
                         # Evidence only: the two saves judge the walk, never the picture.
                         result["events"][-1]["crop_changed"] = digest != previous_world

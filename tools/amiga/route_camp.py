@@ -360,6 +360,16 @@ def is_join(state: str) -> bool:
     return re.fullmatch(rf"{JOIN_LIST}{_LINE}", state) is not None
 
 
+def may_keep_screen(key: str, state: str) -> bool:
+    """Whether a `key` step on `state` can legitimately leave the screen as it was.
+
+    The rest menu's second `S` and repeated `D` land on a field already chosen; JOIN's first grab
+    is taken at once and can come before any change; READY redraws the item list with the same
+    row highlighted whatever it did.
+    """
+    return state == REST_MENU or is_join(state) or (key == READY and is_items(state))
+
+
 def is_joined(state: str) -> bool:
     """Whether `state` is the item list JOIN redrew, whose rows are read by its identity rule."""
     return re.fullmatch(rf"{JOINED_LIST}{_LINE}", state) is not None

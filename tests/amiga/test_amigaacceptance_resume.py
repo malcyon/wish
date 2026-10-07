@@ -864,3 +864,42 @@ def test_a_record_missing_what_the_resume_reads_stops_before_the_claim(
     with pytest.raises(RouteError, match=message):
         _resume(tmp_path, clock, stopped, first, guest=guest)
     assert guest.calls == [] and not (tmp_path / "resume1").exists()
+
+
+class DroppingBackGuest(BackGuest):
+    """The resumed machine loses its first key press."""
+
+    dropped = False
+
+    def press(self, holder, key, timeout=None):
+        if not self.dropped:
+            self.dropped = True
+            self.calls.append(("press", holder, key))
+            return
+        super().press(holder, key, timeout)
+
+
+def _equal_to_the_at_step_screen(first, stopped):
+    """Make the record's `previous_digest` the digest of the screen step 7 shows."""
+    path = pathlib.Path(first["resume_record"])
+    record = json.loads(path.read_text())
+    record["kept"]["previous_digest"] = hashlib.sha256(
+        f"frame {stopped.presses}".encode()).hexdigest()
+    path.write_text(json.dumps(record))
+
+
+def test_a_resumed_step_is_not_checked_against_the_record_s_digest(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    _equal_to_the_at_step_screen(first, stopped)
+    guest, result = _resume(tmp_path, clock, stopped, first)
+    assert result["error"] == "" and result["completed"] is True
+    assert _keys(guest) == ["E", "S", "D"]
+
+
+def test_the_step_after_a_resumed_one_is_checked(tmp_path, clock):
+    stopped, first = _stopped(tmp_path, clock)
+    guest, result = _resume(tmp_path, clock, stopped, first,
+                            guest=DroppingBackGuest(clock, stopped))
+    assert result["completed"] is False
+    assert result["error"].startswith("KeyUnchanged: step 8 (camp): E left the screen unchanged")
+    assert _keys(guest) == ["E"]
