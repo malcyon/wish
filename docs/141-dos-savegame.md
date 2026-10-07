@@ -228,7 +228,11 @@ smaller", and it is not smaller at all — what is missing is the script buffer;
 and Pools of Darkness was given a `SAVGAM<slot>.DAT` "plus a separate
 `SAVGAM<slot>.PTY`", where it writes the `.PTY` **instead** and keeps a
 `VAULT<slot>.DAT` beside it -- 12 bytes of coin header plus a 63-byte item
-record per stored item, empty at 12 bytes. See the 2026-09-27 comment on
+record per stored item, empty at 12 bytes. The file carries no count, marker
+or cap: the loader (`GAME.OVR` `0x138FA`) reads 63-byte records until a short
+read, so the only limit is free heap at the vault screen. A 448-record vault
+beside a 59-item party loaded and listed under DOSBox, with no memory
+message; real hardware may have less free memory. See the 2026-09-27 comment on
 #651 (Convert a Pools of Darkness party's item vault between DOS and the
 Amiga along with its saved game).
 

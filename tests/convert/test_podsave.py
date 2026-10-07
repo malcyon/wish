@@ -274,6 +274,32 @@ def test_pod_vault_past_two_hundred_converts_both_ways_with_every_item(n):
     assert amiga_savegame.pod_vault_to_amiga(back, 9) == raw
 
 
+def test_amiga_to_dos_converts_a_full_pool_vault_to_every_dos_record(
+        tmp_path, monkeypatch):
+    """The DOS loader has no count and no cap, so all 448 nodes the Amiga
+    pool can hold arrive as 448 DOS records."""
+    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+    state = _synthetic_state(1)
+    char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
+    built, _ = amiga_savegame.pod_new_savegame(state, [char])
+    n = 448
+    sword = _amiga_node(type_index=1, weight=60, quantity=1)
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.write_file(amiga_savegame.pod_slot_path("A"), built)
+    disk.write_file(amiga_savegame.pod_vault_path("A"),
+                    _amiga_vault((7, 8, 9), n, sword * n))
+    path = tmp_path / "disk3.adf"
+    path.write_bytes(disk.to_bytes())
+
+    rehearsal = convert.PodAmigaToDos().rehearse(
+        convert.Source.detect(path), "A", None)
+
+    raw = rehearsal.files["VAULTA.DAT"]
+    assert len(raw) == 12 + dos_port.ITEM_SIZE * n
+    assert len(dos_codec.pod_vault_from_dos(raw).items) == n
+
+
 def test_pod_vault_one_past_the_pool_headroom_stops():
     with pytest.raises(amiga_savegame.AmigaSaveError, match="room for 436"):
         amiga_savegame.pod_vault_to_amiga(_items(446 - 9), 9)

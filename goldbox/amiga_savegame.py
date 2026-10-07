@@ -1923,8 +1923,8 @@ POD_EFFECT_NEXT_AT = 0x06
 POD_NAME_AT, POD_NAME_BYTES = 0x60, 16
 
 #: `Vault<L>.DAT`: twelve bytes of header, the marker `$FFFF`, a `u16be` item
-#: count, then two hundred twenty-byte item nodes, the unused ones padded
-#: from the game's own item template table (`docs/124-amiga-port.md`).
+#: count, then twenty-byte item nodes; the game's writer pads a vault of 200
+#: nodes or fewer to `POD_VAULT_SIZE` (`docs/124-amiga-port.md`).
 #: `tools/amiga/podsavegame.py`'s `VAULT_*` names alias these.
 POD_VAULT_HEADER = 12
 POD_VAULT_MARKER = 0xFFFF
@@ -2269,7 +2269,7 @@ def _pod_vault_walk(data: bytes) -> tuple[dos_codec.PodVault, int]:
     followed inline by its own `quantity` chained twenty-byte nodes.  The
     walk stops at the count, never at the padding: `count` is the number of
     top-level items, not the node count, and taking `count * 20` bytes would
-    read scrolls as ordinary items (2026-09-27 comment on #651).
+    read scrolls as ordinary items.
     """
     if len(data) < POD_VAULT_HEADER + 4:
         raise AmigaSaveError(
@@ -2323,7 +2323,9 @@ def pod_party_nodes(savegame: bytes | PodSavegame) -> int:
 
     Each member's items plus the scrolls inside any bundles.  The party
     chains are CONFIRMED by a static read of the game's loader; that nothing
-    else holds pool nodes at the load is PROBABLE (WISH-6 comment 4c943e53).
+    else holds pool nodes at the load is PROBABLE: static reachability found
+    none, and the live pool read of one party showed exactly its 59 item
+    nodes plus the 40 vault items set.
     The vault loads whole when its nodes n satisfy
     n <= POD_POOL_NODES - P - POD_VAULT_SPARE_NODES.
     """
@@ -2361,13 +2363,12 @@ def pod_vault_to_amiga(vault: dos_codec.PodVault,
                        party_nodes: int | None = None) -> bytes:
     """`vault` as the bytes `Vault<L>.DAT` holds.
 
-    For the DOS to Amiga direction (#194, commit 2): a DOS vault has no case,
-    so every record becomes an ordinary head item -- a DOS type 105 record
-    would ask the reader to chain-walk nodes that are not there, and is
-    blocked as damaged.  Padding past the written heads, up to
-    `POD_VAULT_SIZE`, is left zero -- whether the game accepts that in place
-    of its own item-template padding is #651's still-open padding question,
-    settled by a WinUAE run rather than by this function.
+    For the DOS to Amiga direction: a DOS vault has no case, so every record
+    becomes an ordinary head item -- a DOS type 105 record would ask the
+    reader to chain-walk nodes that are not there, and is blocked as damaged.
+    Padding past the written heads, up to `POD_VAULT_SIZE`, is left zero: the
+    game loaded a zero-padded vault and listed every item, because its reader
+    stops at the count and never reads the padding.
 
     Past 200 items the file is 16 + 20n bytes with no padding, as the game's
     own writer makes it; `party_nodes` (`pod_party_nodes`) then bounds n.

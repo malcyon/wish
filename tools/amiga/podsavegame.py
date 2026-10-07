@@ -59,10 +59,11 @@ def _u16(data: bytes, at: int) -> int:
 
 
 #: `Vault<L>.DAT`: twelve bytes of header, the marker `$FFFF`, a `u16be` item
-#: count, then a fixed two hundred twenty-byte item nodes, the unused ones
-#: padded from the same item template table (`0x3DA86`).  12 + 4 + 200 * 20 =
-#: 4016, which is what every one of them measures.  The map lives in
-#: `goldbox.amiga_savegame` under `POD_VAULT_*`.
+#: count, then twenty-byte item nodes.  The game's writer pads a vault of 200
+#: nodes or fewer to 12 + 4 + 200 * 20 = 4016 bytes (`0x3DA86`), which is what
+#: every one on the disks measures; past 200 nodes the file is 16 + 20n bytes.
+#: The reader is driven by the count and never reads padding.  The map lives
+#: in `goldbox.amiga_savegame` under `POD_VAULT_*`.
 
 #: The executable, on disk 1.
 EXECUTABLE = "Pools of Darkness"

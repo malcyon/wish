@@ -76,7 +76,7 @@ clear), root drawer `Save/`:
 |---|---|---|---|
 | `NAME.pc` | 484–524, **variable** | 12 | one character each: BJORK, JORILD, TROND, KRISTIN, TRIPEL TURBO … |
 | `SavGam[A-H].pty` | 10828, fixed | 8 | party/world saves, **all eight distinct**, all real |
-| `Vault[A-H].DAT` + `VaultT.DAT` | 4016, fixed | 9 | the item vault |
+| `Vault[A-H].DAT` + `VaultT.DAT` | 4016 up to 200 nodes, 16 + 20n past that | 9 | the item vault |
 | `spindisk` | 16538 | 1 | loader, not save data |
 | `WRITE.ME` | 0 | 1 | write-test probe |
 
@@ -2544,13 +2544,37 @@ CONFIRMED from both callbacks.
 
 #### `Vault<L>.DAT` is the item vault, and a slot loads without one
 
-4016 bytes: twelve of header, the marker `$FFFF`, a `u16be` count of top-level
-items, then a fixed two hundred twenty-byte item nodes with the unused ones
-padded from the same item table (`0x3DA86`). A scroll case (type `0x49`) is
-followed inline by its own `quantity` chained nodes, so the count is not the
-node count -- reading `count × 20` bytes as items loses the tail and reads
-scrolls as ordinary items. 12 + 4 + 200 × 20 = 4016, which is what all
-seventeen on these disks measure, all with the marker and counts of 0 to 97.
+Twelve bytes of header, the marker `$FFFF`, a `u16be` count of top-level
+items, then twenty-byte item nodes. A scroll case (type `0x49`) is followed
+inline by its own `quantity` chained nodes, so the count is not the node count
+-- reading `count × 20` bytes as items loses the tail and reads scrolls as
+ordinary items.
+
+**The reader is driven by the count.** It never compares the marker, never
+compares the count with 200, and never reads the padding. The writer
+(`0x3DA86`) pads from the item template table only when it wrote fewer than
+200 nodes, so 12 + 4 + 200 × 20 = 4016 is what every one of the seventeen on
+these disks measures (counts 0 to 97); at 200 nodes or more it writes no
+padding and the file is 16 + 20n bytes. A deposit is blocked once the vault
+would pass 200 nodes (`Vault is full!`); a take is not. CONFIRMED from the
+code.
+
+**The limit is the item pool, not the file.** The vault's nodes come from the
+same 448-node pool as every party member's items and bundled scrolls, so a
+vault of n nodes loads whole while n ≤ 448 − P, P being the party's item
+nodes; the vault screen needs three more for its own menus. When the pool runs
+out the game prints `Out of dynamic memory!` and, by the code, writes through
+a null pointer. The pool count is CONFIRMED by a live read: with 59 party
+items and a 40-item vault the pool bitmap held 99 set bits. That nothing else
+holds pool nodes at the load is PROBABLE. Evidence: WISH-6 comments
+85c2a36e (loader and writer code), 4c943e53 (pool arithmetic), 941021d7 (pool
+read) and 27090b00 (the zero-padded vault loaded in the game).
+
+**Padding is not needed.** The game loaded a vault whose unused tail was zero
+and listed every item, so a converted vault does not have to copy the item
+template table. A vault file that is missing meets the engine's disk request
+for disk 3.
+
 **The saved-game loader never opens it** — it is read when the player enters
 the vault and written when they leave (`0x3DD66`, `0x3DF1E`), and the save
 menu copies the old slot's vault to the new one when the letter changes
