@@ -254,7 +254,7 @@ def test_the_party_stands_where_the_source_save_says(ecl_dax):
 #: sourcing.  Masking by these rather than by whatever happened to differ is
 #: what stops the test agreeing with the code by construction.
 DECLARED = ("zeroed", "display scratch", "an unused name slot",
-            "the wall art in front", "the square property")
+            "the wall art in front", "the square's attribute")
 
 
 def test_the_shipped_saved_game_round_trips_except_where_it_is_declared(

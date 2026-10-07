@@ -648,7 +648,7 @@ PARTY_SIZE = 0x503E          # the party count, $6E3E in the engine; 6 -> 1 when
 DISK = 0x5012                # $6E12 in the engine: the DAX container number as a VM word;
                              # the geo load fails without it
 ENCOUNTER_TEXT = 0x5227      # string buffer, one ASCII character per word
-VM_SCRATCH = 0x5200          # $9800 in the engine: the script workspace and loop counter
+VM_SCRATCH = 0x5200          # $9800 in the engine: the script workspace (PROBABLE)
 # The shared, cross-port ECL variable space ends here. No ECL script in the
 # thirty-script specimens references an address at or above $4AF9 (2544 distinct
 # bracketed addresses), and on the C64 $4D00 upwards is the twelve character
@@ -1181,9 +1181,9 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
     **indoors**, which is what refuted reading it as an indoors flag.
 
     `TAIL_CONSTANT_BYTE` is 2 in all twelve genuine specimens regardless.
-    `VM_COPY_BYTE` is the square's attribute, not a copy of `$9800`; it is
-    written from `$9800` as it stands in this save, which 13 of 13 files agree
-    with, but the two are different things.
+    `VM_COPY_BYTE` is the square's attribute, not a copy of `$9800`; the writer
+    approximates it with the low byte of `$9800` for lack of a better source,
+    and 13 of 13 files agree with that.
 
     **Curse and Silver Blades**: all four bytes zero, see `LATER_TAIL_ZERO`.
     Their mode byte is not Pool of Radiance's constant 2 -- it varies 0/2

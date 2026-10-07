@@ -1710,11 +1710,11 @@ def por_savegame_writes(save: bytearray, report: PorSaveReport,
                 "back holding zero too, in both WinUAE runs of #316")
     save[POR_SQUARE_PROPERTY] = 0
     report.note(POR_SQUARE_PROPERTY, 1,
-                "the square property: zero. It is the low byte of $5200, "
-                "which nothing can source, and the same step routine "
-                "rewrites it. The engine's own resave holds zero here too "
-                "(#316), and its own outdoor saves hold 1 with $5200 at 1, "
-                "which is the same relationship (#321)")
+                "the square's attribute: zero. It is not a copy of $9800, "
+                "nothing here sources it, and the step routine rewrites it. "
+                "The engine's own resave holds zero here too (#316), and "
+                "its own outdoor saves hold 1 where $9800 also holds 1 "
+                "(#321)")
     pad_start, pad_end = POR_SQUARE_PAD
     report.note(pad_start, pad_end - pad_start,
                 "five bytes nothing reads: two the seven-byte square struct "
