@@ -1616,10 +1616,16 @@ def test_a_pid_that_cannot_be_signalled_is_alive_and_logged(
         monkeypatch, caplog):
     def kill(pid, sig):
         raise PermissionError
+    if os.name == "nt":
+        pytest.skip("Windows asks _windows_alive, not os.kill")
     monkeypatch.setattr(trip.os, "kill", kill)
-    with caplog.at_level("INFO"):
-        assert trip._owner_alive({"pid": os.getppid(), "started": None},
-                                 None, "the-journal.json")
+    # Once any test has imported wish/debuglog.py the "wish" logger stops
+    # propagating to the root, where caplog listens, so attach it directly.
+    monkeypatch.setattr(trip._log, "handlers", [caplog.handler])
+    monkeypatch.setattr(trip._log, "propagate", False)
+    caplog.set_level("INFO", logger=trip._log.name)
+    assert trip._owner_alive({"pid": os.getppid(), "started": None},
+                             None, "the-journal.json")
     assert "the-journal.json" in caplog.text
 
 
