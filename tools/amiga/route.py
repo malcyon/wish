@@ -23,7 +23,7 @@ def _has_raw_code(name: Any) -> bool:
         return False
 
 
-_STEP_KINDS = frozenset({"key", "write", "move", "turn", "answer", "insert"})
+_STEP_KINDS = frozenset({"key", "write", "move", "turn", "answer", "insert", "until_encounter"})
 _LETTER = re.compile(r"[A-Z]")
 _OPTION = re.compile(r"[A-Za-z0-9_]+=[A-Za-z0-9_.]*")
 _EXPECT = re.compile(r"(?P<name>[^:]+):(?P<id>-?[0-9]+):(?P<minutes>-?[0-9]+):(?P<data>-?[0-9]+)")
@@ -86,7 +86,10 @@ class AmigaTitle:
 
     `mounted` lists manifest disk keys in drive order (None: an empty drive) and
     `spares` the keys put on the VM and not mounted. A route step is
-    `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, and
+    `(key, state, kind)`; an `insert` step's key is `(drive, disk_key, key)`, an
+    `until_encounter` step's `(step key, turn key, most steps)`: it presses the step key until
+    `state` shows, the turn key after a step that left the world screen unchanged, and
+    stops the run after the most steps, and
     `write` steps may press only `control_letter` or `after_letter`, and no other step may press
     those. A title that only loads has neither letter and no `write` step. A kept letter is never
     written, so a non-write step may press one only where `plain_keys` names its `(key, state)`:
@@ -253,6 +256,14 @@ class AmigaTitle:
         if kind == "answer":
             if key is not None:
                 block(f"{name} answer step {step!r} takes no key")
+            return None
+        if kind == "until_encounter":
+            if not (isinstance(key, tuple) and len(key) == 3 and _has_raw_code(key[0])
+                    and _has_raw_code(key[1]) and type(key[2]) is int and key[2] >= 1):
+                block(f"{name} until_encounter step {step!r} needs (step key, turn key, most "
+                      f"steps)")
+            if {key[0].upper(), key[1].upper()} & self._write_letters():
+                block(f"{name} until_encounter step {step!r} presses a save or kept slot letter")
             return None
         if kind == "insert":
             if not (isinstance(key, tuple) and len(key) == 3 and type(key[0]) is int

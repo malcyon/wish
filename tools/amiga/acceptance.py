@@ -83,10 +83,14 @@ from tools.amiga.route_darkness import (  # noqa: E402
 )
 from tools.amiga.route_pool import (  # noqa: E402
     POOL,
+    POOL_ENCOUNTER,
+    POOL_RAISE_PRICE,
     POOL_SOURCES,
     _prepare_pool,
     pool_camp_title,
+    pool_temple_title,
     pool_title_for,
+    temple_verdict,
 )
 from tools.amiga.route_silver_blades import (  # noqa: E402
     ACCEPT_ROUTE,
@@ -108,9 +112,12 @@ from tools.amiga.staging import (  # noqa: E402
     _entry,
     _find_images,
     _verified_disk,
+    check_staged_member,
+    parse_stage_record,
     replace_file_in_place,
     sha256,
     stage_place,
+    stage_pool_member,
 )
 from tools.amiga.winuaesession import (  # noqa: E402
     BOOT_CONFIG,
@@ -1096,7 +1103,10 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
         key: entry["sha256"] == manifest["disks"][key]["sha256"]
         for key, entry in result["fetched"].items()}
     if reload:
-        _read_reload(title, manifest, result, out, kept_before, loaded)
+        if fights(title):
+            _read_encounter(title, result, out, kept_before)
+        else:
+            _read_reload(title, manifest, result, out, kept_before, loaded)
         return
     if title.save_disk in result["fetched"]:
         try:
@@ -1114,7 +1124,10 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                     manifest, after, letter=title.after_letter, check_place=False,
                     names=manifest["names_a"], extra_problems=_no_problems)
                 squares = sum(1 for *_, kind in steps if kind == "move")
-                walk = walk_verdict(manifest["state_a"], control, after, squares,
+                walk = temple_verdict(
+                    manifest["state_a"], control, after, manifest["temple"]["member"],
+                    control=title.control_letter, after=title.after_letter,
+                ) if "temple" in manifest else walk_verdict(manifest["state_a"], control, after, squares,
                                     control=title.control_letter, after=title.after_letter,
                                     turn=title.turn, edge_exits=title.edge_exits,
                                     wilderness_grid=title.wilderness_grid,
@@ -1292,6 +1305,44 @@ def _camp_verdicts(sheets: list[dict[str, Any]]) -> list[str]:
 
 def _place_text(place: dict[str, Any]) -> str:
     return f"area {place['area']} {place['x']},{place['y']} facing {place['facing']}"
+
+
+def fights(title: AmigaTitle | None) -> bool:
+    """Whether `title`'s route walks until an encounter, which makes its run a `fight` run."""
+    return title is not None and any(kind == "until_encounter" for *_, kind in title.route)
+
+
+def _read_encounter(title: AmigaTitle, result: dict[str, Any], out: pathlib.Path,
+                    kept_before: dict[str, dict]) -> None:
+    """Judge a fight run: the walk met an encounter, the first command bar came up, and no disk changed.
+
+    The battlefield is that bar's crop; who stands on it is read from the picture, not here.
+    """
+    walk = result.get("encounter_walk", {})
+    if title.save_disk in result["fetched"]:
+        try:
+            fetched = _verified_disk(out / f"fetched-{title.save_disk}.adf")
+            result["kept_unchanged"] = {
+                c: title.slot_files(fetched, c) == before for c, before in kept_before.items()}
+            result["extra_saves"] = sorted(set(title.slot_letters(fetched)) - set(kept_before))
+        except BaseException as exc:
+            result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
+    shot = result.get("battlefield")
+    verdicts = [(f"met {walk.get('state')} after {walk.get('steps')} steps and "
+                 f"{walk.get('turns')} turns") if walk.get("met") else
+                "no encounter was met",
+                f"battlefield: {shot}" if shot else "no first command bar was captured"]
+    result["read"] = {"encounter_walk": walk, "battlefield": shot, "verdicts": verdicts}
+    result["success"] = bool(
+        not result["error"] and result["completed"] and not result["unguarded"]
+        and walk.get("met") and shot
+        and set(result["fetched"]) == set(title.disk_keys)
+        and all(result["registered_unchanged"].values())
+        and all(result["working_unchanged"].values())
+        # A fight run saves nothing, so every disk comes back as it went in.
+        and all(result["disks_unchanged"].get(k) for k in title.disk_keys)
+        and bool(result.get("kept_unchanged")) and all(result["kept_unchanged"].values())
+        and result.get("extra_saves") == [])
 
 
 def _read_reload(title: AmigaTitle, manifest: dict, result: dict[str, Any],
@@ -1827,9 +1878,27 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError(preserve_message + ", and a substituted one needs --specimen-issue "
                              f"{SPECIMEN_ISSUE_FORMS} naming its issue")
     if title is POOL:
-        title = pool_title_for(manifest)
+        title = pool_route(manifest)
+    if fights(title) != bool(manifest.get("encounter")):
+        raise RouteError("a fight run needs a manifest prepared with --encounter, and that "
+                         "manifest runs only as a fight or a measure")
+    if fights(title) and not (reload or measure):
+        raise RouteError("a fight route saves nothing, so it runs as a fight or a measure")
+    if title is not None and not measure and not diagnose:
+        missing = [s for s in ("title", *sorted(title.strict)) if not _guards(guard, s)]
+        if missing:
+            raise RouteError(f"screen guard map lacks {missing}")
     if title is not None:
         disks, registered, letter = _title_inputs(manifest, title)
+        if "staged_record" in manifest:
+            try:
+                staged = manifest["staged_record"]
+                check_staged_member(_verified_disk(_input(staged, "before")),
+                                    _verified_disk(disks[title.save_disk]), staged)
+            except (KeyError, TypeError) as exc:
+                raise RouteError(f"the manifest's staged record is malformed: {exc!r}") from exc
+            except StageError as exc:
+                raise RouteError(f"the manifest's staged record: {exc}") from exc
         originals: dict[str, pathlib.Path] = {}
         save_before = _verified_disk(disks[title.save_disk])
         present = title.slot_letters(save_before)
@@ -1838,7 +1907,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         for taken in (title.control_letter, title.after_letter):
             if taken is not None and taken in present:
                 raise RouteError(f"slot {taken} already exists on the save disk")
-        if reload:
+        if reload and not fights(title):
             try:
                 wanted = [place_state(manifest["state_a"], manifest.get("wilderness_a")),
                           place_state(manifest["other_place"],
@@ -2284,8 +2353,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         """Record a camp screen: whether a sheet offers HEAL, and whose identity rule was checked.
 
         Sheets, effects lists and item lists each record whether the identity
-        map held a rule for their state.
+        map held a rule for their state. A fight run's first command bar is kept as the
+        battlefield.
         """
+        if state == "combat_bar" and fights(title):
+            result["battlefield"] = str(crop)
+            log("battlefield", shot=name, crop=str(crop), crop_sha256=sha256(crop))
+            return
         if route_camp.is_display(state):
             entry = {"state": state, "shot": name, "identity_checked": _has_rule(identity, state),
                      # None: the guard map holds no rule for a bar that offers a further page.
@@ -2524,8 +2598,75 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             digest = settle_unguarded(state, f"{name}-after-{again}")
         return digest
 
+    def until_any(states: tuple[str, ...], name: str, first_wait: float) -> tuple[str, str]:
+        """Grab every `GUARD_POLL` seconds until one of `states` matches: `(state, digest)`."""
+        wait(first_wait)
+        started = time.monotonic()
+        done: dict[str, int] = {}
+        crop = shots / f"{name}.png"
+        while True:
+            digest = capture(name, check=False, settle=False)
+            if digest:
+                hit = next((s for s in states if guard(s, crop)), None)
+                if hit:
+                    check_identity(hit, crop)
+                    landed["state"] = hit
+                    result["events"][-1]["recognized"] = hit
+                    log("recognized", state=hit, name=name)
+                    return hit, digest
+                interstitial(states[0], crop, done)
+            if time.monotonic() - started >= GUARD_LIMIT:
+                raise GuardMissed(f"none of {list(states)} was recognized within "
+                                  f"{GUARD_LIMIT:.0f}s; kept {crop}")
+            wait(GUARD_POLL)
+
+    def walk_to_encounter(key: tuple, state: str, n: int) -> None:
+        """Press the step key until `state` shows, turning after a step the world screen did not change.
+
+        The crops are kept as `NN-world-again-K`, so a guard check reads them as the world
+        screen; the walk is listed in `result["encounter_walk"]`. More than the step's most steps
+        stops the run.
+        """
+        step_key, turn_key, most = key
+        walk = result["encounter_walk"] = {"state": state, "steps": 0, "turns": 0,
+                                           "met": False, "blocked_at": []}
+        before = ""
+        shown = 0
+        while walk["steps"] < most:
+            guest.press(holder, step_key, timeout=route_limit(30))
+            walk["steps"] += 1
+            result["events"].append({"key": step_key, "step": n, "walk": walk["steps"]})
+            log("key", key=step_key, step=n, walk=walk["steps"])
+            shown += 1
+            name = f"{n:02d}-world-again-{shown:02d}"
+            hit, digest = until_any((state, "world"), name, min_waits.get("world_after_move", 0))
+            if hit == state:
+                # Named for the screen it shows, so a guard check reads it as `state`.
+                event = result["events"][-1]
+                for suffix, field in ((".png", "crop"), (".raw.png", "raw")):
+                    kept = shots / f"{n:02d}-{state}-again-{shown:02d}{suffix}"
+                    os.replace(shots / f"{name}{suffix}", kept)
+                    event[field] = str(kept)
+                walk["met"] = True
+                log("encounter_walk", **walk)
+                return
+            if digest == before:
+                walk["blocked_at"].append(walk["steps"])
+                guest.press(holder, turn_key, timeout=route_limit(30))
+                walk["turns"] += 1
+                result["events"].append({"key": turn_key, "step": n, "turn": walk["turns"]})
+                log("key", key=turn_key, step=n, turn=walk["turns"])
+                shown += 1
+                _, digest = until_any(("world",), f"{n:02d}-world-again-{shown:02d}", 0)
+            before = digest
+        log("encounter_walk", **walk)
+        raise RouteError(f"step {n}: no {state} screen within {most} steps")
+
     def perform(key: Any, kind: str, state: str, n: int) -> None:
         """Press one route step's key, after putting a disk in the drive when it is an `insert`."""
+        if kind == "until_encounter":
+            walk_to_encounter(key, state, n)
+            return
         if kind == "insert":
             drive, disk_key, key = key
             insert(drive, disk_key, n)
@@ -3054,7 +3195,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 machine_step(verb, mark_name, len(steps) + 1)
             if counter is not None:
                 rulebook_draws_after_route()
-            if reload:
+            if reload and not fights(title):
                 # The world bar matched before this point, so the place needs no first wait.
                 place, other = manifest["state_a"], manifest["other_place"]
                 name = f"{len(steps) + 1:02d}-place"
@@ -3316,7 +3457,8 @@ CAMP_TITLES = frozenset({"darkness", "pool"})
 def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = None,
             specimen_sha256: str | None = None, accept_summary: pathlib.Path | None = None,
             substitute: pathlib.Path | None = None, substitute_letter: str = "A",
-            camp: tuple[str, ...] = (), issue: str | None = None) -> pathlib.Path:
+            camp: tuple[str, ...] = (), issue: str | None = None, temple: bool = False,
+            encounter: bool = False, stage_record: str | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -3331,6 +3473,12 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     the camp save, kept in the manifest. `issue`, on any title, puts the run
     folder under that issue's number rather than this module's. `darkness-vault` records
     the loaded vault's rows and coins in the manifest, which accept and measure build the route from.
+    `stage_record` (Pool only, `MEMBER:FIELD=VALUE[,FIELD=VALUE]`) writes gold or constitution on
+    one member of the loaded slot (`staging.stage_pool_member`), keeping the unstaged disk as
+    `save-unstaged.adf` and recording both in `staged_record`. `temple` (Pool only) runs
+    `route_pool.POOL_TEMPLE`: the party must stand on its start square with its first member dead,
+    and the stage record must give member 1 constitution and at least the raise's price in gold.
+    `encounter` (Pool only) runs `route_pool.POOL_ENCOUNTER` with the `fight` command.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -3350,6 +3498,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     if camp:
         camp = route_camp.normalise(tuple(camp))
         route_camp.validate_steps(camp, name=name)
+    staging = _pool_options(name, temple=temple, encounter=encounter, camp=camp,
+                            stage_record=stage_record)
     run = scratch.cache_dir("acceptance", issue or ISSUE, run_id)
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
@@ -3370,6 +3520,12 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             shutil.rmtree(run)
             raise
         manifest["camp"] = list(camp)
+    if staging is not None or temple or encounter:
+        try:
+            _stage_pool(run, manifest, staging, temple=temple, encounter=encounter)
+        except (RouteError, StageError) as exc:
+            shutil.rmtree(run)
+            raise RouteError(str(exc)) from exc
     if "vault" in manifest:
         # A vault outside the route's bounds blocks here, and takes the folder with it.
         try:
@@ -3380,6 +3536,61 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     path = run / "prepare.json"
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return path
+
+
+#: A Pool record's status byte for a dead character, as DOS and the Amiga write it.
+POOL_DEAD_STATUS = 6
+
+
+def _pool_options(name: str, *, temple: bool, encounter: bool, camp: tuple,
+                  stage_record: str | None) -> tuple[int, dict[str, int]] | None:
+    """Check `prepare`'s Pool-only options before any folder exists; the parsed stage record, if any."""
+    if name != "pool" and (temple or encounter or stage_record is not None):
+        raise RouteError("--temple, --encounter and --stage-record are for Pool of Radiance")
+    if temple and encounter:
+        raise RouteError("--temple and --encounter are two routes")
+    if camp and (temple or encounter):
+        raise RouteError("camp steps go on Pool's own accept route, not the temple or the fight")
+    try:
+        staging = None if stage_record is None else parse_stage_record(stage_record)
+    except StageError as exc:
+        raise RouteError(str(exc)) from exc
+    if temple:
+        if staging is None or staging[0] != 1 or "constitution" not in staging[1] or (
+                staging[1].get("gold", 0) < POOL_RAISE_PRICE):
+            raise RouteError(f"a temple run needs --stage-record 1:gold=N,constitution=C with N "
+                             f"at least the {POOL_RAISE_PRICE} gold the raise costs: the temple "
+                             f"serves the first member and he pays")
+    return staging
+
+
+def _stage_pool(run: pathlib.Path, manifest: dict, staging: tuple[int, dict[str, int]] | None,
+                *, temple: bool, encounter: bool) -> None:
+    """Write the stage record onto working save disk and mark the manifest's route."""
+    if temple:
+        pool_temple_title(manifest)
+        working = _verified_disk(pathlib.Path(manifest["disks"]["save"]["path"]))
+        first = POOL.read_slot(working, manifest["loaded_letter"]).get("members", [{}])[0]
+        if first.get("status_bytes", [None])[0] != POOL_DEAD_STATUS:
+            raise RouteError(f"the temple run raises the first member, and "
+                             f"{first.get('name')} is not dead: {first.get('status_bytes')}")
+        manifest["temple"] = {"member": first["name"]}
+    if encounter:
+        manifest["encounter"] = True
+    if staging is None:
+        return
+    member, changes = staging
+    path = pathlib.Path(manifest["disks"]["save"]["path"])
+    before = run / "save-unstaged.adf"
+    shutil.copyfile(path, before)
+    disk = amiga_adf.AmigaDisk(bytearray(path.read_bytes()))
+    staged = stage_pool_member(disk, manifest["loaded_letter"], member, changes)
+    problems = disk.verify()
+    if problems:
+        raise RouteError(f"the staged save disk fails verification: {problems}")
+    disk.save(path)
+    manifest["disks"]["save"]["sha256"] = sha256(path)
+    manifest["staged_record"] = {**staged, "before": _entry(before)}
 
 
 def _disk_files(disk: amiga_adf.AmigaDisk) -> dict[str, bytes]:
@@ -3464,6 +3675,15 @@ def _camp_title(name: str, title: AmigaTitle, camp: Any, names: list) -> AmigaTi
     return route_camp.camp_title(title, tokens, len(names), name=name)
 
 
+def pool_route(manifest: dict) -> AmigaTitle:
+    """Pool's route for `manifest`: the temple, the fight, or the walk its start square needs."""
+    if manifest.get("temple"):
+        return pool_temple_title(manifest)
+    if manifest.get("encounter"):
+        return POOL_ENCOUNTER
+    return pool_title_for(manifest)
+
+
 def accept_title(title: AmigaTitle, manifest: dict) -> AmigaTitle:
     """The route a title's own accept run drives for `manifest`.
 
@@ -3471,7 +3691,7 @@ def accept_title(title: AmigaTitle, manifest: dict) -> AmigaTitle:
     before the camp save. Published disk-one runs build theirs from their own manifest.
     """
     if title is POOL:
-        title = pool_title_for(manifest)
+        title = pool_route(manifest)
     if "camp" in manifest:
         title = _camp_title(manifest["title"], title, manifest["camp"], manifest["names_a"])
     return title
@@ -4370,6 +4590,8 @@ def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, di
         manifest, title = _published_manifest(args.manifest, args.title)
     else:
         title = None if silver_blades else TITLES[args.title]
+        if args.command == "fight":
+            title = POOL_ENCOUNTER
         if args.title == "darkness-vault":
             title = _vault_title_for(args.manifest)
         if args.title in ("darkness", "darkness-reload"):
@@ -4414,6 +4636,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prepare", help="copy the registered images and the specimen into a run folder")
     p.add_argument("--title", required=True, choices=choices)
     p.add_argument("--run-id", required=True)
+    p.add_argument("--temple", action="store_true",
+                   help="pool only: walk to the temple and buy RAISE DEAD for the first member "
+                        "between camp saves C and D; needs --stage-record")
+    p.add_argument("--encounter", action="store_true",
+                   help="pool only: a fight run, walking until an encounter and keeping the "
+                        "first command bar's battlefield; saves nothing")
+    p.add_argument("--stage-record", default=None, metavar="MEMBER:FIELD=VALUE[,FIELD=VALUE]",
+                   help="pool only: write gold or constitution on one member of the loaded slot")
     p.add_argument("--published-disk-one", action="store_true")
     p.add_argument("--published-disk-three", action="store_true",
                    help="Pools of Darkness only: prepare from a disk 3 Save As wrote, or with "
@@ -4498,6 +4728,11 @@ def main(argv: list[str] | None = None) -> int:
     common(r)
     r.add_argument("--guards", required=True, type=pathlib.Path)
     r.add_argument("--identity", required=True, type=pathlib.Path)
+    f = sub.add_parser("fight", help="pool only: load, walk until an encounter, answer COMBAT and "
+                                     "keep the first command bar; writes nothing")
+    common(f)
+    f.add_argument("--guards", required=True, type=pathlib.Path)
+    f.add_argument("--identity", required=True, type=pathlib.Path)
     for resumable in (m, a, r):
         resumable.add_argument("--resume-from", type=pathlib.Path, default=None,
                                help=RESUME_FROM_HELP)
@@ -4604,6 +4839,8 @@ def main(argv: list[str] | None = None) -> int:
                              "--title pool; --title ssb also takes it with --substitute")
         elif args.command == "prepare" and args.stage_place is not None:
             raise RouteError("--stage-place requires --published-disk-one")
+        if args.command == "fight" and (args.title != "pool" or args.published_disk_one):
+            raise RouteError("fight is Pool of Radiance's own route")
         if args.command == "reload" and silver_blades:
             raise RouteError("Silver Blades has no reload route")
         if args.title == "darkness-unstarted" and args.command in ("accept", "reload"):
@@ -4660,7 +4897,8 @@ def main(argv: list[str] | None = None) -> int:
                               accept_summary=args.accept_summary,
                               substitute=args.substitute,
                               substitute_letter=args.substitute_letter,
-                              camp=args.camp, issue=args.issue))
+                              camp=args.camp, issue=args.issue, temple=args.temple,
+                              encounter=args.encounter, stage_record=args.stage_record))
                 return 0
             title, manifest, legacy = _route_title(args, silver_blades)
             attempt = args.attempt or ("recon1" if args.command == "measure" else
@@ -4716,7 +4954,7 @@ def main(argv: list[str] | None = None) -> int:
                         "min_waits": {**route_silver_blades.default_min_waits(),
                                       **route_silver_blades.ACCEPT_MIN_WAITS}}
                        if legacy else
-                       {"reload" if args.command == "reload" else "accept": True}))
+                       {"reload" if args.command in ("reload", "fight") else "accept": True}))
             if silver_blades and args.command == "measure":
                 measured = {"success": result["success"], "error": result["error"],
                             "summary": str(args.manifest.parent / attempt / "summary.json")}

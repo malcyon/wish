@@ -450,6 +450,94 @@ def stage_embedded_boot_disk(
     }
 
 
+#: The record fields `stage_por_record` may write, by name: each one's DOS Pool record offset
+#: (read on the Amiga through `amiga_por.amiga_por_offset`) and its width. The Amiga record is
+#: big-endian. Gold pays the temple, and constitution 18 makes its raise survival roll certain.
+POR_STAGE_FIELDS = {"gold": (0x08E, 2), "constitution": (0x014, 1)}
+
+
+def parse_stage_record(text: str) -> tuple[int, dict[str, int]]:
+    """Read `MEMBER:FIELD=VALUE[,FIELD=VALUE]` (member 1 is the party's first) into its parts."""
+    member_text, sep, fields_text = text.partition(":")
+    if not sep or not member_text.isdigit() or not fields_text:
+        raise StageError(f"stage record {text!r} is not MEMBER:FIELD=VALUE[,FIELD=VALUE]")
+    changes: dict[str, int] = {}
+    for part in fields_text.split(","):
+        name, sep, value = part.partition("=")
+        if not sep or not value.isdigit():
+            raise StageError(f"stage record field {part!r} is not FIELD=VALUE")
+        if name in changes:
+            raise StageError(f"stage record names {name} twice")
+        changes[name] = int(value)
+    return int(member_text), changes
+
+
+def stage_por_record(raw: bytes, changes: dict[str, int]) -> tuple[bytes, dict[str, dict[str, int]]]:
+    """An Amiga Pool record with `changes` written and nothing else: `(bytes, {field: {before, after}})`.
+
+    Only the fields of `POR_STAGE_FIELDS` are taken, each in range for its width; anything else
+    is blocked before a byte is written.
+    """
+    from goldbox import amiga_por  # noqa: PLC0415
+
+    if len(raw) != amiga_por.AMIGA_POR_RECORD_SIZE:
+        raise StageError(f"a Pool record is {amiga_por.AMIGA_POR_RECORD_SIZE} bytes, not {len(raw)}")
+    if not changes:
+        raise StageError("a stage record names no field")
+    unknown = sorted(set(changes) - set(POR_STAGE_FIELDS))
+    if unknown:
+        raise StageError(f"a stage record writes only {sorted(POR_STAGE_FIELDS)}, not {unknown}")
+    out = bytearray(raw)
+    report: dict[str, dict[str, int]] = {}
+    for name, value in changes.items():
+        dos_offset, width = POR_STAGE_FIELDS[name]
+        if not 0 <= value < 1 << (8 * width):
+            raise StageError(f"{name} {value} does not fit {width} byte(s)")
+        at = amiga_por.amiga_por_offset(dos_offset)
+        report[name] = {"before": int.from_bytes(out[at:at + width], "big"), "after": value}
+        out[at:at + width] = value.to_bytes(width, "big")
+    return bytes(out), report
+
+
+def stage_pool_member(disk: amiga_adf.AmigaDisk, letter: str, member: int,
+                      changes: dict[str, int]) -> dict[str, Any]:
+    """Write `changes` into member `member` (1 first) of Pool slot `letter` on `disk`, in place.
+
+    Returns what the manifest records as `staged_record`: the file, the member's name, each
+    field before and after, and the file's SHA-256 before and after.
+    """
+    from goldbox import amiga_por  # noqa: PLC0415
+
+    count = len(amiga_savegame.read_por_characters(disk, letter, drawer=""))
+    if not 1 <= member <= count:
+        raise StageError(f"slot {letter} has members 1 to {count}, not {member}")
+    path = "/" + amiga_por.por_filename(letter, member, ".sav")
+    raw = disk.read_file(path)
+    staged, fields = stage_por_record(raw, changes)
+    replace_file_in_place(disk, path, staged)
+    name = amiga_por.por_character(staged, b"", b"").name
+    return {"letter": letter, "member": member, "name": name, "file": path,
+            "fields": fields, "file_sha256_before": _sha(raw), "file_sha256_after": _sha(staged)}
+
+
+def check_staged_member(before: amiga_adf.AmigaDisk, after: amiga_adf.AmigaDisk,
+                        staged: dict[str, Any]) -> None:
+    """Block a working disk that is not `before` with `staged`'s fields written and nothing else."""
+    try:
+        path, letter, member = staged["file"], staged["letter"], staged["member"]
+        changes = {name: entry["after"] for name, entry in staged["fields"].items()}
+        derived, fields = stage_por_record(before.read_file(path), changes)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise StageError(f"the staged record is malformed: {exc!r}") from exc
+    if fields != staged["fields"] or _sha(derived) != staged["file_sha256_after"]:
+        raise StageError("the staged record differs from what its fields give")
+    rebuilt = amiga_adf.AmigaDisk(bytearray(before.to_bytes()))
+    stage_pool_member(rebuilt, letter, member, changes)
+    if rebuilt.to_bytes() != after.to_bytes():
+        raise StageError("the working save disk differs from the substituted one by more than "
+                         "the staged record")
+
+
 def _find_images(wanted: dict[str, str]) -> dict[str, tuple[str, bytes]]:
     """Each wanted key's registered image, found by its SHA-256 inside the zips too: `{key: (label, bytes)}`."""
     found: dict[str, tuple[str, bytes]] = {}

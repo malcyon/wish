@@ -81,6 +81,17 @@
       "example": "amiga-grab-crops/wish16-a__08-camp_sheet_items.png",
       "sha256": "5679be3fb6ed36eceb24bf089ebd75f136c22f5992246ac2ad458a58f2bbd47b"
     },
+    "combat_bar": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        328,
+        432
+      ],
+      "example": "amiga-grab-crops/wish303-a1__33-combat_bar.png",
+      "sha256": "3c4dab4a4d86a818cfbd9693088ad29fc56ddf87da18d95c1551eb7f0a55fd71"
+    },
     "continue": {
       "also": [],
       "box": [
@@ -91,6 +102,17 @@
       ],
       "example": "679/619-l3-pool-jrsmith/measure1/shots/05-world.png",
       "sha256": "c4c5d70e18210d1267c28b11d9d972626a6c63cb39c49e26a23fe72e10230132"
+    },
+    "encounter": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        312,
+        432
+      ],
+      "example": "amiga-grab-crops/wish303-a1__32-encounter.png",
+      "sha256": "0701f120be8a8d62fb853c320872acc7d08fff84c3ae3b4b5e2b6321435e3668"
     },
     "load_picker": {
       "also": [],
@@ -159,6 +181,63 @@
       ],
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/05-sheet.png",
       "sha256": "fc25aaadb2454618b62603f367c1e648f20a867131c23f83765a8f9ccfcfaca2"
+    },
+    "temple": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        504,
+        432
+      ],
+      "example": "amiga-grab-crops/wish303-a1__13-temple.png",
+      "sha256": "c3773aecf25dc6fccad142328af3599d5a6b4ad574eeabea85d8e08bb337d69f"
+    },
+    "temple_greeting": {
+      "also": [],
+      "box": [
+        54,
+        306,
+        680,
+        432
+      ],
+      "example": "amiga-grab-crops/wish303-a1__12-temple_greeting.png",
+      "sha256": "8f4e15d36935d573a900c6e793b9a7111c15ca2730e4f6a6ba8af836065f20a1"
+    },
+    "temple_price": {
+      "also": [],
+      "box": [
+        54,
+        306,
+        680,
+        432
+      ],
+      "example": "amiga-grab-crops/wish303-a1__18-temple_price.png",
+      "sha256": "49c7ad3c5ead961a09429d47020ba149df55f37eca0a953c160bff120fd62386"
+    },
+    "temple_raise_row": {
+      "also": [],
+      "box": [
+        86,
+        194,
+        320,
+        210
+      ],
+      "example": "amiga-grab-crops/wish303-a1__17-temple_raise_row.png",
+      "sha256": "7c76732ba28b1b0d9771b4998abc9b9fded428a706f5f1e9788d723084ea7050"
+    },
+    "temple_services": {
+      "also": [
+        "temple_raise_row"
+      ],
+      "box": [
+        54,
+        418,
+        200,
+        432
+      ],
+      "example": "amiga-grab-crops/wish303-a1__14-temple_services.png",
+      "sha256": "66ba64484db0cd9e7f909e8ceb4f98a91953c105cba40b97706f13414244bf04"
     },
     "title": {
       "also": [],
@@ -254,6 +333,17 @@
         ],
         "example": "300/wish300-amiga-npc2/accept1/shots/05-sheet.png",
         "sha256": "11d9f0c508daead260db717b97b853b4830d1ba157aa95883f92488896b52859"
+      },
+      {
+        "also": [],
+        "box": [
+          70,
+          66,
+          330,
+          80
+        ],
+        "example": "amiga-grab-crops/wish303-a1__06-sheet_dead.png",
+        "sha256": "0b0cb7f8bae541931b8de4723b4c791408761e91d69dac9c7acb812f0ac0fc05"
       }
     ],
     "world": [
@@ -306,7 +396,10 @@
         "also": [
           "camp",
           "camp_save_picker",
-          "quit_prompt"
+          "encounter",
+          "quit_prompt",
+          "temple",
+          "temple_greeting"
         ],
         "box": [
           326,
@@ -391,6 +484,44 @@
     ],
     "amiga-grab-crops/wish16-a__11-camp.png": [
       "camp"
+    ],
+    "amiga-grab-crops/wish303-a1__06-sheet_dead.png": [
+      "sheet"
+    ],
+    "amiga-grab-crops/wish303-a1__12-temple_greeting.png": [
+      "temple_greeting"
+    ],
+    "amiga-grab-crops/wish303-a1__13-temple.png": [
+      "temple"
+    ],
+    "amiga-grab-crops/wish303-a1__14-temple_services.png": [
+      "temple_services"
+    ],
+    "amiga-grab-crops/wish303-a1__16-temple_services.png": [
+      "temple_services"
+    ],
+    "amiga-grab-crops/wish303-a1__17-temple_raise_row.png": [
+      "temple_services",
+      "temple_raise_row"
+    ],
+    "amiga-grab-crops/wish303-a1__18-temple_price.png": [
+      "temple_price"
+    ],
+    "amiga-grab-crops/wish303-a1__19-temple_raise_row_paid.png": [
+      "temple_services",
+      "temple_raise_row"
+    ],
+    "amiga-grab-crops/wish303-a1__20-temple_raised.png": [
+      "temple"
+    ],
+    "amiga-grab-crops/wish303-a1__23-world.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish303-a1__32-encounter.png": [
+      "encounter"
+    ],
+    "amiga-grab-crops/wish303-a1__33-combat_bar.png": [
+      "combat_bar"
     ]
   }
 }

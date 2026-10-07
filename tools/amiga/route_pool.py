@@ -266,6 +266,127 @@ def pool_title_for(manifest: dict, *,
     return POOL if turn_about else POOL_FORWARD
 
 
+#: Where the temple walk starts: the Slums square a converted WISH-303 party stands on, the C64
+#: temple route's first square.
+POOL_TEMPLE_START = {"area": 20, "x": 15, "y": 4, "facing": geo.WEST}
+#: Where the party stands after the raise, read from the game-written slot D of the measured run:
+#: the temple's square in New Phlan, facing north.
+POOL_TEMPLE_SQUARE = {"area": 0, "x": 1, "y": 3, "facing": geo.NORTH}
+#: The temple's price for RAISE DEAD, read on its price screen (`temple_price`'s guard holds it).
+POOL_RAISE_PRICE = 5500
+#: The service list's rows above RAISE DEAD, each one `NP2` down from CURE BLINDNESS.
+_RAISE_ROW = 6
+#: Right, right, east into New Phlan, east, left, north onto the temple: `NP6` turns right and
+#: `NP4` left (measured), `NP8` steps.
+_TEMPLE_WALK = (
+    ("NP6", "world", "turn"), ("NP6", "world", "turn"), ("NP8", "world", "move"),
+    ("NP8", "world", "move"), ("NP4", "world", "turn"), ("NP8", "temple_greeting", "move"),
+)
+#: YES to the greeting, HEAL on the bar, down to RAISE DEAD, HEAL buys it, YES pays, EXIT the list
+#: and EXIT the temple. The list after YES shows RAISE DEAD highlighted, as before HEAL.
+_TEMPLE_RAISE = (
+    ("Y", "temple", "key"), ("H", "temple_services", "key"),
+    *((("NP2", "temple_services", "key"),) * (_RAISE_ROW - 1)),
+    ("NP2", "temple_raise_row", "key"), ("H", "temple_price", "key"),
+    ("Y", "temple_raise_row", "key"), ("E", "temple", "key"), ("E", "world", "key"),
+)
+_TEMPLE_STATES = frozenset({"temple_greeting", "temple", "temple_services", "temple_raise_row",
+                            "temple_price"})
+_CAMP_SAVE = (("E", "camp", "key"), ("S", "camp_save_picker", "key"))
+
+#: Pool's accept route for a party standing on `POOL_TEMPLE_START` whose first member is dead: the
+#: load and sheet, camp save C before any move, the walk to the temple, RAISE DEAD for the first
+#: member (the one the temple serves), the sheet again, and camp save D.
+POOL_TEMPLE = dataclasses.replace(
+    POOL,
+    route=(
+        *_POOL_LOAD, *_CAMP_SAVE, ("C", "quit_prompt", "write"), ("N", "camp", "key"),
+        ("E", "world", "key"), *_TEMPLE_WALK, *_TEMPLE_RAISE,
+        ("V", "sheet", "key"), ("E", "world", "key"),
+        *_CAMP_SAVE, ("D", "quit_prompt", "write"), ("N", "camp", "key"),
+    ),
+    measure_route=(
+        ("RET", "title", "key"), *_POOL_LOAD, *_TEMPLE_WALK, *_TEMPLE_RAISE,
+        ("V", "sheet", "key"), ("E", "world", "key"), *_CAMP_SAVE,
+    ),
+    turn=None, strict=POOL.strict | _TEMPLE_STATES)
+
+
+def pool_temple_title(manifest: dict) -> AmigaTitle:
+    """`POOL_TEMPLE`, blocked for a manifest whose party does not start where its walk does."""
+    if manifest.get("state_a") != POOL_TEMPLE_START:
+        raise RouteError(f"the temple walk starts at {POOL_TEMPLE_START}, not at "
+                         f"{manifest.get('state_a')}")
+    return POOL_TEMPLE
+
+
+def temple_verdict(before: dict, b: dict[str, Any], d: dict[str, Any], member: str, *,
+                   control: str = "C", after: str = "D") -> dict[str, Any]:
+    """Judge a temple run's saves: `control` unmoved at `before`; `after` on the temple square with `member` raised.
+
+    Raised is what the game writes for a living character: status byte 0, a control byte below
+    `$80` (the player's) and no effect node 32. The keys match `walk_verdict`'s, so the run's
+    other checks read it the same way.
+    """
+    verdicts: list[str] = []
+    b_place, d_place = b.get("place"), d.get("place")
+    b_ok = b_place == before
+    verdicts.append(f"slot {control}: " + ("did not move" if b_ok else
+                    "was not read" if b_place is None else
+                    f"stands at {b_place}, expected {before}"))
+    d_ok = False
+    raised = None
+    if d_place is None:
+        verdicts.append(f"slot {after}: was not read")
+    else:
+        rows = [m for m in d.get("members", []) if m.get("name") == member]
+        if len(rows) != 1:
+            verdicts.append(f"slot {after}: holds {len(rows)} members named {member}")
+        else:
+            row = rows[0]
+            nodes = [n for n in (d.get("effects") or {}).get(member, []) if n and n[0] == 32]
+            raised = {"status": row["status_bytes"][0], "control": row["control"],
+                      "node_32": bool(nodes)}
+            alive = raised["status"] == 0 and raised["control"] < 0x80 and not nodes
+            at_temple = d_place == POOL_TEMPLE_SQUARE
+            d_ok = alive and at_temple
+            verdicts.append(
+                f"slot {after}: " + ("at the temple" if at_temple else
+                                     f"stands at {d_place}, not the temple {POOL_TEMPLE_SQUARE}")
+                + f"; {member} " + ("raised" if alive else
+                                    f"not raised (status {raised['status']}, control "
+                                    f"{raised['control']:#04x}, node 32 {raised['node_32']})"))
+    return {"verdicts": verdicts, "b_ok": b_ok, "d_ok": d_ok, "walk_blocked": False,
+            "walk_partial": False, "squares_requested": sum(
+                1 for *_, kind in _TEMPLE_WALK if kind == "move"),
+            "place_changed": None if d_place is None else d_place != before,
+            "squares_moved": None,
+            "area_crossed": None if d_place is None or b_place is None
+            or d_place["area"] == b_place["area"]
+            else {"from": b_place["area"], "to": d_place["area"]},
+            "raised": raised}
+
+
+#: The longest walk `POOL_ENCOUNTER` takes before it gives up: steps pressed, not squares gained.
+ENCOUNTER_MOVES = 40
+#: NP8 steps; a step that leaves the world screen as it was met a wall, and `NP4` turns left.
+#: A right turn on the first wall west of `POOL_TEMPLE_START` walks the party back east into New
+#: Phlan, where it meets no random encounter (measured), so the walk turns left.
+ENCOUNTER_STEP = ("NP8", "NP4", ENCOUNTER_MOVES)
+
+#: Pool's first-bar run: the load and sheet, a walk until the encounter menu, COMBAT, and the
+#: first command bar, whose crop is the battlefield. It saves nothing.
+POOL_ENCOUNTER = dataclasses.replace(
+    POOL,
+    route=(*_POOL_LOAD, (ENCOUNTER_STEP, "encounter", "until_encounter"),
+           ("C", "combat_bar", "key")),
+    measure_route=(("RET", "title", "key"), *_POOL_LOAD,
+                   (ENCOUNTER_STEP, "encounter", "until_encounter"), ("C", "combat_bar", "key")),
+    control_letter=None, after_letter=None, turn=None,
+    strict=POOL.strict | {"encounter", "combat_bar"},
+    min_waits={**POOL.min_waits, "combat_bar": 5.0})
+
+
 POOL_SOURCES = _Sources("pool", POOL, POOL_SPECIMEN, POOL_SPECIMEN_SHA256, POOL_VOLUME,
                         POOL_LOADED, POOL_LATER,
                         {"disk1": POOL_DISK1_SHA256, "disk2": POOL_DISK2_SHA256},

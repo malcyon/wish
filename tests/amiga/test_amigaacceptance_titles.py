@@ -3836,7 +3836,8 @@ def test_the_pool_identity_recognises_the_world_screen_of_the_six_member_wish301
         pytest.skip("needs the WISH-301 Amiga run shot 04")
     box = [326, 96, 578, 194]
     rules = [r for r in screens.rules_of(spec["identity"]["world"]) if r["example"] == example]
-    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == ["camp", "camp_save_picker", "quit_prompt"]
+    assert len(rules) == 1 and rules[0]["box"] == box and rules[0]["also"] == [
+        "camp", "camp_save_picker", "encounter", "quit_prompt", "temple", "temple_greeting"]
     assert screens.box_digests(crop, [tuple(box)], "world")[tuple(box)] == rules[0]["sha256"]
 
 
