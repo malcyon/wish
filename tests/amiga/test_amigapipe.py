@@ -1139,10 +1139,29 @@ def test_a_holder_windows_would_read_as_another_folder_is_blocked(holder):
     assert guest.calls == []
 
 
-def restored(text=f"CFG statefile {SNAP_FILE}", counts=(1000, 9000, 1200), marker=True):
+#: Eight bytes a guest writes over the restore stamp before a restore from below.
+OTHER_STAMP = "0123456789abcdef"
+
+#: The default `stamps`: the guest expected the snapshot's stamp, wrote OTHER_STAMP
+#: over it, and read the snapshot's stamp back.
+LOADED = "loaded"
+
+
+def restored(text=f"CFG statefile {SNAP_FILE}", counts=(1000, 9000, 1200), marker=True,
+             stamps=LOADED):
+    """A restore receipt; `stamps` is `(snapshot, before, after)`, `LOADED`, or `None` for none."""
     extra = [f"<<marker>> {MARKER}"] if marker else []
     extra += [f"<<count_{k}>> {v}" for k, v in zip(("snapshot", "before", "after"), counts)
               if v is not None]
+    if stamps == LOADED:
+        snap, before = counts[0], counts[1]
+        stamps = None
+        if snap is not None and before is not None and before <= snap:
+            want = amiga.restore_stamp(snap)
+            stamps = (want, OTHER_STAMP, want)
+    if stamps:
+        extra += [f"<<stamp_{k}>> {v}" for k, v in zip(("snapshot", "before", "after"), stamps)
+                  if v is not None]
     return state_output("ok restored before-walk pid=4242",
                         [(0, "restore", text, b"404\0")], extra)
 
@@ -1197,14 +1216,64 @@ def test_a_restore_from_below_the_snapshot_is_proved_without_the_fresh_flag(flag
 
 @pytest.mark.parametrize("flag", [restore, fresh_restore])
 def test_a_restore_from_below_the_snapshot_that_reads_below_it_afterwards_is_an_error(flag):
-    with pytest.raises(amiga.SnapshotError, match="not 900 or more"):
+    with pytest.raises(amiga.SnapshotError, match="with a count of 900 or more"):
         flag(LaneGuest(restored(counts=(900, 100, 50))))
 
 
 @pytest.mark.parametrize("flag", [restore, fresh_restore])
-def test_a_restore_with_the_count_before_equal_to_the_snapshots_is_unproven(flag):
-    with pytest.raises(amiga.SnapshotError, match="unproven"):
-        flag(LaneGuest(restored(counts=(900, 900, 900))))
+def test_a_restore_with_the_count_before_equal_to_the_snapshots_is_proved_by_the_mark(flag):
+    assert flag(LaneGuest(restored(counts=(900, 900, 905)))).tags["stamp_after"] == \
+        amiga.restore_stamp(900)
+
+
+@pytest.mark.parametrize("counts", [(1000, 900, 1005), (1000, 1000, 1180)])
+def test_a_machine_that_ran_past_the_snapshot_without_restoring_is_an_error(counts):
+    """Exec's count crosses the snapshot's by itself; the random stamp is still there."""
+    want = amiga.restore_stamp(counts[0])
+    with pytest.raises(amiga.SnapshotError, match="not seen to go back to before-walk"):
+        restore(LaneGuest(restored(counts=counts, stamps=(want, OTHER_STAMP, OTHER_STAMP))))
+
+
+def test_a_reset_that_climbed_back_past_the_snapshots_count_is_an_error():
+    """A reset rewrites low memory but cannot write the snapshot's stamp."""
+    want = amiga.restore_stamp(1000)
+    with pytest.raises(amiga.SnapshotError, match="not seen to go back"):
+        restore(LaneGuest(restored(counts=(1000, 900, 1100),
+                                   stamps=(want, OTHER_STAMP, "0" * 16))))
+
+
+def test_the_snapshots_mark_with_a_count_below_the_snapshots_is_an_error():
+    with pytest.raises(amiga.SnapshotError, match="not seen to go back"):
+        restore(LaneGuest(restored(counts=(1000, 900, 950))))
+
+
+def test_a_restore_from_below_with_no_marks_reported_is_an_error():
+    """An old guest script, or a snapshot taken before stamps were written."""
+    with pytest.raises(amiga.SnapshotError, match="expected the restore stamp None"):
+        restore(LaneGuest(restored(counts=(1000, 900, 1005), stamps=None)))
+
+
+def test_a_guest_that_expected_another_mark_is_an_error_even_if_it_read_it_back():
+    with pytest.raises(amiga.SnapshotError, match="the stamp of count 1000"):
+        restore(LaneGuest(restored(counts=(1000, 900, 1005),
+                                   stamps=("f" * 16, OTHER_STAMP, "f" * 16))))
+
+
+@pytest.mark.parametrize("before", [None, "", "xyz", "the-stamp"])
+def test_a_mark_written_before_the_restore_that_could_be_the_snapshots_is_an_error(before):
+    want = amiga.restore_stamp(1000)
+    before = want if before == "the-stamp" else before
+    with pytest.raises(amiga.SnapshotError, match="over the restore stamp before the restore"):
+        restore(LaneGuest(restored(counts=(1000, 900, 1005), stamps=(want, before, want))))
+
+
+def test_the_range_proof_above_the_snapshot_needs_no_mark():
+    assert "stamp_after" not in restore(LaneGuest(restored(counts=(1000, 9000, 1200)))).tags
+
+
+def test_the_restore_stamp_is_eight_bytes_of_sha256_over_the_count():
+    """SHA-256 of `wish-restore 1000` begins c27f4363161fb446."""
+    assert amiga.restore_stamp(1000) == "c27f4363161fb446"
 
 
 def test_the_range_proof_still_fails_a_count_that_rose_past_the_count_before():
@@ -1398,24 +1467,49 @@ def test_a_restore_reads_the_count_then_sends_then_polls():
     restore = body[body.index("if (-not $verdict -and $Verb -eq 'restore')"):
                    body.index("if (-not $verdict -and $Verb -eq 'snapshot')")]
     before = restore.index("$before = Read-ExecCount $pipe")
+    other = restore.index("Write-RestoreStamp $pipe $other")
     sent = restore.index("Send-Logged $pipe $sw $tags 0 'restore' \"CFG statefile $file\"")
     loop = restore.index("while (-not $back")
-    polled = restore.index("try { $after = Read-ExecCount $pipe", loop)
-    assert before < sent < loop < polled
+    polled = restore.index("$after = Read-ExecCount $pipe", loop)
+    stamped = restore.index("if ($byStamp) { $stampAfter = Read-RestoreStamp $pipe }", polled)
+    assert before < other < sent < loop < polled < stamped
 
 
-def test_the_rule_is_chosen_from_the_counts_and_not_from_the_flag():
+def test_the_rule_is_the_range_above_the_snapshot_and_the_mark_at_or_below_it():
     rule = _body("Test-RestoreBack")
-    assert "if ($Before -lt $Snap) { return ($After -ge $Snap) }" in rule
-    assert "($After -ge $Snap -and $After -lt $Before)" in rule
-    assert "$back = Test-RestoreBack $before $snap $after" in _body("Invoke-State")
-
-
-def test_a_count_before_equal_to_the_snapshots_fails_before_anything_is_sent():
+    assert "if ($Before -gt $Snap) { return ($After -ge $Snap -and $After -lt $Before) }" in rule
+    assert "($Want.Length -eq 16 -and $Stamp -ceq $Want -and $After -ge $Snap)" in rule
     body = _body("Invoke-State")
-    gate = body.index("if ($before -eq $snap)")
-    assert "unproven" in body[gate:gate + 200]
-    assert gate < body.index("Send-Logged $pipe $sw $tags 0 'restore'")
+    assert "$byStamp = $before -le $snap" in body
+    assert "$back = Test-RestoreBack $before $snap $after $wantStamp $stampAfter" in body
+
+
+def test_a_restore_from_below_writes_another_mark_and_reads_it_back_before_sending():
+    body = _body("Invoke-State")
+    gate = body.index("if ($byStamp) {")
+    other = body.index("$other = Get-OtherStamp $wantStamp", gate)
+    written = body.index("Write-RestoreStamp $pipe $other", other)
+    assert written < body.index("Send-Logged $pipe $sw $tags 0 'restore'")
+    write = _body("Write-RestoreStamp")
+    assert write.index("DBG W") < write.index("$held = Read-RestoreStamp $Pipe")
+    assert "if ($held -cne $Stamp) { throw" in write
+    assert "while ($m -ceq $Not)" in _body("Get-OtherStamp")
+
+
+def test_a_snapshot_writes_its_count_stamp_before_the_save_is_sent():
+    body = _body("Invoke-State")
+    snapshot = body[body.index("if (-not $verdict -and $Verb -eq 'snapshot')"):]
+    count = snapshot.index("$count = Read-ExecCount $pipe")
+    stamp = snapshot.index("$stamp = Get-RestoreStamp $count")
+    written = snapshot.index("Write-RestoreStamp $pipe $stamp")
+    assert count < stamp < written < snapshot.index("'CFG statefile_save x'")
+    assert '<<stamp_snapshot>> $stamp"' in snapshot
+
+
+def test_the_mark_is_derived_and_placed_the_same_in_python_and_powershell():
+    assert '"wish-restore $Count"' in _body("Get-RestoreStamp")
+    assert "[BitConverter]::ToString($h, 0, 8)" in _body("Get-RestoreStamp")
+    assert f"$RestoreStampAddress = {amiga.RESTORE_STAMP_ADDRESS:#X}".replace("0X", "0x") in STATE
 
 
 def test_the_fresh_flag_is_read_by_hand_and_belongs_to_restore_only():

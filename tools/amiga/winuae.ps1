@@ -576,16 +576,22 @@ function Why-NotRun([string]$Name) {
 # On a failure the temporary folder is removed and an older snapshot of the name is kept. If the
 # file never appears, WinUAE still holds the pending save, and the next
 # `statefile_path` sent to it completes that save.
+# A snapshot also writes a restore stamp into the machine before the save: eight
+# bytes at $RestoreStampAddress, the first eight of SHA-256 over
+# `wish-restore <count>`, with the Exec count read for the snapshot, so a staged
+# snapshot, whose marker holds only the count, has its stamp too.
 # restore <name>: blocked without the marker or with a file that does not hash
-# as the marker says; then `CFG statefile <file>`, and Exec's idle and dispatch
+# as the marker says; then Exec's idle and dispatch counts are read. Where the
+# count before is above the snapshot's, `CFG statefile <file>` is sent and the
 # counts are read until they fall back to between the snapshot's value and the
-# value read just before the restore, which is the proof the machine went back.
-# The proof is chosen from the counts, not from `-Fresh`: when the count before is
-# below the snapshot's (a machine just booted, or one at an earlier machine time)
-# it is `before < snap <= after`, which a reset during the restore cannot pass
-# because a reset reads below `before`; when above, `snap <= after < before`.
-# Equal counts fail before anything is sent, because neither proof can tell a
-# restore from no change. `-Fresh` is still accepted and changes nothing.
+# value read before, which only a machine that went back can do; a reset passes
+# only if its count climbs to the snapshot's within the bound. Where the count
+# before is at or below the snapshot's, a running machine reaches the snapshot's
+# count by itself, so the count proves nothing: a random stamp is written over the
+# snapshot's first, and the proof is the snapshot's own stamp read back with a
+# count at or above the snapshot's. Only loading a state that holds that stamp puts
+# it there; a machine that runs on keeps the random one, and a reset does not
+# write it. The proof is chosen from the counts; `-Fresh` changes nothing.
 # stage-snapshot <name> <sha256> <count>: installs a state file put at
 # `C:\Amiga\Disks\wish<digits>-<holder>-state.uss` as snapshot <name>, with no
 # emulator running, so a restore can follow in a new process.
@@ -603,6 +609,8 @@ $StateBoundMs     = 15000
 $StatePollMs      = 250
 $RestoreBoundMs   = 5000
 $RestoreSettleMs  = 500
+# The last two 68000 user interrupt vectors, which no Amiga interrupt uses.
+$RestoreStampAddress = 0x3F8
 
 # Length and first four bytes of a state file, read without locking WinUAE out; $null while it cannot be read.
 function Read-StateHead([string]$Path) {
@@ -653,6 +661,35 @@ function Read-ExecCount($Pipe) {
   (BigEndian32 $b 0) + (BigEndian32 $b 4)
 }
 
+# The restore stamp of a snapshot whose Exec count is `$Count`, as 16 lower-case hex digits.
+function Get-RestoreStamp([uint64]$Count) {
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { $h = $sha.ComputeHash([Text.Encoding]::ASCII.GetBytes("wish-restore $Count")) } finally { $sha.Dispose() }
+  ([BitConverter]::ToString($h, 0, 8) -replace '-', '').ToLowerInvariant()
+}
+
+# Eight random bytes that are not `$Not`, as 16 lower-case hex digits.
+function Get-OtherStamp([string]$Not) {
+  $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $b = New-Object byte[] 8
+    do { $rng.GetBytes($b); $m = ([BitConverter]::ToString($b) -replace '-', '').ToLowerInvariant() } while ($m -ceq $Not)
+  } finally { $rng.Dispose() }
+  $m
+}
+
+function Read-RestoreStamp($Pipe) {
+  ([BitConverter]::ToString((Read-AmigaBytes $Pipe $RestoreStampAddress 8)) -replace '-', '').ToLowerInvariant()
+}
+
+# Writes the stamp with the debugger's `W` and reads it back; a stamp that does not read back is an error.
+function Write-RestoreStamp($Pipe, [string]$Stamp) {
+  $bytes = (0..7 | ForEach-Object { $Stamp.Substring(2 * $_, 2) }) -join ' '
+  [void](Send-Pipe $Pipe ("DBG W {0:x} {1}" -f $RestoreStampAddress, $bytes))
+  $held = Read-RestoreStamp $Pipe
+  if ($held -cne $Stamp) { throw "the restore stamp at $('{0:x}' -f $RestoreStampAddress) reads $held after $Stamp was written" }
+}
+
 # A Windows device name, which opens the device rather than a file or folder:
 # `CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9` and `LPT1`-`LPT9`, in any case and with
 # any extension after a dot.
@@ -686,15 +723,13 @@ function Replace-StateFolder([string]$Part, [string]$Dir, [string]$Backup) {
   if ($had) { Remove-Item -LiteralPath $Backup -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# Whether the count read after a restore proves the machine went back. Where the
-# count before is below the snapshot's, the machine was at an earlier machine
-# time, so the proof is a count at or above the snapshot's; where it is above,
-# the proof is a count below the one before and no lower than the snapshot's.
-# Equal counts prove nothing.
-function Test-RestoreBack([uint64]$Before, [uint64]$Snap, [uint64]$After) {
-  if ($Before -lt $Snap) { return ($After -ge $Snap) }
+# Whether what was read after a restore proves the machine went back. Where the
+# count before is above the snapshot's, a count below it and no lower than the
+# snapshot's; otherwise the snapshot's own stamp, `$Want`, read back as `$Stamp`,
+# with a count at or above the snapshot's.
+function Test-RestoreBack([uint64]$Before, [uint64]$Snap, [uint64]$After, [string]$Want, [string]$Stamp) {
   if ($Before -gt $Snap) { return ($After -ge $Snap -and $After -lt $Before) }
-  $false
+  ($Want.Length -eq 16 -and $Stamp -ceq $Want -and $After -ge $Snap)
 }
 
 function Invoke-State([string]$Verb) {
@@ -767,37 +802,52 @@ function Invoke-State([string]$Verb) {
     if (-not $verdict -and $Verb -eq 'restore') {
       $snap = [uint64]$want['count']
       $before = Read-ExecCount $pipe
+      $wantStamp = Get-RestoreStamp $snap
+      $byStamp = $before -le $snap
       $tags.Add("<<marker>> $marker") | Out-Null
       $tags.Add("<<count_snapshot>> $snap") | Out-Null
       $tags.Add("<<count_before>> $before") | Out-Null
-      if ($before -eq $snap) {
-        $verdict = "fail the restore of $name is unproven because Exec's count reads $before, the snapshot's own"
+      if ($byStamp) {
+        # The running machine reaches the snapshot's count by itself, so the stamp is the proof:
+        # a random one goes in first, and only the loaded state puts the snapshot's back.
+        $tags.Add("<<stamp_snapshot>> $wantStamp") | Out-Null
+        $other = Get-OtherStamp $wantStamp
+        Write-RestoreStamp $pipe $other
+        $tags.Add("<<stamp_before>> $other") | Out-Null
       }
     }
     if (-not $verdict -and $Verb -eq 'restore') {
       Send-Logged $pipe $sw $tags 0 'restore' "CFG statefile $file"
       $until = $sw.ElapsedMilliseconds + $RestoreBoundMs
-      $after = $null; $back = $false; $readError = $null
+      $after = $null; $stampAfter = $null; $back = $false; $readError = $null
       while (-not $back -and $sw.ElapsedMilliseconds -lt $until) {
         Start-Sleep -Milliseconds $StatePollMs
         # A read can fail while the state is being loaded; that is "not back yet".
-        try { $after = Read-ExecCount $pipe; $back = Test-RestoreBack $before $snap $after }
+        try {
+          $after = Read-ExecCount $pipe
+          if ($byStamp) { $stampAfter = Read-RestoreStamp $pipe }
+          $back = Test-RestoreBack $before $snap $after $wantStamp $stampAfter
+        }
         catch { $readError = $_.Exception.Message }
       }
       if ($null -ne $after) { $tags.Add("<<count_after>> $after") | Out-Null }
+      if ($null -ne $stampAfter) { $tags.Add("<<stamp_after>> $stampAfter") | Out-Null }
       if ($back) {
         Start-Sleep -Milliseconds $RestoreSettleMs
         $verdict = "ok restored $name pid=$($lane.proc.Id)"
       } elseif ($null -eq $after) {
         $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s, because no read of Exec's count succeeded; the last error was: $readError"
       } else {
-        $wanted = if ($before -lt $snap) { "not $snap or more" } else { "not between $snap and $before" }
+        $read = if ($null -ne $stampAfter) { $stampAfter } else { 'nothing' }
+        $wanted = if ($byStamp) { "and the restore stamp read $read, not the snapshot's $wantStamp with a count of $snap or more" } else { "not between $snap and $before" }
         $tail = if ($readError) { "; the last read error was: $readError" } else { '' }
         $verdict = "fail the machine was not seen to go back to snapshot $name within $($RestoreBoundMs / 1000) s: Exec's count read $after, $wanted$tail"
       }
     }
     if (-not $verdict -and $Verb -eq 'snapshot') {
       $count = Read-ExecCount $pipe
+      $stamp = Get-RestoreStamp $count
+      Write-RestoreStamp $pipe $stamp
       $partFile = "$part\$name"
       $pending = $true
       Send-Logged $pipe $sw $tags 0 'save' 'CFG statefile_save x'
@@ -826,6 +876,7 @@ function Invoke-State([string]$Verb) {
         $tags.Add("<<sha256>> $sha") | Out-Null
         $tags.Add("<<marker>> $marker") | Out-Null
         $tags.Add("<<count_snapshot>> $count") | Out-Null
+        $tags.Add("<<stamp_snapshot>> $stamp") | Out-Null
         $verdict = "ok snapshot $name bytes=$($h.len) pid=$($lane.proc.Id)"
       }
     }

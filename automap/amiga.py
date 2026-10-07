@@ -78,6 +78,7 @@ cannot be handed between the several runs one experiment needs.
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import os
 import pathlib
@@ -919,6 +920,20 @@ STATE_WAIT_SECONDS = 15.0
 #: The first four bytes of every WinUAE state file.
 STATE_HEADER = b"ASF "
 
+#: Where `winuae.ps1` writes a snapshot's restore stamp: the last two 68000 user
+#: interrupt vectors, which no Amiga interrupt uses.
+RESTORE_STAMP_ADDRESS = 0x3F8
+
+
+def restore_stamp(count: int) -> str:
+    """The eight bytes a snapshot taken at Exec count `count` holds at `RESTORE_STAMP_ADDRESS`.
+
+    The first eight bytes of SHA-256 over `wish-restore <count>`, in lower-case
+    hex, as `winuae.ps1`'s `Get-RestoreStamp` computes them; derived from the count
+    so a staged snapshot, whose marker holds only the count, has one too.
+    """
+    return hashlib.sha256(f"wish-restore {count}".encode("ascii")).hexdigest()[:16]
+
 
 class SnapshotError(GuestError):
     """A snapshot, restore or discard was blocked or not proved.
@@ -1059,6 +1074,28 @@ def _judge_messages(receipt: StateReceipt, wanted: list[tuple[str, str]]) -> Non
         if reply[1] != b"404\0":
             raise SnapshotError(f"WinUAE answered {text!r} with {reply[1]!r}; a "
                                 "setter answers 404", receipt.as_dict())
+
+
+def _judge_restore_stamp(receipt: StateReceipt, name: str, snap: int, after: int) -> None:
+    """The restore stamp proves a restore from at or below the snapshot's count.
+
+    The guest must have expected the snapshot's own stamp, written other bytes
+    over it before the restore, and read the snapshot's stamp back afterwards,
+    with a count at or above the snapshot's.
+    """
+    tags = receipt.tags
+    want = restore_stamp(snap)
+    if tags.get("stamp_snapshot") != want:
+        raise SnapshotError(f"The guest expected the restore stamp {tags.get('stamp_snapshot')!r}, "
+                            f"not {want}, the stamp of count {snap}", receipt.as_dict())
+    other = tags.get("stamp_before", "")
+    if not re.fullmatch(r"[0-9a-f]{16}", other) or other == want:
+        raise SnapshotError(f"The guest wrote {other!r} over the restore stamp before the "
+                            f"restore, not eight bytes other than {want}", receipt.as_dict())
+    if tags.get("stamp_after") != want or after < snap:
+        raise SnapshotError(f"The machine was not seen to go back to {name}: Exec's count "
+                            f"read {after} and the restore stamp {tags.get('stamp_after')!r}, not "
+                            f"{want} with a count of {snap} or more", receipt.as_dict())
 
 
 class WinuaePipe:
@@ -1421,7 +1458,8 @@ Write-Output '<<end>>'
         """Save the whole running machine under `name`, and prove the file was written.
 
         The guest checks the lane claim and the pipe's server process, reads
-        Exec's idle and dispatch counts, then sends `CFG statefile_save x` and
+        Exec's idle and dispatch counts, writes the count's `restore_stamp` at
+        `RESTORE_STAMP_ADDRESS` and reads it back, then sends `CFG statefile_save x` and
         `CFG statefile_path <holder folder>\\part~\\<name>`: the first leaves a
         save pending, the second points it at `part~\\<name>\\<name>` and the
         save completes (a last component with a dot in it got no file). `CFG statefile_save <name>` alone writes nothing. The guest
@@ -1472,19 +1510,32 @@ Write-Output '<<end>>'
 
         The guest blocks a snapshot with no `complete~` marker or whose file
         does not hash as the marker says. It reads Exec's idle and dispatch
-        counts, sends `CFG statefile <file>`, and reads them again until they
-        fall to between the snapshot's value and the value read before the
-        restore: both counts only rise while the machine runs, so only a
-        machine that went back reads lower. A read that fails during the 5 s
-        counts as not back yet, and the error names the last one. It then waits
+        counts, sends `CFG statefile <file>`, and reads again until the proof
+        below holds: where the count before is above the snapshot's, a count
+        between the snapshot's value and the value read before the restore,
+        which only a machine that went back can read, because both counts only
+        rise while the machine runs. A read that fails during the 5 s counts as
+        not back yet, and the error names the last one. It then waits
         `RestoreSettleMs`, so a key pressed after this reaches the restored
         machine.
 
-        The proof fails safe when the counts do not move (a machine stopped in
-        the debugger, or a program that stops Exec switching tasks), and it
-        cannot tell a restore from a reset: a snapshot taken in the first
-        seconds after a boot has a count so small that a reset during the
-        restore could pass it. `docs/70-driving-the-game.md` has the
+        **Where the count before is at or below the snapshot's**, a machine
+        that never went back reaches the snapshot's count by itself within the
+        5 s, so the count proves nothing. There the guest writes eight random
+        bytes over the restore stamp the snapshot left at `RESTORE_STAMP_ADDRESS`
+        before it sends the restore, and the proof is the snapshot's own stamp
+        (`restore_stamp`) read back with a count at or above the snapshot's. Only
+        loading a state that holds that stamp puts it there: a machine that runs
+        on keeps the random bytes, and a reset does not write the stamp. A
+        snapshot taken before the guest wrote stamps has none, so its restore
+        from below fails; take it again.
+
+        **Where the count before is above the snapshot's**, the proof is the
+        range above. It fails safe when the counts do not move (a machine
+        stopped in the debugger, or a program that stops Exec switching tasks).
+        A reset during the restore passes it only if the reset machine's count
+        climbs to the snapshot's within the 5 s, which a snapshot taken in the
+        first seconds after a boot allows. `docs/70-driving-the-game.md` has the
         measurements.
 
         Each drive gets the image path the state recorded put back in it, and an
@@ -1492,12 +1543,8 @@ Write-Output '<<end>>'
         between the snapshot and the restore stays on the disk while memory goes
         back, so the run must treat that image as changed.
 
-        The proof is chosen from the counts. Where `before < snap` (a machine
-        just booted, or at an earlier machine time than the snapshot) it is
-        `before < snap <= after`, which a reset during the restore cannot pass
-        because a reset reads below `before`; where `before > snap` it is the
-        range above; where they are equal nothing is proven. `fresh` is still
-        sent to the guest and changes nothing.
+        The proof is chosen from the counts; `fresh` is still sent to the guest
+        and changes nothing.
         """
         folder, file = snapshot_place(holder, name)
         receipt = self._state_verb("restore", holder, name, token,
@@ -1513,14 +1560,8 @@ Write-Output '<<end>>'
         except (KeyError, ValueError) as exc:
             raise SnapshotError(f"The restore of {file} reported no Exec counts, so "
                                 "it was not verified", receipt.as_dict()) from exc
-        if before == snap:
-            raise SnapshotError(f"The restore of {name} is unproven: Exec's count reads "
-                                f"{before}, the snapshot's own", receipt.as_dict())
-        if before < snap:
-            if after < snap:
-                raise SnapshotError(f"The machine was not seen to go back to {name}: "
-                                    f"Exec's count read {after}, not {snap} or more",
-                                    receipt.as_dict())
+        if before <= snap:
+            _judge_restore_stamp(receipt, name, snap, after)
         elif not snap <= after < before:
             raise SnapshotError(f"The machine was not seen to go back to {name}: "
                                 f"Exec's count read {after}, not between {snap} "

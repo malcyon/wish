@@ -770,20 +770,73 @@ def test_fresh_on_any_verb_but_restore_fails_before_the_verb_runs():
     assert PS1.index(line) < PS1.index("switch ($Cmd)")
 
 
-def test_the_restore_proof_is_chosen_from_the_counts_and_not_from_the_fresh_flag():
-    body = _body("Test-RestoreBack")
-    assert "$Fresh" not in body
-    assert "function Test-RestoreBack([uint64]$Before, [uint64]$Snap, [uint64]$After)" in PS1
-    assert "if ($Before -lt $Snap) { return ($After -ge $Snap) }" in body
-    assert "if ($Before -gt $Snap) { return ($After -ge $Snap -and $After -lt $Before) }" in body
-    assert "$false" in body.split("$Before -gt $Snap")[1]
-    assert "Test-RestoreBack $before $snap $after" in PS1
-    assert "Test-RestoreBack $Fresh" not in PS1
+def _restore_rule():
+    """`Test-RestoreBack`, translated line by line into a Python function.
+
+    The body is two lines, the range proof and the stamp proof; anything else in it
+    fails the translation, so a changed rule cannot pass these tests unread.
+    """
+    lines = [line.strip() for line in _body("Test-RestoreBack").splitlines()[1:]]
+    assert len(lines) == 2, lines
+    first = re.fullmatch(r"if \((.+)\) \{ return \((.+)\) \}", lines[0])
+    last = re.fullmatch(r"\((.+)\)", lines[1])
+    assert first and last, lines
+
+    def py(text):
+        for ps, op in (("-ceq", "=="), ("-eq", "=="), ("-gt", ">"), ("-ge", ">="),
+                       ("-lt", "<"), ("-and", "and")):
+            text = text.replace(f" {ps} ", f" {op} ")
+        text = text.replace("$Want.Length", "len(Want)").replace("$", "")
+        assert re.fullmatch(r"[A-Za-z()<>=0-9 ]+", text), text
+        return text
+
+    source = (f"def rule(Before, Snap, After, Want, Stamp):\n"
+              f"    if {py(first[1])}: return {py(first[2])}\n"
+              f"    return {py(last[1])}\n")
+    scope: dict = {}
+    exec(source, scope)
+    return scope["rule"]
 
 
-def test_a_restore_whose_count_before_equals_the_snapshots_fails_before_anything_is_sent():
+def test_the_restore_rule_takes_the_counts_and_the_marks_and_not_the_fresh_flag():
+    assert "function Test-RestoreBack([uint64]$Before, [uint64]$Snap, [uint64]$After, " \
+        "[string]$Want, [string]$Stamp)" in PS1
+    assert "$Fresh" not in _body("Test-RestoreBack")
+    assert "Test-RestoreBack $before $snap $after $wantStamp $stampAfter" in PS1
+
+
+WANT = amiga.restore_stamp(1000)
+OTHER = "0123456789abcdef"
+
+
+def test_a_machine_that_runs_past_the_snapshot_without_restoring_fails_the_rule():
+    """The false proof: Exec's count crosses the snapshot's by itself and the stamp stays random."""
+    rule = _restore_rule()
+    assert not rule(900, 1000, 1005, WANT, OTHER)
+    assert not rule(1000, 1000, 1180, WANT, OTHER)
+
+
+def test_a_reset_that_climbs_past_the_snapshots_count_fails_the_rule():
+    assert not _restore_rule()(900, 1000, 1100, WANT, "0" * 16)
+
+
+def test_a_loaded_mark_passes_the_rule_from_below_and_from_equal():
+    rule = _restore_rule()
+    assert rule(900, 1000, 1005, WANT, WANT)
+    assert rule(1000, 1000, 1030, WANT, WANT)
+    assert not rule(900, 1000, 950, WANT, WANT)
+    assert not rule(900, 1000, 1005, "", "")
+
+
+def test_the_range_proof_above_the_snapshot_is_kept_and_reads_no_mark():
+    rule = _restore_rule()
+    assert rule(9000, 1000, 1200, WANT, "")
+    assert not rule(9000, 1000, 9500, WANT, WANT)
+    assert not rule(9000, 1000, 999, WANT, WANT)
+
+
+def test_no_count_comparison_alone_ends_a_restore_from_below():
     body = _body("Invoke-State")
-    check = body.index("if ($before -eq $snap) {")
-    assert "unproven" in body[check:check + 200]
-    assert check < body.index("Send-Logged $pipe $sw $tags 0 'restore'")
+    assert "if ($before -eq $snap) {" not in body
     assert "if ($Fresh -and $before -ge $snap)" not in body
+    assert "if ($Before -lt $Snap) { return ($After -ge $Snap) }" not in PS1
