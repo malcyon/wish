@@ -385,7 +385,8 @@ def write_amiga_pod(party: Any, disk: Any) -> None:
     Its items are patched node by node from the sheet's slots
     (`goldbox.pod_rewrite.rewrite_amiga_items`), and a block that grew or
     shrank is put back with the saved game at its fixed size
-    (`goldbox.pod_rewrite.rebuild_party`).
+    (`goldbox.pod_rewrite.rebuild_party`). A level edit rebuilds the whole
+    spell-capacity array and grants the spells training would, as the game does.
     """
     from .podsheet import item_blocks
 
@@ -430,13 +431,16 @@ def _recomputed_block(block: bytes) -> bytes:
     recompute's tables cannot cover is returned as it was.
     """
     rec = bytearray(block[:amiga_pod.RECORD_BYTES])
+    character = amiga_pod.PodCharacter.from_bytes(block)
     items = [bytes(amiga_pod.ITEM_NODE_BASE) + item.raw
-             for item in amiga_pod.PodCharacter.from_bytes(block).items]
+             for item in character.items]
     old = bytes(rec)
     try:
         amiga_pod_recompute.pod_check(rec)
         amiga_pod_recompute.pod_recompute(rec, items)
-    except amiga_pod_recompute.RecomputeError:
+    except amiga_pod_recompute.RecomputeError as why:
+        _log.warning("Level edit of %s saved without the recompute: %s",
+                     character.name, why)
         return block
     rec[amiga_pod.THAC0_CURRENT] = (
         old[amiga_pod.THAC0_CURRENT] + rec[amiga_pod.THAC0_BASE]

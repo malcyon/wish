@@ -1370,3 +1370,13 @@ def test_a_record_the_recompute_cannot_cover_saves_its_level_edit_alone():
     bad = bytearray(block)
     bad[amiga_pod.RACE] = 9
     assert saveplan._recomputed_block(bytes(bad)) == bytes(bad)
+
+
+def test_a_record_the_recompute_cannot_cover_logs_why_it_was_left_alone(caplog):
+    bad = bytearray(amiga_pod.RECORD_BYTES)
+    bad[amiga_pod.RACE] = 9
+    with caplog.at_level("WARNING", logger="wish.editor.saveplan"):
+        saveplan._recomputed_block(bytes(bad))
+    assert len(caplog.records) == 1
+    assert "recompute" in caplog.records[0].getMessage()
+    assert "human" in caplog.records[0].getMessage()

@@ -38,6 +38,7 @@ Each section names its executable, the routines it copies and where
 
 from __future__ import annotations
 
+import functools
 import random
 from dataclasses import dataclass
 
@@ -59,6 +60,7 @@ from goldbox.amiga_pod_recompute import (
     POD_SLOTS,
     RecomputeError,
     _pod_learn,
+    _row,
     _s8,
     pod_check,
     pod_recompute,
@@ -69,17 +71,12 @@ from goldbox.amiga_pod_recompute import (
 from . import amigaeffects, amigaparty
 
 
-class CannotLevel(Exception):
+class CannotLevel(RecomputeError):
     """The trainer would not train this character, or would do something
     a write to the record cannot copy. The message says which."""
 
 
-def _row(rows, name: str, level: int):
-    """`goldbox.spells`' capacity row for a class level, or `CannotLevel`
-    for a level past the rows, which no title lets a character reach."""
-    if not 1 <= level <= len(rows):
-        raise CannotLevel(f"{name} level {level} is past the capacity rows")
-    return rows[level - 1]
+_row = functools.partial(_row, error=CannotLevel)
 
 
 class NeedsSpell(CannotLevel):
@@ -161,16 +158,12 @@ def apply_to(raw: bytes, plan_: Plan) -> bytes:
     return bytes(out)
 
 
-
-
 def _s32(raw, at: int) -> int:
     return int.from_bytes(raw[at:at + 4], "big", signed=True)
 
 
 def _dice(rng, count: int, sides: int) -> int:
     return sum(rng.randint(1, sides) for _ in range(count))
-
-
 
 
 # --- Pools of Darkness -------------------------------------------------------
@@ -227,28 +220,8 @@ _POD_READY_CEILING = (
 )
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _pod_has_spell(rec, spell: int) -> bool:
     return bool(rec[_POD_SPELLBOOK + (spell - 1) // 8] & (1 << ((spell - 1) % 8)))
-
-
-
-
-
-
 
 
 def pod_threshold(slot: int, level: int) -> int:
@@ -348,16 +321,6 @@ def pod_ready_flag(rec) -> int:
         if experience >= want and want > 0:
             return 1
     return 0
-
-
-
-
-
-
-
-
-
-
 
 
 def _pod_ready_mask(rec) -> tuple[int, int]:
@@ -1065,8 +1028,6 @@ def _curse_save_row(slot: int, level: int) -> tuple[int, ...]:
         raise CannotLevel(f"no save row is copied for {CURSE_SLOTS[slot]} "
                           f"level {level}")
     return row
-
-
 
 
 def _curse_capacity(rec: bytearray, items) -> None:

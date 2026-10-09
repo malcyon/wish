@@ -21,82 +21,38 @@ def _s8(value: int) -> int:
     return value - 256 if value > 127 else value
 
 
-def _row(rows, name: str, level: int):
-    """`goldbox.spells`' capacity row for a class level, or `RecomputeError`
-    for a level past the rows, which no title lets a character reach."""
+def _row(rows, name: str, level: int, error=RecomputeError):
+    """`goldbox.spells`' capacity row for a class level, or `error` for a
+    level past the rows, which no title lets a character reach."""
     if not 1 <= level <= len(rows):
-        raise RecomputeError(f"{name} level {level} is past the capacity rows")
+        raise error(f"{name} level {level} is past the capacity rows")
     return rows[level - 1]
 
 
 #: The record's seven class slots, in the order every table here is indexed.
 POD_SLOTS = ("cleric", "druid", "fighter", "paladin", "ranger", "magic-user",
              "thief")
-
-
 _POD_DRUID = 1
-
-
 _POD_RANGER = 4
-
-
 _POD_THIEF = 6
-
-
 _POD_STATUS = amiga_pod.STATUS              # must be 0: "we only train conscious people"
-
-
 _POD_RACE = amiga_pod.RACE
-
-
 _POD_HUMAN = 5                              # `0x3CFB2`: `cmpi.b #5, $58`
-
-
 _POD_INTELLIGENCE = 0x073
-
-
 _POD_WISDOM = 0x075
-
-
 _POD_DEXTERITY = 0x077
-
-
 _POD_CONSTITUTION = 0x079
-
-
 _POD_THAC0 = 0x07F                          # stored 60 - THAC0
-
-
 _POD_SAVES = 0x083                          # five bytes
-
-
 _POD_LEVEL = 0x089
-
-
 _POD_FORMER_LEVEL = amiga_pod.FORMER_LEVEL
-
-
 _POD_THIEF_SKILLS = 0x08B                   # eight bytes
-
-
 _POD_LEVELS = amiga_pod.CLASS_LEVELS
-
-
 _POD_FORMER = amiga_pod.FORMER_CLASS_LEVELS
-
-
 _POD_ATTACKS = amiga_pod.ATTACK_FORMS
-
-
 _POD_CLASS_BITS = 0x0B7
-
-
 _POD_SPELLBOOK = 0x159                      # sixteen bytes, id - 1 a bit
-
-
 _POD_CAPACITY = 0x169                       # cleric 9, druid 9, magic-user 9
-
-
 #: `g1E7A`: the bit a slot adds to the class mask at `0x0B7`.
 _POD_CLASS_BIT = (2, 16, 8, 64, 64, 1, 4)
 
@@ -116,8 +72,6 @@ def _pod_thac0_rows() -> tuple[tuple[int, ...], ...]:
 
 
 _POD_THAC0_ROWS = _pod_thac0_rows()
-
-
 _POD_TABLE_CLAMP = levels.POD_TABLE_CLAMP
 
 
@@ -149,25 +103,17 @@ _POD_THIEF_BASE = (levels._THIEF_SKILLS_SSB[:14]
                    + tuple(row[:6] + (100,) + row[7:]
                            for row in levels._THIEF_SKILLS_SSB[14:17])
                    + ((130, 99, 99, 99, 99, 55, 100, 85),))
-
-
 #: `g1F3C[race * 8]`: AD&D's rows in this title's race order, and **the human's
 #: row is the half-orc's** (`99d7ea58`, CONFIRMED: human thieves at 20, 29 and
 #: 37 match only with it). Reordered out of DOS Pool of Radiance's rows, which
 #: are the same numbers.
 _POD_THIEF_RACE = tuple(levels._DOS_THIEF_SKILL_RACE_POOL[i]
                         for i in (1, 3, 0, 2, 4, 5))
-
-
 #: `g1F6C[(dexterity - 9) * 5]`, dexterity 9-19: DOS Pool of Radiance's rows,
 #: dexterity 10's -19 and 16's -5 included. A dexterity outside reads other
 #: tables' bytes, so `plan` stops there.
 _POD_THIEF_DEX = levels._DOS_THIEF_SKILL_DEX_POOL
-
-
 _POD_THIEF_DEX_FROM = 9
-
-
 _POD_THIEF_ROW_CAP = 18
 
 
@@ -183,14 +129,8 @@ def _pod_spell_table() -> dict[int, tuple[int, int]]:
 
 
 _POD_SPELLS = _pod_spell_table()
-
-
 _POD_LAST_SPELL = 126
-
-
 _POD_SLOT_ROWS = spells._SLOTS[spells.POOLS_OF_DARKNESS.key]
-
-
 #: `0x3BE7C` and `0x3C48A` clamp a class level at 29 before reading a row.
 _POD_SLOT_CLAMP = 29
 
