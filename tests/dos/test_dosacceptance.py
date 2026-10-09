@@ -12916,7 +12916,7 @@ def test_map_is_for_darkness_straight_after_a_press(title, steps, text):
         da.validate_steps(_steps(*steps), title)
 
 
-#: The TREAS route of WISH-331's runs T2a and T2b: the tester's TAKE, then its
+#: The tester's TREAS route: the tester's TAKE, then its
 #: JUMP to area 33 on disk side 3, `map`, camp and save.
 TESTER_TREAS_JUMP_33 = [
     "load", *["press Down"] * 5, "press Return", "press x", "press Return", "press j",
