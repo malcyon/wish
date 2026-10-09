@@ -624,6 +624,18 @@ def test_a_disk3_seed_outside_the_control_vaults_rows_writes_no_run(reload_pinne
     with pytest.raises(RouteError, match="disk 3 seed"):
         route_darkness._prepare_darkness_spare_reload(
             reload_pinned / "run", disk3, sha, summary, spare, disk3_seed_rows=rows)
+    assert not (reload_pinned / "run").exists()
+
+
+def test_a_disk3_seed_stops_on_a_summary_without_a_control_letter(reload_pinned):
+    disk3, sha, summary, spare = _accepted_with_control(reload_pinned)
+    data = json.loads(summary.read_text())
+    del data["spare_vault"]["control_letter"]
+    summary.write_text(json.dumps(data))
+    with pytest.raises(RouteError, match="no spare_vault control letter"):
+        route_darkness._prepare_darkness_spare_reload(
+            reload_pinned / "run", disk3, sha, summary, spare, disk3_seed_rows=1)
+    assert not (reload_pinned / "run").exists()
 
 
 def test_a_disk3_seed_stops_on_a_loaded_vault_that_holds_rows(reload_pinned):
@@ -677,10 +689,10 @@ def test_spare_title_for_lists_the_disk3_seed_rows_when_present_and_the_spares_o
     base = {SPARE: {}, "loaded_letter": "G",
             "spare_vault": {"items": 2, "coins": [0, 0, 0]}}
     seeded = {**base, "disk3_seed": {"items": 3, "coins": [0, 0, 0]}}
-    plain = route_darkness.spare_title_for("darkness-reload", base, title, "measure")
+    unseeded = route_darkness.spare_title_for("darkness-reload", base, title, "measure")
     got = route_darkness.spare_title_for("darkness-reload", seeded, title, "measure")
-    assert plain == route_darkness.spare_reload_title("G", 2, False)
-    assert got == route_darkness.spare_reload_title("G", 3, False) != plain
+    assert unseeded == route_darkness.spare_reload_title("G", 2, False)
+    assert got == route_darkness.spare_reload_title("G", 3, False) != unseeded
 
 
 # Seeding the spare's loaded-letter vault.

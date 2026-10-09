@@ -795,8 +795,12 @@ def _prepare_darkness_spare_reload(run: pathlib.Path, disk3: pathlib.Path, disk3
         raise RouteError("a working copy differs from its input")
     seed = None
     if disk3_seed_rows is not None:
-        seed = _seed_disk3(pathlib.Path(disks["disk3"]["path"]), loaded, disk3_seed_rows,
-                           summary)
+        try:
+            seed = _seed_disk3(pathlib.Path(disks["disk3"]["path"]), loaded, disk3_seed_rows,
+                               summary)
+        except RouteError:
+            shutil.rmtree(run)
+            raise
         disks["disk3"]["sha256"] = sha256(pathlib.Path(disks["disk3"]["path"]))
     return {
         "title": "darkness-reload", "disks": disks,
@@ -820,6 +824,9 @@ def _seed_disk3(path: pathlib.Path, loaded: str, rows: int,
     """
     try:
         control = summary["spare_vault"]["control_letter"]
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the accept summary has no spare_vault control letter: {exc!r}") from exc
+    try:
         disk = amiga_adf.AmigaDisk.open(path)
         held = vault_evidence(disk, loaded)
         if held is None or held["items"] or any(held["coins"]):
@@ -835,9 +842,7 @@ def _seed_disk3(path: pathlib.Path, loaded: str, rows: int,
             raise RouteError(f"the seeded disk 3 fails verification: {problems}")
         disk.save(path)
         return {"letter": loaded, "from_letter": control, **_vault_reading(disk, loaded)}
-    except (KeyError, TypeError) as exc:
-        raise RouteError(f"the accept summary has no spare_vault control letter: {exc!r}") from exc
-    except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
+    except (KeyError, amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
         raise RouteError(f"a disk 3 seed of {rows} rows cannot be made: {exc}") from exc
 
 
