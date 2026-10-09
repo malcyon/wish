@@ -71,7 +71,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from automap import maps, paths
+from automap import amigafasttravel, maps, paths
 from automap.actionbar import DANGER
 from automap.config import clamp_to_screen
 from goldbox import areas as area_table
@@ -237,14 +237,20 @@ TRAVEL_TITLES: tuple[c64_port.C64Container, ...] = (
 )
 
 
+def _amiga_travel_pages() -> bool:
+    """Do the Amiga-only titles get a Fast travel page in this run?"""
+    return backends.amiga_enabled() and amigafasttravel.enabled()
+
+
 def travel_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
     """The titles that have a Fast travel page in this run: the three above,
-    then the titles with no C64 container while an Amiga backend flag is on.
+    then the titles with no C64 container while an Amiga backend flag and the
+    Amiga Fast Travel flag are both on.
 
     Only an attached Amiga lists those titles' areas, so the Pools of
     Darkness conversion flag alone does not add the page.
     """
-    if backends.amiga_enabled():
+    if _amiga_travel_pages():
         return TRAVEL_TITLES + maps.AMIGA_ONLY_TITLES
     return TRAVEL_TITLES
 
@@ -1007,13 +1013,14 @@ class PreferencesDialog(QDialog):
 
     def _build_amiga_travel_tabs(self) -> None:
         """Keep the Fast travel page of each title with no C64 container while
-        an Amiga backend flag is on, and take it out of the tabs otherwise.
+        an Amiga backend flag and the Amiga Fast Travel flag are both on, and
+        take it out of the tabs otherwise.
 
         `preferences.ui` holds the page so that it can be rearranged in
         Designer; a run without the flag never shows it, and nothing in the
         dialog refers to it.
         """
-        if backends.amiga_enabled():
+        if _amiga_travel_pages():
             return
         for game in maps.AMIGA_ONLY_TITLES:
             page = getattr(self.ui, f"travel_tab_{_row_suffix(game)}")

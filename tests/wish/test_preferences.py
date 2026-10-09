@@ -56,7 +56,8 @@ def _no_disks_env(monkeypatch):
     """$POR_DISKS and $POR_ULTIMATE are the player's, not this file's."""
     for name in ("POR_DISKS", "POR_GAME_DISK", "POR_ULTIMATE",
                  "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE", bk.AMIGA_FSUAE_ENV,
-                 bk.AMIGA_WINUAE_ENV, "WISH_EXPERIMENTAL_POD_CONVERT"):
+                 bk.AMIGA_WINUAE_ENV, "WISH_EXPERIMENTAL_POD_CONVERT",
+                 "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"):
         monkeypatch.delenv(name, raising=False)
     preferences._scan.cache_clear()
 
@@ -1292,6 +1293,7 @@ def test_there_is_a_tab_for_every_title_with_an_area_table(
     nowhere(tmp_path, monkeypatch)
     if amiga:
         monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+        monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL", "1")
     dialog = PreferencesDialog(window(app))
     tabs = dialog.travel_tabs
     with_tables = [t for t in areas.TABLES if areas.areas_for_title(t)]
