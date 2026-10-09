@@ -67,6 +67,10 @@ ROOT = r"C:\Amiga\wish"
 ARTIFACT = "frozen-windows"
 WORKFLOW = "release.yml"
 FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
+#: The spelling of `automap.amigaactions.ACTIONS_ENV` and
+#: `automap.amigafasttravel.FAST_TRAVEL_ENV`; a test pins them equal.
+ACTIONS_FLAG = "WISH_EXPERIMENTAL_AMIGA_ACTIONS"
+FAST_TRAVEL_FLAG = "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"
 HOLDER = winvmguest.HOLDER
 #: DF0 and DF1 hold a title's game disks; Wish reads its maps from those. DF2 and up
 #: are the save disk and extras, which the game writes and Wish never reads maps from.
@@ -167,12 +171,14 @@ def environment(flag: bool, holder: str) -> dict[str, str]:
            "WISH_DEBUG": "1"}
     if flag:
         env[FLAG] = "1"
+        env[ACTIONS_FLAG] = "1"
+        env[FAST_TRAVEL_FLAG] = "1"
     return env
 
 
 #: Cleared in the task whatever the holder's own session has, so the window can
 #: reach no other backend and the flag-off control really has no Amiga row.
-CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
+CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, FAST_TRAVEL_FLAG, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
            "POR_ULTIMATE", "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
 
 
@@ -322,8 +328,8 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
     calls `_retitle` with another base.
     """
     build, run = build_root(holder), run_dir(holder)
-    body = winvmguest.encode_powershell(_task_body(env, build, FLAG in env, open_path))
-    args = f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand {body}"
+    task_file = rf"{run}\task.ps1"
+    args = f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{task_file}"'
     probe_out = rf"{run}\windows.txt"
     folder = disks_dir(holder)
     copy_disks = [f"New-Item -ItemType Directory -Force -Path {q(folder)} | Out-Null",
@@ -358,6 +364,7 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder), travel_targets))}, (New-Object Text.UTF8Encoding $false)){tail}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
+        write_file(task_file, _task_body(env, build, FLAG in env, open_path)),
         f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
         "Register-ScheduledTask -TaskName $task -Action $a -Principal $p -Settings $s -Force | Out-Null",
         write_file(probe_file, window_probe(probe_out, build)),

@@ -153,14 +153,20 @@ def test_the_log_folder_is_where_wish_writes_it():
 
 # -- the guest scripts --------------------------------------------------------
 
+def _task_text(script):
+    """The task body a start script writes to `task.ps1` on the guest, decoded."""
+    match = re.search(r"WriteAllBytes\('[^']*\\task\.ps1', \[Convert\]::FromBase64String\('([^']*)'", script)
+    assert match, "no task.ps1 write in the start script"
+    return base64.b64decode(match.group(1)).decode("utf-8-sig")
+
+
 def test_start_script_writes_settings_without_a_bom_and_blocks_session_zero():
     script = winwish.start_script("h", winwish.environment(True, "h"))
     assert "UTF8Encoding $false" in script
     assert "automap.json" in script
     assert "session 0" in script
     assert "Register-ScheduledTask" in script and "-LogonType Interactive" in script
-    inner = script.split("-EncodedCommand ")[1].split("'")[0]
-    body = base64.b64decode(inner).decode("utf-16-le")
+    body = _task_text(script)
     assert "$env:WISH_EXPERIMENTAL_AMIGA_WINUAE = '1'" in body
     assert "$env:WISH_DEBUG = '1'" in body
     assert "Start-Process -Wait" in body
@@ -170,9 +176,25 @@ def test_start_script_writes_settings_without_a_bom_and_blocks_session_zero():
     assert f"Remove-Item Env:{winwish.FLAG}" not in body
 
 
+def test_the_amiga_feature_flags_follow_the_backend_flag():
+    from automap import amigaactions, amigafasttravel
+    assert winwish.ACTIONS_FLAG == amigaactions.ACTIONS_ENV
+    assert winwish.FAST_TRAVEL_FLAG == amigafasttravel.FAST_TRAVEL_ENV
+    on = winwish.environment(True, "h")
+    off = winwish.environment(False, "h")
+    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
+        assert on[name] == "1"
+        assert name not in off
+        assert name in winwish.CLEARED
+    control = _task_text(winwish.start_script("h", off))
+    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
+        assert f"Remove-Item Env:{name}" in control
+        assert f"$env:{name}" not in control
+
+
 def test_the_control_start_script_has_no_flag():
     script = winwish.start_script("h", winwish.environment(False, "h"))
-    body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    body = _task_text(script)
     assert f"Remove-Item Env:{winwish.FLAG}" in body
     assert f"$env:{winwish.FLAG}" not in body
 
@@ -675,7 +697,7 @@ def test_main_start_passes_no_flag_through(capsys):
     assert winwish.main(["start", "--holder", "h", "--no-flag"],
                         guest=winwish.Guest(run)) == 0
     script = run.calls[-1][2]
-    body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    body = _task_text(script)
     assert f"$env:{winwish.FLAG}" not in body
 
 
@@ -1053,7 +1075,7 @@ def _seeded_settings(script):
     """The settings JSON a start script writes, read back out of its embedded text."""
     text = script
     if "WriteAllText" not in script:
-        text = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+        text = _task_text(script)
     match = re.search(r"WriteAllText\(\$settings, '(.*?)', \(New-Object", text, re.S)
     assert match, "no settings write in the start script"
     return json.loads(match.group(1).replace("''", "'"))
@@ -1190,7 +1212,8 @@ def test_no_script_is_too_long_for_a_windows_command_line():
 def test_the_probe_and_ui_scripts_travel_as_files_not_as_nested_commands():
     start = _start()
     assert '-File "C:\\Amiga\\wish\\run-h\\probe.ps1"' in start
-    assert start.count("-EncodedCommand") == 1  # the task body only
+    assert '-File "C:\\Amiga\\wish\\run-h\\task.ps1"' in start
+    assert start.count("-EncodedCommand") == 0
     ui = winwish.ui_script("abc", 30)
     assert '-File "C:\\Users\\Public\\wish-ui-abc.ps1"' in ui
     assert "-EncodedCommand" not in ui
@@ -1469,7 +1492,7 @@ def test_a_path_with_a_double_quote_cannot_be_opened():
 
 def test_the_open_path_reaches_the_task_through_start_script():
     script = winwish.start_script("h", winwish.environment(True, "h"), open_path=OPEN_PATH)
-    body = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    body = _task_text(script)
     assert OPEN_PATH in body and "'--tab', 'editor'" in body
 
 
@@ -1527,7 +1550,7 @@ def test_restart_with_open_and_reseed_writes_the_settings_unconditionally(capsys
     assert winwish.main(argv, guest=winwish.Guest(run)) == 0
     start = next(c[2] for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
     assert "if (-not (Test-Path -LiteralPath $settings))" not in start
-    body = base64.b64decode(start.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    body = _task_text(start)
     assert OPEN_PATH in body
     run = FakeRun()
     assert winwish.main(["restart", "--holder", "h"], guest=winwish.Guest(run)) == 0
@@ -1565,8 +1588,8 @@ def test_start_takes_open_and_reseed():
     run = FakeRun()
     assert winwish.main(["start", "--holder", "h", "--open", OPEN_PATH, "--reseed"],
                         guest=winwish.Guest(run)) == 0
-    assert any(OPEN_PATH in base64.b64decode(c[2].split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
-               for c in run.calls if c[1] == "ps" and "-EncodedCommand" in c[2])
+    assert any(OPEN_PATH in _task_text(c[2])
+               for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
 
 
 def test_the_stage_save_command_prints_the_guest_path_and_hash(tmp_path, capsys):
