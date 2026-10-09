@@ -1211,3 +1211,42 @@ def test_a_short_case_list_leaves_the_remaining_slots_outside_any_case():
     assert inventory._case_mates(0) == [0, 1]
     assert inventory._case_mates(1) == [0, 1]
     assert inventory._case_mates(5) == [5]
+
+
+def _abagail_like() -> podsheet.PodSheetRecord:
+    data = bytearray(podsheet.SIZE)
+    data[podsheet.TABLE["class_levels"].offset + podsheet.LEVEL_SLOTS[
+        "level_magic_user"]] = 12
+    data[podsheet.TABLE["level"].offset] = 12
+    return podsheet.PodSheetRecord(bytes(data))
+
+
+def test_raising_a_class_level_raises_the_level_byte_on_dos():
+    before = _abagail_like()
+    after = podsheet.PodSheetRecord(before.to_bytes())
+    after.set("level_magic_user", 13)
+    assert after.get("level") == 13
+    spans, _unplaced = pod_rewrite.rewrite.dos_spans(pod_rewrite.DELTAS)
+    written, moved = pod_rewrite.rewrite.patch(
+        before.to_bytes(), before.to_bytes(), after.to_bytes(), spans)
+    assert "level" in moved
+    assert podsheet.PodSheetRecord(written).get("level") == 13
+
+
+def test_raising_a_class_level_raises_the_level_byte_on_the_amiga():
+    before = _abagail_like()
+    after = podsheet.PodSheetRecord(before.to_bytes())
+    after.set("level_magic_user", 13)
+    block = bytearray(amiga_pod.RECORD_BYTES)
+    block[amiga_pod.LEVEL] = 12
+    written, moved = pod_rewrite.rewrite_amiga_record(
+        bytes(block), before.to_bytes(), after.to_bytes())
+    assert "level" in moved
+    assert written[amiga_pod.LEVEL] == 13
+
+
+def test_lowering_a_class_level_keeps_the_level_byte():
+    before = _abagail_like()
+    after = podsheet.PodSheetRecord(before.to_bytes())
+    after.set("level_magic_user", 9)
+    assert after.get("level") == 12

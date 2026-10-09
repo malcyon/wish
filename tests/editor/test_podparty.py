@@ -414,8 +414,14 @@ def test_a_level_edit_keeps_the_druid_paladin_and_ranger_levels(monkeypatch):
             after.set("level_cleric", (after.get("level_cleric") + 1) % 41)
             out, moved = podsheet.rewrite_record(original, before, after)
             at = podsheet.TABLE["class_levels"].offset
-            assert moved == ["class_levels"]
-            assert [i for i in range(len(out)) if out[i] != original[i]] == [at]
+            # The level byte is the highest class level held, so a raise past
+            # it moves that byte too and any other edit leaves it.
+            raised = after.get("level") != before.get("level")
+            assert moved == (["level", "class_levels"] if raised
+                             else ["class_levels"])
+            want = [at] + ([podsheet.TABLE["level"].offset] if raised else [])
+            assert [i for i in range(len(out)) if out[i] != original[i]] == (
+                sorted(want))
             seen += 1
     assert seen
 

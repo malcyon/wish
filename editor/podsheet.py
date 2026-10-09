@@ -327,6 +327,11 @@ class PodSheetRecord:
         elif name in LEVEL_SLOTS:
             at = TABLE["class_levels"].offset + LEVEL_SLOTS[name]
             self._data[at] = _byte(name, value)
+            # The game keeps `level` as the highest class level the character
+            # has held and raises it only in its recompute, which an Amiga
+            # load never runs; a lowered class level leaves it as a drain does.
+            top = TABLE["level"].offset
+            self._data[top] = max(self._data[top], *self._dos("class_levels"))
         elif name == "size_small":
             self._data[TABLE["size"].offset] = _byte(name, int(value) + 1)
         elif name == "class_bits":
