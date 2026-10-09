@@ -2173,6 +2173,7 @@ graph LR
   amiga_pod --> titles
   amiga_por -.->|deferred| amiga_later
   amiga_por --> amiga_port
+  amiga_por --> c64_codec
   amiga_por -.->|deferred| dos_codec
   amiga_por --> dos_port
   amiga_por --> iconparts
