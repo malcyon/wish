@@ -37,7 +37,11 @@ OUT/NNN.png only when it differs from the one before it. Every wait is
 bounded: the poll loop by `--budget` seconds (a trip or hop still waiting then
 is cancelled and the run ends nonzero), and an answer by `ANSWER_SECONDS`
 once nothing else is pending. The final screenshot waits for the game's menu
-gate and then `SETTLE_SECONDS`, bounded by the same budget.
+gate and then `SETTLE_SECONDS`, bounded by `SETTLE_BUDGET_SECONDS`.
+One leg takes at most the reads, the apply, `--budget` for the polls and then
+`SETTLE_BUDGET_SECONDS`, so an outer timeout is sized from that per leg. Each
+leg's result is printed as soon as it ends, and SIGTERM writes an
+`interrupted` event and exits 143.
 """
 
 from __future__ import annotations
@@ -49,6 +53,7 @@ import hashlib
 import json
 import os
 import pathlib
+import signal
 import sys
 import time
 from typing import Callable
@@ -77,6 +82,8 @@ BUDGET_SECONDS = 150.0
 SHOT_SECONDS = 2.0
 #: How long an unanswered `--answer` waits for the screen once nothing else is pending.
 ANSWER_SECONDS = 20.0
+#: The longest the final wait for the menu gate lasts; a game question never passes it.
+SETTLE_BUDGET_SECONDS = 180.0
 #: Seconds the game takes to act on a key, after it is pressed.
 SETTLE_SECONDS = 3.0
 
@@ -191,6 +198,8 @@ def _settle(target, row, log: Log, sleep, clock, budget: float) -> bool:
     Returns whether the gate passed.
     """
     began = clock()
+    budget = min(budget, SETTLE_BUDGET_SECONDS)
+    log("settle_start", budget=budget)
     while not amigatrip.gate(target, row) and clock() - began < budget:
         sleep(POLL_SECONDS)
     passed = bool(amigatrip.gate(target, row))
@@ -402,36 +411,54 @@ def main(argv: list[str] | None = None) -> int:
     def press(key: str) -> None:
         amigadrive.press(args.holder, key, SETTLE_SECONDS)
 
+    results = []
+    leg = 0
+
+    def terminated(*_: object) -> None:
+        raise SystemExit(143)
+
+    previous = signal.signal(signal.SIGTERM, terminated)
+
+    def finished(result: dict) -> dict:
+        print(json.dumps(result), flush=True)
+        results.append(result)
+        return result
+
     try:
         target.locate()
         with open(out / "fasttravel.jsonl", "w") as stream:
             log = Log(stream, time.monotonic)
-            with (measuring_row(args.title, log) if args.measure_row
-                  else contextlib.nullcontext()):
-                row = amigatrip.row_for(args.title)
-                results = []
-                if area is not None:
-                    results.append(run_trip(fasttravel, target, row, area, out, shot, press, log,
-                                            answer=args.answer, budget=args.budget,
-                                            party=amigaparty.read_party,
-                                            peek_vars=peek_vars, title=args.title))
-                if args.back and results and results[0]["result"] == "idle" \
-                        and not results[0]["settled"]:
-                    results.append({"result": "skipped", "reason": "leg 1 never became ready"})
-                elif args.back and (not results or results[0]["result"] == "idle"):
-                    results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
-                                            back=True, budget=args.budget,
-                                            answer=args.answer,
-                                            party=amigaparty.read_party,
-                                            peek_vars=peek_vars, title=args.title))
+            try:
+                with (measuring_row(args.title, log) if args.measure_row
+                      else contextlib.nullcontext()):
+                    row = amigatrip.row_for(args.title)
+                    if area is not None:
+                        leg = 1
+                        finished(run_trip(fasttravel, target, row, area, out, shot, press, log,
+                                          answer=args.answer, budget=args.budget,
+                                          party=amigaparty.read_party,
+                                          peek_vars=peek_vars, title=args.title))
+                    if args.back and results and results[0]["result"] == "idle" \
+                            and not results[0]["settled"]:
+                        finished({"result": "skipped", "reason": "leg 1 never became ready"})
+                    elif args.back and (not results or results[0]["result"] == "idle"):
+                        leg = len(results) + 1
+                        finished(run_trip(fasttravel, target, row, None, out, shot, press, log,
+                                          back=True, budget=args.budget,
+                                          answer=args.answer,
+                                          party=amigaparty.read_party,
+                                          peek_vars=peek_vars, title=args.title))
+            except BaseException as exc:
+                log("interrupted", error=type(exc).__name__, leg=leg)
+                raise
     except (DriverError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc
-    for result in results:
-        print(json.dumps(result))
+    finally:
+        signal.signal(signal.SIGTERM, previous)
     for number, result in enumerate(results, 1):
         if not result.get("settled", True):
-            leg = "the way back" if number > 1 else "the trip"
-            print(f"Leg {number} ({leg}) never became ready for Fast Travel.", file=sys.stderr)
+            which = "the way back" if number > 1 else "the trip"
+            print(f"Leg {number} ({which}) never became ready for Fast Travel.", file=sys.stderr)
             return 1
     return 0 if all(r["result"] == "idle" for r in results) else 1
 

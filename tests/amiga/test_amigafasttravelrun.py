@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+import signal
 import sys
 from types import SimpleNamespace
 
@@ -770,3 +771,72 @@ def test_waypoint_with_a_destination_is_a_usage_error(tmp_path):
         ftr.main(["--holder", "h", "--disks", "D", "--waypoint", "0,9,13,0", "--back",
                   "--to", "3", "--out", str(tmp_path)])
     assert exc.value.code == 2
+
+
+def test_the_settle_wait_is_bounded_by_its_own_budget_not_the_runs(world):
+    world.gate_at = 1e9
+    world.drive(Travel(polls=1), budget=1200.0)
+    settle = [e for e in world.events() if e["event"] == "settle"]
+    assert settle[0]["waited"] <= ftr.SETTLE_BUDGET_SECONDS + ftr.POLL_SECONDS
+
+
+def test_settle_start_is_logged_before_the_wait_ends(world):
+    world.drive(Travel(polls=1))
+    names = [e["event"] for e in world.events()]
+    assert names.index("settle_start") < names.index("settle")
+
+
+def _interrupted_run(monkeypatch, tmp_path, second):
+    calls = []
+
+    def fake(*a, **k):
+        calls.append(k.get("back", False))
+        if len(calls) == 2:
+            return second()
+        return {"result": "idle", "settled": True}
+
+    monkeypatch.setattr(ftr, "run_trip", fake)
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", lambda key, disks: None)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
+    return ["--holder", "h", "--disks", "D", "--to", "3", "--back", "--out", str(tmp_path)]
+
+
+def test_a_leg_is_printed_when_it_ends_and_an_interrupt_is_logged(monkeypatch, tmp_path, capsys):
+    def second():
+        raise KeyboardInterrupt
+
+    argv = _interrupted_run(monkeypatch, tmp_path, second)
+    with pytest.raises(KeyboardInterrupt):
+        ftr.main(argv)
+    assert '"result": "idle"' in capsys.readouterr().out
+    last = json.loads((tmp_path / "fasttravel.jsonl").read_text().splitlines()[-1])
+    assert last["event"] == "interrupted" and last["leg"] == 2
+
+
+def test_sigterm_exits_143_and_the_old_handler_comes_back(monkeypatch, tmp_path):
+    seen = {}
+
+    def second():
+        handler = signal.getsignal(signal.SIGTERM)
+        seen["installed"] = handler is not signal.SIG_DFL
+        handler(signal.SIGTERM, None)
+
+    argv = _interrupted_run(monkeypatch, tmp_path, second)
+    before = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(SystemExit) as caught:
+        ftr.main(argv)
+    assert caught.value.code == 143 and seen["installed"]
+    assert signal.getsignal(signal.SIGTERM) is before

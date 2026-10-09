@@ -487,3 +487,14 @@ def test_darkness_on_changes_only_the_loaded_area_s_roll_and_off_puts_the_script
             result = switch(pipe, DARKNESS, state).off()
             assert "error" not in result, (key, area)
             assert pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER) == script, (key, area)
+
+
+def test_a_row_whose_area_is_not_loaded_is_stopped_with_that_said_and_nothing_is_written(state):
+    pipe = FakePipe()
+    gates = build(pipe, "pool-of-radiance")
+    address = next(iter(gates.values()))
+    pipe.put(address, b"\x01" * len(STATEMENT))
+    result = switch(pipe, "pool-of-radiance", state).on()
+    stopped = [r for r in result["rows"] if r.get("row") and "stopped" in r]
+    assert any("loaded script is not this row's area" in r["stopped"] for r in stopped)
+    assert pipe.get(address, len(STATEMENT)) == b"\x01" * len(STATEMENT)

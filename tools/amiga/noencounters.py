@@ -16,6 +16,11 @@ skips resetting the step counter, and that save stores those variables.  `off`
 restores the script, not them; 99 is a value the game's own roll can produce.
 Its SPECULATIVE rest row also writes variable `$2C`, which the save stores.
 
+A row applies only while its area's script is loaded, so `on` reports every
+row of an area that is not loaded as stopped and writes nothing for it; `keys`
+applies the rows again before each key press and changes the row once its
+area loads.
+
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
 every change still to be put back, before each write and after each restore,
@@ -243,8 +248,10 @@ class EncounterSwitch:
                     if address not in self.blocked:
                         self.blocked.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
-                                     "stopped": f"the {STATEMENT} bytes there "
-                                                f"hash to {digest(now)}, not "
+                                     "stopped": "the loaded script is not this "
+                                                f"row's area: the {STATEMENT} "
+                                                f"bytes there hash to "
+                                                f"{digest(now)}, not "
                                                 f"{row.digest}"})
                     continue
                 self.blocked.discard(address)
