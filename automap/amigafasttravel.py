@@ -22,11 +22,14 @@ stands the party on the door and sends one forward key, and the player answers
 whatever the game asks; for a destination that is not the door's own, the
 second hop is a script trip made once the party stands in the door's area and
 the five entry words have changed. A row that writes script variables adds
-them as statements ahead of the trip. Return is always a script trip.
+them as statements ahead of the trip. Return out of such an area walks the same
+door and then goes on to the square the party left; from any other area it is a
+script trip.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import secrets
 import time
@@ -381,6 +384,9 @@ class AmigaFastTravel(engine.FastTravel):
             return engine.Outcome(False, verdict.reason)
         was = self.back
         area = self._row(was.area)
+        door = self._back_by_door(target, was, area)
+        if door is not None:
+            return door
         arrival, overland = self._square_writes(
             area or was, arrival=was.square, overland=was.overland)
         name = getattr(area, "name", None) or f"area {was.area}"
@@ -391,6 +397,30 @@ class AmigaFastTravel(engine.FastTravel):
         return engine.Outcome(
             True, f"travelled back to {name}",
             tuple(getattr(self.trip.armed, "writes", ())))
+
+    def _back_by_door(self, target, was, area) -> engine.Outcome | None:
+        """Return out of an area whose exit is a walked door, made the way the
+        forward trip makes it; None where Return is a plain script trip."""
+        here = trips.area_id(target, trips.ROWS[self.key])
+        departure = trips.departure_for(self.key, here, was.area,
+                                        self._outdoors(was.area))
+        if departure is None or departure.route_to is None or area is None:
+            return None
+        # `run` takes the destination's own overland square, and Return goes
+        # back to the one the party left.
+        dest = (dataclasses.replace(area, overland=was.overland)
+                if was.overland is not None and dataclasses.is_dataclass(area)
+                and hasattr(area, "overland") else area)
+        outcome = self.run(target, area=dest, arrival=was.square)
+        if not outcome.ok:
+            self.back = was
+            return outcome
+        # Return is not itself a place to return to.
+        self.back = None
+        if self.trip is not None and self.trip.door:
+            return outcome
+        name = getattr(area, "name", None) or f"area {was.area}"
+        return engine.Outcome(True, f"travelled back to {name}", outcome.writes)
 
     # -- finishing it, from the poll --------------------------------------
 

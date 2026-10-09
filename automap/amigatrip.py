@@ -412,10 +412,7 @@ ROWS: dict[str, TripRow] = {
         menu_text=b"Area Cast View Encamp Search Look",
         grid_menu_text=b"Cast View Encamp Search Look",
         script_file="/ecl.dax", script_header=2,
-        confirmed=True, door_confirmed=True,
-        differences=(
-            _return_landing(),
-        )),
+        confirmed=True, door_confirmed=True),
     # CONFIRMED: code and 2 trips.
     "curse-of-the-azure-bonds": TripRow(
         key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",

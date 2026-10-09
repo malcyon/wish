@@ -992,8 +992,7 @@ def test_a_trip_from_a_grid_window_is_offered(here):
 
 
 def test_pool_has_no_difference_about_doors():
-    assert [d.name for d in trip.ROWS["pool-of-radiance"].differences] == [
-        "return_landing"]
+    assert trip.ROWS["pool-of-radiance"].differences == ()
 
 
 def test_the_doors_walked_live_are_still_recorded():

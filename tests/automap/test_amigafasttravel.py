@@ -744,7 +744,7 @@ def test_a_trip_from_a_window_and_a_return_are_offered_as_script_trips(
     assert t.legality(m, area(0))
     out = t.run(m, area(0))
     assert out.ok and not t.trip.door
-    t = pool_travel(monkeypatch, offered=("return_landing",))
+    t = pool_travel(monkeypatch)
     t.back = engine.Waypoint(0, None, (1, 1, 0))
     assert t.legality(pool(26), area(0), back=True)
 
@@ -917,13 +917,47 @@ def test_a_proven_door_is_offered(disks, pool_gate):
 
 def test_return_makes_the_normal_trip_even_from_an_area_with_doors(
         disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, "ALIAS")
     m = pool(13)
-    t = pool_travel(monkeypatch, offered=("return_landing",))
+    t = pool_travel(monkeypatch)
     t.back = engine.Waypoint(2, None, (1, 1, 0))
     out = t.apply_back(m)
     assert out.ok and out.message == "travelled back to " + DOOR_NAME
     assert not t.trip.door
     assert trips.newecl(2) in b"".join(d for _a, d in out.writes)
+
+
+def test_return_out_of_the_kobold_caves_with_fatima_walks_her_door(
+        disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, "ALIAS", FATIMA)
+    m = pool(13)
+    t = pool_travel(monkeypatch)
+    t.back = engine.Waypoint(0, None, (9, 13, 0))
+    out = t.apply_back(m)
+    assert out.ok
+    assert out.message == engine.FastTravel.WALKING_OUT_DETOUR.format(
+        name=DOOR_NAME)
+    assert t.trip.door and t.trip.hop.through == 27
+    assert stood(m) == (6, 15, 2) and key_waiting(m)
+    assert t.back is None
+
+
+def test_return_out_of_the_kobold_caves_without_fatima_is_a_script_trip(
+        disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, "ALIAS")
+    m = pool(13)
+    t = pool_travel(monkeypatch)
+    t.back = engine.Waypoint(0, None, (9, 13, 0))
+    out = t.apply_back(m)
+    assert out.ok and out.message == "travelled back to " + DOOR_NAME
+    assert not t.trip.door and t.back is None
+    assert trips.newecl(0) in b"".join(d for _a, d in out.writes)
+
+
+def test_pool_return_is_offered(disks, pool_gate, monkeypatch):
+    t = pool_travel(monkeypatch)
+    t.back = engine.Waypoint(0, None, (1, 1, 0))
+    assert t.back_verdict(pool(26))
 
 
 def _pending_hop(monkeypatch, area_now):
@@ -1002,7 +1036,7 @@ def test_return_never_goes_through_the_door_path(disks, pool_gate, monkeypatch):
     def boom(*a, **k):
         raise AssertionError("Return reached the door path")
     m = pool(14)
-    t = pool_travel(monkeypatch, offered=("return_landing",))
+    t = pool_travel(monkeypatch)
     monkeypatch.setattr(t, "_run_door", boom)
     t.back = engine.Waypoint(0, None, (1, 1, 0))
     assert t.apply_back(m).ok
