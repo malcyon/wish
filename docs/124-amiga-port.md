@@ -2583,6 +2583,27 @@ walks into the vault without one meets the engine's disk request rather than
 an empty vault. CONFIRMED for the loader; PROBABLE for what the vault screen
 then does, which nobody has watched.
 
+#### Which vault file a save writes and a load reads
+
+| Step | File | Confidence |
+|---|---|---|
+| A save to letter L writes `Vault<L>.DAT` on the disk in DF1 | copied from `VaultT.DAT` on that disk, re-encoded; not from the loaded letter's vault and not from memory | CONFIRMED by one run |
+| A save onto a fresh spare disk | `VaultT.DAT` there is empty, so `Vault<L>.DAT` comes out as the retail empty vault, even when the spare holds a non-empty vault under the loaded letter | CONFIRMED by one run |
+| A load of slot L reads `Vault<L>.DAT` | from the disk 3 the game asks for, not from the spare | CONFIRMED by one run |
+| A load of a slot whose vault holds rows writes those rows to `VaultT.DAT` on that disk | the only file on disk 3 that changes | PROBABLE |
+
+The write at load is PROBABLE because four runs fit it and none separates the
+load from opening the vault's item list: two runs that saved at the loaded
+menu, before any vault screen, found a 40-row `VaultT.DAT`, which points at the
+load; the run that did open the list cannot tell. A load of an empty vault left
+`VaultT.DAT` unchanged. A harness that expects disk 3 to be unchanged after
+such a load will see it change. A measure that loads a non-empty vault, stops
+at the loaded menu and then reads disk 3 would settle it.
+
+Evidence: `~/.cache/wish/acceptance/WISH-2/vault-copy/` (save) and
+`~/.cache/wish/acceptance/WISH-2/vault-load/` (load), each with the run's
+`summary.json`, screenshots and fetched disks.
+
 #### Which variables mean the same on both ports
 
 `tools/dos/dosptrfields.py` finds displacements 0-58 and 195-197 off DOS's
