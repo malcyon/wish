@@ -943,6 +943,10 @@ _WISH_WRITTEN = {
         "the save Wish's Amiga-to-DOS conversion staged for #678, "
         "byte-identical to the acceptance run's own installed/SAVGAMA.PTY; "
         "the game then loaded it and saved slot D",
+    ("WISH-SPEC-wish2-l2r8-saveas-dos-strength-edit-vault40-game-save-d",
+     "SAVGAMA.PTY"):
+        "Save As output the game loaded before saving slot D; its name "
+        "table lists CHRDATA1-8 for a 6-member party",
 }
 
 
