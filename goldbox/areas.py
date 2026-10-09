@@ -640,7 +640,7 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
 def _c(id: int, disk: int, geos: tuple[str, ...],
        arrival: Arrival | None = None, name: str | None = None,
        confidence: Confidence = Confidence.UNKNOWN,
-       world_map: bool = False) -> Area:
+       world_map: bool = False, fasttravelable: bool = True) -> Area:
     """One Curse row: id, disk side and the maps its script loads.
 
     `name` is `None` for one row -- `$1E`, which no forum table entry covers
@@ -660,7 +660,8 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
     """
     return Area(id=id, name=name, disk=disk, geos=geos, arrival=arrival,
                 confidence=confidence, side_name="CURSE_{}",
-                lettered_side=True, world_map=world_map)
+                lettered_side=True, world_map=world_map,
+                fasttravelable=fasttravelable)
 
 
 #: Curse of the Azure Bonds: twenty-five scripts, on six sides
@@ -752,7 +753,7 @@ AREAS_CURSE: tuple[Area, ...] = (
        name="Pit of Moander, second level", confidence=P),
     _c(0x15, 3, ("GEO15",), Arrival(8, 12, 1),
        name="shared blocks: Voonlar, Phlan dungeons", confidence=P),
-    _c(0x1E, 1, ()),
+    _c(0x1E, 1, (), fasttravelable=False),
     _c(0x20, 4, ("GEO20",), Arrival(14, 1, 0),
        name="Zhentil Keep streets", confidence=C),
     _c(0x21, 4, (), Arrival(3, 8, 2), name="Temple of Bane", confidence=C),

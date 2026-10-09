@@ -1137,11 +1137,24 @@ def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
         [a for a in areas.AREAS if a.fasttravelable])
 
 
+def test_curse_area_30_is_not_fasttravelable():
+    """Curse's `ECL1E` is the title-screen demo script; it is marked not
+    fast-travelable like Pool's area 30, so no list can offer it."""
+    from goldbox import areas
+
+    curse = {a.id: a for a in areas.AREAS_CURSE}
+    assert not curse[0x1E].fasttravelable
+    assert all(a.fasttravelable for i, a in curse.items() if i != 0x1E)
+    pool = {a.id: a for a in areas.AREAS}
+    assert not pool[30].fasttravelable
+
+
 def test_a_row_with_no_approved_name_reads_area_and_its_number(
         app, tmp_path, monkeypatch):
     """Curse's area 30 has no approved name, and its script name (`ECL1E`) is
-    developer text: the row reads `Area 30` instead, stays tickable and has no
-    tooltip, since its label opens with that script name."""
+    developer text: a row with no name reads `Area N` instead, stays tickable
+    and has no tooltip, since its label opens with that script name. Curse's
+    area 30 is not offered at all."""
     import re
 
     from PyQt6.QtCore import Qt
@@ -1163,11 +1176,12 @@ def test_a_row_with_no_approved_name_reads_area_and_its_number(
                 assert item.text() == f"Area {area.id}"
                 assert item.flags() & Qt.ItemFlag.ItemIsUserCheckable
                 assert item.toolTip() == ""
-    assert unnamed  # Curse's area 30 and Silver Blades' two, at least
+    assert unnamed  # Silver Blades' two, at least
 
     curse = dialog.travel_tables[CURSE.key]
     labels = [curse.item(i, 0).text() for i in range(curse.rowCount())]
-    assert "Area 30" in labels
+    assert "Area 30" not in labels
+    assert 30 not in [a.id for a in dialog.travel_rows[CURSE.key]]
 
 
 def test_unnamed_rows_sort_after_the_named_ones_in_id_order(
@@ -1181,7 +1195,7 @@ def test_unnamed_rows_sort_after_the_named_ones_in_id_order(
         table = dialog.travel_tables[game.key]
         named = [a for a in rows if a.name]
         unnamed = [a for a in rows if not a.name]
-        if game is not POOL:
+        if game is SILVER_BLADES:
             assert unnamed, game.title
         assert rows == named + unnamed, game.title
         assert [a.name for a in named] == sorted(a.name for a in named)
