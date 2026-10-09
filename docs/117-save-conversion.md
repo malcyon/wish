@@ -2170,6 +2170,7 @@ graph LR
   amiga_pod --> layout
   amiga_pod --> neutral
   amiga_pod -.->|deferred| savegame
+  amiga_pod --> spells
   amiga_pod --> titles
   amiga_por -.->|deferred| amiga_later
   amiga_por --> amiga_port
