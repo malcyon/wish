@@ -800,7 +800,7 @@ _RANGER_SSB = [
 # between them with a class-slot index table holding `0 FF FF 1 2 3 FF`,
 # naming the same four classes as DOS' four branches.
 #
-# **Two gates the engine applies and `capacity_by_class` does not yet.**  The
+# **Two gates the engine applies that `capacity_by_class` leaves out.**  The
 # cleric helper ends with the wisdom bonus and a wisdom ceiling, and the
 # magic-user branch calls a leaf that is nothing but an intelligence ceiling:
 #
@@ -808,13 +808,11 @@ _RANGER_SSB = [
 # * intelligence below 12, 14, 16 and 18 zeroes magic-user levels 6, 7, 8
 #   and 9.
 #
-# Both are the same on the Amiga, on its own record offsets.  Neither is
-# applied here, so a row below can be one or two slots wider than the game
-# would give a character with a low score -- and the wisdom *bonus* comes out
-# of `goldbox.levels`, which has no entry for this title, so
-# `capacity_by_class` adds Pool of Radiance's bonus rather than this game's.
-# The engine's bonus is Curse's and Silver Blades' table exactly: one spell a
-# point from wisdom 13, at levels 1, 1, 2, 2, 3, 4.
+# Both are the same on the Amiga, on its own record offsets.
+# `pod_slot_arrays` applies them, so a row from `capacity_by_class` alone can
+# be one or two slots wider than the game would give a character with a low
+# score.  The engine's wisdom bonus is Curse's and Silver Blades' table
+# exactly: one spell a point from wisdom 13, at levels 1, 1, 2, 2, 3, 4.
 
 #: `DS:77B5`, columns 1-9, added into the magic-user array from level 1.
 #: AD&D 1st edition's published magic-user table to level 29.
@@ -1172,6 +1170,41 @@ def capacity_by_class(class_levels: dict[str, int], wisdom: int,
         _accumulate(out, "druid", druid_run)
         _accumulate(out, "magic-user", magic_user_run)
     return out
+
+
+#: Wisdom needed for cleric spell levels 6 and 7, and intelligence needed for
+#: magic-user levels 6 to 9.
+_POD_WISDOM_CEILING = {6: 17, 7: 18}
+_POD_INTELLIGENCE_CEILING = {6: 12, 7: 14, 8: 16, 9: 18}
+_POD_SLOT_ARRAYS = ("cleric", "druid", "magic-user")
+_POD_SLOT_LEVELS = 9
+
+
+def pod_slot_arrays(class_levels: dict[str, int], intelligence: int,
+                    wisdom: int) -> dict[str, tuple[int, ...]]:
+    """The three nine-wide spell-slot arrays Pools of Darkness' builders
+    write, `"cleric"`, `"druid"` and `"magic-user"`, each zero-filled where no
+    class reaches it.
+
+    This is the result both ports' slot builders share (DOS `GAME.OVR:0x03808A`,
+    Amiga `0x03BE7C`) before either port's ring rule: the base rows and the
+    wisdom bonus from `capacity_by_class`, the wisdom ceiling on the cleric
+    array and the intelligence ceiling on the magic-user array
+    (`docs/228`).
+    """
+    rows = capacity_by_class(class_levels, wisdom, POOLS_OF_DARKNESS)
+    out: dict[str, list[int]] = {
+        name: [0] * _POD_SLOT_LEVELS for name in _POD_SLOT_ARRAYS}
+    for name, row in rows.items():
+        for i, n in enumerate(row[:_POD_SLOT_LEVELS]):
+            out[name][i] = n
+    for level, needed in _POD_WISDOM_CEILING.items():
+        if wisdom < needed:
+            out["cleric"][level - 1] = 0
+    for level, needed in _POD_INTELLIGENCE_CEILING.items():
+        if intelligence < needed:
+            out["magic-user"][level - 1] = 0
+    return {name: tuple(row) for name, row in out.items()}
 
 
 def capacity(class_bits: int, level: int, wisdom: int,

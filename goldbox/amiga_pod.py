@@ -45,7 +45,7 @@ import struct
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from . import amiga_port, dos_port, neutral, titles
+from . import amiga_port, dos_port, neutral, spells, titles
 from .amiga_shared import ABILITY_KEYS, SAVE_KEYS, THIEF_KEYS, _name, u16, u32
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
@@ -532,6 +532,35 @@ def engine_default_icon(race: int, sex: int, size: int,
     if sex == SEXES.index("FEMALE"):
         return (9 if medium else 7), _default_body(class_levels)
     return (5 if medium else 0), _default_body(class_levels)
+
+
+#: Source ports whose spell-slot arrays are rebuilt by :func:`engine_spell_slots`
+#: rather than copied. The Amiga never rebuilds on load, and DOS stores its own
+#: ring rule, so a DOS array would otherwise show slots the Amiga would not give.
+_SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
+
+
+def engine_spell_slots(class_levels: Sequence[int], abilities: Sequence[int],
+                       items: Sequence[bytes]) -> dict[str, tuple[int, ...]]:
+    """The three spell-slot arrays the Amiga's own builder (`0x03BE7C`) gives.
+
+    `class_levels` are the seven slot levels in :data:`CLASS_LEVEL_SLOTS`
+    order, `abilities` the six in-force scores in `ABILITY_KEYS` order and
+    `items` the twenty-byte nodes. The ring rule at `0x03C214`,
+    `cmpi.b #$41, $41(a3)`, adds magic-user level 5 to itself once for each
+    readied node whose power byte is `0x41`; DOS tests `0x81` instead.
+    """
+    by_name = {"cleric": 0, "paladin": 3, "ranger": 4, "magic-user": 5}
+    levels = {name: int(class_levels[i]) for name, i in by_name.items()
+              if i < len(class_levels)}
+    out = spells.pod_slot_arrays(levels, int(abilities[1]), int(abilities[2]))
+    mage = list(out["magic-user"])
+    for node in items:
+        item = PodItem.from_bytes(node)
+        if item.get("power") == 0x41 and item.readied:
+            mage[4] *= 2
+    out["magic-user"] = tuple(mage)
+    return out
 
 
 def _default_body(class_levels: Sequence[int]) -> int:
@@ -2085,7 +2114,9 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("spells_castable", "the three nine-byte arrays at 0x169, 0x172 and "
                         "0x17B, by class name: cleric, druid, magic-user. A "
                         "source keeping fewer spell levels fills the low "
-                        "ones and the rest stay zero"),
+                        "ones and the rest stay zero; a DOS source's arrays "
+                        "are rebuilt by engine_spell_slots, since the Amiga "
+                        "never rebuilds on load and its ring rule differs"),
     ("spells_memorised", "the neutral highest-first list reversed into the "
                          "141 bytes at 0x0CC, ascending from the front, "
                          "which is the end this port's own MEMORIZE screen "
@@ -3333,6 +3364,9 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     for class_name in classes:
         if not slots[CLASS_LEVEL_SLOTS.index(CLASS_LEVEL_SLOT[class_name])]:
             class_mask |= CLASS_BIT[class_name]
+    in_force = tuple(num(k) for k in ABILITY_KEYS)
+    if castable is not None and char.port in _SPELL_SLOT_RECOMPUTE_FROM_PORTS:
+        castable = engine_spell_slots(tuple(slots), in_force, carried)
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),
@@ -3348,7 +3382,7 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         platinum=num("platinum"),
         gems=num("gems"),
         jewelry=num("jewelry"),
-        abilities=tuple(num(k) for k in ABILITY_KEYS),
+        abilities=in_force,
         exceptional_strength=num("exceptional_strength"),
         hit_points_max=hp_max,
         hit_points_current=hp_current,

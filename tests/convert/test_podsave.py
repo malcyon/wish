@@ -1433,9 +1433,13 @@ def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
         round_chars = dos_codec.read_party(tmp, letter)
         round_party = [dos_codec.to_neutral(c) for c in round_chars]
         assert len(round_party) == len(source_party), label
+        # DOS rebuilds the spell-slot arrays on every character load (the
+        # recompute at GAME.OVR 0x3836D), so they carry no player state here.
         for a, b in zip(source_party, round_party):
-            assert ({k: v.value for k, v in a.fields.items()}
-                    == {k: v.value for k, v in b.fields.items()}
+            assert ({k: v.value for k, v in a.fields.items()
+                     if k != "spells_castable"}
+                    == {k: v.value for k, v in b.fields.items()
+                        if k != "spells_castable"}
                     ), (label, a.get("name"))
         for a, b in zip(source_chars, round_chars):
             assert a._data[0x1F1:0x1FE] == b._data[0x1F1:0x1FE], label

@@ -15,7 +15,8 @@ three spell levels and ids 1-55 for a record with nine slots a class and a
 
 | what | DOS | Amiga |
 |---|---|---|
-| slot builder | `GAME.OVR:0x03808A` | `0x03BE3A` |
+| slot builder | `GAME.OVR:0x03808A` | `0x03BE7C` |
+| ring of wizardry test (doubles magic-user level 5) | `GAME.OVR:0x38333`, power `0x81` | `0x03C214`, `cmpi.b #$41, $41(a3)` |
 | cleric helper: rows, wisdom bonus, wisdom ceiling | `GAME.OVR:0x03860C` | `0x03C494` |
 | intelligence ceiling | `GAME.OVR:0x03874F` | `0x03BE3E` |
 | cleric rows | `DS:71D4` | `0x04EE43` |

@@ -1473,3 +1473,121 @@ def test_the_level_drain_marks_and_the_training_flag_are_written_and_read():
     assert again[0x048:0x04C] == built[0x048:0x04C]
     assert again[0x096:0x09D] == built[0x096:0x09D]
     assert again[0x0B6] == 77 and again[0x0CB] == 1
+
+
+# --- the spell-slot arrays a DOS source gets ----------------------------------
+
+def _dos_mage(level=28, intelligence=18, wisdom=18, stored=None, power=None,
+              readied=1):
+    """A made-up DOS magic-user with ten fifth-level spells memorised and,
+    when `power` is given, one item of that power byte."""
+    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]
+    raw = bytearray(POD.record_size)
+    raw[0] = 5
+    raw[1:6] = b"HILDE"
+    raw[f["race"].offset] = 5
+    raw[f["class_levels"].offset + 5] = level
+    raw[f["class_bits"].offset] = 1
+    for name, value in (("intelligence", intelligence), ("wisdom", wisdom)):
+        raw[f[name].offset:f[name].offset + 2] = bytes((value, value))
+    at = f["spells_castable_magic_user"].offset
+    raw[at:at + 9] = bytes(stored or (6, 6, 6, 6, 12, 6, 6, 6, 6))
+    at = f["spells_memorised"].offset
+    for i, spell in enumerate((91, 91, 91, 91, 91, 91, 92, 94, 94, 119)):
+        raw[at + i] = spell
+    items = ()
+    if power is not None:
+        item = bytearray(dos_port.ITEM_SIZE)
+        item[0x2E] = 65
+        item[0x34] = readied
+        item[0x3E] = power
+        items = (dos_codec.DosItem(bytes(item), dos_port.ITEM_SIZE),)
+    return dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw), items=items))
+
+
+def _mage_slots(pc):
+    base = amiga_pod.SPELLS_CASTABLE
+    return tuple(pc[base + 18:base + 27])
+
+
+def test_a_dos_rings_extra_fifth_level_slots_are_not_written_to_the_amiga():
+    """DOS doubles level 5 for a readied power-0x81 ring and the Amiga's ring
+    test compares 0x41, so the Amiga game would give 6 and never rebuilds on
+    load. All ten memorised spells stay."""
+    pc, _ = amiga_pod.to_pc(_dos_mage(power=0x81))
+    assert _mage_slots(pc) == (6,) * 9
+    kept = [b for b in pc[amiga_pod.SPELLS_MEMORISED:
+                          amiga_pod.SPELLS_MEMORISED + 141] if b]
+    assert sorted(kept) == [91] * 6 + [92, 94, 94, 119]
+
+
+def test_a_dos_mage_without_a_ring_is_unchanged():
+    pc, _ = amiga_pod.to_pc(_dos_mage(stored=(6,) * 9))
+    assert _mage_slots(pc) == (6,) * 9
+
+
+def test_the_amigas_own_ring_power_doubles_level_five_once_per_readied_item():
+    def ring(power, readied):
+        raw = bytearray(amiga_pod.ITEM_FILE_SIZE)
+        raw[amiga_pod.ITEM_FIELD_AT["power"]] = power
+        raw[amiga_pod.ITEM_FIELD_AT["readied"]] = readied
+        return bytes(raw)
+
+    levels = (0, 0, 0, 0, 0, 28, 0)
+    abilities = (10, 18, 18, 10, 10, 10)
+    on = ring(0x41, 1)
+    off = ring(0x41, 0)
+    dos_power = ring(0x81, 1)
+    assert amiga_pod.engine_spell_slots(levels, abilities, [on])[
+        "magic-user"][4] == 12
+    assert amiga_pod.engine_spell_slots(levels, abilities, [on, on])[
+        "magic-user"][4] == 24
+    assert amiga_pod.engine_spell_slots(levels, abilities, [off])[
+        "magic-user"][4] == 6
+    assert amiga_pod.engine_spell_slots(levels, abilities, [dos_power])[
+        "magic-user"][4] == 6
+
+
+def test_the_intelligence_and_wisdom_ceilings_zero_the_high_levels():
+    from goldbox import spells
+
+    mage = spells.pod_slot_arrays({"magic-user": 18}, 13, 18)
+    assert mage["magic-user"][5] and not any(mage["magic-user"][6:])
+    assert mage["cleric"] == (0,) * 9 and mage["druid"] == (0,) * 9
+    cleric = spells.pod_slot_arrays({"cleric": 29}, 18, 16)
+    assert cleric["cleric"][4] and not any(cleric["cleric"][5:7])
+
+
+def test_an_amiga_source_keeps_its_own_slot_bytes():
+    neutral_char = amiga_pod.pod_to_neutral(
+        amiga_pod.to_pc(_dos_mage(stored=(6,) * 9))[0])
+    held = {"cleric": (0,) * 9, "druid": (0,) * 9,
+            "magic-user": (1, 2, 3, 4, 5, 6, 7, 8, 9)}
+    neutral_char.set("spells_castable", held, "test")
+    assert neutral_char.port == "Amiga"
+    pc, _ = amiga_pod.to_pc(neutral_char)
+    assert _mage_slots(pc) == (1, 2, 3, 4, 5, 6, 7, 8, 9)
+
+
+def test_every_shipped_pc_holds_the_slots_the_amiga_builder_gives():
+    for name, raw in pc_records():
+        char = amiga_pod.PodCharacter.from_bytes(raw)
+        items = [n.raw for n in char.items]
+        want = amiga_pod.engine_spell_slots(
+            char.class_levels, char.abilities, items)
+        assert dict(char.spells_castable) == want, name
+
+
+def test_every_dos_record_but_the_pregenerated_two_converts_to_builder_slots():
+    seen = 0
+    for path in dos_records():
+        out = dos_codec.to_neutral(dos_codec.read_character(path))
+        if out.get("name") in ("ABAGAIL", "PAINE"):
+            continue
+        pc, _ = amiga_pod.to_pc(out)
+        back = amiga_pod.PodCharacter.from_bytes(pc)
+        want = amiga_pod.engine_spell_slots(
+            back.class_levels, back.abilities, [n.raw for n in back.items])
+        assert dict(back.spells_castable) == want, path.name
+        seen += 1
+    assert seen >= 10

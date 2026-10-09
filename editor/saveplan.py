@@ -1771,7 +1771,7 @@ def compare(expected: "list[CharacterRecord]",
                 f"came back out"]
     if any(isinstance(record, PodSheetRecord) for record in expected + written):
         return _compare_pod(expected, written, expected_names,
-                            written_name_list)
+                            written_name_list, destination, source_port)
     fields = _compared_fields(destination)
     if expected_names is not None:
         want = sorted(_signature(record, destination, name, fields,
@@ -1824,7 +1824,18 @@ POD_VALUE_CHANGES: dict[str, tuple[Any, str]] = {
 }
 
 
-def _pod_signature(record: PodSheetRecord, name: "str | None"
+#: The three spell-slot arrays are not compared on a DOS to Amiga Save As: the
+#: writer rebuilds them from class levels, intelligence, wisdom and readied
+#: items, all of which are compared, because the Amiga must not hold DOS's
+#: figure (its ring rule differs and it never rebuilds on load).
+POD_NOT_COMPARED_TO_AMIGA: dict[str, str] = {
+    name: "rebuilt from class levels, intelligence, wisdom and readied items"
+    for name in ("spells_castable_cleric", "spells_castable_druid",
+                 "spells_castable_magic_user")}
+
+
+def _pod_signature(record: PodSheetRecord, name: "str | None",
+                   skipped: "dict[str, str] | None" = None
                    ) -> tuple[tuple[str, str], ...]:
     """Every compared field of one Pools of Darkness character, with its
     items, as `(field, value)` pairs."""
@@ -1834,7 +1845,7 @@ def _pod_signature(record: PodSheetRecord, name: "str | None"
     out: list[tuple[str, str]] = [
         ("name", repr(record.get("name") if name is None else name))]
     for field, spec in TABLE.items():
-        if field in POD_NOT_COMPARED:
+        if field in POD_NOT_COMPARED or field in (skipped or ()):
             continue
         value = raw[spec.offset:spec.offset + spec.size]
         if field in POD_VALUE_CHANGES:
@@ -1847,18 +1858,23 @@ def _pod_signature(record: PodSheetRecord, name: "str | None"
 def _compare_pod(expected: "list[PodSheetRecord]",
                  written: "list[PodSheetRecord]",
                  expected_names: "list[str] | None",
-                 written_names: "list[str] | None") -> list[str]:
+                 written_names: "list[str] | None",
+                 destination: "Destination | None" = None,
+                 source_port: "str | None" = None) -> list[str]:
     """What the sheet holds and the written Pools of Darkness destination
     does not, over the whole record and the items.
 
     The items compared are the held blocks only: empty blocks are dropped on
     purpose, so the slot position of an empty block is not compared.
     """
+    skipped = (POD_NOT_COMPARED_TO_AMIGA
+               if source_port == "dos" and destination is not None
+               and destination.port == "amiga" else None)
     want = sorted(_pod_signature(record, expected_names[i]
-                                 if expected_names else None)
+                                 if expected_names else None, skipped)
                   for i, record in enumerate(expected))
     got = sorted(_pod_signature(record, written_names[i]
-                                if written_names else None)
+                                if written_names else None, skipped)
                  for i, record in enumerate(written))
     out: list[str] = []
     for mine, theirs in zip(want, got):
