@@ -571,3 +571,128 @@ def test_a_spare_source_that_changes_during_preparation_stops_the_run(pinned, mo
     monkeypatch.setattr(route_darkness, "_find_images", touching)
     with pytest.raises(RouteError, match="source spare"):
         route_darkness._prepare_darkness(pinned / "run", None, "B", spare=spare)
+
+
+# Seeding the spare's loaded-letter vault.
+
+THREE = dos_codec.PodVault(10, 20, 30, tuple(bytes([n]) + bytes(62) for n in (1, 2, 3)))
+
+
+@pytest.fixture
+def vault_pinned(pinned, monkeypatch):
+    """`pinned` with three rows staged in disk 3's vault B."""
+    disk3 = _disk(route_darkness.DARKNESS_VOLUME, (), {"B": amiga_savegame.pod_vault_to_amiga(THREE)})
+    images = {"disk1": ("d1", b"one"), "disk2": ("d2", b"two"), "disk3": ("d3", disk3.to_bytes())}
+    monkeypatch.setattr(route_darkness, "DARKNESS_DISK3_SHA256",
+                        hashlib.sha256(images["disk3"][1]).hexdigest())
+    monkeypatch.setattr(route_darkness, "_find_images",
+                        lambda wanted: {k: images[k] for k in wanted})
+    spare = pinned / "minimal.adf"
+    _disk("Empty", (), _empty_vaults()).save(spare)
+    return pinned, spare
+
+
+def test_a_seeded_spare_holds_the_first_rows_of_the_staged_vault_and_the_source_is_unchanged(
+        vault_pinned):
+    pinned, spare = vault_pinned
+    before = spare.read_bytes()
+    manifest = route_darkness._prepare_darkness(
+        pinned / "run", None, "B", vault=True, spare=spare, spare_seed_rows=2)
+    working = AmigaDisk.open(pinned / "run" / "spare.adf")
+    seeded = amiga_savegame.pod_read_vault(working, "B")
+    staged = amiga_savegame.pod_read_vault(AmigaDisk(AmigaDisk.open(
+        pinned / "run" / "disk3.adf").to_bytes()), "B")
+    assert len(staged.items) == 3
+    assert seeded.items == staged.items[:2] and seeded != dos_codec.EMPTY_POD_VAULT
+    assert spare.read_bytes() == before
+    assert amiga_savegame.pod_read_vault(AmigaDisk.open(spare), "B") == dos_codec.EMPTY_POD_VAULT
+    working_hash = hashlib.sha256((pinned / "run" / "spare.adf").read_bytes()).hexdigest()
+    assert manifest["disks"][SPARE]["sha256"] == working_hash != manifest[SPARE]["sha256"]
+    assert manifest[SPARE]["sha256"] == hashlib.sha256(before).hexdigest()
+    assert manifest["spare_seed"]["letter"] == "B" and manifest["spare_seed"]["items"] == 2
+    assert manifest["spare_seed"]["coins"] == [0, 0, 0]
+    json.dumps(manifest)
+
+
+def test_a_spare_without_a_seed_still_has_to_be_blank_and_records_no_seed(vault_pinned):
+    pinned, spare = vault_pinned
+    manifest = route_darkness._prepare_darkness(pinned / "run", None, "B", vault=True, spare=spare)
+    assert "spare_seed" not in manifest
+    assert manifest["disks"][SPARE]["sha256"] == manifest[SPARE]["sha256"]
+    full = pinned / "full.adf"
+    _disk("Empty", (), {**_empty_vaults(), "B": amiga_savegame.pod_vault_to_amiga(THREE)}).save(full)
+    with pytest.raises(RouteError, match="not blank"):
+        route_darkness._prepare_darkness(pinned / "run2", None, "B", vault=True, spare=full)
+    with pytest.raises(RouteError, match="not blank"):
+        route_darkness._prepare_darkness(pinned / "run3", None, "B", vault=True, spare=full,
+                                         spare_seed_rows=1)
+
+
+@pytest.mark.parametrize("rows", [0, -1, 3, 4])
+def test_a_seed_of_no_rows_or_all_the_staged_rows_writes_no_run(vault_pinned, rows):
+    pinned, spare = vault_pinned
+    with pytest.raises(RouteError, match="spare seed"):
+        route_darkness._prepare_darkness(
+            pinned / "run", None, "B", vault=True, spare=spare, spare_seed_rows=rows)
+    assert not (pinned / "run").exists()
+
+
+def test_a_seed_needs_a_vault_title_and_a_spare(vault_pinned):
+    pinned, spare = vault_pinned
+    with pytest.raises(RouteError, match="spare seed"):
+        route_darkness._prepare_darkness(pinned / "run", None, "B", spare=spare, spare_seed_rows=1)
+    with pytest.raises(RouteError, match="spare seed"):
+        route_darkness._prepare_darkness(pinned / "run2", None, "B", vault=True,
+                                         spare_seed_rows=1)
+    assert not (pinned / "run").exists() and not (pinned / "run2").exists()
+
+
+def test_prepare_passes_the_seed_only_to_darkness_vault_with_a_spare(tmp_path, monkeypatch):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+    seen = []
+
+    def fake(run, specimen, **kw):
+        seen.append(kw)
+        scratch.ensure(run)
+        return {"title": "darkness", "names_a": NAMES}
+
+    monkeypatch.setattr(acceptance, "_PREPARE", {"darkness-vault": fake, "darkness": fake})
+    spare = tmp_path / "s.adf"
+    acceptance.prepare(acceptance.DARKNESS_VAULT, "r1", spare=spare, spare_seed_rows=2)
+    assert seen == [{"substitute": None, "substitute_letter": "A", "spare": spare,
+                     "spare_seed_rows": 2}]
+    with pytest.raises(RouteError, match="--spare-seed-rows is for"):
+        acceptance.prepare(acceptance.DARKNESS, "r2", spare=spare, spare_seed_rows=2)
+    with pytest.raises(RouteError, match="--spare-seed-rows is for"):
+        acceptance.prepare(acceptance.DARKNESS_VAULT, "r3", spare_seed_rows=2)
+    assert len(seen) == 1
+
+
+def test_the_cli_hands_the_seed_rows_to_prepare_and_blocks_them_on_a_published_disk(
+        tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(acceptance, "prepare",
+                        lambda title, run_id, **kw: seen.append(kw) or tmp_path / "p.json")
+    assert acceptance.main(["prepare", "--title", "darkness-vault", "--run-id", "r",
+                            "--spare-disk", "m.adf", "--spare-seed-rows", "3"]) == 0
+    assert seen[0]["spare_seed_rows"] == 3
+    assert acceptance.main(["prepare", "--title", "darkness-vault", "--run-id", "r",
+                            "--spare-disk", "m.adf"]) == 0
+    assert "spare_seed_rows" not in seen[1]
+    assert acceptance.main(["prepare", "--title", "darkness", "--run-id", "r",
+                            "--published-disk-three", "--saveas-report", "r.json",
+                            "--spare-seed-rows", "3"]) == 2
+    assert len(seen) == 2
+
+
+def test_spare_matches_seed_is_recorded_only_for_a_seeded_run():
+    staged = _disk("Disk3", (), {"B": HELD_BYTES})
+    spare = _disk("Spare", (), {"G": amiga_savegame.pod_vault_to_amiga(THREE)})
+    disk3 = _disk("Disk3", (), {})
+    seed = dos_codec.PodVault(0, 0, 0, THREE.items)
+    found = acceptance._spare_vault(disk3, spare, staged, "B", "F", "G", seed)
+    assert found["spare_matches_seed"] is False  # THREE carries coins the seed lacks
+    seed = amiga_savegame.pod_read_vault(spare, "G")
+    assert acceptance._spare_vault(disk3, spare, staged, "B", "F", "G", seed)[
+        "spare_matches_seed"] is True
+    assert "spare_matches_seed" not in acceptance._spare_vault(disk3, spare, staged, "B", "F", "G")

@@ -471,7 +471,8 @@ def _vault_reading(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
 def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
                       loaded: str = DARKNESS_LOADED, *, substitute: pathlib.Path | None = None,
                       substitute_letter: str = "A", vault: bool = False,
-                      spare: pathlib.Path | None = None) -> dict[str, Any]:
+                      spare: pathlib.Path | None = None,
+                      spare_seed_rows: int | None = None) -> dict[str, Any]:
     """Disk 3 is itself the registered save disk, so `override` stands in for it and no specimen file exists.
 
     `substitute`, a disk some other tool wrote a party onto, has its `substitute_letter` slot
@@ -486,7 +487,15 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     `spare`, a save disk with a `SAVE` drawer and no saved game, is copied into the run as the
     disk `SPARE`, which the route puts in DF1 for the camp save (`spare_save_title`); the
     manifest's `spare` records where it came from.
+
+    `spare_seed_rows` (with `vault` and `spare`) writes the first N rows of the vault staged in
+    the loaded letter into the run copy of the spare's `Vault<loaded>.DAT`, so a vault experiment
+    can tell which file the game's save copies. The source spare stays blank and checked; the
+    manifest's `spare_seed` records the letter, rows, coins and hash, and `disks.spare.sha256` is
+    the seeded copy's.
     """
+    if spare_seed_rows is not None and not (vault and spare is not None):
+        raise RouteError("a spare seed needs a vault title and a spare disk")
     spare_record = _check_spare(spare) if spare is not None else None
     wanted = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
               "disk3": DARKNESS_DISK3_SHA256}
@@ -542,6 +551,13 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         if not held["items"]:
             raise RouteError(f"vault {loaded} on disk 3 holds no items, so a vault run "
                              "could show nothing")
+    seed_vault = None
+    if spare_seed_rows is not None:
+        staged_vault = amiga_savegame.pod_read_vault(save, loaded)
+        if not 1 <= spare_seed_rows < len(staged_vault.items):
+            raise RouteError(f"a spare seed of {spare_seed_rows} rows must be at least 1 and "
+                             f"below the {len(staged_vault.items)} rows staged in vault {loaded}")
+        seed_vault = dos_codec.PodVault(0, 0, 0, staged_vault.items[:spare_seed_rows])
     scratch.ensure(run)
     disks: dict[str, dict[str, str]] = {}
     for key, (_label, data) in images.items():
@@ -554,8 +570,23 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     if spare_record is not None:
         path = run / f"{SPARE}.adf"
         shutil.copyfile(spare_record["path"], path)
+        if seed_vault is not None:
+            seeded = amiga_adf.AmigaDisk.open(path)
+            vault_path = amiga_savegame.pod_vault_path(loaded)
+            try:
+                name = seeded.lookup(vault_path).name
+            except amiga_adf.AmigaDiskError:
+                name = vault_path.rsplit("/", 1)[1]
+            else:
+                seeded.remove_file(vault_path)
+            seeded.write_file(vault_path.rsplit("/", 1)[0] + "/" + name,
+                              amiga_savegame.pod_vault_to_amiga(seed_vault))
+            problems = seeded.verify()
+            if problems:
+                raise RouteError(f"the seeded spare disk fails verification: {problems}")
+            seeded.save(path)
         disks[SPARE] = {"path": str(path), "sha256": sha256(path)}
-        if disks[SPARE]["sha256"] != spare_record["sha256"]:
+        if seed_vault is None and disks[SPARE]["sha256"] != spare_record["sha256"]:
             raise RouteError("the working spare disk differs from the input")
     manifest = {
         "title": "darkness", "disks": disks, "registered": {},
@@ -570,6 +601,9 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         manifest["vault"] = held
     if spare_record is not None:
         manifest[SPARE] = spare_record
+    if seed_vault is not None:
+        seeded_reading = _vault_reading(amiga_adf.AmigaDisk.open(disks[SPARE]["path"]), loaded)
+        manifest["spare_seed"] = {"letter": loaded, **seeded_reading}
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
     if any(hashlib.sha256(after[key][1]).hexdigest() != wanted[key] for key in after):
         raise RouteError("a registered image changed during preparation")

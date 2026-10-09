@@ -1102,8 +1102,10 @@ def _vault_problems(fetched: amiga_adf.AmigaDisk, staged: pathlib.Path, loaded: 
 
 def _spare_vault(disk3: amiga_adf.AmigaDisk, spare: amiga_adf.AmigaDisk,
                  staged: amiga_adf.AmigaDisk, loaded: str, control: str,
-                 after: str) -> dict[str, Any]:
+                 after: str, seed: Any = None) -> dict[str, Any]:
     """Where the after save's vault went: that letter's vault on each fetched disk, against the staged one.
+
+    `seed`, the vault a seeded spare held before the run, adds `spare_matches_seed`.
 
     Each reading is `route_darkness.vault_evidence` (None: no file). The comparisons are of
     decoded vaults, since the game pads a vault it writes with its own template table.
@@ -1112,7 +1114,9 @@ def _spare_vault(disk3: amiga_adf.AmigaDisk, spare: amiga_adf.AmigaDisk,
         return amiga_savegame.pod_read_vault(disk, letter)
 
     staged_vault = decoded(staged, loaded)
+    seeded = {} if seed is None else {"spare_matches_seed": decoded(spare, after) == seed}
     return {
+        **seeded,
         "letter": after, "loaded_letter": loaded, "control_letter": control,
         "staged": vault_evidence(staged, loaded),
         "spare": vault_evidence(spare, after),
@@ -1223,9 +1227,12 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 if spare:
                     result["spare_extra_saves"] = sorted(
                         set(title.slot_letters(after_disk)) - {title.after_letter})
+                    seed = (amiga_savegame.pod_read_vault(
+                                _verified_disk(disks[SPARE]), manifest["spare_seed"]["letter"])
+                            if "spare_seed" in manifest else None)
                     result["spare_vault"] = _spare_vault(
                         fetched, after_disk, _verified_disk(disks[title.save_disk]), loaded,
-                        title.control_letter, title.after_letter)
+                        title.control_letter, title.after_letter, seed)
                     verdicts.append(_spare_vault_verdict(result["spare_vault"]))
                 result["kept_unchanged"] = {
                     c: title.slot_files(fetched, c) == before
@@ -3605,7 +3612,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             substitute: pathlib.Path | None = None, substitute_letter: str = "A",
             camp: tuple[str, ...] = (), issue: str | None = None, temple: bool = False,
             encounter: bool = False, stage_record: str | None = None,
-            spare: pathlib.Path | None = None) -> pathlib.Path:
+            spare: pathlib.Path | None = None,
+            spare_seed_rows: int | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -3629,6 +3637,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     `spare` (a title in `SPARE_TITLES`, no camp steps) stages a second save disk: `darkness` and
     `darkness-vault` make their camp save on it, and `darkness-reload` takes the spare a spare
     accept run fetched, with that run's disk 3 and summary, and loads the slot it holds.
+    `spare_seed_rows` (`darkness-vault` with `spare` only) puts that many of the staged vault's
+    rows into the run copy of the spare's loaded-letter vault (`route_darkness._prepare_darkness`).
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -3644,6 +3654,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     if spare is not None and (name not in SPARE_TITLES or camp):
         raise RouteError(f"--spare-disk is for {', '.join(sorted(SPARE_TITLES))}, without camp "
                          "steps")
+    if spare_seed_rows is not None and (name != "darkness-vault" or spare is None):
+        raise RouteError("--spare-seed-rows is for darkness-vault with --spare-disk")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
     if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
@@ -3664,7 +3676,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     elif name in _SUBSTITUTABLE:
         manifest = _PREPARE[name](run, specimen, substitute=substitute,
                                   substitute_letter=substitute_letter,
-                                  **({"spare": spare} if spare is not None else {}))
+                                  **({"spare": spare} if spare is not None else {}),
+                                  **({"spare_seed_rows": spare_seed_rows}
+                                     if spare_seed_rows is not None else {}))
     else:
         manifest = _PREPARE[name](run, specimen)
     if camp:
@@ -5008,6 +5022,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="darkness or darkness-vault: a save disk with a SAVE drawer and no saved "
                         "game, put in DF1 for the camp save; darkness-reload: the spare a spare "
                         "accept run fetched, with --disk3, --disk3-sha256 and --accept-summary")
+    p.add_argument("--spare-seed-rows", type=int, default=None,
+                   help="darkness-vault with --spare-disk: put this many rows of the staged "
+                        "vault into the run copy of the spare's loaded-letter vault")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     p.add_argument("--substitute-manifest", type=pathlib.Path, default=None,
@@ -5141,6 +5158,9 @@ def main(argv: list[str] | None = None) -> int:
                 or args.title not in SPARE_TITLES):
             raise RouteError(f"--spare-disk is for {', '.join(sorted(SPARE_TITLES))}, "
                              "not a published disk")
+        if args.command == "prepare" and args.spare_seed_rows is not None and (
+                args.published_disk_one or args.published_disk_three):
+            raise RouteError("--spare-seed-rows is not for a published disk")
         if args.command == "prepare" and args.published_disk_three:
             if args.published_disk_one:
                 raise RouteError("--published-disk-one and --published-disk-three are two routes")
@@ -5259,7 +5279,9 @@ def main(argv: list[str] | None = None) -> int:
                               substitute_letter=args.substitute_letter,
                               camp=args.camp, issue=args.issue, temple=args.temple,
                               encounter=args.encounter, stage_record=args.stage_record,
-                              **({"spare": args.spare_disk} if args.spare_disk else {})))
+                              **({"spare": args.spare_disk} if args.spare_disk else {}),
+                              **({"spare_seed_rows": args.spare_seed_rows}
+                                 if args.spare_seed_rows is not None else {})))
                 return 0
             title, manifest, legacy = _route_title(args, silver_blades)
             attempt = args.attempt or ("recon1" if args.command == "measure" else
