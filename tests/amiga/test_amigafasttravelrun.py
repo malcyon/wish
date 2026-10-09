@@ -741,6 +741,11 @@ def test_a_waypoint_return_gets_the_answer(monkeypatch, tmp_path):
     assert [(c["back"], c["answer"]) for c in seen["calls"]] == [(True, "y")]
 
 
+def test_a_forward_trip_and_its_return_each_get_the_answer(monkeypatch, tmp_path):
+    seen = _fake_main(monkeypatch, tmp_path, ["--to", "32", "--back", "--answer", "y"])
+    assert [(c["back"], c["answer"]) for c in seen["calls"]] == [(False, "y"), (True, "y")]
+
+
 def test_waypoint_accepts_hex_numbers(monkeypatch):
     assert ftr.parse_waypoint("0x1F,3,0xa,2") == engine.Waypoint(0x1F, None, (3, 10, 2))
 

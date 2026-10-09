@@ -12,8 +12,8 @@ reason is disarmed.
 
 `--title KEY` is the `amiga.MACHINES` key of the title in the machine
 (`pool-of-radiance` by default); it picks the machine, the trip row and the
-area table. `--to` is the destination area id. `--answer KEY` presses KEY once, when the
-door key has been taken, the area byte is still the starting area and the
+area table. `--to` is the destination area id. `--answer KEY` presses KEY once per leg
+(each leg's result records `answered`), when the door key has been taken, the area byte is still the starting area and the
 screen differs from the one before the trip (the game is asking something).
 `--back` makes `apply_back` once the trip has finished.
 `--waypoint AREA,X,Y,F` stages `fasttravel.back` as a party that stood on that
@@ -421,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif args.back and (not results or results[0]["result"] == "idle"):
                     results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                             back=True, budget=args.budget,
-                                            answer=args.answer if area is None else None,
+                                            answer=args.answer,
                                             party=amigaparty.read_party,
                                             peek_vars=peek_vars, title=args.title))
     except (DriverError, amiga.GuestError) as exc:
