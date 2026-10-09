@@ -16,6 +16,7 @@ import re
 import pytest
 
 from automap import amigalevelup as lv
+from goldbox import amiga_pod_recompute as pr
 from goldbox import levels
 
 POD_SIZE = 0x194
@@ -94,7 +95,7 @@ def test_the_pools_of_darkness_recompute_reproduces_every_game_saved_record():
     capacity_misses = []
     for raw, nodes in records:
         rec = bytearray(raw)
-        lv.pod_recompute(rec)
+        pr.pod_recompute(rec)
         for at, width in ((0x7F, 1), (0x89, 1), (0xAB, 1), (0x83, 5),
                           (0xB7, 1)):
             assert rec[at:at + width] == raw[at:at + width], hex(at)
@@ -308,12 +309,12 @@ def test_a_pools_of_darkness_two_class_character_takes_the_constitution_steps_pe
     rec[0x9D + 2], rec[0x9D + 5] = 5, 6
     rec[0x73] = 18
     rec[0x79] = 19
-    lv.pod_recompute(rec)
+    pr.pod_recompute(rec)
     assert rec[0x83] == 13
     rec[0x79] = 14
-    lv.pod_recompute(rec, [_pod_item(0x86)])
+    pr.pod_recompute(rec, [_pod_item(0x86)])
     assert rec[0x83] == 17
-    lv.pod_recompute(rec, [_pod_item(0x06)])        # bit 7 clear: no step
+    pr.pod_recompute(rec, [_pod_item(0x06)])        # bit 7 clear: no step
     assert rec[0x83] == 11
 
 
@@ -323,15 +324,15 @@ def test_a_pools_of_darkness_power_0x41_item_doubles_magic_user_level_five():
     rec = bytearray(POD_SIZE)
     rec[0x9D + 5] = 10
     rec[0x73] = 18
-    lv.pod_recompute(rec)
+    pr.pod_recompute(rec)
     assert rec[0x169 + 18 + 4] == 2
-    lv.pod_recompute(rec, [_pod_item(0x41)])
+    pr.pod_recompute(rec, [_pod_item(0x41)])
     assert rec[0x169 + 18 + 4] == 4
-    lv.pod_recompute(rec, [_pod_item(0x41), _pod_item(0x41)])
+    pr.pod_recompute(rec, [_pod_item(0x41), _pod_item(0x41)])
     assert rec[0x169 + 18 + 4] == 8
     unreadied = bytearray(_pod_item(0x41))
     unreadied[0x35] = 0
-    lv.pod_recompute(rec, [bytes(unreadied), _pod_item(0xC1)])
+    pr.pod_recompute(rec, [bytes(unreadied), _pod_item(0xC1)])
     assert rec[0x169 + 18 + 4] == 2
 
 

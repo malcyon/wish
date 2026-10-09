@@ -43,6 +43,8 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from goldbox import (
+    amiga_pod,
+    amiga_pod_recompute,
     amiga_por,
     amiga_savegame,
     c64_codec,
@@ -393,13 +395,15 @@ def write_amiga_pod(party: Any, disk: Any) -> None:
     save = amiga_savegame.pod_parse(data)
     blocks = list(save.blocks)
     for member in party.members:
-        block, _moved = pod_rewrite.rewrite_amiga_record(
+        block, moved = pod_rewrite.rewrite_amiga_record(
             bytes(member.native), member.record_original,
             member.record.to_bytes())
         if member.inventory is not None:
             block, _moved = pod_rewrite.rewrite_amiga_items(
                 block, item_blocks(_pod_rendered(member).dos),
                 member.inventory.raws)
+        if _LEVEL_FIELDS.intersection(moved):
+            block = _recomputed_block(block)
         blocks[member.index - 1] = block
     written = pod_rewrite.rebuild_party(data, blocks)
     if written != data:
@@ -409,6 +413,35 @@ def write_amiga_pod(party: Any, disk: Any) -> None:
         path = next((found for found, _entry in disk.walk()
                      if found.lower() == path.lower()), path)
         disk.write_file(path, written)
+
+
+#: The sheet fields whose change the game answers by running its recompute.
+_LEVEL_FIELDS = frozenset({"class_levels", "former_class_levels",
+                           "former_level"})
+
+
+def _recomputed_block(block: bytes) -> bytes:
+    """`block` with the game's own recompute run on its record.
+
+    The Amiga load never runs the recompute: it copies the stored base THAC0
+    into the current one and leaves the saves and attacks as stored, so a
+    level edit has to write what training would. The current THAC0 moves by
+    the base's change, since strength and items are unchanged. A record the
+    recompute's tables cannot cover is returned as it was.
+    """
+    rec = bytearray(block[:amiga_pod.RECORD_BYTES])
+    items = [bytes(amiga_pod.ITEM_NODE_BASE) + item.raw
+             for item in amiga_pod.PodCharacter.from_bytes(block).items]
+    old = bytes(rec)
+    try:
+        amiga_pod_recompute.pod_check(rec)
+        amiga_pod_recompute.pod_recompute(rec, items)
+    except amiga_pod_recompute.RecomputeError:
+        return block
+    rec[amiga_pod.THAC0_CURRENT] = (
+        old[amiga_pod.THAC0_CURRENT] + rec[amiga_pod.THAC0_BASE]
+        - old[amiga_pod.THAC0_BASE]) & 0xFF
+    return bytes(rec) + block[amiga_pod.RECORD_BYTES:]
 
 
 def _pod_rendered(member: Any) -> Any:

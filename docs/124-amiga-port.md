@@ -3263,7 +3263,7 @@ fills that block itself:
 
 | sheet field | drawn from | filled from |
 |---|---|---|
-| THAC0 | `0x186`, as `60 − value` | the best of the class levels |
+| THAC0 | `0x186`, as `60 − value` | the base `0x07F`, copied at `0x0195D0` and adjusted at `0x0195F4`-`0x0195FA`; only the recompute at `0x03C238` writes `0x07F` |
 | armour class | `0x187`, as `60 − value` | base `0x0B3` adjusted for dexterity |
 | damage | `0x18B`/`0x18D`/`0x18F` | base `0x0AD`/`0x0AF`/`0x0B1` plus the strength bonus |
 | encumbrance | `0x056`, u16 | the coins |

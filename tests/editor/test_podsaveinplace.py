@@ -1250,3 +1250,123 @@ def test_lowering_a_class_level_keeps_the_level_byte():
     after = podsheet.PodSheetRecord(before.to_bytes())
     after.set("level_magic_user", 9)
     assert after.get("level") == 12
+
+
+# ---------------------------------------------------------------------------
+# A class-level edit on the Amiga runs the game's recompute
+# ---------------------------------------------------------------------------
+
+#: The bytes the recompute writes that a level edit has to move with it.
+_RECOMPUTED = ([amiga_pod.THAC0_BASE, amiga_pod.ATTACK_FORMS,
+                amiga_pod.CLASS_BITS, amiga_pod.LEVEL]
+               + list(range(0x083, 0x088)))
+_FIGHTER = "level_fighter"
+
+
+def _fighter_candidates(source):
+    """Members holding only the fighter class at level 7-12 that the
+    recompute can run on."""
+    for member in Party(source).members:
+        record = member.record
+        levels = list(amiga_pod.PodCharacter.from_bytes(
+            bytes(member.native)).class_levels)
+        if not 7 <= record.get(_FIGHTER) <= 12 or sum(levels) != levels[2]:
+            continue
+        yield member
+
+
+def _recomputed(member, level: int) -> bytearray:
+    """What the game's recompute makes of the member's block at `level`."""
+    from goldbox import amiga_pod_recompute as pr
+    block = bytes(member.native)
+    rec = bytearray(block[:amiga_pod.RECORD_BYTES])
+    rec[amiga_pod.CLASS_LEVELS + 2] = level
+    items = [bytes(amiga_pod.ITEM_NODE_BASE) + item.raw
+             for item in amiga_pod.PodCharacter.from_bytes(block).items]
+    pr.pod_check(rec)
+    pr.pod_recompute(rec, items)
+    return rec
+
+
+def _saved_block(source, written: bytes, member) -> bytes:
+    save = amiga_savegame.pod_parse(amiga_savegame.pod_read_slot(
+        AmigaDisk(bytearray(written)), source.slot))
+    return save.blocks[member.index - 1]
+
+
+def test_a_level_edit_saves_the_recomputed_thac0_saves_and_attacks(
+        monkeypatch, tmp_path):
+    """A fighter raised from level 12 to 13 is written with the THAC0, saves
+    and attacks the game's recompute gives, and the current THAC0 moves by the
+    base's change, because the Amiga load copies one into the other and
+    never runs the recompute itself."""
+    _flag(monkeypatch, "1")
+    from goldbox import amiga_pod_recompute as pr
+    for _label, source in _amiga_copies(tmp_path):
+        for member in _fighter_candidates(source):
+            level = member.record.get(_FIGHTER)
+            try:
+                want = _recomputed(member, level + 1)
+            except pr.RecomputeError:
+                continue
+            native = bytes(member.native)
+            if (want[amiga_pod.THAC0_BASE] == native[amiga_pod.THAC0_BASE]
+                    and want[amiga_pod.ATTACK_FORMS]
+                    == native[amiga_pod.ATTACK_FORMS]):
+                continue
+            party = Party(source)
+            party.members[member.index - 1].record.set(_FIGHTER, level + 1)
+            written = saveplan.amiga_image(party)
+            block = _saved_block(source, written, member)
+            for at in _RECOMPUTED:
+                assert block[at] == want[at], hex(at)
+            moved = want[amiga_pod.THAC0_BASE] - native[amiga_pod.THAC0_BASE]
+            assert block[amiga_pod.THAC0_CURRENT] == (
+                native[amiga_pod.THAC0_CURRENT] + moved) & 0xFF
+            return
+    pytest.skip("needs an Amiga fighter at level 7-12 whose next level "
+                "moves THAC0 or attacks")
+
+
+def test_an_edit_that_moves_no_class_level_leaves_hand_set_values_alone(
+        monkeypatch, tmp_path):
+    """An age edit writes no recompute: the THAC0, saves, attacks, class mask
+    and spell slots stay as they were read, which keeps a hand-set record's
+    values."""
+    _flag(monkeypatch, "1")
+    from goldbox import amiga_pod_recompute as pr
+    for _label, source in _amiga_copies(tmp_path):
+        for member in Party(source).members:
+            native = bytes(member.native)
+            rec = bytearray(native[:amiga_pod.RECORD_BYTES])
+            items = [bytes(amiga_pod.ITEM_NODE_BASE) + item.raw for item in
+                     amiga_pod.PodCharacter.from_bytes(native).items]
+            try:
+                pr.pod_check(rec)
+                pr.pod_recompute(rec, items)
+            except pr.RecomputeError:
+                continue
+            if rec[:0x18A] != native[:0x18A]:
+                break
+        else:
+            continue
+        break
+    else:
+        pytest.skip("needs an Amiga record the recompute would change")
+    party = Party(source)
+    member = party.members[member.index - 1]
+    member.record.set("age", member.record.get("age") + 1)
+    written = saveplan.amiga_image(party)
+    block = _saved_block(source, written, member)
+    assert block[amiga_pod.THAC0_CURRENT] == native[amiga_pod.THAC0_CURRENT]
+    for at in _RECOMPUTED + list(range(0x169, 0x169 + 27)):
+        assert block[at] == native[at], hex(at)
+
+
+def test_a_record_the_recompute_cannot_cover_saves_its_level_edit_alone():
+    """A race past the human fails the recompute's check, so the block is
+    as the rewrite left it."""
+    block = bytes(amiga_pod.RECORD_BYTES)
+    bad = bytearray(block)
+    bad[amiga_pod.RACE] = 9
+    assert saveplan._recomputed_block(bytes(bad)) == bytes(bad)

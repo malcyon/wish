@@ -177,8 +177,10 @@ EXCEPTIONAL_STRENGTH = 0x07C  # one more pair; byte 0 in force, inferred from th
 #: Silver Blades' `gap_069`, the byte before `thac0_base` in DOS's own order.
 #: The importer copies it and nothing else names it. UNKNOWN.
 UNNAMED_07E = 0x07E
-#: The class-and-level THAC0 before anything carried, stored `60 - value`,
-#: and the game recomputes it on load -- see :data:`DERIVED`. The twelve pairs
+#: The class-and-level THAC0 before anything carried, stored `60 - value`.
+#: Only the recompute at `0x03C238` writes it (training runs that; the load
+#: does not), and the load rebuild `0x019428` copies it into
+#: :data:`THAC0_CURRENT` -- see :data:`DERIVED`. The twelve pairs
 #: of a `.pc` and a DOS record of the same class and level agree on it 12 of
 #: 12: 44 for a magic-user 14, 48 for a cleric 14, 50 for a paladin 12, 52 for
 #: a ranger 13.
@@ -2249,11 +2251,11 @@ POD_WRITE_DERIVED: tuple[tuple[str, str], ...] = (
                      "found"),
     ("encumbrance", "the word at 0x056: a probe that set it to 1234 drew 233, "
                     "which is the character's own coins, gems and jewelry"),
-    ("thac0_current", "the byte at 0x186: the game recomputes THAC0 from the "
-                      "class levels on load and ignores what the file holds, "
-                      "so it stays zero unless the source is a Pools of "
-                      "Darkness DOS or Amiga record, whose own value is "
-                      "copied"),
+    ("thac0_current", "the byte at 0x186: the load rebuild at 0x019428 "
+                      "copies it from the base THAC0 at 0x07F and ignores "
+                      "what the file holds, so it stays zero unless the "
+                      "source is a Pools of Darkness DOS or Amiga record, "
+                      "whose own value is copied"),
     ("armour_class", "the byte at 0x187, the second half of the pair, "
                      "recomputed from what the character is wearing; copied "
                      "from a Pools of Darkness DOS or Amiga source, zero "
