@@ -26,8 +26,9 @@ run uses.
     winwish.py down   --holder H
 
 Wish runs with `WISH_EXPERIMENTAL_AMIGA_WINUAE=1` (`--no-flag` leaves it unset, for
-the control) and `WISH_DEBUG=1`.  Its `APPDATA` and `LOCALAPPDATA` point at a
-private folder per holder, seeded with `diagnostics: true` because `WISH_DEBUG`
+the control) and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
+`fast_travel_targets`, because the tab cannot pick a destination from the drop-down.
+Its `APPDATA` and `LOCALAPPDATA` point at a private folder per holder, seeded with `diagnostics: true` because `WISH_DEBUG`
 alone does not open the log file.  Every guest call goes through `winvm`, which
 sets `BatchMode` and `SSH_ASKPASS_REQUIRE`, so a failure is an error, never a prompt.
 """
@@ -122,8 +123,27 @@ def disks_dir(holder: str) -> str:
     return rf"{run_dir(holder)}\disks"
 
 
-def settings_json(game: str | None = None, folder: str | None = None) -> str:
-    """The settings file Wish starts with: the log on, and a game folder when given.
+def parse_travel_targets(specs: list[str] | None) -> dict[str, list[int]]:
+    """`KEY=ID[,ID]` specs as the `fast_travel_targets` table Wish's settings hold.
+
+    The WinUAE tab cannot pick from the Fast Travel drop-down (UI Automation's Select
+    does not commit a Qt combo), so a run stages the one destination it will click.
+    """
+    table: dict[str, list[int]] = {}
+    for spec in specs or []:
+        key, sep, ids = spec.partition("=")
+        if not sep or not GAME_KEY.match(key) or not ids:
+            raise WinwishError(f"not KEY=ID[,ID]: {spec!r}")
+        try:
+            table[key] = sorted({int(i, 0) for i in ids.split(",")})
+        except ValueError:
+            raise WinwishError(f"not KEY=ID[,ID]: {spec!r}") from None
+    return table
+
+
+def settings_json(game: str | None = None, folder: str | None = None,
+                  travel_targets: dict[str, list[int]] | None = None) -> str:
+    """The settings file Wish starts with: the log on, a game folder and Fast Travel destinations when given.
 
     `game` is a `game_folders` key (`c64_port.GAMES[i].key` or an Amiga-only title's)
     and `folder` the guest folder holding that title's ADFs; without them Wish says
@@ -132,6 +152,8 @@ def settings_json(game: str | None = None, folder: str | None = None) -> str:
     values: dict[str, Any] = {"diagnostics": True}
     if game:
         values["game_folders"] = {game: folder}
+    if travel_targets:
+        values["fast_travel_targets"] = travel_targets
     return json.dumps(values, indent=1) + "\n"
 
 
@@ -277,7 +299,8 @@ def window_probe(out: str, build: str) -> str:
 
 def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
                  disks: tuple[str, ...] = (), game: str | None = None,
-                 reseed: bool = True, open_path: str | None = None) -> str:
+                 reseed: bool = True, open_path: str | None = None,
+                 travel_targets: dict[str, list[int]] | None = None) -> str:
     """Seed the private settings, start `wish.exe` in session 1, wait for its window.
 
     The reply is `ok pid=N session=S window=H` or `fail ...`.  Session 0 is a
@@ -329,7 +352,7 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         # json block the file, which falls back to defaults and no log.
         *copy_disks,
         "$settings = \"$run\\appdata\\wish\\automap.json\"",
-        f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder)))}, (New-Object Text.UTF8Encoding $false)){tail}",
+        f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder), travel_targets))}, (New-Object Text.UTF8Encoding $false)){tail}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
         f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
@@ -1532,11 +1555,13 @@ def probe_close_script(holder: str) -> str:
 
 def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, ...] = (),
                game: str | None = None, reseed: bool = False,
-               open_path: str | None = None) -> str:
+               open_path: str | None = None,
+               travel_targets: dict[str, list[int]] | None = None) -> str:
     guest.holds_lane(holder)
     try:
         return guest.ps(start_script(holder, environment(flag, holder), disks=disks,
-                                     game=game, reseed=reseed, open_path=open_path),
+                                     game=game, reseed=reseed, open_path=open_path,
+                                     travel_targets=travel_targets),
                         timeout=START_SECONDS + 30)
     except WinwishError:
         _quietly(guest.ps, probe_close_script(holder))
@@ -1654,6 +1679,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     """
     drives = floppy_paths(args)
     options = (*floppy_options(len(drives)), *uae_options(getattr(args, "uae_option", None)))
+    targets = parse_travel_targets(getattr(args, "travel_targets", None))
     if args.game and not GAME_KEY.match(args.game):
         raise WinwishError(f"not a game key: {args.game!r}")
     if args.game and not drives:
@@ -1681,7 +1707,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
                 started = True
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag,
-                                        tuple(drives[:GAME_DISKS]), args.game, reseed=True)
+                                        tuple(drives[:GAME_DISKS]), args.game, reseed=True,
+                                        travel_targets=targets)
             if drives and not args.keep_lanes and re.search(r"\bpipe=WinUAE(?![\w])", result["winuae"]):
                 result["lanes"] = _give_back_lanes(lane, args.holder)
             done = True
@@ -1792,6 +1819,9 @@ def _parser() -> argparse.ArgumentParser:
                    help="a WinUAE setting added after the drive settings, such as fastmem_size=2; repeatable")
     p.add_argument("--game", help="a `game_folders` key such as pool-of-radiance: Wish's game "
                    "folder for that title is set to copies of the mounted ADFs, so it draws the map")
+    p.add_argument("--travel-targets", action="append", default=[], metavar="KEY=ID[,ID]",
+                   help="the Fast Travel destinations Wish's settings offer for a title, such as "
+                   "pool-of-radiance=20; repeatable. The tab cannot pick from the drop-down")
     p.add_argument("--zip", help="use this zip rather than fetching")
     p.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")

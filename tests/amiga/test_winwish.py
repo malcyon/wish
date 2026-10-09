@@ -1038,6 +1038,31 @@ def test_the_seeded_settings_name_the_guest_folder_and_wish_resolves_it(tmp_path
     assert str(where) == folder and source == paths.GAME_PREFERENCE
 
 
+def test_staged_travel_targets_reach_the_settings_wish_reads(tmp_path, monkeypatch):
+    from automap import config  # noqa: PLC0415
+    targets = winwish.parse_travel_targets(["pool-of-radiance=20", "curse-of-the-azure-bonds=3,1"])
+    assert targets == {"pool-of-radiance": [20], "curse-of-the-azure-bonds": [1, 3]}
+    monkeypatch.setattr(config, "config_dir", lambda: tmp_path)
+    (tmp_path / config.FILE).write_text(winwish.settings_json(travel_targets=targets), encoding="utf-8")
+    loaded = config.Settings.load()
+    assert loaded.chosen_areas("pool-of-radiance") == (20,)
+    assert loaded.chosen_areas("curse-of-the-azure-bonds") == (1, 3)
+
+
+def test_up_seeds_the_staged_travel_targets_into_the_start_script(tmp_path, monkeypatch):
+    run, lane = FakeRun(), FakeLane()
+    args = _args(tmp_path, monkeypatch, "--travel-targets", "pool-of-radiance=20")
+    winwish.up(winwish.Guest(run), lane, args)
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+    assert "fast_travel_targets" in start and "pool-of-radiance" in start
+
+
+@pytest.mark.parametrize("spec", ["pool-of-radiance", "pool-of-radiance=", "Pool=20", "pool=x"])
+def test_a_malformed_travel_target_is_an_error(spec):
+    with pytest.raises(winwish.WinwishError):
+        winwish.parse_travel_targets([spec])
+
+
 def test_without_a_game_the_settings_are_as_they_were():
     assert json.loads(winwish.settings_json()) == {"diagnostics": True}
 
