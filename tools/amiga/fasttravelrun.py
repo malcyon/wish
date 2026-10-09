@@ -421,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif args.back and (not results or results[0]["result"] == "idle"):
                     results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                             back=True, budget=args.budget,
+                                            answer=args.answer if area is None else None,
                                             party=amigaparty.read_party,
                                             peek_vars=peek_vars, title=args.title))
     except (DriverError, amiga.GuestError) as exc:

@@ -651,7 +651,8 @@ def _fake_main(monkeypatch, tmp_path, argv, title="secret-of-the-silver-blades")
 
     def run_trip(fasttravel, target, row, area, *args, **kwargs):
         seen["calls"].append({"area": area, "back": kwargs.get("back", False),
-                              "row": row, "staged": fasttravel.back})
+                              "row": row, "staged": fasttravel.back,
+                              "answer": kwargs.get("answer")})
         return {"result": "idle", "settled": True}
 
     monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
@@ -731,6 +732,13 @@ def test_waypoint_with_back_makes_apply_back_alone_from_the_staged_square(monkey
     assert [(c["area"], c["back"]) for c in seen["calls"]] == [(None, True)]
     assert seen["calls"][0]["staged"] == engine.Waypoint(0, None, (9, 13, 0))
     assert seen["code"] == 0
+
+
+def test_a_waypoint_return_gets_the_answer(monkeypatch, tmp_path):
+    seen = _fake_main(monkeypatch, tmp_path,
+                      ["--waypoint", "0,9,13,0", "--back", "--answer", "y"],
+                      title="pool-of-radiance")
+    assert [(c["back"], c["answer"]) for c in seen["calls"]] == [(True, "y")]
 
 
 def test_waypoint_accepts_hex_numbers(monkeypatch):
