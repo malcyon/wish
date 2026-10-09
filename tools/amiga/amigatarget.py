@@ -15,7 +15,10 @@ the thing to reach for when an address stops answering.  Five commands
 
 `party`, `pool`, `poke --at ADDR --hex BYTES` and `poke --var VAR --value N` go over WinUAE's own pipe
 (`automap.amiga.WinuaePipe`) and print one JSON row, as the FS-UAE `session`
-verbs of the same names do.
+verbs of the same names do. So do `locate`, `fix`, `geo` and `dump`; only
+`automap` uses the console debugger. Every pipe verb keeps the measured
+location in `~/.cache/wish/amigatarget/` and checks it with one read on the
+next call, measuring again only when the game has moved.
 
 `levelup MEMBER SEED` presses Wish's Level up once for that member, with
 `random.Random(SEED)` as the dice, through `fsuaegdb.levelup_row`; it writes
@@ -195,24 +198,81 @@ def connect(holder: str, layout: amiga.AmigaMachine,
     return _located(target)
 
 
-def connect_pipe(holder: str, layout: amiga.AmigaMachine) -> amiga.AmigaTarget:
-    """A located target over WinUAE's own pipe: it stops nothing, and a write
-    goes through `AmigaTarget.write`.  The data hunk line goes to stderr so
-    stdout is the JSON row alone.
+def located_file(holder: str, layout: amiga.AmigaMachine) -> pathlib.Path:
+    """Where the measured location of `layout` on `holder`'s machine is kept."""
+    key = next(k for k, row in amiga.MACHINES.items() if row is layout)
+    return scratch.cache_dir("amigatarget", f"located-{holder}-{key}.json")
 
-    The machine's own memory regions are measured first and swept and checked
-    against, as the automap does: a WinUAE machine with fast RAM and no slow
+
+def _cached_target(holder: str,
+                   layout: amiga.AmigaMachine) -> amiga.AmigaTarget | None:
+    """The target rebuilt from the saved location when the game is still
+    there, else None: a missing, unreadable or stale file all mean measure."""
+    try:
+        saved = json.loads(located_file(holder, layout).read_text())
+        anchor_base, data_base = int(saved["anchor_base"]), int(saved["data_base"])
+        memory = [(int(b), int(n)) for b, n in saved["memory"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), layout,
+                               memory=memory)
+    target.anchor_base, target.data_base = anchor_base, data_base
+    try:
+        target.check_base()
+    except amiga.GuestError:
+        return None
+    return target
+
+
+def connect_pipe(holder: str, layout: amiga.AmigaMachine, out=None,
+                 fresh: bool = False) -> amiga.AmigaTarget:
+    """A located target over WinUAE's own pipe: it stops nothing, and a write
+    goes through `AmigaTarget.write`.  The data hunk line goes to `out`
+    (stderr by default) so stdout can be the JSON row alone.
+
+    The location is kept per holder and title; the next call checks it with
+    one batched read and measures again only if the game has moved, or
+    always when `fresh` is set.  The machine's own memory regions are measured
+    with it, as the automap does: a WinUAE machine with fast RAM and no slow
     RAM holds the game outside `amiga.MEMORY`."""
+    out = out or sys.stderr
+    started = time.monotonic()
+    target = None if fresh else _cached_target(holder, layout)
+    if target is not None:
+        print(f"Data hunk  {target.data_base:#010x}   "
+              f"a4 {target.data_base + A4_BIAS:#010x}   (checked, "
+              f"{time.monotonic() - started:.1f}s)", file=out)
+        return target
     target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), layout)
     target.memory = amiga.memory_regions(target.read)
-    return _located(target, sys.stderr)
+    _located(target, out, "measured")
+    _save_located(holder, layout, target)
+    return target
 
 
-def _located(target: amiga.AmigaTarget, out=None) -> amiga.AmigaTarget:
+def _save_located(holder: str, layout: amiga.AmigaMachine,
+                  target: amiga.AmigaTarget) -> None:
+    """Keep the location for the next call; a home that cannot be written to
+    costs the next call a measurement and nothing more."""
+    path = located_file(holder, layout)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        scratch.ensure(path.parent)
+        tmp.write_text(json.dumps({
+            "anchor_base": target.anchor_base, "data_base": target.data_base,
+            "memory": [list(r) for r in target.memory]}))
+        os.replace(tmp, path)
+    except OSError as exc:
+        print(f"The measured location was not kept: {exc}", file=sys.stderr)
+
+
+def _located(target: amiga.AmigaTarget, out=None,
+             how: str = "") -> amiga.AmigaTarget:
     started = time.monotonic()
     base = target.locate()
     print(f"Data hunk  {base:#010x}   a4 {base + A4_BIAS:#010x}   "
-          f"({time.monotonic() - started:.1f}s)", file=out or sys.stdout)
+          f"({how + ', ' if how else ''}{time.monotonic() - started:.1f}s)",
+          file=out or sys.stdout)
     return target
 
 
@@ -624,6 +684,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.holder:
         raise SystemExit("--holder is required for anything that reads the "
                          "machine: take the winuae.ps1 claim first")
+    target = None
+    if args.command in ("dump", "fix", "geo", "locate"):
+        target = connect_pipe(args.holder, layout, sys.stdout,
+                              fresh=args.command == "locate")
     if args.command in ("party", "pool", "poke", "select",
                         "levelup"):
         from automap import amigaeffects  # noqa: PLC0415
@@ -667,7 +731,8 @@ def main(argv: list[str] | None = None) -> int:
                    else fsuaegdb.pool_row)(target, layout)
         print(json.dumps(row))
         return 1 if "error" in row else 0
-    target = connect(args.holder, layout, args.timeout)
+    if target is None:
+        target = connect(args.holder, layout, args.timeout)
     reading: dict = {"title": args.title, "data_base": target.data_base}
 
     if args.command == "automap":

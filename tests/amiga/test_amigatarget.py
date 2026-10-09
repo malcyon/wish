@@ -167,7 +167,7 @@ def test_a_pipe_connection_finds_the_game_in_fast_ram(monkeypatch):
 
 
 def test_a_debugger_connection_finds_the_game_in_fast_ram(monkeypatch):
-    """The route `dump`, `fix` and `automap` take: fast RAM and no slow RAM."""
+    """The route `automap` takes: fast RAM and no slow RAM."""
     guest = Guest(_exec_memory([(0x8E8, 0x200000), (0x200020, 0x400000)],
                                0x263240))
     real = amiga.WinuaeDebugger
@@ -945,7 +945,8 @@ def test_poke_outside_the_party_and_pool_records_writes_nothing(pooled, capsys, 
     row = json.loads(capsys.readouterr().out)
     assert "outside" in row["error"]
     assert pooled[0].get(0xC10000, 1) == b"\0"
-    assert not (tmp_path / ".cache" / "wish" / "amigatarget").exists()
+    assert not (tmp_path / ".cache" / "wish" / "amigatarget"
+                / "poke-h.jsonl").exists()
 
 
 def test_poke_running_off_the_end_of_the_pool_writes_nothing(pooled, capsys):
@@ -1380,3 +1381,141 @@ def test_poke_var_error_in_the_guest_names_the_variable(var_target, capsys):
                            "poke", "--var", "4AB5", "--value", "1"])
     assert rc == 1
     assert json.loads(capsys.readouterr().out)["var"] == "$4AB5"
+
+
+# -- dump, fix, geo and locate over the pipe, with the location kept -----------
+
+
+class _Counting(_PipeMemory):
+    batches = 0
+    #: One memory across instances, as the one running game is across calls.
+    shared = None
+
+    def __init__(self, holder=None):
+        super().__init__(holder)
+        if _Counting.shared is None:
+            _Counting.shared = self.memory
+        self.memory = _Counting.shared
+
+    def batch(self, lines, fetch=None):
+        _Counting.batches += 1
+        return super().batch(lines, fetch)
+
+
+@pytest.fixture
+def counting(fake_pipe, monkeypatch, tmp_path):
+    from tools.amiga import amigatarget
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(amigatarget.amiga, "WinuaePipe", _Counting)
+
+    def no_debugger(*args, **kwargs):
+        raise AssertionError("the console debugger was built")
+
+    monkeypatch.setattr(amigatarget.amiga, "WinuaeDebugger", no_debugger)
+    _Counting.batches = 0
+    _Counting.shared = None
+    return fake_pipe
+
+
+def _dump(tmp_path):
+    from tools.amiga import amigatarget
+    out = tmp_path / "out.bin"
+    rc = amigatarget.main(["--holder", "h", "dump", "--relative", "--at", "0",
+                           "--length", "1", "--out", str(out)])
+    assert rc == 0
+    return out
+
+
+def test_dump_goes_over_the_pipe_and_never_builds_the_debugger(counting, tmp_path):
+    out = _dump(tmp_path)
+    assert len(counting) == 1 and _Counting.batches > 0
+    assert out.read_bytes() == b"\0"
+
+
+def test_a_second_dump_checks_the_kept_location_in_two_round_trips(counting, tmp_path):
+    _dump(tmp_path)
+    _Counting.batches = 0
+    _dump(tmp_path)
+    assert _Counting.batches == 2, "one check and one read"
+
+
+def test_a_game_that_moved_is_measured_again(counting, tmp_path):
+    from tools.amiga import amigatarget
+    _dump(tmp_path)
+    now = counting[-1]
+    now.put(BASE + SSB.anchor_offset, bytes(len(SSB.anchor)))
+    moved = BASE + 0x40000
+    now.put(moved + SSB.anchor_offset, SSB.anchor)
+    _Counting.batches = 0
+    _dump(tmp_path)
+    assert _Counting.batches > 2
+    saved = json.loads(amigatarget.located_file("h", SSB).read_text())
+    assert saved["anchor_base"] == moved
+
+
+def test_a_corrupt_location_file_falls_back_to_measuring(counting, tmp_path):
+    from tools.amiga import amigatarget
+    _dump(tmp_path)
+    amigatarget.located_file("h", SSB).write_text("{not json")
+    _Counting.batches = 0
+    _dump(tmp_path)
+    assert _Counting.batches > 2
+    assert json.loads(amigatarget.located_file("h", SSB).read_text())["data_base"] == BASE
+
+
+def test_check_base_raises_on_a_moved_anchor():
+    t, guest = target({BASE + SSB.anchor_offset: SSB.anchor}, base=BASE)
+    t.anchor_base = BASE
+    t.check_base()
+    t.anchor_base = BASE + 0x1000
+    with pytest.raises(amiga.GuestError):
+        t.check_base()
+
+
+def test_each_holder_and_title_keeps_its_own_location_file(counting, tmp_path):
+    from tools.amiga import amigatarget
+    curse = amiga.MACHINES["curse-of-the-azure-bonds"]
+    paths = {amigatarget.located_file(h, lay)
+             for h in ("a", "b") for lay in (SSB, curse)}
+    assert len(paths) == 4
+    _dump(tmp_path)
+    assert amigatarget.located_file("h", SSB).exists()
+    assert not amigatarget.located_file("h", curse).exists()
+
+
+def test_fix_geo_and_locate_still_print_the_data_hunk_line_on_stdout(
+        counting, tmp_path, capsys):
+    from tools.amiga import amigatarget
+    for command in (["fix"], ["geo"], ["locate"]):
+        amigatarget.main(["--holder", "h", *command])
+        first = capsys.readouterr().out.splitlines()[0]
+        assert first.startswith(f"Data hunk  {BASE:#010x}   a4 "), command
+
+
+def test_locate_measures_in_full_and_refreshes_the_file(counting, tmp_path, capsys):
+    from tools.amiga import amigatarget
+    _dump(tmp_path)
+    capsys.readouterr()
+    # A second copy of the anchor passes the cached check and fails a sweep.
+    counting[-1].put(BASE + 0x40000 + SSB.anchor_offset, SSB.anchor)
+    with pytest.raises(NotConnected, match="more than one place"):
+        amigatarget.main(["--holder", "h", "locate"])
+    counting[-1].put(BASE + 0x40000 + SSB.anchor_offset, bytes(len(SSB.anchor)))
+    amigatarget.main(["--holder", "h", "locate"])
+    assert "(measured," in capsys.readouterr().out
+    assert json.loads(amigatarget.located_file("h", SSB).read_text())[
+        "data_base"] == BASE
+
+
+def test_a_home_that_cannot_be_written_does_not_fail_the_read(
+        counting, tmp_path, capsys, monkeypatch):
+    from tools.amiga import amigatarget
+
+    def broken(path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(amigatarget.scratch, "ensure", broken)
+    _dump(tmp_path)
+    assert "was not kept: disk full" in capsys.readouterr().err
+    assert not list(tmp_path.rglob("located-*"))

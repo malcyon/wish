@@ -2868,6 +2868,17 @@ class AmigaTarget:
         if now - self._checked_at < self.REVALIDATE_EVERY:
             return
         self._checked_at = now
+        self.check_base()
+
+    def check_base(self) -> None:
+        """Raise `GuestError` unless the measured base is still right.
+
+        One batched read of the anchor and, for a `segments` row, the two
+        allocation lengths and the link between the hunks. Needs `anchor_base`
+        (and `data_base`) to be set, by `locate()` or the constructor.
+        """
+        if self.anchor_base is None:
+            raise GuestError("check_base needs a measured base")
         layout, base = self.layout, self.anchor_base
         blocks = [(base + layout.anchor_offset, len(layout.anchor))]
         seg = layout.segments
