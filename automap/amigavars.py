@@ -58,7 +58,7 @@ MAPS: dict[str, VarMap] = {
         ),
     ),
     "secret-of-the-silver-blades": VarMap(
-        ranges=(VarRange(0x4B00, 0x4EFF, 0x5170, 2, 0x4B00),),
+        ranges=(VarRange(0x4B00, 0x4EFF, 0x5170, 2),),
     ),
     "curse-of-the-azure-bonds": VarMap(
         ranges=(
