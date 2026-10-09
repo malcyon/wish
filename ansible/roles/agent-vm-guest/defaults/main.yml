@@ -15,6 +15,11 @@ agent_guest_boot_timeout: 900
 # never grows without bound.
 agent_guest_tmp_size: 4G
 
+# The dedicated disk the host attaches for Codex state.
+agent_guest_codex_device: /dev/vdc
+agent_guest_codex_label: codex-state
+agent_guest_codex_mount: "{{ ansible_user_dir }}/.codex"
+
 # The specimen tree, shared read-write from the host. The tag is the target dir
 # of the domain's <filesystem>, agent_vm_specimens_tag on the host side.
 agent_guest_specimens_tag: specimens

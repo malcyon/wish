@@ -51,6 +51,69 @@
         state: mounted
       become: true
 
+# An existing Codex home must be copied before the disk is mounted over it.
+# Fresh guests have an empty directory; the live migration is a separate step.
+- name: Mount the Codex state disk
+  tags: codex
+  become: true
+  block:
+    - name: Read the Codex disk label
+      ansible.builtin.command:
+        argv: [blkid, -o, value, -s, LABEL, "{{ agent_guest_codex_device }}"]
+      register: agent_guest_codex_existing_label
+      changed_when: false
+      failed_when: agent_guest_codex_existing_label.rc not in [0, 2]
+
+    - name: Require the expected Codex disk
+      ansible.builtin.assert:
+        that:
+          - agent_guest_codex_existing_label.rc == 2 or agent_guest_codex_existing_label.stdout == agent_guest_codex_label
+        fail_msg: "{{ agent_guest_codex_device }} has an unexpected filesystem label."
+
+    - name: Create the Codex mount point
+      ansible.builtin.file:
+        path: "{{ agent_guest_codex_mount }}"
+        state: directory
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_id }}"
+        mode: "0775"
+
+    - name: Check for an existing Codex home
+      ansible.builtin.find:
+        paths: "{{ agent_guest_codex_mount }}"
+        file_type: any
+        hidden: true
+        recurse: false
+      register: agent_guest_codex_home_files
+      when: agent_guest_codex_existing_label.rc == 2
+
+    - name: Keep an existing Codex home visible until it is migrated
+      ansible.builtin.assert:
+        that: agent_guest_codex_home_files.matched == 0
+        fail_msg: "Copy {{ agent_guest_codex_mount }} to the new disk before mounting it."
+      when: agent_guest_codex_existing_label.rc == 2
+
+    - name: Format the new Codex disk
+      ansible.builtin.command:
+        argv: [mkfs.ext4, -F, -L, "{{ agent_guest_codex_label }}", "{{ agent_guest_codex_device }}"]
+      when: agent_guest_codex_existing_label.rc == 2
+
+    - name: Mount Codex state at its home
+      ansible.posix.mount:
+        path: "{{ agent_guest_codex_mount }}"
+        src: "LABEL={{ agent_guest_codex_label }}"
+        fstype: ext4
+        opts: defaults,noatime
+        state: mounted
+
+    - name: Give the agent its Codex state directory
+      ansible.builtin.file:
+        path: "{{ agent_guest_codex_mount }}"
+        state: directory
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_id }}"
+        mode: "0775"
+
 # --- packages ---------------------------------------------------------------
 
 - name: Packages

@@ -73,6 +73,12 @@
       <target dev='vda' bus='virtio'/>
     </disk>
 
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='writeback' io='threads'/>
+      <source file='{{ agent_vm_codex_disk_path }}'/>
+      <target dev='vdc' bus='virtio'/>
+    </disk>
+
     <!-- The NoCloud seed. cloud-init reads it on the first boot only. -->
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>

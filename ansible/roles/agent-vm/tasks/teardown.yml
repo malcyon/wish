@@ -82,6 +82,7 @@
     state: absent
   loop:
     - "{{ agent_vm_disk_path }}"
+    - "{{ agent_vm_codex_disk_path }}"
     - "{{ agent_vm_disks_image }}"
     - "{{ agent_vm_disks_image }}.new"
     - "{{ agent_vm_disks_staging }}"

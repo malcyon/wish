@@ -95,6 +95,7 @@ Agents are started by hand, in `herdr` or a `tmux` session; the role installs th
 |---|---|
 | Sizing | 12 vCPU, 12 GB with a hard cap in the domain, 100 GB qcow2 |
 | Image | `agent_vm_base_dir`, `agent-vm.qcow2` |
+| Codex state | An 8 GB sparse image under `/var/lib/libvirt/images` on the desktop's NVMe, mounted at the guest's `~/.codex`; the separate disk keeps daemon startup responsive during scans of the main image |
 | Login | user `agent`, passwordless sudo, the key at `agent_vm_keypair_path`; an empty `~/.hushlogin` silences Ubuntu's welcome banner, system information, update counts and last-login line |
 | Address | `10.77.0.10`, a fixed lease by MAC |
 | `/tmp` | a 4 GB tmpfs; nothing in it survives a reboot |

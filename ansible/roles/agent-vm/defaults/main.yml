@@ -25,6 +25,10 @@ agent_vm_image_dir: "{{ agent_vm_base_dir }}/images"
 agent_vm_state_dir: "{{ agent_vm_base_dir }}/state"
 agent_vm_disk_path: "{{ agent_vm_base_dir }}/{{ agent_vm_name }}.qcow2"
 agent_vm_seed_path: "{{ agent_vm_state_dir }}/seed.iso"
+# Codex starts through a SQLite-backed daemon. Keep its state on the system
+# NVMe so concurrent game-data scans of the main image cannot stall startup.
+agent_vm_codex_disk_path: "/var/lib/libvirt/images/{{ agent_vm_name }}-codex.qcow2"
+agent_vm_codex_disk_gb: 8
 
 # --- Networking -------------------------------------------------------------
 # On the `sandbox` network (roles/sandbox-network), which is where the address and

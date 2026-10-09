@@ -182,6 +182,17 @@
   args:
     creates: "{{ agent_vm_disk_path }}"
 
+- name: Create the NVMe-backed Codex state disk
+  ansible.builtin.command:
+    argv:
+      - qemu-img
+      - create
+      - -f
+      - qcow2
+      - "{{ agent_vm_codex_disk_path }}"
+      - "{{ agent_vm_codex_disk_gb }}G"
+    creates: "{{ agent_vm_codex_disk_path }}"
+
 # --- cloud-init seed --------------------------------------------------------
 
 - name: Create the seed staging directory
