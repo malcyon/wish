@@ -71,6 +71,11 @@ Curse of the Azure Bonds' `/Curse` (file offsets) differs only where noted:
   `029410` is called with no bar words of its own, so its bar is `Exit`, and
   `E` returns to the magic menu, whose own `E` returns to the camp bar.
 
+`memorize N` and `cast N` open line N's Memorize or Cast list and leave it again with
+nothing chosen, after `P` presses of NP3 when written `memorize N P` or `cast N P`; they are
+built for Pools of Darkness only. No guard rule is cut for the magic menu or either list, so a
+run that reaches them settles each screen and measures.
+
 `display` opens that list and leaves it again; it is built for Curse and Pool
 of Radiance, the titles whose magic menu and list viewer have been read.
 
@@ -111,6 +116,19 @@ and the same kind of picker, with `Lay` where the other two say `Heal`:
   `g5B12` is 2, 3 or 4). `Rdy` (`021BBA`) runs the ready routine `022152`, and the list redraws with the same
   row highlighted. The keypad Down (NP2) moves the row highlight: the cursor Down
   was dropped on this list in a run under FS-UAE.
+* **The magic menu** is the camp bar's `M`, with the bar `Cast Memorize Scribe Display Rest
+  Exit` (`0382B7`); its `E` returns to the camp bar. Both lists below open for the camp
+  highlight with no picker, and each one's `E` returns to the magic menu, as measured in a
+  WinUAE boot.
+* **`Memorize`** (`M`) shows `<NAME>'S SPELLS IN GRIMOIRE`: ten rows of spells under level
+  headings, a scroll bar, a `MAGIC-USER :` row of the free slots per level below them, and the
+  bar `CHOOSE SPELL: MEMORIZE EXIT` (`037FA4`), whose `M` would memorize the highlighted spell.
+* **`Cast`** (`C`) shows `<NAME>'S SPELLS IN MEMORY`: seventeen rows, each spell once with
+  its count as `NAME (N)` when more than one is memorized, and the bar `CHOOSE SPELL: CAST
+  EXIT` (`037F9A`), whose `C` would cast the highlighted spell.
+* **Both lists** move the highlight one row on NP2 and NP8. NP3 moves it to the window's
+  bottom row and each further NP3 scrolls the list on by up to a window, and NP9 does the same
+  upwards; at the end of the list NP3 leaves the screen as it was.
 
 Pool of Radiance's `/program` (file offsets; one build on every disk-one image)
 takes `items N`, which shows the item list of the member on line N, `rest
@@ -264,6 +282,16 @@ USE_CAST = "C"
 #: combat-only prompt. Each spell used leaves the item list on the same row.
 USE_ANSWERS = {"S": "camp_use_target", "Y": "camp_use_combat"}
 USE_LIST = "camp_use_list"
+#: The titles whose camp Memorize and Cast lists have been measured, so `memorize N [P]` and
+#: `cast N [P]` may name them.
+MAGIC_LIST_TITLES = frozenset({"darkness"})
+#: The magic menu's keys for the two lists, and the key that leaves either list.
+MAGIC_LIST_KEYS = {"memorize": "M", "cast": "C"}
+LIST_EXIT = "E"
+#: The key that pages a Memorize or Cast list: to the window's bottom row, then on by a window.
+LIST_PAGE = "NP3"
+#: The most NP3 presses one `memorize` or `cast` step takes.
+LIST_PAGES_MAX = 20
 #: The titles whose camp sheet steps, `view N` and `heal N`, are not built: Pool of Radiance's
 #: sheet has no HEAL, and its guard map holds no camp sheet.
 SHEETLESS = frozenset({"pool"})
@@ -302,6 +330,9 @@ ITEMS_LIST = "camp_items"
 ITEMS_SHEET = "camp_sheet_items"
 #: The camp save the published route presses next, which the camp steps go before.
 CAMP_SAVE_STEP = ("S", "camp_save_picker", "key")
+
+#: The Memorize and Cast lists, for party line 1; `magic_list_state` names the others.
+MAGIC_LISTS = {"memorize": "camp_memorize", "cast": "camp_cast"}
 
 #: The screen right after `J`, for party line 1, grabbed at once for JOIN's message;
 #: `join_state` names the others.
@@ -347,6 +378,12 @@ def items_row_state(line: int, row: int) -> str:
     return items_state(line) if row == 1 else f"{items_state(line)}_row{row}"
 
 
+def magic_list_state(kind: str, line: int, page: int = 0) -> str:
+    """Party line `line`'s `memorize` or `cast` list after `page` presses of `LIST_PAGE`."""
+    state = MAGIC_LISTS[kind] if line == 1 else f"{MAGIC_LISTS[kind]}_{line}"
+    return state if page == 0 else f"{state}_page{page}"
+
+
 def join_state(line: int) -> str:
     """The screen right after `J` on party line `line`'s item list, grabbed for the message."""
     return JOIN_LIST if line == 1 else f"{JOIN_LIST}_{line}"
@@ -366,6 +403,12 @@ def is_items(state: str) -> bool:
     return re.fullmatch(rf"{ITEMS_LIST}{_LINE}{_ROW}", state) is not None
 
 
+def is_magic_list(state: str) -> bool:
+    """Whether `state` is a camp Memorize or Cast list, on any page."""
+    names = "|".join(MAGIC_LISTS.values())
+    return re.fullmatch(rf"(?:{names}){_LINE}(?:_page[1-9][0-9]?)?", state) is not None
+
+
 def is_join(state: str) -> bool:
     """Whether `state` is the grab right after `J`, on which JOIN's message is looked for."""
     return re.fullmatch(rf"{JOIN_LIST}{_LINE}", state) is not None
@@ -376,9 +419,10 @@ def may_keep_screen(key: str, state: str) -> bool:
 
     The rest menu's second `S` and repeated `D` land on a field already chosen; JOIN's first grab
     is taken at once and can come before any change; READY redraws the item list with the same
-    row highlighted whatever it did.
+    row highlighted whatever it did; a page press at the end of a magic list moves nothing.
     """
-    return state == REST_MENU or is_join(state) or (key == READY and is_items(state))
+    return (state == REST_MENU or is_join(state) or (key == READY and is_items(state))
+            or (key == LIST_PAGE and is_magic_list(state)))
 
 
 def is_joined(state: str) -> bool:
@@ -398,7 +442,7 @@ def _min_wait(state: str) -> float:
         return 0.0
     if is_joined(state):
         return JOINED_WAIT
-    if is_items(state) and "_row" in state:
+    if (is_items(state) and "_row" in state) or (is_magic_list(state) and "_page" in state):
         return ROW_WAIT
     return MIN_WAITS.get(state, 10.0)
 
@@ -498,6 +542,15 @@ def _use_place(words: list[str]) -> tuple[int, int, str] | None:
     return int(words[1]), int(words[2]), words[3]
 
 
+def _magic_place(words: list[str]) -> tuple[int, int] | None:
+    """The party line and page presses a `memorize N [P]` or `cast N [P]` token names, else None."""
+    if words[0] not in MAGIC_LIST_KEYS or len(words) not in (2, 3):
+        return None
+    if not all(w.isdigit() for w in words[1:]):
+        return None
+    return int(words[1]), int(words[2]) if len(words) == 3 else 0
+
+
 def _join_place(words: list[str]) -> tuple[int, int] | None:
     """The party line and item row a `join N I` token names, else None."""
     return _item_place(words) if words[0] == "join" else None
@@ -566,7 +619,9 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     per letter of ANSWERS, `S` for a spell that asks whom and `Y` for a combat-only one (only for
     a title in `USE_TITLES`). The caller gives one answer per spell: the guards tell the list,
     the target picker and the prompt apart, not how many spells are left in the case, so the run's
-    later `read` of the game-written save is what proves none was left unread.
+    later `read` of the game-written save is what proves none was left unread. `memorize N` and
+    `cast N` open line N's Memorize or Cast list, press NP3 P times when written `memorize N P`
+    or `cast N P`, and leave it with nothing chosen (only for a title in `MAGIC_LIST_TITLES`).
     """
     view_lines, heal_lines = sheet_lines(name)
     _validate_machine_steps(tuple(t for t in tokens if is_machine_step(t)))
@@ -620,6 +675,19 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             if not 1 <= row <= ITEM_ROWS:
                 raise RouteError(f"{token!r}: an item list has rows 1 to {ITEM_ROWS} only")
             continue
+        if words[0] in MAGIC_LIST_KEYS:
+            if name not in MAGIC_LIST_TITLES:
+                raise RouteError(f"{token!r}: the Memorize and Cast lists are built for Pools of "
+                                 f"Darkness only")
+            place = _magic_place(words)
+            if place is None:
+                raise RouteError(f"camp step {token!r} is not {words[0]} N or {words[0]} N P")
+            line, pages = place
+            if not 1 <= line <= lines_held:
+                raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            if pages > LIST_PAGES_MAX:
+                raise RouteError(f"{token!r}: a list takes 0 to {LIST_PAGES_MAX} page presses")
+            continue
         if words[0] == "join":
             if name not in JOIN_TITLES:
                 raise RouteError(f"{token!r}: JOIN is built for Silver Blades only")
@@ -657,7 +725,8 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
         also = (", nor items N" if name in ITEMS_TITLES else "") + (
             " or join N I" if name in JOIN_TITLES else "") + (
             " or ready N I" if name in READY_TITLES else "") + (
-            " or use N I S|Y" if name in USE_TITLES else "")
+            " or use N I S|Y" if name in USE_TITLES else "") + (
+            " or memorize N [P] or cast N [P]" if name in MAGIC_LIST_TITLES else "")
         raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
                          f"rest DURATION or display{also}")
     if rest_minutes(tokens) >= CLOCK_BLIND_REST and name in SHEETLESS:
@@ -677,7 +746,8 @@ def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
     """Each step in one spelling, so two spellings build one route.
 
     `view` becomes `view 1`, `items` becomes `items 1`, `heal 1` becomes
-    `heal`, and a rest time becomes its minutes; `join N I` and `ready N I` are already one spelling.
+    `heal`, a rest time becomes its minutes, and `memorize N 0` and `cast N 0` drop the zero;
+    `join N I` and `ready N I` are already one spelling.
     """
     out = []
     for token in tokens:
@@ -690,6 +760,8 @@ def normalise(tokens: tuple[str, ...]) -> tuple[str, ...]:
             out.append("heal")
         elif words[0] == "rest":
             out.append(f"rest {parse_duration(words[1])}m")
+        elif words[0] in MAGIC_LIST_KEYS and words[2:] == ["0"]:
+            out.append(" ".join(words[:2]))
         else:
             out.append(token)
     return tuple(out)
@@ -788,6 +860,18 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
                 steps += [(USE, USE_LIST, "key"), (USE_CAST, USE_ANSWERS[answer], "key"),
                           (answer, items_row_state(line, row), "key")]
             steps += [(SHEET_EXIT, items_sheet_state(line), "key"), (SHEET_EXIT, CAMP, "key")]
+            steps += back
+        elif words[0] in MAGIC_LIST_KEYS:
+            line, pages = _magic_place(words)
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            # The list opens for the camp highlight; its own M or C would memorize or cast, so
+            # only NP3 and E are pressed on it.
+            steps += [(CAMP_MAGIC, MAGIC_MENU, "key"),
+                      (MAGIC_LIST_KEYS[words[0]], magic_list_state(words[0], line), "key")]
+            steps += [(LIST_PAGE, magic_list_state(words[0], line, n), "key")
+                      for n in range(1, pages + 1)]
+            steps += [(LIST_EXIT, MAGIC_MENU, "key"), (MAGIC_EXIT, CAMP, "key")]
             steps += back
         elif words[0] == "display":
             # The list is left from its first page; a further page is recorded, not read.

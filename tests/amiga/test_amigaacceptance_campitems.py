@@ -479,3 +479,77 @@ def test_use_answers_are_read_in_either_case_and_parse_to_the_same_steps():
     upper = route_camp.parse_steps("use 5 3 SYY", "darkness")
     assert route_camp.parse_steps("use 5 3 syy", "darkness") == upper == ("use 5 3 SYY",)
     assert route_camp.steps_for(upper, "darkness", 7) == route_camp.steps_for(("use 5 3 SYY",), "darkness", 7)
+
+
+def test_memorize_opens_the_highlighted_member_s_grimoire_and_leaves_through_the_magic_menu():
+    # HILDE is line 5 of 6, reached backwards. The list opens for the camp highlight with no
+    # picker; `E` leaves it to the magic menu and the magic menu's `E` to the camp bar.
+    assert route_camp.steps_for(("memorize 5",), "darkness", 6) == (
+        ("NP8", "camp", "key"), ("NP8", "camp", "key"),
+        ("M", "camp_magic", "key"), ("M", "camp_memorize_5", "key"),
+        ("E", "camp_magic", "key"), ("E", "camp", "key"),
+        ("NP2", "camp", "key"), ("NP2", "camp", "key"))
+    assert route_camp.steps_for(("memorize 1",), "darkness", 6) == (
+        ("M", "camp_magic", "key"), ("M", "camp_memorize", "key"),
+        ("E", "camp_magic", "key"), ("E", "camp", "key"))
+
+
+def test_cast_pages_its_list_with_np3_and_leaves_without_casting():
+    steps = route_camp.steps_for(("cast 5 2",), "darkness", 6)
+    assert steps == (
+        ("NP8", "camp", "key"), ("NP8", "camp", "key"),
+        ("M", "camp_magic", "key"), ("C", "camp_cast_5", "key"),
+        ("NP3", "camp_cast_5_page1", "key"), ("NP3", "camp_cast_5_page2", "key"),
+        ("E", "camp_magic", "key"), ("E", "camp", "key"),
+        ("NP2", "camp", "key"), ("NP2", "camp", "key"))
+    # `C` is pressed once, on the magic menu; the list's own `C` would cast the highlighted spell.
+    assert [key for key, _, _ in steps].count("C") == 1
+    assert route_camp.steps_for(("memorize 2 3",), "darkness", 6)[2:6] == (
+        ("M", "camp_memorize_2", "key"), ("NP3", "camp_memorize_2_page1", "key"),
+        ("NP3", "camp_memorize_2_page2", "key"), ("NP3", "camp_memorize_2_page3", "key"))
+
+
+def test_a_page_press_at_the_end_of_a_magic_list_may_leave_the_screen_as_it_was():
+    assert route_camp.is_magic_list("camp_memorize") and route_camp.is_magic_list("camp_cast_5_page2")
+    assert not route_camp.is_magic_list("camp_items_5") and not route_camp.is_items("camp_cast_5")
+    assert route_camp.may_keep_screen("NP3", "camp_cast_5_page2")
+    assert not route_camp.may_keep_screen("C", "camp_cast_5")
+    assert not route_camp.may_keep_screen("E", "camp_magic")
+
+
+@pytest.mark.parametrize("text,why", [
+    ("memorize", "is not memorize N or memorize N P"),
+    ("cast x", "is not cast N or cast N P"),
+    ("cast 1 2 3", "is not cast N or cast N P"),
+    ("memorize 0", "lines 1 to 6 only"),
+    ("cast 7", "lines 1 to 6 only"),
+    ("cast 1 21", "0 to 20 page presses"),
+])
+def test_memorize_and_cast_block_a_line_or_page_count_they_cannot_drive(text, why):
+    with pytest.raises(RouteError, match=why):
+        route_camp.validate_steps((text,), 6, name="darkness")
+
+
+@pytest.mark.parametrize("name", ["pool", "ssb", "curse"])
+def test_memorize_and_cast_are_blocked_for_a_title_whose_lists_are_unmeasured(name):
+    for token in ("memorize 1", "cast 1"):
+        with pytest.raises(RouteError, match="built for Pools of Darkness only"):
+            route_camp.validate_steps((token,), 4, name=name)
+
+
+def test_memorize_and_cast_parse_in_either_case_and_drop_a_zero_page_count():
+    assert route_camp.parse_steps("MEMORIZE 5;Cast 5 2", "darkness") == ("memorize 5", "cast 5 2")
+    assert route_camp.normalise(("memorize 3 0", "cast 3 0")) == ("memorize 3", "cast 3")
+
+
+def test_memorize_and_cast_go_before_the_camp_save_with_slot_letters_as_simple_keys():
+    tokens = ("memorize 5", "cast 5 2")
+    title = route_camp.camp_title(route_darkness.DARKNESS, tokens, 6, name="darkness")
+    at = route_darkness.DARKNESS.route.index(route_camp.CAMP_SAVE_STEP)
+    added = route_camp.steps_for(tokens, "darkness", 6)
+    assert title.route == (*route_darkness.DARKNESS.route[:at], *added,
+                           *route_darkness.DARKNESS.route[at:])
+    # C and E are kept slot letters on this route, so on these screens they are menu keys.
+    assert {("C", "camp_cast_5"), ("E", "camp_magic")} <= set(title.plain_keys)
+    # No guard rule is cut for these screens yet, so a run that reaches them is a measuring one.
+    assert not {"camp_magic", "camp_memorize_5", "camp_cast_5"} & set(title.strict)
