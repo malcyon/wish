@@ -3214,6 +3214,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         if kind in ("write", "answer"):
                             # The measured route ends where the run would first write or answer.
                             result["events"].append({"skipped_write_key": key, "step": n})
+                            changed = False
                             break
                         encounter_gate(kind)
                         perform(key, kind, state, n)
@@ -3242,7 +3243,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["route_changed"] = changed
             if changed:
                 reads_unreached(steps_m)
-            # A route that stopped on an unchanged screen did not run every step.
+            # A route that stopped early, on a write or answer step or an unchanged screen,
+            # did not run every step.
             result["completed"] = changed
         else:
             if earlier is None:

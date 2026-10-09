@@ -492,7 +492,7 @@ def test_the_spare_reload_measures_its_route_and_writes_nothing(tmp_path, clock)
     assert guest.bad_hash == [] and all(result["disks_unchanged"].values())
 
 
-def _seeded_reload_measure(tmp_path, clock, change_disk3=None, seeded=True):
+def _seeded_reload_measure(tmp_path, clock, change_disk3=None, seeded=True, write_at=None):
     """A spare reload measure run whose fetched disk 3 is passed through `change_disk3`."""
     disks = {"disk1": _entry(tmp_path / "disk1.adf", _disk("POD 1")),
              "disk2": _entry(tmp_path / "disk2.adf", _disk("POD 2")),
@@ -507,6 +507,11 @@ def _seeded_reload_measure(tmp_path, clock, change_disk3=None, seeded=True):
         "spare_vault": {"items": 2, "coins": [0, 0, 0], "sha256": None},
         **({"disk3_seed": {"letter": "G", "items": 2, "coins": [0, 0, 0]}} if seeded else {})}))
     title = _readers(route_darkness.spare_reload_title("G", 2, False))
+    if write_at is not None:
+        steps = list(title.measure_route)
+        steps.insert(write_at, ("Z", steps[write_at][1], "write"))
+        title = dataclasses.replace(title, measure_route=tuple(steps),
+                                    control_letter="Z", after_letter="Y")
 
     class Rewritten(DriveGuest):
         """The game rewrites disk 3 in DF1 when the route reaches the vault screen."""
@@ -533,6 +538,12 @@ def _rewrite_vault_t(disk):
 def test_a_measure_run_that_ran_every_step_reports_completed(tmp_path, clock):
     result = _seeded_reload_measure(tmp_path, clock)
     assert result["completed"] is True and result["success"] is True
+
+
+def test_a_measure_run_that_stops_on_a_write_step_is_not_completed(tmp_path, clock):
+    result = _seeded_reload_measure(tmp_path, clock, write_at=3)
+    assert any("skipped_write_key" in e for e in result["events"])
+    assert result["completed"] is False
 
 
 def test_a_seeded_reload_passes_when_only_vault_t_on_disk_3_changed(tmp_path, clock):
