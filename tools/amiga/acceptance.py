@@ -3613,7 +3613,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             camp: tuple[str, ...] = (), issue: str | None = None, temple: bool = False,
             encounter: bool = False, stage_record: str | None = None,
             spare: pathlib.Path | None = None,
-            spare_seed_rows: int | None = None) -> pathlib.Path:
+            spare_seed_rows: int | None = None,
+            disk3_seed_rows: int | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -3639,6 +3640,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     accept run fetched, with that run's disk 3 and summary, and loads the slot it holds.
     `spare_seed_rows` (`darkness-vault` with `spare` only) puts that many of the staged vault's
     rows into the run copy of the spare's loaded-letter vault (`route_darkness._prepare_darkness`).
+    `disk3_seed_rows` (`darkness-reload` with `spare` only) does the same for the run copy of
+    disk 3, from its control-letter vault (`route_darkness._prepare_darkness_spare_reload`).
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -3656,6 +3659,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
                          "steps")
     if spare_seed_rows is not None and (name != "darkness-vault" or spare is None):
         raise RouteError("--spare-seed-rows is for darkness-vault with --spare-disk")
+    if disk3_seed_rows is not None and not (reload and spare is not None):
+        raise RouteError("--disk3-seed-rows is for darkness-reload with --spare-disk")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
     if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
@@ -3669,8 +3674,9 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     if run.exists():
         raise RouteError(f"run folder already exists: {run}")
     if reload and spare is not None:
-        manifest = _prepare_darkness_spare_reload(run, specimen, specimen_sha256, accept_summary,
-                                                  spare)
+        manifest = _prepare_darkness_spare_reload(
+            run, specimen, specimen_sha256, accept_summary, spare,
+            *(() if disk3_seed_rows is None else (disk3_seed_rows,)))
     elif reload:
         manifest = _PREPARE[name](run, specimen, specimen_sha256, accept_summary)
     elif name in _SUBSTITUTABLE:
@@ -5025,6 +5031,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--spare-seed-rows", type=int, default=None,
                    help="darkness-vault with --spare-disk: put this many rows of the staged "
                         "vault into the run copy of the spare's loaded-letter vault")
+    p.add_argument("--disk3-seed-rows", type=int, default=None,
+                   help="darkness-reload with --spare-disk: put this many rows of disk 3's "
+                        "control-letter vault into the run copy of disk 3's loaded-letter vault")
     p.add_argument("--substitute-letter", default="A",
                    help="the slot to read off --substitute (default A)")
     p.add_argument("--substitute-manifest", type=pathlib.Path, default=None,
@@ -5161,6 +5170,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "prepare" and args.spare_seed_rows is not None and (
                 args.published_disk_one or args.published_disk_three):
             raise RouteError("--spare-seed-rows is not for a published disk")
+        if args.command == "prepare" and args.disk3_seed_rows is not None and (
+                args.published_disk_one or args.published_disk_three
+                or args.substitute_manifest is not None
+                or args.title != "darkness-reload" or args.spare_disk is None):
+            raise RouteError("--disk3-seed-rows is for darkness-reload with --spare-disk")
         if args.command == "prepare" and args.published_disk_three:
             if args.published_disk_one:
                 raise RouteError("--published-disk-one and --published-disk-three are two routes")
@@ -5281,7 +5295,9 @@ def main(argv: list[str] | None = None) -> int:
                               encounter=args.encounter, stage_record=args.stage_record,
                               **({"spare": args.spare_disk} if args.spare_disk else {}),
                               **({"spare_seed_rows": args.spare_seed_rows}
-                                 if args.spare_seed_rows is not None else {})))
+                                 if args.spare_seed_rows is not None else {}),
+                              **({"disk3_seed_rows": args.disk3_seed_rows}
+                                 if args.disk3_seed_rows is not None else {})))
                 return 0
             title, manifest, legacy = _route_title(args, silver_blades)
             attempt = args.attempt or ("recon1" if args.command == "measure" else

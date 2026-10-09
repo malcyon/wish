@@ -730,13 +730,19 @@ def _prepare_darkness_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha25
 
 def _prepare_darkness_spare_reload(run: pathlib.Path, disk3: pathlib.Path, disk3_sha256: str,
                                    accept_summary: pathlib.Path,
-                                   spare: pathlib.Path) -> dict[str, Any]:
+                                   spare: pathlib.Path,
+                                   disk3_seed_rows: int | None = None) -> dict[str, Any]:
     """Prepare a run that loads the one saved game on the spare disk a spare accept run fetched.
 
     Raises on a disk 3 that does not hash to `disk3_sha256`, a summary that is not a successful
     accept run whose fetched disk 3 and spare are these two files, a spare that does not hold
     exactly one saved game, and a saved game that does not decode. The manifest's `spare_vault`
     is that slot's vault on the spare, which the route's vault steps list.
+
+    `disk3_seed_rows` writes the first N rows of disk 3's control-letter vault (the summary's
+    `spare_vault.control_letter`) over the run copy's loaded-letter vault, which must be empty
+    there; `disks.disk3.sha256` is then the seeded copy's and `disk3_seed` records the seed. The
+    input disk 3 is never written.
     """
     disk3, accept_summary, spare = (pathlib.Path(p) for p in (disk3, accept_summary, spare))
     for path in (disk3, accept_summary, spare):
@@ -787,6 +793,11 @@ def _prepare_darkness_spare_reload(run: pathlib.Path, disk3: pathlib.Path, disk3
             or disks["disk3"]["sha256"] != disk3_sha256
             or disks[SPARE]["sha256"] != fetched[SPARE]):
         raise RouteError("a working copy differs from its input")
+    seed = None
+    if disk3_seed_rows is not None:
+        seed = _seed_disk3(pathlib.Path(disks["disk3"]["path"]), loaded, disk3_seed_rows,
+                           summary)
+        disks["disk3"]["sha256"] = sha256(pathlib.Path(disks["disk3"]["path"]))
     return {
         "title": "darkness-reload", "disks": disks,
         "registered": {"accept_disk3": {"path": str(disk3), "sha256": disk3_sha256},
@@ -796,7 +807,38 @@ def _prepare_darkness_spare_reload(run: pathlib.Path, disk3: pathlib.Path, disk3
         SPARE: {"path": str(spare), "sha256": fetched[SPARE]},
         "spare_vault": held or {"items": 0, "coins": [0, 0, 0], "sha256": None},
         "accept_summary": {"path": str(accept_summary), "sha256": sha256(accept_summary)},
+        **({} if seed is None else {"disk3_seed": seed}),
     }
+
+
+def _seed_disk3(path: pathlib.Path, loaded: str, rows: int,
+                summary: dict[str, Any]) -> dict[str, Any]:
+    """Write `rows` of the control letter's vault over `loaded`'s on the disk 3 copy at `path`.
+
+    Returns the manifest's `disk3_seed`. Raises `RouteError` when the summary names no control
+    letter, the loaded-letter vault already holds rows or coins, or `rows` is out of bounds.
+    """
+    try:
+        control = summary["spare_vault"]["control_letter"]
+        disk = amiga_adf.AmigaDisk.open(path)
+        held = vault_evidence(disk, loaded)
+        if held is None or held["items"] or any(held["coins"]):
+            raise RouteError(f"vault {loaded} on disk 3 is not empty, so a seed would not be "
+                             "the only vault there")
+        data = _seeded_vault_bytes(disk.read_file(amiga_savegame.pod_vault_path(control)), rows)
+        vault_path = amiga_savegame.pod_vault_path(loaded)
+        name = disk.lookup(vault_path).name
+        disk.remove_file(vault_path)
+        disk.write_file(vault_path.rsplit("/", 1)[0] + "/" + name, data)
+        problems = disk.verify()
+        if problems:
+            raise RouteError(f"the seeded disk 3 fails verification: {problems}")
+        disk.save(path)
+        return {"letter": loaded, "from_letter": control, **_vault_reading(disk, loaded)}
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the accept summary has no spare_vault control letter: {exc!r}") from exc
+    except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
+        raise RouteError(f"a disk 3 seed of {rows} rows cannot be made: {exc}") from exc
 
 
 def spare_title_for(name: str, manifest: dict, title: AmigaTitle, command: str) -> AmigaTitle:
@@ -813,7 +855,7 @@ def spare_title_for(name: str, manifest: dict, title: AmigaTitle, command: str) 
         if command != "measure":
             raise RouteError("a reload from the spare disk writes nothing and runs as measure")
         try:
-            held = manifest["spare_vault"]
+            held = manifest.get("disk3_seed") or manifest["spare_vault"]
             return spare_reload_title(manifest["loaded_letter"], held["items"],
                                       any(held["coins"]))
         except (KeyError, TypeError) as exc:

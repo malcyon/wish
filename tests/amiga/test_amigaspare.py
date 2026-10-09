@@ -573,6 +573,116 @@ def test_a_spare_source_that_changes_during_preparation_stops_the_run(pinned, mo
         route_darkness._prepare_darkness(pinned / "run", None, "B", spare=spare)
 
 
+# Seeding disk 3's loaded-letter vault for the reload.
+
+def _accepted_with_control(tmp_path, *, loaded_vault=EMPTY_BYTES, control="F"):
+    """`_accepted`, but disk 3 holds three rows in Vault F and `loaded_vault` in Vault G."""
+    disk3, _sha, summary, spare = _accepted(tmp_path)
+    vaults = {**_empty_vaults(), "F": amiga_savegame.pod_vault_to_amiga(THREE_ROWS),
+              "G": loaded_vault}
+    disk3.write_bytes(_disk("POD 3", [("B", _slot())], vaults).to_bytes())
+    sha = hashlib.sha256(disk3.read_bytes()).hexdigest()
+    data = json.loads(summary.read_text())
+    data["fetched"]["disk3"]["sha256"] = sha
+    data["spare_vault"] = {"control_letter": control}
+    summary.write_text(json.dumps(data))
+    return disk3, sha, summary, spare
+
+
+THREE_ROWS = dos_codec.PodVault(10, 20, 30, tuple(bytes([n]) + bytes(62) for n in (1, 2, 3)))
+
+
+def test_a_disk3_seed_writes_the_control_vaults_first_rows_to_the_run_copy_only(reload_pinned):
+    disk3, sha, summary, spare = _accepted_with_control(reload_pinned)
+    before = disk3.read_bytes()
+    manifest = route_darkness._prepare_darkness_spare_reload(
+        reload_pinned / "run", disk3, sha, summary, spare, disk3_seed_rows=2)
+    working = AmigaDisk.open(reload_pinned / "run" / "disk3.adf")
+    control = amiga_savegame.pod_read_vault(working, "F")
+    assert len(control.items) == 3
+    assert amiga_savegame.pod_read_vault(working, "G").items == control.items[:2]
+    assert disk3.read_bytes() == before
+    assert manifest["disks"]["disk3"]["sha256"] == hashlib.sha256(
+        (reload_pinned / "run" / "disk3.adf").read_bytes()).hexdigest() != sha
+    assert manifest["registered"]["accept_disk3"] == {"path": str(disk3), "sha256": sha}
+    seed = manifest["disk3_seed"]
+    assert seed["letter"] == "G" and seed["from_letter"] == "F" and seed["items"] == 2
+    assert seed["coins"] == [0, 0, 0]
+    json.dumps(manifest)
+
+
+def test_a_reload_without_a_disk3_seed_leaves_disk_3_and_records_none(reload_pinned):
+    disk3, sha, summary, spare = _accepted_with_control(reload_pinned)
+    manifest = route_darkness._prepare_darkness_spare_reload(
+        reload_pinned / "run", disk3, sha, summary, spare)
+    assert "disk3_seed" not in manifest and manifest["disks"]["disk3"]["sha256"] == sha
+
+
+@pytest.mark.parametrize("rows", [0, -1, 3, 4])
+def test_a_disk3_seed_outside_the_control_vaults_rows_writes_no_run(reload_pinned, rows):
+    disk3, sha, summary, spare = _accepted_with_control(reload_pinned)
+    with pytest.raises(RouteError, match="disk 3 seed"):
+        route_darkness._prepare_darkness_spare_reload(
+            reload_pinned / "run", disk3, sha, summary, spare, disk3_seed_rows=rows)
+
+
+def test_a_disk3_seed_stops_on_a_loaded_vault_that_holds_rows(reload_pinned):
+    disk3, sha, summary, spare = _accepted_with_control(
+        reload_pinned, loaded_vault=amiga_savegame.pod_vault_to_amiga(THREE_ROWS))
+    with pytest.raises(RouteError, match="not empty"):
+        route_darkness._prepare_darkness_spare_reload(
+            reload_pinned / "run", disk3, sha, summary, spare, disk3_seed_rows=1)
+
+
+def test_prepare_blocks_a_disk3_seed_without_a_spare_or_on_another_title(tmp_path, monkeypatch):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+    seen = []
+
+    def fake(run, *args):
+        seen.append(args)
+        scratch.ensure(run)
+        return {"title": "darkness-reload", "names_a": NAMES}
+
+    monkeypatch.setattr(acceptance, "_prepare_darkness_spare_reload", fake)
+    reload = dict(specimen=tmp_path / "d3", specimen_sha256="ab",
+                  accept_summary=tmp_path / "s.json")
+    with pytest.raises(RouteError, match="--disk3-seed-rows is for"):
+        acceptance.prepare(acceptance.DARKNESS_RELOAD, "r1", disk3_seed_rows=1, **reload)
+    with pytest.raises(RouteError, match="--disk3-seed-rows is for"):
+        acceptance.prepare(acceptance.DARKNESS, "r2", spare=tmp_path / "sp", disk3_seed_rows=1)
+    assert not seen
+    acceptance.prepare(acceptance.DARKNESS_RELOAD, "r3", spare=tmp_path / "sp",
+                       disk3_seed_rows=1, **reload)
+    assert seen == [(tmp_path / "d3", "ab", tmp_path / "s.json", tmp_path / "sp", 1)]
+
+
+def test_the_cli_hands_the_disk3_seed_rows_to_prepare_and_blocks_other_routes(
+        tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(acceptance, "prepare",
+                        lambda title, run_id, **kw: seen.append(kw) or tmp_path / "p.json")
+    base = ["prepare", "--title", "darkness-reload", "--run-id", "r", "--spare-disk", "s.adf"]
+    assert acceptance.main([*base, "--disk3-seed-rows", "3"]) == 0
+    assert seen[0]["disk3_seed_rows"] == 3
+    assert acceptance.main(base) == 0 and "disk3_seed_rows" not in seen[1]
+    assert acceptance.main(["prepare", "--title", "darkness-reload", "--run-id", "r",
+                            "--disk3-seed-rows", "3"]) == 2
+    assert acceptance.main(["prepare", "--title", "darkness", "--run-id", "r",
+                            "--spare-disk", "s.adf", "--disk3-seed-rows", "3"]) == 2
+    assert len(seen) == 2
+
+
+def test_spare_title_for_lists_the_disk3_seed_rows_when_present_and_the_spares_otherwise():
+    title = acceptance.DARKNESS_RELOAD
+    base = {SPARE: {}, "loaded_letter": "G",
+            "spare_vault": {"items": 2, "coins": [0, 0, 0]}}
+    seeded = {**base, "disk3_seed": {"items": 3, "coins": [0, 0, 0]}}
+    plain = route_darkness.spare_title_for("darkness-reload", base, title, "measure")
+    got = route_darkness.spare_title_for("darkness-reload", seeded, title, "measure")
+    assert plain == route_darkness.spare_reload_title("G", 2, False)
+    assert got == route_darkness.spare_reload_title("G", 3, False) != plain
+
+
 # Seeding the spare's loaded-letter vault.
 
 THREE = dos_codec.PodVault(10, 20, 30, tuple(bytes([n]) + bytes(62) for n in (1, 2, 3)))
