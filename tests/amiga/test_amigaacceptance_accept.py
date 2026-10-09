@@ -1337,3 +1337,24 @@ def test_the_rulebook_memory_target_reads_the_holders_own_emulator():
     options = acceptance._draw_options(types.SimpleNamespace(rulebook_draws=2, rulebook_records=None),
                                        "wish282-a")
     assert options["target"].debugger.holder == "wish282-a"
+
+
+class RetryingGuest(AcceptGuest):
+    """Takes one timed-out shot at its first capture and reports the retry as `WinGuest` does."""
+
+    on_shot_retry = None
+
+    def capture(self, state, raw, cropped, timeout=None):
+        if self.on_shot_retry is not None and not getattr(self, "retried", False):
+            self.retried = True
+            self.on_shot_retry(state, winuaesession.RouteError("winvm ssh exceeded its 20.0s limit"))
+        super().capture(state, raw, cropped, timeout)
+
+
+def test_a_retried_shot_writes_one_shot_retry_row(tmp_path, clock, readings):
+    _accept(tmp_path, clock, guest=RetryingGuest(clock),
+            guard=MapGuard(set(MapGuard.ALL) - {"camp"}))
+    rows = [e for e in _events(tmp_path) if e["event"] == "shot_retry"]
+    assert len(rows) == 1
+    assert rows[0]["attempt"] == 1 and "exceeded its 20.0s limit" in rows[0]["error"]
+    assert isinstance(rows[0]["state"], str) and rows[0]["remaining"] > 0

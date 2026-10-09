@@ -12,9 +12,10 @@ import pathlib
 import re
 import signal
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from tools.amiga import amigadrive, amigakeys
 
@@ -40,6 +41,9 @@ HOLDER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 class RouteError(RuntimeError):
     """A source, screen, lane action or fetched image failed its guard."""
 
+class ShotTimedOut(RouteError):
+    """One screenshot call ran out of time; a later call may still succeed."""
+
 class Terminated(BaseException):
     """The wrapper's `timeout` sent SIGTERM; a `BaseException` so a `finally` still runs."""
 
@@ -56,6 +60,8 @@ class WinGuest:
         self.holder: str | None = None
         #: Where the last frame came from: `source`, the emulator `pid` and WinUAE's shot `counter`.
         self.last_shot: dict[str, Any] | None = None
+        #: Called with the state name and the error each time `capture` retries a timed-out shot.
+        self.on_shot_retry: Callable[[str, RouteError], None] | None = None
 
     @staticmethod
     def remote_path(issue: str, holder: str, key: str) -> str:
@@ -331,6 +337,8 @@ class WinGuest:
 
         try:
             info = amigadrive.shot(holder, raw, run=self._run, timeout=allowed)
+        except amigadrive.ShotTimeout as exc:
+            raise ShotTimedOut(str(exc)) from exc
         except amigadrive.ShotError as exc:
             raise RouteError(str(exc)) from exc
         self.last_shot = {"source": "winuae-pipe", "pid": info["pid"], "counter": info["counter"]}
@@ -346,18 +354,41 @@ class WinGuest:
         """Grab until two consecutive crops of the Amiga screen are identical."""
         started, previous, shots = time.monotonic(), None, 0
         holder = self._holder()
+        left: float | None = None
         while True:
-            left = timeout - (time.monotonic() - started)
+            # One reading per decision: a retry that passed its own check must not meet a
+            # second reading at the loop top that has since dropped under a whole shot.
+            if left is None:
+                left = timeout - (time.monotonic() - started)
             # A short shot risks a timeout, so only the first one is allowed to be
             # short: a failure capture with little time left must still leave a frame.
             if left <= 0 or (left < SHOT_SECONDS and shots):
                 raise RouteError(f"{state} did not settle inside {timeout:.0f}s")
             shots += 1
-            self._take(holder, raw, cropped, min(SHOT_SECONDS, left))
+            try:
+                self._take(holder, raw, cropped, min(SHOT_SECONDS, left))
+            except ShotTimedOut as exc:
+                # A slow round trip says nothing about the emulator, so ask again while
+                # the budget still holds a whole shot; any other failure ends the capture.
+                left = timeout - (time.monotonic() - started)
+                if left < SHOT_SECONDS:
+                    raise
+                self._report_retry(state, exc)
+                continue
+            left = None
             frame = cropped.read_bytes()
             if previous == frame:
                 return
             previous = frame
+
+    def _report_retry(self, state: str, error: RouteError) -> None:
+        """Tell `on_shot_retry` about a retry; a hook that fails must not end the capture."""
+        if self.on_shot_retry is None:
+            return
+        try:
+            self.on_shot_retry(state, error)
+        except Exception as exc:  # noqa: BLE001
+            print(f"on_shot_retry failed for {state}: {exc!r}", file=sys.stderr)
 
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path,
              timeout: float) -> bool:

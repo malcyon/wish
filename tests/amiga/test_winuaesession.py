@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import pathlib
+import subprocess
 import types
 
 import pytest
@@ -406,3 +407,100 @@ def test_a_guest_stage_snapshot_hands_the_name_hash_and_count_to_the_pipe():
     guest._pipe = _RecordingPipe()
     assert guest.stage_snapshot("resume", "h", "ab" * 32, 23578) == "staged"
     assert guest._pipe.calls == [("stage_snapshot", "resume", "h", "ab" * 32, 23578)]
+
+
+class SlowGuest(Guest):
+    """A `Guest` whose replies may be exceptions, each reply costing `cost` seconds of the clock."""
+
+    def __init__(self, replies, clock, cost=20.0):
+        super().__init__(replies)
+        self.clock, self.cost = clock, cost
+
+    def _run(self, *args, timeout):  # type: ignore[override]
+        self.sent.append(args)
+        self.clock.now += self.cost
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def _timeout():
+    error = winuaesession.RouteError("winvm ssh exceeded its 20.0s limit")
+    error.__cause__ = subprocess.TimeoutExpired("winvm", 20.0)
+    return error
+
+
+def test_a_timed_out_shot_is_retried_while_the_budget_holds_another_shot(tmp_path, clock):
+    guest = SlowGuest([_timeout(), _shot(1), _shot(2)], clock, cost=6.0)
+    guest.holder = "h"
+    retries = []
+    guest.on_shot_retry = lambda state, error: retries.append((state, str(error)))
+    guest.capture("world", tmp_path / "r.png", tmp_path / "c.png", timeout=120)
+    assert [state for state, _ in retries] == ["world"]
+    assert len(guest.sent) == 3
+
+
+def test_a_timed_out_shot_with_no_budget_for_another_still_fails(tmp_path, clock):
+    guest = SlowGuest([_timeout(), _shot(1)], clock, cost=20.0)
+    guest.holder = "h"
+    with pytest.raises(winuaesession.ShotTimedOut, match="exceeded its 20.0s limit"):
+        guest.capture("world", tmp_path / "r.png", tmp_path / "c.png", timeout=30)
+    assert len(guest.sent) == 1
+
+
+def test_a_guest_failure_line_is_not_retried_by_capture(tmp_path, clock):
+    guest = SlowGuest(["fail DBG sc wrote no file in C:\\x (reply 404, last counter 12)", _shot(1)],
+                      clock, cost=1.0)
+    guest.holder = "h"
+    with pytest.raises(winuaesession.RouteError, match="wrote no file"):
+        guest.capture("world", tmp_path / "r.png", tmp_path / "c.png", timeout=120)
+    assert len(guest.sent) == 1
+
+
+def test_a_timeout_just_under_a_whole_shot_of_budget_logs_no_retry(tmp_path, clock):
+    guest = SlowGuest([_timeout(), _shot(1)], clock, cost=6.0)
+    guest.holder = "h"
+    retries = []
+    guest.on_shot_retry = lambda state, error: retries.append(state)
+    with pytest.raises(winuaesession.ShotTimedOut, match="exceeded its 20.0s limit"):
+        guest.capture("world", tmp_path / "r.png", tmp_path / "c.png", timeout=25.9)
+    assert retries == []
+
+
+def test_a_retry_is_not_followed_by_a_second_clock_reading_that_ends_the_capture(
+        tmp_path, clock, monkeypatch):
+    # The reading that allows the retry shows 20.005 s left; the next one would show 19.995.
+    def tick():
+        now = clock.now
+        clock.now += 0.01
+        return now
+
+    monkeypatch.setattr(winuaesession.time, "monotonic", tick)
+    costs = [5.975, 0.0, 0.0]
+
+    class Guest3(SlowGuest):
+        def _run(self, *args, timeout):  # type: ignore[override]
+            self.cost = costs.pop(0)
+            return super()._run(*args, timeout=timeout)
+
+    guest = Guest3([_timeout(), _shot(1), _shot(2)], clock)
+    guest.holder = "h"
+    retries = []
+    guest.on_shot_retry = lambda state, error: retries.append(state)
+    # The retry's shot is taken; only the confirming shot has no whole 20 s left.
+    with pytest.raises(winuaesession.RouteError, match="did not settle"):
+        guest.capture("world", tmp_path / "r.png", tmp_path / "c.png", timeout=26.0)
+    assert retries == ["world"] and len(guest.sent) == 2
+
+
+def test_a_failing_retry_hook_does_not_end_the_capture(tmp_path, clock, capsys):
+    guest = SlowGuest([_timeout(), _shot(1), _shot(2)], clock, cost=1.0)
+    guest.holder = "h"
+
+    def broken(state, error):
+        raise OSError("disk full")
+
+    guest.on_shot_retry = broken
+    guest.capture("world", tmp_path / "r.png", tmp_path / "c.png", timeout=120)
+    assert "disk full" in capsys.readouterr().err

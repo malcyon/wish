@@ -2411,6 +2411,16 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     if title is not None:
         log("interstitials_without_guard", screens=result["interstitials_without_guard"])
 
+    retries: dict[str, int] = {}
+
+    def log_shot_retry(state: str, error: BaseException) -> None:
+        retries[state] = retries.get(state, 0) + 1
+        log("shot_retry", state=state, error=str(error), attempt=retries[state],
+            remaining=round(route_end - time.monotonic(), 1))
+
+    if hasattr(watch._guest, "on_shot_retry"):
+        watch._guest.on_shot_retry = log_shot_retry
+
     def route_limit(cap: float) -> float:
         left = route_end - time.monotonic()
         if left <= 0:

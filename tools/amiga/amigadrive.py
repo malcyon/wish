@@ -108,6 +108,10 @@ class ShotError(RuntimeError):
     """WinUAE's screenshot did not come back."""
 
 
+class ShotTimeout(ShotError):
+    """The `winvm ssh` call for the screenshot hit its time limit; the emulator may be fine."""
+
+
 #: Per holder: the counter WinUAE reported with its last shot.
 _last_counter: dict[str, int] = {}
 
@@ -118,7 +122,7 @@ def shot(holder: str, out: pathlib.Path, run: Callable[..., str] | None = None,
 
     `run(*winvm_args, timeout=...)` returns the guest's output and defaults to
     `winvm`.  `ShotError` carries the guest's `fail` line, or says the 999-shot
-    limit is spent.
+    limit is spent; `ShotTimeout` says the call ran out of time.
     """
     run = run or (lambda *args, timeout: _winvm(*args, timeout=int(timeout) + 1))
     counter = _last_counter.get(holder, 0)
@@ -128,7 +132,13 @@ def shot(holder: str, out: pathlib.Path, run: Callable[..., str] | None = None,
         png = winvmguest.decode_shot(text) if found else None
     except (SystemExit, RuntimeError, subprocess.TimeoutExpired) as exc:
         text, found, png = str(exc), None, None
+        timed_out = isinstance(exc, subprocess.TimeoutExpired) or isinstance(
+            exc.__cause__, subprocess.TimeoutExpired)
+    else:
+        timed_out = False
     if png is None:
+        if timed_out:
+            raise ShotTimeout(f"winuae.ps1 shot returned {text[:200]!r}")
         if "999 screenshots" in text or ("wrote no file" in text and counter >= SHOT_LIMIT):
             raise ShotError(f"WinUAE has written its {SHOT_LIMIT} screenshots for this emulator "
                             "process; restart the run")
