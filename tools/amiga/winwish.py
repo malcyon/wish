@@ -1929,6 +1929,8 @@ def main(argv: list[str] | None = None,
     args = _parser().parse_args(argv)
     guest = guest or Guest()
     try:
+        if args.cmd in ("start", "restart") and args.travel_targets and not args.reseed:
+            raise WinwishError("--travel-targets needs --reseed")
         if args.cmd == "fetch":
             print(fetch(guest, args.sha, pathlib.Path(args.dest) if args.dest else None))
         elif args.cmd == "up":

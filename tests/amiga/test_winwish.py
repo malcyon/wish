@@ -1545,6 +1545,15 @@ def test_a_reseed_writes_the_staged_travel_targets(verb):
 
 
 @pytest.mark.parametrize("verb", ["start", "restart"])
+def test_travel_targets_without_a_reseed_are_an_error(verb, capsys):
+    run = FakeRun()
+    argv = [verb, "--holder", "h", "--travel-targets", "pool-of-radiance=20"]
+    assert winwish.main(argv, guest=winwish.Guest(run)) == 1
+    assert "--travel-targets needs --reseed" in capsys.readouterr().err
+    assert not run.calls
+
+
+@pytest.mark.parametrize("verb", ["start", "restart"])
 def test_a_reseed_without_travel_targets_writes_none(verb):
     run = FakeRun()
     assert winwish.main([verb, "--holder", "h", "--reseed"], guest=winwish.Guest(run)) == 0
