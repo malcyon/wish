@@ -234,11 +234,11 @@ def test_the_final_shot_waits_for_the_gate_and_then_the_settle_time(world):
     assert world.events()[-3]["event"] == "settle"
 
 
-def test_a_gate_that_never_passes_ends_at_the_budget(world):
+def test_a_gate_that_never_passes_ends_at_the_settle_budget(world):
     world.gate_at = 1e9
     world.drive(Travel(polls=1), budget=10.0)
     settle = [e for e in world.events() if e["event"] == "settle"]
-    assert settle[0]["gate"] is False and settle[0]["waited"] <= 10.0 + ftr.POLL_SECONDS
+    assert settle[0]["gate"] is False and settle[0]["waited"] <= ftr.SETTLE_BUDGET_SECONDS + ftr.POLL_SECONDS
 
 
 def test_a_gate_that_never_passes_is_reported_unsettled_and_exits_nonzero(world, monkeypatch,
@@ -778,6 +778,13 @@ def test_the_settle_wait_is_bounded_by_its_own_budget_not_the_runs(world):
     world.drive(Travel(polls=1), budget=1200.0)
     settle = [e for e in world.events() if e["event"] == "settle"]
     assert settle[0]["waited"] <= ftr.SETTLE_BUDGET_SECONDS + ftr.POLL_SECONDS
+
+
+def test_the_settle_wait_is_the_full_budget_when_the_run_budget_is_smaller(world):
+    world.gate_at = 1e9
+    world.drive(Travel(polls=1), budget=60.0)
+    settle = [e for e in world.events() if e["event"] == "settle"]
+    assert settle[0]["waited"] >= ftr.SETTLE_BUDGET_SECONDS
 
 
 def test_settle_start_is_logged_before_the_wait_ends(world):

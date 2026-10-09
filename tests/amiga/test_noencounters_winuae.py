@@ -496,5 +496,5 @@ def test_a_row_whose_area_is_not_loaded_is_stopped_with_that_said_and_nothing_is
     pipe.put(address, b"\x01" * len(STATEMENT))
     result = switch(pipe, "pool-of-radiance", state).on()
     stopped = [r for r in result["rows"] if r.get("row") and "stopped" in r]
-    assert any("loaded script is not this row's area" in r["stopped"] for r in stopped)
+    assert any("do not match its expected hash" in r["stopped"] for r in stopped)
     assert pipe.get(address, len(STATEMENT)) == b"\x01" * len(STATEMENT)

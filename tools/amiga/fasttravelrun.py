@@ -82,7 +82,7 @@ BUDGET_SECONDS = 150.0
 SHOT_SECONDS = 2.0
 #: How long an unanswered `--answer` waits for the screen once nothing else is pending.
 ANSWER_SECONDS = 20.0
-#: The longest the final wait for the menu gate lasts; a game question never passes it.
+#: The longest the wait for the menu gate after each leg lasts.
 SETTLE_BUDGET_SECONDS = 180.0
 #: Seconds the game takes to act on a key, after it is pressed.
 SETTLE_SECONDS = 3.0
@@ -190,7 +190,7 @@ def _peek(target, title, variables, why: str, log: Log) -> None:
             r.as_log() for r in amigavars.read_variables(target, title, variables)])
 
 
-def _settle(target, row, log: Log, sleep, clock, budget: float) -> bool:
+def _settle(target, row, log: Log, sleep, clock) -> bool:
     """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
 
     The trip is idle when the area byte has changed, but the game is still
@@ -198,9 +198,9 @@ def _settle(target, row, log: Log, sleep, clock, budget: float) -> bool:
     Returns whether the gate passed.
     """
     began = clock()
-    budget = min(budget, SETTLE_BUDGET_SECONDS)
-    log("settle_start", budget=budget)
-    while not amigatrip.gate(target, row) and clock() - began < budget:
+    log("settle_start", budget=SETTLE_BUDGET_SECONDS)
+    while (not amigatrip.gate(target, row)
+           and clock() - began < SETTLE_BUDGET_SECONDS):
         sleep(POLL_SECONDS)
     passed = bool(amigatrip.gate(target, row))
     log("settle", gate=passed, waited=round(clock() - began, 3))
@@ -304,7 +304,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         _disarm(fasttravel, target)
         log("timeout", budget=budget)
     if summary["result"] == "idle":
-        summary["settled"] = _settle(target, row, log, sleep, clock, budget)
+        summary["settled"] = _settle(target, row, log, sleep, clock)
     screen.take("after")
     last = _reading(target, row)
     seen(last["area"])

@@ -248,11 +248,12 @@ class EncounterSwitch:
                     if address not in self.blocked:
                         self.blocked.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
-                                     "stopped": "the loaded script is not this "
-                                                f"row's area: the {STATEMENT} "
-                                                f"bytes there hash to "
-                                                f"{digest(now)}, not "
-                                                f"{row.digest}"})
+                                     "stopped": f"the {STATEMENT} bytes at "
+                                                "the row's address do not match "
+                                                f"its expected hash ({digest(now)}"
+                                                f", not {row.digest}), for "
+                                                "example because its area is "
+                                                "not loaded"})
                     continue
                 self.blocked.discard(address)
                 changed = bytearray(now)
