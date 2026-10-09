@@ -117,6 +117,9 @@ class PartyRow:
     #: In an item node: the three hidden-name bits.
     hidden: Spot
     quickfight: Spot | None
+    #: The control byte; bit 7 marks a companion or charmed member, whom the
+    #: game's own escape from quickfight leaves alone.
+    control: Spot | None = None
     combat_value: int = 5
     #: Action names whose field was written, seen on the game's own screen and
     #: kept across a game step; each row says what was measured.
@@ -190,7 +193,7 @@ def _longwords(start: int, count: int = 1) -> tuple[int, ...]:
     return tuple(start + 4 * i for i in range(count))
 
 
-def _later(deltas: amiga_port.AmigaDeltas, quickfight: int) -> dict:
+def _later(deltas: amiga_port.AmigaDeltas, quickfight: int, control: int) -> dict:
     """The field spots Curse and Silver Blades share, through their deltas."""
     def at(name: str) -> int:
         return deltas.offset(deltas.dos_field(name).offset)
@@ -200,7 +203,7 @@ def _later(deltas: amiga_port.AmigaDeltas, quickfight: int) -> dict:
         name=0, hp=Spot(at("hp_current")), hp_max=Spot(at("hp_max")),
         memorised=Spot(deltas.offset(memorised.offset), memorised.size),
         hidden=Spot(deltas.item_offset(0x035), 1, 0x07),
-        quickfight=Spot(quickfight))
+        quickfight=Spot(quickfight), control=Spot(control, 1, 0x80))
 
 
 #: The four titles, keyed as `amiga.MACHINES` is.
@@ -233,6 +236,7 @@ ROWS: dict[str, PartyRow] = {
         # 0x111: QUICK sets it to 1 (CONFIRMED), but writing 0 did not give
         # the character's turn menu back in a fight, so not confirmed.
         quickfight=Spot(amiga_por.AMIGA_POR_QUICKFIGHT),
+        control=Spot(0x085, 1, 0x80),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
         measured=frozenset({"combat_value"})),
     # `/Curse`: save 0x26AF8 walks `g3cf8` through +0x18E; writer 0x260C4
@@ -255,7 +259,7 @@ ROWS: dict[str, PartyRow] = {
         # hp_max 0x78: the sheet read the written maximum, but the sheet was
         # not read again after a step, so it is not measured. The fight value
         # is not measured either, so every action stays off on this title.
-        **_later(amiga_port.CURSE_DELTAS, 0x19D),
+        **_later(amiga_port.CURSE_DELTAS, 0x19D, 0xF7),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
         measured=frozenset()),
     # `/Secret`: save 0x27C10 walks `g5168` through +0x13A; writer 0x2713C
@@ -277,7 +281,7 @@ ROWS: dict[str, PartyRow] = {
         # again when 0 was written. All CONFIRMED. hp_max 0x70: the sheet read
         # the written maximum, but it was not read again after a step, so it
         # is not measured.
-        **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146),
+        **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146, 0x9A),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
                             "level-up"}),
         measured=frozenset({"combat_value"})),
@@ -311,6 +315,7 @@ ROWS: dict[str, PartyRow] = {
                     1, 0x07),
         # 0x185: read 1 on a party the computer was playing; never written.
         quickfight=Spot(amiga_pod.QUICKFIGHT),
+        control=Spot(0x093, 1, 0x80),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
                             "level-up"}),
         measured=frozenset({"hp_max", "combat_value"})),

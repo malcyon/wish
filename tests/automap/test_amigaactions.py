@@ -68,6 +68,7 @@ def make_row(confirmed=ALL, combat_legal=frozenset(), measured=MEASURED,
         hp=Spot(offset=0x10, length=1, mask=0xFF),
         memorised=Spot(offset=0x20, length=4, mask=0xFF),
         quickfight=Spot(offset=0x30, length=1, mask=0x80),
+        control=Spot(offset=0x31, length=1, mask=0x80),
         hidden=Spot(offset=6, length=1, mask=0x07))
     for field, spot in spots.items():
         setattr(row, field, spot)
@@ -167,6 +168,26 @@ def test_clear_quickfight_clears_only_its_bit(world, store):
                      Member("B", BASE + 0x100, 5, 9)]
     out = acts(store)["clear-quickfight"].apply(world.target)
     assert out.writes == ((BASE + 0x30, b"\x7f"),)
+
+
+@pytest.mark.parametrize("key", sorted(aa.amiga.MACHINES))
+def test_clear_quickfight_leaves_a_companion_alone(world, key):
+    from automap import amigaparty
+
+    row = amigaparty.ROWS[key]
+    world.row = row
+    target = Target(size=0x1000)
+    world.target = target
+    player, companion = 0x100, 0x400
+    for base, control in ((player, 0x00), (companion, 0x80)):
+        target.mem[base + row.quickfight.offset] = 0x01
+        target.mem[base + row.control.offset] = control
+    world.members = [Member("P", player, 5, 9, quickfight=True),
+                     Member("C", companion, 5, 9, quickfight=True)]
+    out = aa.AmigaClearQuickfight(key).run(target)
+    assert target.mem[player + row.quickfight.offset] == 0
+    assert target.mem[companion + row.quickfight.offset] == 1
+    assert out.writes == ((player + row.quickfight.offset, b"\x00"),)
 
 
 @pytest.mark.parametrize("name", sorted(ALL))

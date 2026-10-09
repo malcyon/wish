@@ -282,15 +282,23 @@ class AmigaIdentifyItems(_AmigaAction, engine.IdentifyItems):
 
 
 class AmigaClearQuickfight(_AmigaAction, engine.ClearQuickfight):
-    """Clear the quickfight bit on every member."""
+    """Clear the quickfight bit on every member the player controls.
+
+    A member whose control byte has bit 7 set is a companion or charmed, and
+    the game's own escape leaves that one on automatic play.
+    """
 
     def run(self, target, **kwargs) -> engine.Outcome:
         party = self._party(target)
         spot = self._spot(target, "quickfight")
         if party is None or spot is None:
             return engine.Outcome(False, "no party to read")
+        control = self._spot(target, "control")
         writes = []
         for m in party:
+            if control is not None and target.read(
+                    m.address + control.offset, 1)[0] & control.mask:
+                continue
             if m.quickfight:
                 addr = m.address + spot.offset
                 current = target.read(addr, 1)[0]
