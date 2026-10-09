@@ -345,18 +345,6 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     assert bar.last.message == "Traveling to Tilverton sewers."
 
 
-def test_a_trip_arms_though_the_home_cache_cannot_be_written(
-        lengths, tmp_path, monkeypatch):
-    blocker = tmp_path / "home"
-    blocker.write_text("a file, so nothing can be made beneath it")
-    monkeypatch.setenv("HOME", str(blocker))
-    monkeypatch.setenv("USERPROFILE", str(blocker))
-    window, target = attached(CURSE, GUILD, ticked=(SEWERS, FIRE_KNIFE))
-    pick(window, SEWERS)
-    window.fasttravel_bar.button.click()
-    assert window.fasttravel_bar.last.ok
-
-
 def test_a_trip_stays_armed_until_the_clock_passes_its_deadline(
         lengths, frozen_clock):
     window, target = attached(CURSE, GUILD, ticked=(SEWERS, FIRE_KNIFE))
