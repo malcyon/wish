@@ -79,7 +79,7 @@ a source whose title does not match `--title`:
 | `rest 5m`, `rest 1h30m`, `rest 8d` | camp `REST`, the rest time zeroed and set by key, then rested; minutes in fives; Pool's `GO STAY` random event at the end is answered `GO` (see below); in Curse a message over the continue bar that ends the rest (Tilverton's Royal Guards) gets `Return`, the map bar is required, and the party camps again, logged as `ended_by_message` |
 | `save X` | in camp, camp `SAVE` to slot X and decline the quit; at the party menu, `SAVE CURRENT GAME`; believed when `SAVGAMX.DAT` changes |
 | `train N` | Curse: roster line N (from 1), `TRAIN CHARACTER`, `YES`, and `LEARN` for any spell the level brings, back to the party menu |
-| `map` | Pools of Darkness, after `press` steps that left the party on a map (the tester's JUMP): the screen settled (quiet 1.5 s, at most 30 s), its bar required to be one of `POD_MAP_BARS` and taken as the world bar, so `camp` and `save` may follow |
+| `map` | Pools of Darkness, after `press` steps that left the party on a map (the tester's JUMP): the screen settled (quiet 1.5 s, at most 30 s), its bar required to be one of `POD_MAP_BARS` and taken as the world bar, so `camp` and `save` may follow.  A JUMP typed as `press j` and digits into an area of `POD_ARRIVAL_FIGHTS` whose fixed arrival fight the installed save would start (area 33's aerie ambush unless variable `$142` has bit 0 set) is blocked before the boot, naming the `--stage-var` that skips it |
 | `continue` | Pools of Darkness, after `press` steps that left the story bar `PRESS BUTTON OR ENTER TO CONTINUE` showing (`POD_CONTINUE_BAR`): `Return` only on that bar, then waits for it to go, and again while the same bar stays up, `POD_CONTINUE_PRESSES` at most; any other screen fails and nothing is pressed, as a blind `Return` on a tester bar would select an entry |
 | `exit` | Pools of Darkness, after `press` steps that left a menu with `EXIT` showing: `e` only on a bar of `POD_EXIT_BARS` (the treasure menu and the tester's `SELECT EXIT` prompt, never a party menu); any other screen fails and nothing is pressed.  `press e` stays blocked |
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
@@ -741,6 +741,18 @@ MOVE_ON_STAY = "STAY"
 POD_NAME_SPAN = POD_ON_NAME - POD_BACK_NAME
 #: The steps that end `begin` at Elminster's menu rather than stopping there.
 ELMINSTER_STEPS = frozenset({"vault", "move-on"})
+#: Fixed fights an area's arrival entry starts when the tester's JUMP lands the
+#: party there, by area: `(variable, mask)`, the fight skipped when the
+#: variable ANDed with the mask is not 0.  No `RANDOM` decides them, so
+#: `--no-encounters` does not cover them and a `restore` meets the same fight
+#: again.  Area 33's arrival entry (`ECL1.DAX` block 33, entry 4 at `$8014`)
+#: sets the square 8,15 facing north, then `AND 1, [$142]` at `$805B` and
+#: `IF<>` `EXIT` skip the aerie ambush (`SETUPMON` at `$8066`, the bar
+#: `POD_CONTINUE_BAR`); the arm after the fight sets the bit (`OR 1, [$142]`
+#: at `$812B`).
+POD_ARRIVAL_FIGHTS: dict[int, tuple[int, int]] = {33: (0x142, 0x01)}
+#: The tester's JUMP key on its first page; the area number is typed after it.
+POD_JUMP_KEY = "j"
 
 
 def ends_at_elminster(steps) -> bool:
@@ -8315,6 +8327,60 @@ def check_move_on(args, save: pathlib.Path, from_slot: str | None) -> None:
         raise ValueError(f"move-on: {e}") from None
 
 
+def tester_jumps(steps: list[Step]) -> list[int]:
+    """The area each `map` step's tester JUMP types: the digits pressed
+    straight after the last `press j` before that `map`, up to `press
+    Return`, with `shot` and `snapshot` steps passed over.  A `map` whose
+    presses read any other way names no area and is left out."""
+    areas = []
+    for at, step in enumerate(steps):
+        if step.kind != "map":
+            continue
+        jumps = [k for k in range(at) if steps[k].kind == "press"
+                 and steps[k].key.lower() == POD_JUMP_KEY]
+        if not jumps:
+            continue
+        digits = ""
+        for later in steps[jumps[-1] + 1:at]:
+            if later.kind in ("shot", "snapshot"):
+                continue
+            if later.kind == "press" and later.key.isdigit():
+                digits += later.key
+                continue
+            if later.kind == "press" and later.key == "Return" and digits:
+                areas.append(int(digits))
+            break
+    return areas
+
+
+def check_arrival_fights(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Block a Pools of Darkness run whose tester JUMP lands in an area of
+    `POD_ARRIVAL_FIGHTS` while the installed save, with its `--stage-var`
+    bytes, would start that area's fixed fight on arrival: the `map` step
+    after the JUMP would meet the fight's continue bar and stop."""
+    if args.title != "darkness" or from_slot is None:
+        return
+    areas = [a for a in tester_jumps([parse_step(t) for t in getattr(args, "steps", [])])
+             if a in POD_ARRIVAL_FIGHTS]
+    if not areas:
+        return
+    pty = save / f"SAVGAM{from_slot}.PTY"
+    if not pty.is_file():
+        return
+    data = bytearray(pty.read_bytes())
+    for address, value in (parse_var(t) for t in getattr(args, "stage_var", []) or []):
+        dos_savegame.put_pod_var(data, address, value)
+    for area in areas:
+        variable, mask = POD_ARRIVAL_FIGHTS[area]
+        held = dos_savegame.pod_var(bytes(data), variable)
+        if held & mask == 0:
+            raise ValueError(
+                f"the tester's JUMP to area {area} starts that area's fixed fight on "
+                f"arrival, because variable ${variable:X} reads {held} and the fight "
+                f"is skipped only when its bits {mask:#04x} are set; stage --stage-var "
+                f"{variable:X}={held | mask} (POD_ARRIVAL_FIGHTS)")
+
+
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     """Block a stage the installed save cannot take, before a slot is claimed.
 
@@ -8334,6 +8400,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     check_gate(args, save, from_slot)
     check_vault(args, save, from_slot)
     check_move_on(args, save, from_slot)
+    check_arrival_fights(args, save, from_slot)
     if getattr(args, "stage_place", None) and args.title == "darkness":
         parse_place(args.stage_place)
         pty = save / f"SAVGAM{from_slot}.PTY"

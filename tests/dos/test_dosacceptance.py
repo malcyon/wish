@@ -12916,6 +12916,68 @@ def test_map_is_for_darkness_straight_after_a_press(title, steps, text):
         da.validate_steps(_steps(*steps), title)
 
 
+#: The TREAS route of WISH-331's runs T2a and T2b: the tester's TAKE, then its
+#: JUMP to area 33 on disk side 3, `map`, camp and save.
+TESTER_TREAS_JUMP_33 = [
+    "load", *["press Down"] * 5, "press Return", "press x", "press Return", "press j",
+    "shot tester1", "press t", "continue", "press t", "press i", "press t",
+    "press Return", "exit", "exit", "exit", "press n", "press j", "shot jump",
+    "press 3", "press 3", "press Return", "press 3", "press Return", "press y",
+    "press n", "press n", "map", "camp", "save E", "read"]
+
+
+def _jump_args(tmp_path, saves, steps=TESTER_TREAS_JUMP_33, **extra):
+    args = _run_args(tmp_path, list(steps))
+    args.title, args.save, args.stage_var = "darkness", str(saves), ["16=1"]
+    for k, v in extra.items():
+        setattr(args, k, v)
+    return args
+
+
+def _aerie_save(tmp_path, aerie):
+    from goldbox import dos_savegame
+    saves = _pod_save(tmp_path, area=16)
+    data = bytearray((saves / "SAVGAMA.PTY").read_bytes())
+    dos_savegame.put_pod_var(data, 0x142, aerie)
+    (saves / "SAVGAMA.PTY").write_bytes(bytes(data))
+    return saves
+
+
+def test_tester_jumps_reads_the_area_typed_after_the_jump_key():
+    steps = [da.parse_step(t) for t in TESTER_TREAS_JUMP_33]
+    assert da.tester_jumps(steps) == [33]
+    assert da.tester_jumps([da.parse_step(t) for t in (
+        "load", "press j", "press t", "press Return", "map")]) == []
+    assert da.tester_jumps([da.parse_step(t) for t in (
+        "load", "press 3", "press Return", "map")]) == []
+
+
+def test_a_tester_jump_into_the_aerie_ambush_is_blocked_before_a_slot_is_claimed(
+        monkeypatch, tmp_path):
+    log = _fake_run(monkeypatch, tmp_path)
+    saves = _aerie_save(tmp_path, 0)
+    with pytest.raises(ValueError, match=r"area 33.*--stage-var 142=1\b"):
+        da.check_staging(_jump_args(tmp_path, saves), saves, "A")
+    with pytest.raises(ValueError, match="area 33"):
+        da.run(_jump_args(tmp_path, saves))
+    assert "claim" not in log
+    saves = _aerie_save(tmp_path, 0xC2)
+    with pytest.raises(ValueError, match=r"--stage-var 142=195\b"):
+        da.check_staging(_jump_args(tmp_path, saves), saves, "A")
+
+
+def test_a_tester_jump_to_area_33_passes_once_the_ambush_bit_is_set(tmp_path):
+    saves = _aerie_save(tmp_path, 0)
+    da.check_staging(_jump_args(tmp_path, saves, stage_var=["16=1", "142=1"]),
+                     saves, "A")
+    saves = _aerie_save(tmp_path, 0xC3)
+    da.check_staging(_jump_args(tmp_path, saves), saves, "A")
+    other = [("press 1" if t == "press 3" and i < 25 else t)
+             for i, t in enumerate(TESTER_TREAS_JUMP_33)]
+    saves = _aerie_save(tmp_path, 0)
+    da.check_staging(_jump_args(tmp_path, saves, steps=other), saves, "A")
+
+
 def test_at_map_stops_on_a_bar_that_is_not_a_measured_map_bar(tmp_path):
     game, d = _pod_driver(tmp_path)
     game.mode = "camp"
