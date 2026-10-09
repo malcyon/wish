@@ -627,3 +627,119 @@ def test_legality_lists_each_area_with_its_verdict_and_makes_no_trip(monkeypatch
 def test_without_legality_to_and_out_are_required():
     with pytest.raises(SystemExit):
         ftr.main(["--holder", "h", "--disks", "D"])
+
+
+def _fake_main(monkeypatch, tmp_path, argv, title="secret-of-the-silver-blades"):
+    """Run `main` over fakes; returns what `run_trip` saw and the fast travel built."""
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    seen = {"calls": []}
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    class F:
+        back = None
+
+        def __init__(self, key, disks):
+            seen["fasttravel"] = self
+
+    def run_trip(fasttravel, target, row, area, *args, **kwargs):
+        seen["calls"].append({"area": area, "back": kwargs.get("back", False),
+                              "row": row, "staged": fasttravel.back})
+        return {"result": "idle", "settled": True}
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", F)
+    monkeypatch.setattr(ftr, "run_trip", run_trip)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
+    seen["code"] = ftr.main(["--holder", "h", "--disks", "D", "--title", title,
+                             "--out", str(tmp_path), *argv])
+    return seen
+
+
+def test_measure_row_confirms_the_row_for_the_run_and_puts_it_back(monkeypatch, tmp_path):
+    key = "secret-of-the-silver-blades"
+    before = amigatrip.ROWS[key]
+    assert not before.confirmed
+    seen = _fake_main(monkeypatch, tmp_path, ["--to", "32", "--measure-row"])
+    row = seen["calls"][0]["row"]
+    assert row.confirmed and all(d.offered for d in row.differences)
+    assert amigatrip.ROWS[key] is before and not before.confirmed
+    logged = [json.loads(line) for line in (tmp_path / "fasttravel.jsonl").read_text().splitlines()]
+    assert [e["title"] for e in logged if e["event"] == "measure_row"] == [key]
+
+
+def test_without_measure_row_the_row_is_the_tables(monkeypatch, tmp_path):
+    seen = _fake_main(monkeypatch, tmp_path, ["--to", "32"])
+    assert seen["calls"][0]["row"] is amigatrip.ROWS["secret-of-the-silver-blades"]
+
+
+def test_measure_row_is_put_back_when_the_run_fails(monkeypatch, tmp_path):
+    key = "secret-of-the-silver-blades"
+    before = amigatrip.ROWS[key]
+
+    def boom(*a, **k):
+        raise ftr.DriverError("no")
+
+    monkeypatch.setattr(ftr, "run_trip", boom)
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    class T:
+        def __init__(self, *a):
+            pass
+
+        def locate(self):
+            return 1
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", lambda key, disks: None)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
+    with pytest.raises(SystemExit):
+        ftr.main(["--holder", "h", "--disks", "D", "--title", key, "--to", "32",
+                  "--measure-row", "--out", str(tmp_path)])
+    assert amigatrip.ROWS[key] is before
+
+
+def test_waypoint_with_back_makes_apply_back_alone_from_the_staged_square(monkeypatch, tmp_path):
+    seen = _fake_main(monkeypatch, tmp_path, ["--waypoint", "0,9,13,0", "--back"],
+                      title="pool-of-radiance")
+    assert [(c["area"], c["back"]) for c in seen["calls"]] == [(None, True)]
+    assert seen["calls"][0]["staged"] == engine.Waypoint(0, None, (9, 13, 0))
+    assert seen["code"] == 0
+
+
+def test_waypoint_accepts_hex_numbers(monkeypatch):
+    assert ftr.parse_waypoint("0x1F,3,0xa,2") == engine.Waypoint(0x1F, None, (3, 10, 2))
+
+
+def test_waypoint_without_back_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--holder", "h", "--disks", "D", "--waypoint", "0,9,13,0",
+                  "--out", str(tmp_path)])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("text", ["0,9,13", "0,9,13,x", "a,b,c,d"])
+def test_a_malformed_waypoint_is_a_usage_error(tmp_path, text):
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--holder", "h", "--disks", "D", "--waypoint", text, "--back",
+                  "--out", str(tmp_path)])
+    assert exc.value.code == 2
+
+
+def test_waypoint_with_a_destination_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        ftr.main(["--holder", "h", "--disks", "D", "--waypoint", "0,9,13,0", "--back",
+                  "--to", "3", "--out", str(tmp_path)])
+    assert exc.value.code == 2

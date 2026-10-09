@@ -16,6 +16,12 @@ area table. `--to` is the destination area id. `--answer KEY` presses KEY once, 
 door key has been taken, the area byte is still the starting area and the
 screen differs from the one before the trip (the game is asking something).
 `--back` makes `apply_back` once the trip has finished.
+`--waypoint AREA,X,Y,F` stages `fasttravel.back` as a party that stood on that
+square of that area, and with `--back` and no `--to` the run makes `apply_back`
+alone; it is staged input, for a Return no forward trip of this run produced.
+`--measure-row` makes the title's trip row confirmed, with every difference
+offered, for this process only, so a title whose row is not yet confirmed can be
+measured; the row is put back when the run ends and the log records it.
 `--peek-var V[,V...]` (hex, `$` or `0x` optional) reads script variables through
 `automap.amigavars` before and after each leg and logs them as `peek` events;
 a variable the title's map cannot address is logged with the reason. The lane claim is the
@@ -37,6 +43,8 @@ gate and then `SETTLE_SECONDS`, bounded by the same budget.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import dataclasses
 import hashlib
 import json
 import os
@@ -85,6 +93,34 @@ def _disarm(fasttravel, target) -> None:
             amigatrip.disarm(target, trip.armed)
     finally:
         fasttravel.cancel_pending()
+
+
+def parse_waypoint(text: str) -> engine.Waypoint:
+    """`AREA,X,Y,F` as the Waypoint a trip from that square would have left behind."""
+    parts = text.split(",")
+    if len(parts) != 4:
+        raise ValueError(text)
+    area, x, y, facing = (int(part, 0) for part in parts)
+    return engine.Waypoint(area, None, (x, y, facing))
+
+
+@contextlib.contextmanager
+def measuring_row(key: str, log: Callable[..., None]):
+    """Swap `key`'s trip row for a confirmed one with no held difference, then put it back.
+
+    `legality` answers `not_built` for an unconfirmed row, which would keep the
+    first live run that confirms the row from ever arming a trip.
+    """
+    original = amigatrip.ROWS[key]
+    amigatrip.ROWS[key] = dataclasses.replace(
+        original, confirmed=True,
+        differences=tuple(dataclasses.replace(d, offered=True) for d in original.differences))
+    log("measure_row", title=key, was_confirmed=original.confirmed,
+        offered=[d.name for d in original.differences if not d.offered])
+    try:
+        yield amigatrip.ROWS[key]
+    finally:
+        amigatrip.ROWS[key] = original
 
 
 class Log:
@@ -302,13 +338,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--answer", help="the key that answers the game's question")
     parser.add_argument("--back", action="store_true",
                         help="make apply_back once the trip has finished")
+    parser.add_argument("--waypoint", metavar="AREA,X,Y,F",
+                        help="stage the way back to this square; needs --back and no --to")
+    parser.add_argument("--measure-row", action="store_true",
+                        help="treat the title's trip row as confirmed, every difference offered, "
+                             "for this process only")
     parser.add_argument("--peek-var", default="",
                         help="comma-separated hex script variables to read before and after each leg")
     parser.add_argument("--budget", type=float, default=BUDGET_SECONDS,
                         help="seconds each trip may take")
     parser.add_argument("--out", help="directory for the log and screenshots")
     args = parser.parse_args(argv)
-    if not args.legality and (args.to is None or args.out is None):
+    waypoint = None
+    if args.waypoint is not None:
+        try:
+            waypoint = parse_waypoint(args.waypoint)
+        except ValueError:
+            parser.error(f"--waypoint {args.waypoint!r} is not AREA,X,Y,F")
+        if not args.back:
+            parser.error("--waypoint needs --back")
+        if args.to is not None:
+            parser.error("--waypoint is the way back of a run with no --to")
+    if not args.legality and ((args.to is None and waypoint is None) or args.out is None):
         parser.error("--to and --out are required unless --legality is given")
     if args.answer is not None:
         try:
@@ -332,16 +383,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     # area_by_id is empty for a title the C64 fast travel does not support, which
     # Pools of Darkness is; the Amiga legality check decides what is offered.
-    area = (engine.area_by_id(args.to, machine.title)
-            or goldbox_areas.area_in(args.to, machine.title))
-    if area is None:
+    area = None if args.to is None else (
+        engine.area_by_id(args.to, machine.title)
+        or goldbox_areas.area_in(args.to, machine.title))
+    if args.to is not None and area is None:
         parser.error(f"--to {args.to} is not an area of {machine.title}")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
     target = amiga.AmigaTarget(pipe, machine)
-    row = amigatrip.row_for(args.title)
     fasttravel = amigafasttravel.AmigaFastTravel(args.title, args.disks)
+    if waypoint is not None:
+        fasttravel.back = waypoint
 
     def shot(path: pathlib.Path) -> None:
         amigadrive.shot(args.holder, path)
@@ -353,17 +406,23 @@ def main(argv: list[str] | None = None) -> int:
         target.locate()
         with open(out / "fasttravel.jsonl", "w") as stream:
             log = Log(stream, time.monotonic)
-            results = [run_trip(fasttravel, target, row, area, out, shot, press, log,
-                                answer=args.answer, budget=args.budget,
-                                party=amigaparty.read_party,
-                                peek_vars=peek_vars, title=args.title)]
-            if args.back and results[0]["result"] == "idle" and not results[0]["settled"]:
-                results.append({"result": "skipped", "reason": "leg 1 never became ready"})
-            elif args.back and results[0]["result"] == "idle":
-                results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
-                                        back=True, budget=args.budget,
-                                        party=amigaparty.read_party,
-                                        peek_vars=peek_vars, title=args.title))
+            with (measuring_row(args.title, log) if args.measure_row
+                  else contextlib.nullcontext()):
+                row = amigatrip.row_for(args.title)
+                results = []
+                if area is not None:
+                    results.append(run_trip(fasttravel, target, row, area, out, shot, press, log,
+                                            answer=args.answer, budget=args.budget,
+                                            party=amigaparty.read_party,
+                                            peek_vars=peek_vars, title=args.title))
+                if args.back and results and results[0]["result"] == "idle" \
+                        and not results[0]["settled"]:
+                    results.append({"result": "skipped", "reason": "leg 1 never became ready"})
+                elif args.back and (not results or results[0]["result"] == "idle"):
+                    results.append(run_trip(fasttravel, target, row, None, out, shot, press, log,
+                                            back=True, budget=args.budget,
+                                            party=amigaparty.read_party,
+                                            peek_vars=peek_vars, title=args.title))
     except (DriverError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc
     for result in results:
