@@ -223,6 +223,10 @@ class TripRow:
     #: the step entry instead.
     came_from_areas: tuple[int, ...] = ()
     differences: tuple[Difference, ...] = ()
+    #: `(destination area, script variable, value)` stores the C64 port's walked
+    #: route makes before its `NEWECL`, which the destination's script reads.
+    #: Written ahead of the trip for the destination only.
+    arrival_writes: tuple[tuple[int, int, int], ...] = ()
 
 
 def _return_landing() -> Difference:
@@ -355,6 +359,15 @@ def departure_prologue(key: str, here: int | None, to: int,
     return out + clear_box() if row.clear_box else out
 
 
+def arrival_prologue(row, to: int) -> bytes:
+    """The `SAVE` statements of the row's `arrival_writes` for the destination
+    `to`, run ahead of the trip."""
+    row = row_for(row)
+    return b"".join(save(value, address)
+                    for area, address, value in row.arrival_writes
+                    if area == to)
+
+
 def leg_held(row: TripRow, here: int | None, to: int, back: bool,
              lengths: Mapping[int, int], to_overland: bool | None = None,
              init_areas: frozenset[int] = frozenset()) -> bool:
@@ -372,7 +385,8 @@ def leg_held(row: TripRow, here: int | None, to: int, back: bool,
     # made up front and the one made on arming agree.
     try:
         prologue = (leave_grid_prologue(row, here, to)
-                    + departure_prologue(row.key, here, to, to_overland))
+                    + departure_prologue(row.key, here, to, to_overland)
+                    + arrival_prologue(row, to))
     except ValueError:
         return True
     smallest = plan(to, (0, 0, 0), prologue=prologue)
@@ -439,7 +453,13 @@ ROWS: dict[str, TripRow] = {
         key_buffer=0x4F6C, area_file=0x7F12,
         script_file="/DISK2/ECL.GLB",
         confirmed=False,
-        differences=(_return_landing(),)),
+        differences=(_return_landing(),),
+        # The C64 row's six writes (`fasttravel.SECRET_OF_THE_SILVER_BLADES`):
+        # the Well reads its landing table through `$4C62` and latches the
+        # shaft event with `$4C2A`; the other four never store `$4CFD = $FF`.
+        arrival_writes=((0x21, 0x4C62, 1), (0x21, 0x4C2A, 1),
+                        (0x41, 0x4CFD, 0xFF), (0x44, 0x4CFD, 0xFF),
+                        (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF))),
     # CONFIRMED: code and 3 trips.
     "pools-of-darkness": TripRow(
         key="pools-of-darkness", title="Pools of Darkness",

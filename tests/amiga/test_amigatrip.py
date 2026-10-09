@@ -1736,3 +1736,51 @@ def test_a_pools_of_darkness_trip_can_write_the_overland_cell():
         == trip.save(6, 0x25) + trip.save(12, 0x26) + trip.newecl(17)
     # No spots to read it back with: tier 2 and `overland()` stay as they were.
     assert pod.grid_spots is None and pod.indoors_spot is None
+
+
+SILVER = "secret-of-the-silver-blades"
+
+#: The C64 row's values: (destination, variable, value).
+_SILVER_ARRIVALS = {
+    0x21: [(0x4C62, 1), (0x4C2A, 1)],
+    0x41: [(0x4CFD, 0xFF)], 0x44: [(0x4CFD, 0xFF)],
+    0x61: [(0x4CFD, 0xFF)], 0x62: [(0x4CFD, 0xFF)],
+}
+
+
+def _room_lengths(room):
+    """Every script is short, except area 0x20's, which leaves `room` bytes."""
+    table = _lengths()
+    table[0x20] = trip.BUFFER_SIZE - room
+    return table
+
+
+def test_the_silver_blades_arrival_writes_are_the_c64_rows():
+    from automap import fasttravel
+    assert (trip.ROWS[SILVER].arrival_writes
+            == fasttravel.SECRET_OF_THE_SILVER_BLADES.arrival_writes)
+
+
+@pytest.mark.parametrize("to, writes", sorted(_SILVER_ARRIVALS.items()))
+def test_a_silver_blades_trip_stores_its_arrival_writes(to, writes):
+    expected = b"".join(trip.save(v, a) for a, v in writes)
+    assert trip.arrival_prologue(SILVER, to) == expected
+    assert len(expected) == (12 if to == 0x21 else 6)
+
+
+@pytest.mark.parametrize("to", [0x22, 0x30, 0x40])
+def test_a_silver_blades_trip_without_arrival_writes_adds_none(to):
+    assert trip.arrival_prologue(SILVER, to) == b""
+
+
+def test_other_titles_have_no_arrival_writes():
+    assert trip.arrival_prologue(POOL, 0x21) == b""
+
+
+@pytest.mark.parametrize("to, extra", [(0x22, 0), (0x41, 6), (0x21, 12)])
+def test_leg_held_counts_the_arrival_writes(to, extra):
+    row = trip.ROWS[SILVER]
+    # The 21-byte trip fits exactly in 21 bytes of room.
+    assert not trip.leg_held(row, 0x20, to, False, _room_lengths(21 + extra))
+    if extra:
+        assert trip.leg_held(row, 0x20, to, False, _room_lengths(20 + extra))

@@ -249,7 +249,8 @@ class AmigaFastTravel(engine.FastTravel):
         try:
             prologue = (trips.leave_grid_prologue(row, here, to)
                         + trips.departure_prologue(self.key, here, to,
-                                                   self._outdoors(to), read))
+                                                   self._outdoors(to), read)
+                        + trips.arrival_prologue(row, to))
             trip = trips.plan(to, arrival, overland, prologue=prologue)
             init = self.init_areas(row)
             tier = trips.free_tail(row, here, lengths, trip, init)
