@@ -49,6 +49,13 @@ def isolated(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _journal_in_tmp(tmp_path, monkeypatch):
+    """Each test has its own trip journal, so parallel workers on one machine
+    do not replace or lock one file in the player's cache."""
+    monkeypatch.setattr(trips, "journal_dir", lambda: tmp_path / "journal")
+
+
+@pytest.fixture(autouse=True)
 def frozen_clock(monkeypatch):
     """An armed trip's deadline never passes on a slow runner; a test moves the
     returned list's one entry to pass it. Only amigafasttravel sees the held
@@ -336,6 +343,18 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     assert bar.back_button.isEnabled()
     # Only the arming line was said; a trip that happened adds none.
     assert bar.last.message == "Traveling to Tilverton sewers."
+
+
+def test_a_trip_arms_though_the_home_cache_cannot_be_written(
+        lengths, tmp_path, monkeypatch):
+    blocker = tmp_path / "home"
+    blocker.write_text("a file, so nothing can be made beneath it")
+    monkeypatch.setenv("HOME", str(blocker))
+    monkeypatch.setenv("USERPROFILE", str(blocker))
+    window, target = attached(CURSE, GUILD, ticked=(SEWERS, FIRE_KNIFE))
+    pick(window, SEWERS)
+    window.fasttravel_bar.button.click()
+    assert window.fasttravel_bar.last.ok
 
 
 def test_a_trip_stays_armed_until_the_clock_passes_its_deadline(
