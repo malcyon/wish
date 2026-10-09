@@ -256,13 +256,16 @@ def pod_dos_files(party: Any) -> dict[str, bytes | None]:
     return written
 
 
-def pod_written_encumbrance(member: Any) -> int:
-    """The `encumbrance` the DOS rewrite stores for this Pools of Darkness
-    member: the load as read, moved by the change in money and item weight.
+def pod_written_encumbrance(member: Any, port: str = "dos") -> int:
+    """The `encumbrance` a Save As to `port` is expected to hold for this
+    Pools of Darkness member.
 
-    The sheet's own record never moves it, so a Save As expects this value
-    rather than the sheet's. An Amiga member is rewritten from the DOS
-    rendering of its block, which is what its sheet was built from.
+    A DOS destination stores the load as read, moved by the change in money
+    and item weight; the sheet's own record never moves it. An Amiga
+    destination holds money plus item weight of the rewritten record, because
+    the Amiga game rebuilds the word on load and a stale DOS figure cannot
+    survive there. An Amiga member is rewritten from the DOS rendering of its
+    block, which is what its sheet was built from.
     """
     from .podsheet import item_blocks
 
@@ -275,6 +278,11 @@ def pod_written_encumbrance(member: Any) -> int:
     result = pod_rewrite.rewrite_dos(
         native, member.record_original, member.record.to_bytes(),
         None if items_now is None else was, items_now)
+    if port == "amiga":
+        size = pod_rewrite.DELTAS.item_size
+        nodes = [result.items[i:i + size]
+                 for i in range(0, len(result.items), size)]
+        return pod_rewrite._load(result.record, nodes)
     return PodSheetRecord(result.record).get("encumbrance")
 
 
@@ -2184,7 +2192,7 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     copy; anything else is the registered conversion, which is **blocked
     outright if it would lose a field**, before a byte of the destination is
     touched. The load a Pools of Darkness save is expected to hold is the one
-    the writer stores (`pod_written_encumbrance`).
+    the destination's writer holds (`pod_written_encumbrance`).
 
     **The destination is never the save it came from.** Writing a Save As
     over its own source destroys the thing it is reading, and for a copy of
@@ -2248,7 +2256,8 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
     expected = [edited_record(member) for member in party.members]
     for member, record in zip(party.members, expected):
         if isinstance(record, PodSheetRecord):
-            record.set("encumbrance", pod_written_encumbrance(member))
+            record.set("encumbrance",
+                       pod_written_encumbrance(member, port))
     expected_names = None
     if port in ("dos", "amiga"):
         # The name a DOS or Amiga destination should be read back holding.

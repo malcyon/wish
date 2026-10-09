@@ -342,6 +342,18 @@ def _published_load(party, tmp_path, port):
     return back.record.get("encumbrance")
 
 
+def test_a_stale_stored_load_is_expected_only_by_a_dos_destination(
+        monkeypatch, tmp_path):
+    folder, _ = _weighted_party(monkeypatch, tmp_path)
+    record = podsheet.PodSheetRecord((folder / "CHRDATA1.SAV").read_bytes())
+    balanced = record.get("encumbrance")
+    record.set("encumbrance", balanced + 4)
+    (folder / "CHRDATA1.SAV").write_bytes(record.to_bytes())
+    [member] = Party(convert.Source.detect(folder, slot="A")).members
+    assert saveplan.pod_written_encumbrance(member, "dos") == balanced + 4
+    assert saveplan.pod_written_encumbrance(member, "amiga") == balanced
+
+
 @pytest.mark.parametrize("port", ["amiga", "dos"])
 def test_an_edited_quantity_moves_the_expected_load_on_every_route(
         monkeypatch, tmp_path, port):
