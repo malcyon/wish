@@ -112,12 +112,12 @@ def measuring_row(key: str, log: Callable[..., None]):
     first live run that confirms the row from ever arming a trip.
     """
     original = amigatrip.ROWS[key]
-    amigatrip.ROWS[key] = dataclasses.replace(
-        original, confirmed=True,
-        differences=tuple(dataclasses.replace(d, offered=True) for d in original.differences))
-    log("measure_row", title=key, was_confirmed=original.confirmed,
-        offered=[d.name for d in original.differences if not d.offered])
     try:
+        amigatrip.ROWS[key] = dataclasses.replace(
+            original, confirmed=True,
+            differences=tuple(dataclasses.replace(d, offered=True) for d in original.differences))
+        log("measure_row", title=key, was_confirmed=original.confirmed,
+            newly_offered=[d.name for d in original.differences if not d.offered])
         yield amigatrip.ROWS[key]
     finally:
         amigatrip.ROWS[key] = original

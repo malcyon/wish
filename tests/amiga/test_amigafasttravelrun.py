@@ -682,12 +682,14 @@ def test_without_measure_row_the_row_is_the_tables(monkeypatch, tmp_path):
     assert seen["calls"][0]["row"] is amigatrip.ROWS["secret-of-the-silver-blades"]
 
 
-def test_measure_row_is_put_back_when_the_run_fails(monkeypatch, tmp_path):
+@pytest.mark.parametrize("failure, outcome", [(ftr.DriverError("no"), SystemExit),
+                                              (KeyboardInterrupt(), KeyboardInterrupt)])
+def test_measure_row_is_put_back_when_the_run_fails(monkeypatch, tmp_path, failure, outcome):
     key = "secret-of-the-silver-blades"
     before = amigatrip.ROWS[key]
 
     def boom(*a, **k):
-        raise ftr.DriverError("no")
+        raise failure
 
     monkeypatch.setattr(ftr, "run_trip", boom)
     from automap import amiga, amigafasttravel
@@ -705,9 +707,21 @@ def test_measure_row_is_put_back_when_the_run_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", lambda key, disks: None)
     monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
     monkeypatch.setattr(ftr.engine, "area_by_id", lambda i, t: SimpleNamespace(id=i, title=t))
-    with pytest.raises(SystemExit):
+    with pytest.raises(outcome):
         ftr.main(["--holder", "h", "--disks", "D", "--title", key, "--to", "32",
                   "--measure-row", "--out", str(tmp_path)])
+    assert amigatrip.ROWS[key] is before
+
+
+def test_measure_row_is_put_back_when_the_log_call_fails():
+    key = "secret-of-the-silver-blades"
+    before = amigatrip.ROWS[key]
+
+    def log(*a, **k):
+        raise OSError("disk full")
+
+    with pytest.raises(OSError), ftr.measuring_row(key, log):
+        pass
     assert amigatrip.ROWS[key] is before
 
 
