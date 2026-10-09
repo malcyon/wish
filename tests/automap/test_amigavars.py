@@ -57,13 +57,13 @@ def test_pods_member_record_range_is_reported_not_readable():
     assert m.reads == []
 
 
-@pytest.mark.parametrize("var,pointer,origin", [
-    (0x4B10, 0x40000, 0x4B00), (0x7A03, 0x50000, 0x7A00), (0x7C05, 0x60000, 0x7C00)])
-def test_curse_word_ranges_are_big_endian_at_twice_the_offset(var, pointer, origin):
+@pytest.mark.parametrize("var,pointer", [
+    (0x4B10, 0x40000), (0x7A03, 0x50000), (0x7C05, 0x60000)])
+def test_curse_word_ranges_are_big_endian_at_twice_the_variable(var, pointer):
     m = make(CURSE)
-    m.put(pointer + 2 * (var - origin), b"\x01\x2C")
+    m.put(pointer + 2 * var, b"\x01\x2C")
     got = amigavars.read_variable(m, "curse-of-the-azure-bonds", var)
-    assert (got.address, got.value, got.size) == (pointer + 2 * (var - origin), 0x12C, 2)
+    assert (got.address, got.value, got.size) == (pointer + 2 * var, 0x12C, 2)
 
 
 def test_curse_script_bytes_are_at_the_pointer_plus_the_address():

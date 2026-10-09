@@ -62,9 +62,9 @@ MAPS: dict[str, VarMap] = {
     ),
     "curse-of-the-azure-bonds": VarMap(
         ranges=(
-            VarRange(0x4B00, 0x4EFF, 0x3D00, 2, 0x4B00),
-            VarRange(0x7A00, 0x7BFF, 0x588A, 2, 0x7A00),
-            VarRange(0x7C00, 0x7FFF, 0x3DBE, 2, 0x7C00,
+            VarRange(0x4B00, 0x4EFF, 0x3D00, 2),
+            VarRange(0x7A00, 0x7BFF, 0x588A, 2),
+            VarRange(0x7C00, 0x7FFF, 0x3DBE, 2,
                      note="the game reads the current member's field first "
                           "and falls back to this table"),
             VarRange(0x8000, 0x9DFF, 0x5006, 1),
