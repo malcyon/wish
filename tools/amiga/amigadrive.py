@@ -17,6 +17,7 @@ that was going to be retyped every session is the name-to-key table
     tools/amiga/amigadrive.py --holder wish109-por snapshot before-walk
     tools/amiga/amigadrive.py --holder wish109-por restore before-walk
     tools/amiga/amigadrive.py --holder wish109-por discard_snapshot before-walk
+    tools/amiga/amigadrive.py --holder wish109-por insert 0 C:/Amiga/Disks/disk2.adf --sha256 HASH
 
 `shot` writes WinUAE's frame unchanged (752x574); `screens.canonical` cuts the
 Amiga screen out of it.  The guest verb resets WinUAE's screenshot counter after
@@ -27,6 +28,10 @@ write; if the limit is reached anyway, the shot fails and says so.
 running machine through WinUAE's own pipe (`automap.amiga.WinuaePipe`), with
 no window, key or dialog; the state files stay on the guest under
 `C:\\Amiga\\States\\<holder>`.
+
+`insert DRIVE REMOTE --sha256 H` puts a disk already on the guest (the path
+`acceptance.py boot` prints) into DF0 or DF1 of the running machine through
+`WinuaePipe.insert_floppy`, and prints the receipt as JSON.
 
 `--holder` is the lane claim `winuae.ps1` enforces, and it is required: every
 call this makes is blocked without it.  Take the claim yourself before the
@@ -40,6 +45,7 @@ Nothing here opens a window on the host.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import re
@@ -51,7 +57,7 @@ from typing import Callable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
-from automap.amiga import SnapshotError, WinuaePipe  # noqa: E402
+from automap.amiga import FloppyError, SnapshotError, WinuaePipe  # noqa: E402
 from tools.amiga import amigakeys, winvmguest  # noqa: E402
 
 #: The most screenshots one WinUAE process writes unless its counter is reset;
@@ -167,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
                        ("restore", "put the machine back as a snapshot left it"),
                        ("discard_snapshot", "delete a snapshot")):
         sub.add_parser(verb, help=text).add_argument("name")
+    insert = sub.add_parser("insert", help="put a staged disk into a drive")
+    insert.add_argument("drive", type=int, choices=(0, 1))
+    insert.add_argument("remote", help="the guest path `acceptance.py boot` printed")
+    insert.add_argument("--sha256", required=True)
     args = parser.parse_args(argv)
 
     if args.command == "keys":
@@ -178,6 +188,13 @@ def main(argv: list[str] | None = None) -> int:
         except ShotError as exc:
             raise SystemExit(str(exc)) from exc
         print(f"{args.path} pid={info['pid']} counter={info['counter']}")
+    elif args.command == "insert":
+        try:
+            receipt = WinuaePipe().insert_floppy(
+                args.drive, args.remote.replace("/", "\\"), args.holder, args.sha256)
+        except (FloppyError, ValueError) as exc:
+            raise SystemExit(str(exc)) from exc
+        print(json.dumps(receipt.as_dict()))
     else:
         pipe = WinuaePipe()
         try:

@@ -184,6 +184,38 @@ def test_the_snapshot_commands_call_the_pipe_with_the_name_and_holder(monkeypatc
     assert capsys.readouterr().out.strip() == "ok done"
 
 
+def test_insert_passes_the_drive_guest_path_holder_and_hash_to_the_pipe(monkeypatch, capsys):
+    calls = []
+
+    class Receipt:
+        def as_dict(self):
+            return {"verb": "insert"}
+
+    class Pipe:
+        def insert_floppy(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return Receipt()
+
+    monkeypatch.setattr(amigadrive, "WinuaePipe", Pipe)
+    digest = "ab" * 32
+    assert amigadrive.main(["--holder", "h1", "insert", "0", "C:/Amiga/Disks/x.adf",
+                            "--sha256", digest]) == 0
+    assert calls == [((0, "C:\\Amiga\\Disks\\x.adf", "h1", digest), {})]
+    assert capsys.readouterr().out.strip() == '{"verb": "insert"}'
+
+
+def test_a_failed_insert_exits_with_the_floppy_error_message(monkeypatch):
+    from automap.amiga import FloppyError
+
+    class Pipe:
+        def insert_floppy(self, *args, **kwargs):
+            raise FloppyError("The drive still reads the old path")
+
+    monkeypatch.setattr(amigadrive, "WinuaePipe", Pipe)
+    with pytest.raises(SystemExit, match="still reads the old path"):
+        amigadrive.main(["--holder", "h1", "insert", "1", "C:/x.adf", "--sha256", "ab" * 32])
+
+
 def test_a_snapshot_failure_is_one_line_and_a_nonzero_exit(monkeypatch):
     from automap.amiga import SnapshotError
 
