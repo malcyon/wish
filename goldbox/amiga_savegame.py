@@ -56,7 +56,12 @@ POR_WALLSET = 0x4AFA
 
 def word(save: bytes, address: int,
          container: AmigaContainer | None = None) -> int:
-    """One big-endian variable-array word from an Amiga saved game."""
+    """One big-endian variable-array word from an Amiga saved game.
+
+    `address` is in Pool of Radiance's numbering (`$4900` up) for every title,
+    as `dos_savegame.word_offset` takes it; Curse and Silver Blades call the
+    same word `$200` higher (`dos_savegame.pool_address` converts).
+    """
     container = POOL_OF_RADIANCE if container is None else container
     at = container.vm_offset(address)
     return int.from_bytes(save[at:at + 2], "big")
@@ -128,6 +133,8 @@ class AmigaContainer:
         return self.count_at + self.count_bytes
 
     def vm_offset(self, address: int) -> int:
+        """File offset of a variable-array word; `address` is in Pool of
+        Radiance's numbering for every title, not the title's own."""
         if not VM_BASE <= address < VM_BASE + VM_BYTES // 2:
             raise AmigaSaveError(f"${address:04X} is outside the variable array")
         return self.header_bytes + 2 * (address - VM_BASE)

@@ -29,7 +29,7 @@ from typing import Sequence
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
-from goldbox import amiga_later, amiga_savegame  # noqa: E402
+from goldbox import amiga_later, amiga_savegame, dos_savegame  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 
 #: The game-mode byte's values, from the code beside each write of it.  The
@@ -48,7 +48,8 @@ GAME_MODES = {2: "camp", 3: "overland", 4: "3D adventuring", 5: "combat",
 VIEW_TYPES = {1: "3D", 2: "overland, from the code and never yet seen",
               3: "the travel grid"}
 
-#: Variable-array words the code names, by address.
+#: Variable-array words the code names, by Pool of Radiance address, which is
+#: the numbering `AmigaSavegame.word` takes.
 NAMED_WORDS = {
     0x49C5: "geo block id",
     0x49C6: "clock: sub-minute",
@@ -65,6 +66,11 @@ NAMED_WORDS = {
 }
 
 
+def _own_numbering_shift(container: amiga_savegame.AmigaContainer) -> int:
+    """What the title's own scripts add to a Pool of Radiance address."""
+    return dos_savegame.container_for(container.key).var_base - dos_savegame.VAR_BASE
+
+
 def check(save: amiga_savegame.AmigaSavegame) -> list[tuple[str, bool, str]]:
     """Every way the file can contradict the map, as `(claim, ok, detail)`.
 
@@ -72,10 +78,11 @@ def check(save: amiga_savegame.AmigaSavegame) -> list[tuple[str, bool, str]]:
     through something the map does not use.
     """
     s, out = save.container, []
+    shift = _own_numbering_shift(s)
     if s.header_bytes:
-        out.append(("byte 0 is $5012", save.header_byte == save.word(0x5012),
+        out.append((f"byte 0 is ${0x5012 + shift:04X}", save.header_byte == save.word(0x5012),
                     f"{save.header_byte} against {save.word(0x5012)}"))
-    out.append(("$503E is the party count", save.word(0x503E) == save.count,
+    out.append((f"${0x503E + shift:04X} is the party count", save.word(0x503E) == save.count,
                 f"{save.word(0x503E)} against {save.count}"))
     if s.party == "records":
         scan = [c for c in range(len(save.data))
@@ -164,8 +171,11 @@ def report(save: amiga_savegame.AmigaSavegame, label: str = "") -> str:
         lines.append(f"  byte 0: container number {save.header_byte}")
     lines.append(f"  variable array at {s.vm_at}, {amiga_savegame.VM_BYTES} bytes; "
                  f"clock {save.clock}")
+    # The title's own scripts call each word by its own address, `$200` above
+    # Pool's in Curse and Silver Blades; print that one.
+    shift = _own_numbering_shift(s)
     for address, name in NAMED_WORDS.items():
-        lines.append(f"    ${address:04X} {name}: {save.word(address)}")
+        lines.append(f"    ${address + shift:04X} {name}: {save.word(address)}")
     if s.ecl_bytes:
         used = len(save.ecl.rstrip(b"\0"))
         lines.append(f"  ECL buffer at {s.ecl_at:#x}, {s.ecl_bytes} bytes, "

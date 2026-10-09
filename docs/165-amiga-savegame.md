@@ -26,9 +26,9 @@ reads the same sequence back into the same globals.
 | write | Curse (`/Curse` `0x26af8`) | Silver Blades (`/Secret` `0x27c10`) | Pool of Radiance (`/program` `0x27750`) |
 |---|---|---|---|
 | container number | 1 | 1 | **none** |
-| VM block 1, `$4900`-`$4CFF` | 2048 | 2048 | 2048 |
-| VM block 2, real `$6B00`-`$6EFF`, file name `$4D00`-`$50FF` | 2048 | 2048 | 2048 |
-| VM block 3, real `$9700`-`$98FF`, file name `$5100`-`$52FF` | 1024 | 1024 | 1024 |
+| VM block 1, bytes and the title's own addresses | 2048, `$4B00`-`$4EFF` | 2048, `$4B00`-`$4EFF` | 2048, `$4900`-`$4CFF` |
+| VM block 2, bytes and the title's own addresses | 2048, `$7C00`-`$7FFF` | 2048, not confirmed | 2048, `$6B00`-`$6EFF` |
+| VM block 3, bytes and the title's own addresses | 1024, `$7A00`-`$7BFF` | 1024, not confirmed | 1024, `$9700`-`$98FF` |
 | ECL text buffer | 7680 | **none** | 7680 |
 | square struct | 8 | 6 | 10 written, 7 of them the struct |
 | mode before / view type | 1 | 1 | 1 |
@@ -46,7 +46,10 @@ pointers (`[g3d00]+$9600`, `[g3dbe]+$f800`, `[g588a]+$f400` on Curse). That is
 the same three regions [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md)
 derived for DOS from the ECL VM's address classifier, and it means the
 contiguous `$4900`-`$52FF` naming is a file artefact on the Amiga exactly as
-on DOS. File offset of a word is `header + 2 * (addr - $4900)`, big-endian.
+on DOS. File offset of a word is `header + 2 * (addr - $4900)`, big-endian,
+with `addr` in Pool of Radiance's numbering for every title; Curse and Silver
+Blades call the same word `$200` higher, so `$503E` in Pool is `$523E` in
+their own scripts.
 
 **The party count is the table of contents.** The Curse and Silver Blades
 loaders read the word, then loop that many times -- allocate a record

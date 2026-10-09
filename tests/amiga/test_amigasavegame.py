@@ -228,6 +228,13 @@ def test_the_report_names_every_region():
     assert "[FAIL]" not in text
 
 
+def test_the_report_prints_each_titles_own_variable_address():
+    text = report(parse(synthetic_curse()), "synthetic")
+    assert "$523E party size (cleared on load): 2" in text
+    assert "$503E" not in text
+    assert "$5212 container number: 2" in text
+
+
 # -- the saved games on the player's own disks -------------------------------
 
 @functools.cache
