@@ -219,6 +219,9 @@ def test_por_the_name_is_sixteen_bytes_built_from_dos_fifteen(length):
 def test_por_a_space_in_the_name_is_written_as_ff_and_not_reported():
     char = boundarychars._base()
     char.set("name", "A B", "boundary")
+    # The base character is a companion, whose space is `$20`.
+    char.set("npc", False, "boundary: a player character")
+    char.set("npc_control_byte", 0, "boundary: a player character")
     rec, _, _, rep, back = _por_readback(char)
     assert rec[:4] == b"A\xffB\0"
     assert back.get("name") == "A B"

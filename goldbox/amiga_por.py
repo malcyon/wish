@@ -727,15 +727,24 @@ class PorWriteReport(neutral.Report):
         return []
 
 
+#: The control byte in the Amiga record; bit 7 marks a companion.
+AMIGA_POR_CONTROL = 0x085
+
+
 def _por_name_bytes(record: bytes) -> bytes:
     """DOS's count byte and fifteen as the Amiga's sixteen NUL-padded.
 
-    A space becomes `$FF`, the byte the game's own name entry writes and keeps
-    through every save; a real `$20` is stripped at its first save.
+    A player character's space becomes `$FF`, the byte the game's own name
+    entry writes and keeps through every save; a real `$20` is stripped at its
+    first save.  A companion's keeps `$20`, as the game writes it when she
+    joins and as the scripts that compare her name expect.
     """
     size = dos_port.FIELDS_BY_NAME["name_text"].size
     count = min(record[0], size)
-    return record[1:1 + count].replace(b" ", b"\xff").ljust(AMIGA_POR_NAME_SIZE, b"\0")
+    name = record[1:1 + count]
+    if not record[AMIGA_POR_CONTROL - 1] & 0x80:
+        name = name.replace(b" ", b"\xff")
+    return name.ljust(AMIGA_POR_NAME_SIZE, b"\0")
 
 
 def from_dos_record(record: bytes) -> bytes:
