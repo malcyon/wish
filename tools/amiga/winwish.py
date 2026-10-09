@@ -14,7 +14,7 @@ run uses.
     winwish.py fetch  --sha SHA
     winwish.py up     --sha SHA --holder H --mute-proof FILE [--df0 C:\\Amiga\\Disks\\a.adf] [--wait-lanes SECONDS]
     winwish.py stage-save --holder H --save LOCAL --folder REL
-    winwish.py start  --holder H [--open GUEST_PATH] [--reseed]
+    winwish.py start  --holder H [--open GUEST_PATH] [--reseed [--travel-targets KEY=ID[,ID]]]
     winwish.py shot   --holder H --window wish --out wish.png
     winwish.py restart --holder H
     winwish.py click  --holder H --automation-id card_1_level_up
@@ -135,9 +135,12 @@ def parse_travel_targets(specs: list[str] | None) -> dict[str, list[int]]:
         if not sep or not GAME_KEY.match(key) or not ids:
             raise WinwishError(f"not KEY=ID[,ID]: {spec!r}")
         try:
-            table[key] = sorted({int(i, 0) for i in ids.split(",")})
+            found = sorted({int(i, 0) for i in ids.split(",")})
         except ValueError:
             raise WinwishError(f"not KEY=ID[,ID]: {spec!r}") from None
+        if found[0] < 0:
+            raise WinwishError(f"not KEY=ID[,ID]: {spec!r}")
+        table[key] = found
     return table
 
 
@@ -1587,9 +1590,11 @@ def stop_wish(guest: Guest, holder: str) -> str:
 
 
 def restart_wish(guest: Guest, holder: str, flag: bool = True, open_path: str | None = None,
-                 reseed: bool = False) -> str:
+                 reseed: bool = False,
+                 travel_targets: dict[str, list[int]] | None = None) -> str:
     stop_wish(guest, holder)
-    return start_wish(guest, holder, flag, reseed=reseed, open_path=open_path)
+    return start_wish(guest, holder, flag, reseed=reseed, open_path=open_path,
+                      travel_targets=travel_targets)
 
 
 def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
@@ -1847,6 +1852,9 @@ def _parser() -> argparse.ArgumentParser:
                        help="write fresh settings, so a window size saved at another scale is not kept")
         p.add_argument("--no-flag", action="store_true",
                        help=f"leave {FLAG} unset (the control)")
+        p.add_argument("--travel-targets", action="append", default=[], metavar="KEY=ID[,ID]",
+                       help="with --reseed, the Fast Travel destinations the fresh settings hold, "
+                       "as for `up`; repeatable")
 
     p = sub.add_parser("stop", help="close Wish's window; force wish.exe only if it stays up")
     holder(p)
@@ -1928,9 +1936,11 @@ def main(argv: list[str] | None = None,
                 print(f"{key}: {value}")
         elif args.cmd == "start":
             print(start_wish(guest, args.holder, not args.no_flag, reseed=args.reseed,
-                             open_path=args.open))
+                             open_path=args.open,
+                             travel_targets=parse_travel_targets(args.travel_targets)))
         elif args.cmd == "restart":
-            print(restart_wish(guest, args.holder, not args.no_flag, args.open, args.reseed))
+            print(restart_wish(guest, args.holder, not args.no_flag, args.open, args.reseed,
+                               parse_travel_targets(args.travel_targets)))
         elif args.cmd == "stage-save":
             path, digest = stage_save(guest, args.holder, pathlib.Path(args.save), args.folder)
             print(f"{path} sha256={digest}")

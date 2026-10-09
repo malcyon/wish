@@ -1049,15 +1049,26 @@ def test_staged_travel_targets_reach_the_settings_wish_reads(tmp_path, monkeypat
     assert loaded.chosen_areas("curse-of-the-azure-bonds") == (1, 3)
 
 
+def _seeded_settings(script):
+    """The settings JSON a start script writes, read back out of its embedded text."""
+    text = script
+    if "WriteAllText" not in script:
+        text = base64.b64decode(script.split("-EncodedCommand ")[1].split("'")[0]).decode("utf-16-le")
+    match = re.search(r"WriteAllText\(\$settings, '(.*?)', \(New-Object", text, re.S)
+    assert match, "no settings write in the start script"
+    return json.loads(match.group(1).replace("''", "'"))
+
+
 def test_up_seeds_the_staged_travel_targets_into_the_start_script(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     args = _args(tmp_path, monkeypatch, "--travel-targets", "pool-of-radiance=20")
     winwish.up(winwish.Guest(run), lane, args)
     start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
-    assert "fast_travel_targets" in start and "pool-of-radiance" in start
+    assert _seeded_settings(start)["fast_travel_targets"] == {"pool-of-radiance": [20]}
 
 
-@pytest.mark.parametrize("spec", ["pool-of-radiance", "pool-of-radiance=", "Pool=20", "pool=x"])
+@pytest.mark.parametrize("spec", ["pool-of-radiance", "pool-of-radiance=", "Pool=20", "pool=x",
+                                  "pool-of-radiance=-1", "pool-of-radiance=20,-3"])
 def test_a_malformed_travel_target_is_an_error(spec):
     with pytest.raises(winwish.WinwishError):
         winwish.parse_travel_targets([spec])
@@ -1522,6 +1533,23 @@ def test_restart_with_open_and_reseed_writes_the_settings_unconditionally(capsys
     assert winwish.main(["restart", "--holder", "h"], guest=winwish.Guest(run)) == 0
     start = next(c[2] for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
     assert "if (-not (Test-Path -LiteralPath $settings))" in start
+
+
+@pytest.mark.parametrize("verb", ["start", "restart"])
+def test_a_reseed_writes_the_staged_travel_targets(verb):
+    run = FakeRun()
+    argv = [verb, "--holder", "h", "--reseed", "--travel-targets", "pool-of-radiance=20"]
+    assert winwish.main(argv, guest=winwish.Guest(run)) == 0
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
+    assert _seeded_settings(start)["fast_travel_targets"] == {"pool-of-radiance": [20]}
+
+
+@pytest.mark.parametrize("verb", ["start", "restart"])
+def test_a_reseed_without_travel_targets_writes_none(verb):
+    run = FakeRun()
+    assert winwish.main([verb, "--holder", "h", "--reseed"], guest=winwish.Guest(run)) == 0
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Get-WishWindows" in c[2])
+    assert "fast_travel_targets" not in _seeded_settings(start)
 
 
 def test_start_takes_open_and_reseed():
