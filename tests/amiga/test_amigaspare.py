@@ -9,7 +9,7 @@ import pathlib
 
 import pytest
 
-from goldbox import amiga_savegame, dos_codec
+from goldbox import amiga_pod, amiga_savegame, dos_codec
 from goldbox.amiga_adf import AmigaDisk
 from tests.amiga import test_amigaacceptance_measure as measure
 from tests.amiga.test_amigaacceptance import _audio_proof
@@ -578,10 +578,9 @@ def test_a_spare_source_that_changes_during_preparation_stops_the_run(pinned, mo
 THREE = dos_codec.PodVault(10, 20, 30, tuple(bytes([n]) + bytes(62) for n in (1, 2, 3)))
 
 
-@pytest.fixture
-def vault_pinned(pinned, monkeypatch):
-    """`pinned` with three rows staged in disk 3's vault B."""
-    disk3 = _disk(route_darkness.DARKNESS_VOLUME, (), {"B": amiga_savegame.pod_vault_to_amiga(THREE)})
+def _stage_vault(pinned, monkeypatch, vault):
+    """`pinned` with `vault`, the bytes of Vault B, staged on disk 3; returns the blank spare."""
+    disk3 = _disk(route_darkness.DARKNESS_VOLUME, (), {"B": vault})
     images = {"disk1": ("d1", b"one"), "disk2": ("d2", b"two"), "disk3": ("d3", disk3.to_bytes())}
     monkeypatch.setattr(route_darkness, "DARKNESS_DISK3_SHA256",
                         hashlib.sha256(images["disk3"][1]).hexdigest())
@@ -590,6 +589,55 @@ def vault_pinned(pinned, monkeypatch):
     spare = pinned / "minimal.adf"
     _disk("Empty", (), _empty_vaults()).save(spare)
     return pinned, spare
+
+
+@pytest.fixture
+def vault_pinned(pinned, monkeypatch):
+    """`pinned` with three rows staged in disk 3's vault B."""
+    return _stage_vault(pinned, monkeypatch, amiga_savegame.pod_vault_to_amiga(THREE))
+
+
+def _scroll_case_vault():
+    """Three rows as the game writes them: a plain item, a scroll case with two chained nodes, a plain item.
+
+    The padding after the nodes is a pattern rather than zeros, standing for the game's template.
+    """
+    node = amiga_savegame.POD_ITEM_BYTES
+    plain = amiga_savegame.pod_vault_to_amiga(THREE)[16:16 + 3 * node]
+    one, two, three = (plain[i * node:(i + 1) * node] for i in range(3))
+    scroll = bytearray(two)
+    at = amiga_pod.ITEM_FIELD_AT
+    scroll[at["type_index"]] = amiga_pod.SCROLL_TYPE_INDEX
+    scroll[at["quantity"]:at["quantity"] + 2] = (2).to_bytes(2, "big")
+    nodes = one + bytes(scroll) + two + three + three
+    body = bytes(12) + b"\xff\xff" + (3).to_bytes(2, "big") + nodes
+    template = bytes(range(1, 256)) * 30
+    return body + template[:amiga_savegame.POD_VAULT_SIZE - len(body)], len(body)
+
+
+def test_a_seed_ending_on_a_scroll_case_keeps_its_chained_nodes_and_the_files_own_padding(
+        pinned, monkeypatch):
+    vault, end = _scroll_case_vault()
+    pinned, spare = _stage_vault(pinned, monkeypatch, vault)
+    route_darkness._prepare_darkness(
+        pinned / "run", None, "B", vault=True, spare=spare, spare_seed_rows=2)
+    seeded = AmigaDisk.open(pinned / "run" / "spare.adf").read_file("/SAVE/VaultB.DAT")
+    assert len(seeded) == len(vault)
+    assert seeded[:12] == bytes(12) and seeded[12:14] == b"\xff\xff"
+    assert seeded[14:16] == (2).to_bytes(2, "big")
+    kept_end = 16 + 4 * amiga_savegame.POD_ITEM_BYTES
+    assert seeded[16:kept_end] == vault[16:kept_end]
+    assert seeded[kept_end:kept_end + len(vault) - end] == vault[end:]
+
+
+@pytest.mark.parametrize("rows", [0, 3])
+def test_a_seed_is_bounded_by_the_files_own_rows_not_its_decoded_items(
+        pinned, monkeypatch, rows):
+    vault, _end = _scroll_case_vault()
+    pinned, spare = _stage_vault(pinned, monkeypatch, vault)
+    with pytest.raises(RouteError, match="spare seed"):
+        route_darkness._prepare_darkness(
+            pinned / "run", None, "B", vault=True, spare=spare, spare_seed_rows=rows)
 
 
 def test_a_seeded_spare_holds_the_first_rows_of_the_staged_vault_and_the_source_is_unchanged(

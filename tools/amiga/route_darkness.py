@@ -11,7 +11,7 @@ import shutil
 import struct
 from typing import Any
 
-from goldbox import amiga_adf, amiga_savegame, dos_codec
+from goldbox import amiga_adf, amiga_pod, amiga_savegame, dos_codec
 from tools.amiga import route_camp
 from tools.amiga.route import ISSUE, AmigaTitle, effect_fields, outdoor_square
 from tools.amiga.staging import _find_images, sha256
@@ -468,6 +468,36 @@ def _vault_reading(disk: amiga_adf.AmigaDisk, letter: str) -> dict[str, Any]:
             "sha256": hashlib.sha256(data).hexdigest()}
 
 
+def _seeded_vault_bytes(data: bytes, rows: int) -> bytes:
+    """`data`, a game-written vault file, cut to its first `rows` top-level rows and no coins.
+
+    A scroll case is one row and keeps its chained nodes. The count is patched, and the bytes
+    after the kept rows are the file's own padding followed, to keep the file's size, by its
+    bytes at the offsets that remain, so no converter writes any of the seed. Raises
+    `AmigaSaveError` unless 1 <= `rows` < the file's own row count.
+    """
+    header = amiga_savegame.POD_VAULT_HEADER
+    node = amiga_savegame.POD_ITEM_BYTES
+    total = struct.unpack_from(">H", data, header + 2)[0]
+    if not 1 <= rows < total:
+        raise amiga_savegame.AmigaSaveError(
+            f"a spare seed of {rows} rows must be at least 1 and below the {total} rows "
+            "the staged vault file holds")
+    at, ends = header + 4, []
+    for _row in range(total):
+        if at + node > len(data):
+            raise amiga_savegame.AmigaSaveError(f"the vault's item list runs off the end at byte {at}")
+        item = amiga_pod.PodItem.from_bytes(data[at:at + node])
+        at += node * (1 + (item.quantity if item.is_scroll else 0))
+        ends.append(at)
+    if ends[-1] > len(data):
+        raise amiga_savegame.AmigaSaveError("the vault's last scroll case runs off the end")
+    out = bytearray(bytes(header) + data[header:header + 2] + struct.pack(">H", rows)
+                    + data[header + 4:ends[rows - 1]] + data[ends[-1]:])
+    out += data[len(out):]
+    return bytes(out)
+
+
 def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
                       loaded: str = DARKNESS_LOADED, *, substitute: pathlib.Path | None = None,
                       substitute_letter: str = "A", vault: bool = False,
@@ -551,13 +581,13 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         if not held["items"]:
             raise RouteError(f"vault {loaded} on disk 3 holds no items, so a vault run "
                              "could show nothing")
-    seed_vault = None
+    seed_bytes = None
     if spare_seed_rows is not None:
-        staged_vault = amiga_savegame.pod_read_vault(save, loaded)
-        if not 1 <= spare_seed_rows < len(staged_vault.items):
-            raise RouteError(f"a spare seed of {spare_seed_rows} rows must be at least 1 and "
-                             f"below the {len(staged_vault.items)} rows staged in vault {loaded}")
-        seed_vault = dos_codec.PodVault(0, 0, 0, staged_vault.items[:spare_seed_rows])
+        try:
+            seed_bytes = _seeded_vault_bytes(
+                save.read_file(amiga_savegame.pod_vault_path(loaded)), spare_seed_rows)
+        except (amiga_adf.AmigaDiskError, amiga_savegame.AmigaSaveError) as exc:
+            raise RouteError(f"a spare seed of vault {loaded} cannot be made: {exc}") from exc
     scratch.ensure(run)
     disks: dict[str, dict[str, str]] = {}
     for key, (_label, data) in images.items():
@@ -570,7 +600,7 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
     if spare_record is not None:
         path = run / f"{SPARE}.adf"
         shutil.copyfile(spare_record["path"], path)
-        if seed_vault is not None:
+        if seed_bytes is not None:
             seeded = amiga_adf.AmigaDisk.open(path)
             vault_path = amiga_savegame.pod_vault_path(loaded)
             try:
@@ -580,13 +610,13 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
             else:
                 seeded.remove_file(vault_path)
             seeded.write_file(vault_path.rsplit("/", 1)[0] + "/" + name,
-                              amiga_savegame.pod_vault_to_amiga(seed_vault))
+                              seed_bytes)
             problems = seeded.verify()
             if problems:
                 raise RouteError(f"the seeded spare disk fails verification: {problems}")
             seeded.save(path)
         disks[SPARE] = {"path": str(path), "sha256": sha256(path)}
-        if seed_vault is None and disks[SPARE]["sha256"] != spare_record["sha256"]:
+        if seed_bytes is None and disks[SPARE]["sha256"] != spare_record["sha256"]:
             raise RouteError("the working spare disk differs from the input")
     manifest = {
         "title": "darkness", "disks": disks, "registered": {},
@@ -601,7 +631,7 @@ def _prepare_darkness(run: pathlib.Path, override: pathlib.Path | None,
         manifest["vault"] = held
     if spare_record is not None:
         manifest[SPARE] = spare_record
-    if seed_vault is not None:
+    if seed_bytes is not None:
         seeded_reading = _vault_reading(amiga_adf.AmigaDisk.open(disks[SPARE]["path"]), loaded)
         manifest["spare_seed"] = {"letter": loaded, **seeded_reading}
     after = _find_images({k: v for k, v in wanted.items() if override is None or k != "disk3"})
