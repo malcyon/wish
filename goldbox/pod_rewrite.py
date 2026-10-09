@@ -141,6 +141,13 @@ def _load(record: bytes, nodes: Sequence[bytes]) -> int:
                                   deltas=DELTAS).expected_encumbrance()
 
 
+def expected_load(result: "RewrittenPodDos") -> int:
+    """Money plus item weight of a rewritten character, as the Amiga rebuilds it."""
+    size = DELTAS.item_size
+    nodes = [result.items[i:i + size] for i in range(0, len(result.items), size)]
+    return _load(result.record, nodes)
+
+
 def _put_u(record: bytearray, name: str, value: int) -> None:
     f = TABLE[name]
     top = (1 << (8 * f.size)) - 1

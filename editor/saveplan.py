@@ -279,10 +279,7 @@ def pod_written_encumbrance(member: Any, port: str = "dos") -> int:
         native, member.record_original, member.record.to_bytes(),
         None if items_now is None else was, items_now)
     if port == "amiga":
-        size = pod_rewrite.DELTAS.item_size
-        nodes = [result.items[i:i + size]
-                 for i in range(0, len(result.items), size)]
-        return pod_rewrite._load(result.record, nodes)
+        return pod_rewrite.expected_load(result)
     return PodSheetRecord(result.record).get("encumbrance")
 
 
