@@ -42,6 +42,7 @@ from .amiga_port import (
     AMIGA_POR_EFFECT_SIZE,
     AmigaRecordError,
 )
+from .c64_codec import DOS_PC_TAKEN_OVER
 from .layout import Kind
 from .neutral import NeutralCharacter
 from .portraits import neutral_menu
@@ -737,12 +738,15 @@ def _por_name_bytes(record: bytes) -> bytes:
     A player character's space becomes `$FF`, the byte the game's own name
     entry writes and keeps through every save; a real `$20` is stripped at its
     first save.  A companion's keeps `$20`, as the game writes it when she
-    joins and as the scripts that compare her name expect.
+    joins and as the scripts that compare her name expect.  A character the
+    game took over (`DOS_PC_TAKEN_OVER`) also has bit 7 set, but a player
+    typed its name, so it keeps the player-character rule.
     """
     size = dos_port.FIELDS_BY_NAME["name_text"].size
     count = min(record[0], size)
     name = record[1:1 + count]
-    if not record[AMIGA_POR_CONTROL - 1] & 0x80:
+    control = record[AMIGA_POR_CONTROL - 1]
+    if not control & 0x80 or control == DOS_PC_TAKEN_OVER:
         name = name.replace(b" ", b"\xff")
     return name.ljust(AMIGA_POR_NAME_SIZE, b"\0")
 
