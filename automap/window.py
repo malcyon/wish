@@ -1533,14 +1533,19 @@ class AutomapBinding(QObject):
             self._show_amiga_party(None)
             return
         self._enter_amiga(key)
-        self._enter_travel(key)
-        self.actions_bar.attach(target)
-        self.actions_bar.watch(target)
+        if amigaactions.enabled():
+            self.actions_bar.attach(target)
+            self.actions_bar.watch(target)
+        else:
+            self.actions_bar.attach_unsupported(reason)
         trip = amigatrip.ROWS.get(key)
-        if trip is None or not trip.confirmed:
-            # Nobody has measured this title's trip: same sentence as ever.
+        if (trip is None or not trip.confirmed
+                or not amigafasttravel.enabled()):
+            # Nobody has measured this title's trip, or its flag is off: same
+            # sentence as ever.
             self.fasttravel_bar.attach_unsupported(reason)
         else:
+            self._enter_travel(key)
             self.fasttravel_bar.attach(target)
         self._show_amiga_party(amigaparty.read_party(target))
 
@@ -1624,7 +1629,8 @@ class AutomapBinding(QObject):
         row does not confirm `level-up`.
         """
         row = self._amiga_row()
-        if row is None or self._amiga_key is None:
+        if (row is None or self._amiga_key is None
+                or not amigaactions.enabled()):
             return set()
         if amigaparty.mode(self.mapper.target) == row.combat_value:
             return set()

@@ -66,6 +66,14 @@ def frozen_clock(monkeypatch):
     return now
 
 
+@pytest.fixture(autouse=True)
+def amiga_features_on(monkeypatch):
+    """These tests are about what the features do; `test_amigaflags.py` is
+    about whether they are offered."""
+    monkeypatch.setenv(amigaactions.ACTIONS_ENV, "1")
+    monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, "1")
+
+
 @pytest.fixture
 def lengths(monkeypatch):
     """Every area's script is 0x1000 bytes long, so every tail is free. The

@@ -17,7 +17,15 @@ from gamedata import synthetic_geo
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap import actions as engine
-from automap import amiga, amigaactions, amigalevelup, amigaparty, c64, live
+from automap import (
+    amiga,
+    amigaactions,
+    amigafasttravel,
+    amigalevelup,
+    amigaparty,
+    c64,
+    live,
+)
 from automap.area import NOT_OURS, RESIDENT_GEO
 from automap.state import Automapper
 from automap.target import MemoryTarget
@@ -125,6 +133,14 @@ def window_on(target):
 @pytest.fixture(autouse=True)
 def notes_elsewhere(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+
+@pytest.fixture(autouse=True)
+def amiga_features_on(monkeypatch):
+    """These tests are about what the features do; `test_amigaflags.py` is
+    about whether they are offered."""
+    monkeypatch.setenv(amigaactions.ACTIONS_ENV, "1")
+    monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, "1")
 
 
 @pytest.fixture

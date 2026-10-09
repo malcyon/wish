@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import secrets
 import time
 from dataclasses import dataclass
@@ -43,6 +44,21 @@ from . import amigatrip as trips
 from .target import NotConnected
 
 _log = logging.getLogger("wish.automap.amigafasttravel")
+
+#: `WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL`: Fast Travel on an Amiga title, for a
+#: title whose trip is confirmed. Independent of the backend flags, so mapping
+#: can be released while trips stay off. Same truthiness rule as
+#: `automap.amigaactions.TRUE`.
+#:
+#: **Comes off when `WISH-360 (Complete Amiga Fast Travel and Return)` is
+#: Completed.**
+FAST_TRAVEL_ENV = "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"
+
+
+def enabled() -> bool:
+    """Is Amiga Fast Travel offered in this run?"""
+    return os.environ.get(FAST_TRAVEL_ENV, "").strip().lower() in amigaactions.TRUE
+
 
 #: How long the area byte has to change after the trigger. Live it changed
 #: within 1.2 s.

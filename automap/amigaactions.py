@@ -23,11 +23,30 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 
 from . import actions as engine
 from . import amiga
 
 _log = logging.getLogger("wish.automap.amigaactions")
+
+#: `WISH_EXPERIMENTAL_AMIGA_ACTIONS`: the Amiga action buttons, the Quickfight
+#: watcher and Level up. Independent of the backend flags, so mapping can be
+#: released while these writes stay off.
+#:
+#: **Comes off when `WISH-359 (Complete the Amiga automapper action buttons and
+#: Level up)` is Completed.**
+ACTIONS_ENV = "WISH_EXPERIMENTAL_AMIGA_ACTIONS"
+
+#: Anything else -- an empty string, `0`, `off` -- is off, matching
+#: `wish/debugmode.py`. A variable somebody exported once and forgot must not
+#: put unproven writes to the game in front of them.
+TRUE = ("1", "true", "yes", "on")
+
+
+def enabled() -> bool:
+    """Are the Amiga action buttons and Level up offered in this run?"""
+    return os.environ.get(ACTIONS_ENV, "").strip().lower() in TRUE
 
 
 def unsupported(title: str) -> str:
