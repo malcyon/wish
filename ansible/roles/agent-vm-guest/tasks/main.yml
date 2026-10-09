@@ -78,6 +78,12 @@
         group: "{{ ansible_user_id }}"
         mode: "0775"
 
+    - name: Check whether Codex state is already mounted
+      ansible.builtin.command: "mountpoint -q {{ agent_guest_codex_mount | quote }}"
+      register: agent_guest_codex_mounted
+      changed_when: false
+      failed_when: agent_guest_codex_mounted.rc not in [0, 1]
+
     - name: Check for an existing Codex home
       ansible.builtin.find:
         paths: "{{ agent_guest_codex_mount }}"
@@ -85,13 +91,13 @@
         hidden: true
         recurse: false
       register: agent_guest_codex_home_files
-      when: agent_guest_codex_existing_label.rc == 2
+      when: agent_guest_codex_mounted.rc == 1
 
     - name: Keep an existing Codex home visible until it is migrated
       ansible.builtin.assert:
         that: agent_guest_codex_home_files.matched == 0
         fail_msg: "Copy {{ agent_guest_codex_mount }} to the new disk before mounting it."
-      when: agent_guest_codex_existing_label.rc == 2
+      when: agent_guest_codex_mounted.rc == 1
 
     - name: Format the new Codex disk
       ansible.builtin.command:

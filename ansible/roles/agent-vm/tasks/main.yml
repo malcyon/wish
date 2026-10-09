@@ -566,6 +566,37 @@
   when: agent_vm_domain_xml.changed or agent_vm_name not in agent_vm_domains.stdout_lines
   changed_when: true
 
+- name: Read disks attached to the running guest
+  ansible.builtin.command: "virsh -c qemu:///system domblklist {{ agent_vm_name }} --details"
+  register: agent_vm_live_disks
+  changed_when: false
+  when: agent_vm_name in agent_vm_domains_running.stdout_lines
+
+- name: Attach the Codex state disk to the running guest
+  ansible.builtin.command:
+    argv:
+      - virsh
+      - -c
+      - qemu:///system
+      - attach-disk
+      - "{{ agent_vm_name }}"
+      - "{{ agent_vm_codex_disk_path }}"
+      - vdc
+      - --targetbus
+      - virtio
+      - --driver
+      - qemu
+      - --subdriver
+      - qcow2
+      - --cache
+      - writeback
+      - --io
+      - threads
+      - --live
+  when:
+    - agent_vm_name in agent_vm_domains_running.stdout_lines
+    - agent_vm_codex_disk_path not in (agent_vm_live_disks.stdout | default(''))
+
 # libvirt applies a redefined domain at its next start, and a guest's own
 # `reboot` is not one: qemu keeps running with the old definition. The same is
 # true of a rebuilt game disks image, which the running qemu still has open as
@@ -573,10 +604,11 @@
 - name: Say that a running guest needs a shutdown and start to take the change
   ansible.builtin.debug:
     msg: >-
-      The {{ agent_vm_name }} definition or its game disks image changed and the
-      guest is running, so the change applies at its next start. `virsh shutdown
-      {{ agent_vm_name }}`, wait for it to power off, then `virsh start
-      {{ agent_vm_name }}` -- a reboot from inside the guest is not enough.
+      The {{ agent_vm_name }} definition or its game disks image changed. The
+      Codex state disk is attached to the running guest now; other domain
+      changes and a rebuilt game disks image apply at its next start. Use
+      `virsh shutdown {{ agent_vm_name }}`, wait for it to power off, then
+      `virsh start {{ agent_vm_name }}`; a reboot inside the guest is not enough.
   when:
     - agent_vm_domain_xml.changed or (agent_vm_disks_rebuild | bool)
     - agent_vm_name in agent_vm_domains_running.stdout_lines
