@@ -73,10 +73,17 @@ def test_curse_script_bytes_are_at_the_pointer_plus_the_address():
     assert (got.address, got.value) == (0x78010, 9)
 
 
+def test_silver_blades_word_range_is_big_endian_at_twice_the_offset():
+    m = make({0x5170: 0x40000})
+    m.put(0x40000 + 2 * 0x1FD, b"\x01\x2C")
+    got = amigavars.read_variable(m, "secret-of-the-silver-blades", 0x4CFD)
+    assert (got.address, got.value, got.size) == (0x40000 + 2 * 0x1FD, 0x12C, 2)
+
+
 def test_an_unmapped_variable_and_an_unmapped_title_are_reported():
     m = make(POD)
     assert "no range" in amigavars.read_variable(m, "pools-of-darkness", 0x4B00).unreadable
-    assert "no variable map" in amigavars.read_variable(m, "secret-of-the-silver-blades", 1).unreadable
+    assert "no variable map" in amigavars.read_variable(m, "no-such-title", 1).unreadable
 
 
 POOL = {0x98: 0x40000, 0x9C: 0x50000, 0xA0: 0x60000, 0xA4: 0x70000}
