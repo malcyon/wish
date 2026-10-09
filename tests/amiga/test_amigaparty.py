@@ -253,25 +253,28 @@ def test_only_the_writes_seen_on_screen_and_kept_over_a_step_are_confirmed():
     # Level up (WISH-1): the sheet showed both classes, the game's own save
     # kept the result and a reload brought it back, on Silver Blades (EPONA)
     # and Pools of Darkness (DOMINIC). Curse and Pool of Radiance have no
-    # live press.
+    # live press. Level up on Pool and Curse matched the hall's training and
+    # survived a game save. Quickfight off: the next fight gave the member's
+    # menu on Pool, Curse and Silver Blades; Pools of Darkness rewrites the
+    # byte at fight start, so it is not confirmed there.
     assert {k: r.confirmed for k, r in ap.ROWS.items()} == {
-        "pool-of-radiance": FOUR,
-        "curse-of-the-azure-bonds": FOUR,
-        "secret-of-the-silver-blades": FOUR | {"level-up"},
+        "pool-of-radiance": FOUR | {"level-up", "clear-quickfight"},
+        "curse-of-the-azure-bonds": FOUR | {"level-up", "clear-quickfight"},
+        "secret-of-the-silver-blades": FOUR | {"level-up", "clear-quickfight"},
         "pools-of-darkness": FOUR | {"level-up"},
     }
 
 
 def test_the_measured_facts_are_the_ones_read_off_a_running_game():
     # hp_max: seen on the sheet and kept over a step; combat_value: the mode
-    # byte read in a fight. Curse has no fight read; Pool's sheet shows no
-    # maximum; Curse's and Silver Blades' maxima were not re-read after a
-    # step.
+    # byte read in a fight. Pool's maximum is shown by a heal that stops at
+    # it; Curse read 5 in a fight and its maximum on party after a journey leg.
+    both = {"hp_max", "combat_value"}
     assert {k: r.measured for k, r in ap.ROWS.items()} == {
-        "pool-of-radiance": {"combat_value"},
-        "curse-of-the-azure-bonds": set(),
-        "secret-of-the-silver-blades": {"combat_value"},
-        "pools-of-darkness": {"hp_max", "combat_value"},
+        "pool-of-radiance": both,
+        "curse-of-the-azure-bonds": both,
+        "secret-of-the-silver-blades": both,
+        "pools-of-darkness": both,
     }
 
 
@@ -283,7 +286,8 @@ def test_no_action_is_proven_safe_in_a_fight():
 
 def test_the_confirmed_fields_are_the_measured_offsets():
     measured = {
-        "pool-of-radiance": dict(hp=(0x11D, 1, 0xFF), memorised=(0x17, 21),
+        "pool-of-radiance": dict(hp=(0x11D, 1, 0xFF), hp_max=(0x32, 1, 0xFF),
+                                 memorised=(0x17, 21),
                                  hidden=(0x35, 1, 0x07)),
         "curse-of-the-azure-bonds": dict(
             hp=(0x1A9, 1, 0xFF), hp_max=(0x78, 1, 0xFF), memorised=(0x1E, 84),

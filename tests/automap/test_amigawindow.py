@@ -181,7 +181,8 @@ def card_names(window):
 
 def test_a_confirmed_action_is_enabled_when_every_condition_holds(measured):
     window, _ = attached(POOL)
-    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify"}
+    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify",
+                               "clear-quickfight"}
     for action in window.actions_bar.actions:
         if action.name in enabled(window):
             assert button(window, action.name).toolTip() == action.description
@@ -207,8 +208,8 @@ def test_each_failing_condition_greys_the_button_with_its_reason(measured):
     assert states(window)["heal"] == (False, "The machine is not readable right now")
 
     # An action the title's row does not confirm.
-    window, _ = attached(POOL)
-    assert states(window)["clear-quickfight"] == (False, sentence(POOL))
+    window, _ = attached(POOLS_OF_DARKNESS)
+    assert states(window)["clear-quickfight"] == (False, sentence(POOLS_OF_DARKNESS))
 
 
 def test_an_action_marked_combat_legal_stays_enabled_in_a_fight(measured, monkeypatch):
@@ -235,13 +236,14 @@ def test_the_gate_follows_the_game_from_one_poll_to_the_next(measured):
 
 
 def test_with_the_rows_as_committed_heal_needs_a_measured_maximum():
-    """Heal needs `hp_max` measured (only Pools of Darkness has it), and
-    Curse's fight value is from the code alone, so Curse has none."""
+    """Every title has measured its maximum and its fight value, so Heal is
+    on everywhere; Quickfight off is confirmed on all but Pools of Darkness."""
+    four = {"heal", "store-spells", "restore-spells", "identify"}
     expected = {
-        POOL: {"store-spells", "restore-spells", "identify"},
-        CURSE: set(),
-        SILVER: {"store-spells", "restore-spells", "identify"},
-        POOLS_OF_DARKNESS: {"heal", "store-spells", "restore-spells", "identify"},
+        POOL: four | {"clear-quickfight"},
+        CURSE: four | {"clear-quickfight"},
+        SILVER: four | {"clear-quickfight"},
+        POOLS_OF_DARKNESS: four,
     }
     for key, want in expected.items():
         window, _ = attached(key)
@@ -259,7 +261,8 @@ def test_curse_needs_its_fight_value_measured_even_with_hp_max(monkeypatch):
     monkeypatch.setitem(amigaparty.ROWS, CURSE, SimpleNamespace(
         **{**vars(row), "measured": MEASURED}))
     window._refresh_roster()
-    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify"}
+    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify",
+                               "clear-quickfight"}
 
 
 def test_a_click_writes_to_the_amiga_party_and_says_so(measured):
@@ -459,7 +462,8 @@ def test_switching_between_two_amiga_titles_drops_the_first_party(measured):
     lay_party(other, CURSE, [(b"EDRIC", 9, 9)])
     window._refresh_roster()
     assert card_names(window) == ["EDRIC"]
-    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify"}
+    assert enabled(window) == {"heal", "store-spells", "restore-spells", "identify",
+                               "clear-quickfight"}
     assert all(a.key == CURSE for a in window.actions_bar.actions)
 
 
@@ -572,7 +576,7 @@ def test_level_up_is_offered_to_the_member_the_trainer_would_train():
 
 
 @pytest.mark.parametrize("key, offered", [
-    (POOL, False), (CURSE, False), (SILVER, True), (POOLS_OF_DARKNESS, True)])
+    (POOL, True), (CURSE, True), (SILVER, True), (POOLS_OF_DARKNESS, True)])
 def test_only_a_title_whose_row_confirms_level_up_trains_anyone(
         monkeypatch, key, offered):
     monkeypatch.setattr(amigalevelup, "ready_classes",

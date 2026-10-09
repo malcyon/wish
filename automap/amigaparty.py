@@ -224,8 +224,9 @@ ROWS: dict[str, PartyRow] = {
         # 0x11D: written, seen on the sheet and the list, kept over eight
         # steps and into a fight. CONFIRMED.
         hp=Spot(amiga_por.amiga_por_offset(0x11B)),
-        # 0x032: codec only. The sheet shows no maximum, and no heal was run
-        # to see it stop there, so `hp_max` is not measured.
+        # 0x032: the sheet shows no maximum, so the proof is a heal: Cure
+        # Light Wounds on a member with 0x032 = 20 stopped at 20, and stayed
+        # there after a step. Measured.
         hp_max=Spot(amiga_por.amiga_por_offset(0x032)),
         # 0x17, 21 bytes: written, listed by Cast, kept over a step. CONFIRMED.
         memorised=Spot(amiga_por.amiga_por_offset(0x017), 21),
@@ -233,12 +234,18 @@ ROWS: dict[str, PartyRow] = {
         # over a step and came back when 0 was written (+0x36, +0x37 did
         # nothing). CONFIRMED.
         hidden=Spot(amiga_por.amiga_por_item_offset(0x035), 1, 0x07),
-        # 0x111: QUICK sets it to 1 (CONFIRMED), but writing 0 did not give
-        # the character's turn menu back in a fight, so not confirmed.
+        # 0x111: QUICK sets it to 1 and the byte stays 1 after the fight;
+        # writing 0 between fights gave the member's turn menu in the next
+        # fight, and the unwritten control stayed computer-played.
+        # CONFIRMED. Writing 0 in the middle of a fight is not tried.
+        # Level up: the same record fields as the hall's training, apart from
+        # the hit-point die and the money; the sheet showed the level and a
+        # game-written save reloaded with it. CONFIRMED.
         quickfight=Spot(amiga_por.AMIGA_POR_QUICKFIGHT),
         control=Spot(0x085, 1, 0x80),
-        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
-        measured=frozenset({"combat_value"})),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
+                            "clear-quickfight", "level-up"}),
+        measured=frozenset({"hp_max", "combat_value"})),
     # `/Curse`: save 0x26AF8 walks `g3cf8` through +0x18E; writer 0x260C4
     # writes 0x1AC, items (0x42) from +0x152, effects (10) from +0xF2;
     # reader 0x25056 clears +0x18E and +0x192; 0x1A45C rebuilds the
@@ -249,19 +256,24 @@ ROWS: dict[str, PartyRow] = {
         items=Chain(head=0x152, link=0x2A, size=0x42),
         effects=Chain(head=0xF2, link=0x06, size=0x0A),
         pointers=(0x0F2, *_longwords(0x152, 14), 0x18E, 0x192),
-        # 0 at the party menu, 4 walking: CONFIRMED live. The fight value 5
-        # is from the code only (PROBABLE); no fight was reached.
+        # 0 at the party menu, 3 on a journey, 4 walking, 5 with the combat
+        # menu on screen: CONFIRMED live.
         mode=0x3D56, combat_value=5,
         # hp 0x1A9: written, seen, kept over a step. Memorised 0x1E, 84
         # bytes: Cast listed the written spell, again after two steps. Item
         # hidden +0x36 mask 7 (+0x35 did nothing): hid on screen, still hidden
         # after a step, shown again when 0 was written. All CONFIRMED.
-        # hp_max 0x78: the sheet read the written maximum, but the sheet was
-        # not read again after a step, so it is not measured. The fight value
-        # is not measured either, so every action stays off on this title.
+        # hp_max 0x78: the sheet read the written maximum, and the party read
+        # it again after a journey leg. Measured. Quickfight 0x19D: QUICK
+        # sets it to 1, it stays 1 after the fight, and writing 0 between
+        # fights gave the member's turn menu in the next fight; the same
+        # fight replayed without the write gave none. Level up: the same record fields as the
+        # hall's training, apart from the die and the money; the sheet showed
+        # the level and a game-written save reloaded with it. CONFIRMED.
         **_later(amiga_port.CURSE_DELTAS, 0x19D, 0xF7),
-        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify"}),
-        measured=frozenset()),
+        confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
+                            "clear-quickfight", "level-up"}),
+        measured=frozenset({"hp_max", "combat_value"})),
     # `/Secret`: save 0x27C10 walks `g5168` through +0x13A; writer 0x2713C
     # writes 0x154, items (0x46) from +0xFE, effects (10) from +0x96;
     # reader 0x268C0 clears +0x13A and +0x13E.
@@ -279,12 +291,14 @@ ROWS: dict[str, PartyRow] = {
         # bytes: Cast listed the written spell, again after a step. Item
         # hidden +0x36 mask 7: hid on screen, still hidden after a step, shown
         # again when 0 was written. All CONFIRMED. hp_max 0x70: the sheet read
-        # the written maximum, but it was not read again after a step, so it
-        # is not measured.
+        # the written maximum and read it again after two steps. Measured.
+        # Quickfight 0x146: QUICK sets it to 1, it stays 1 after the fight,
+        # and writing 0 between fights gave that member's turn menu in the
+        # next fight while the unwritten control showed none. CONFIRMED.
         **_later(amiga_port.SILVER_BLADES_DELTAS, 0x146, 0x9A),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
-                            "level-up"}),
-        measured=frozenset({"combat_value"})),
+                            "level-up", "clear-quickfight"}),
+        measured=frozenset({"hp_max", "combat_value"})),
     # `/Pools of Darkness`: save 0x270E0 walks `g57a4` through +0x00, at most
     # eight; writer 0x26338 writes 0x194 with the item count put in +0x08 for
     # the write, effects (10) from +0x04 and twenty bytes of each item node
@@ -313,7 +327,9 @@ ROWS: dict[str, PartyRow] = {
                        amiga_pod.SPELLS_MEMORISED_LENGTH),
         hidden=Spot(amiga_pod.ITEM_NODE_BASE + amiga_pod._item_offset(0x035),
                     1, 0x07),
-        # 0x185: read 1 on a party the computer was playing; never written.
+        # 0x185: QUICK sets it to 1, but the game rewrites it at the start of
+        # each fight (0 for a player, 0x80 for a companion), so a written 0
+        # changes nothing and both branches showed the menu. Not confirmed.
         quickfight=Spot(amiga_pod.QUICKFIGHT),
         control=Spot(0x093, 1, 0x80),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
