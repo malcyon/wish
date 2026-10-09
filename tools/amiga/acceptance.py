@@ -1139,6 +1139,31 @@ def _spare_vault_verdict(found: dict[str, Any]) -> str:
             f"slot {found['loaded_letter']}")
 
 
+def _disk3_changed_only_in_vault_t(manifest: dict, result: dict[str, Any], out: pathlib.Path,
+                                   disks: dict[str, pathlib.Path]) -> bool:
+    """Whether a seeded darkness-reload run's fetched disk 3 differs from its run copy in VaultT.DAT alone.
+
+    Records `disk3_vault_t` as "changed" when it is. A run without a disk 3 seed, an unchanged
+    disk 3 or an unreadable disk gives False.
+    """
+    if (manifest.get("title") != "darkness-reload" or "disk3_seed" not in manifest
+            or result["disks_unchanged"].get("disk3", True) or "disk3" not in disks):
+        return False
+    try:
+        before = _disk_files(_verified_disk(disks["disk3"]))
+        after = _disk_files(_verified_disk(out / "fetched-disk3.adf"))
+    except BaseException as exc:
+        result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
+        return False
+    differing = {name for name in before.keys() | after.keys()
+                 if before.get(name) != after.get(name)}
+    vault_t = {name for name in differing if name.rsplit("/", 1)[-1] == "vaultt.dat"}
+    if not vault_t or differing != vault_t:
+        return False
+    result["disk3_vault_t"] = "changed"
+    return True
+
+
 def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
                 out: pathlib.Path, disks: dict[str, pathlib.Path],
                 registered: dict[str, pathlib.Path], kept_before: dict[str, dict],
@@ -1257,9 +1282,13 @@ def _read_title(title: AmigaTitle, manifest: dict, result: dict[str, Any],
             result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
     every_disk_fetched = set(result["fetched"]) == set(title.disk_keys)
     if measure:
+        # A seeded spare reload loads a vault with rows, and the game writes them to disk 3's
+        # VaultT.DAT; that one file may differ, so disk 3 is judged by its other files.
+        vault_t_only = _disk3_changed_only_in_vault_t(manifest, result, out, disks)
         result["success"] = bool(
             result.get("route_changed") and not result["error"] and every_disk_fetched
-            and all(result["disks_unchanged"].values())
+            and all(unchanged or (key == "disk3" and vault_t_only)
+                    for key, unchanged in result["disks_unchanged"].items())
             and result.get("control_sha256", "absent") is None)
         return
     result.setdefault("menu_save_problems",
@@ -3213,6 +3242,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["route_changed"] = changed
             if changed:
                 reads_unreached(steps_m)
+            # A route that stopped on an unchanged screen did not run every step.
+            result["completed"] = changed
         else:
             if earlier is None:
                 previous = until_guard("title", "title", 0, TITLE_POLL, title_limit)

@@ -492,6 +492,71 @@ def test_the_spare_reload_measures_its_route_and_writes_nothing(tmp_path, clock)
     assert guest.bad_hash == [] and all(result["disks_unchanged"].values())
 
 
+def _seeded_reload_measure(tmp_path, clock, change_disk3=None, seeded=True):
+    """A spare reload measure run whose fetched disk 3 is passed through `change_disk3`."""
+    disks = {"disk1": _entry(tmp_path / "disk1.adf", _disk("POD 1")),
+             "disk2": _entry(tmp_path / "disk2.adf", _disk("POD 2")),
+             "disk3": _entry(tmp_path / "disk3.adf", _disk("POD 3", (), _empty_vaults())),
+             SPARE: _entry(tmp_path / "spare.adf", _disk("Empty", [("G", _slot(DARK_START))],
+                                                         _empty_vaults()))}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps({
+        "title": "darkness-reload", "disks": disks, "registered": {}, "loaded_letter": "G",
+        "state_a": DARK_START, "names_a": NAMES,
+        SPARE: {"path": "x", "sha256": disks[SPARE]["sha256"]},
+        "spare_vault": {"items": 2, "coins": [0, 0, 0], "sha256": None},
+        **({"disk3_seed": {"letter": "G", "items": 2, "coins": [0, 0, 0]}} if seeded else {})}))
+    title = _readers(route_darkness.spare_reload_title("G", 2, False))
+
+    class Rewritten(DriveGuest):
+        """The game rewrites disk 3 in DF1 when the route reaches the vault screen."""
+
+        def press(self, holder, key, timeout=None):
+            super().press(holder, key, timeout)
+            remote = next((r for r in self.mounted if r and r.endswith("-disk3.adf")), None)
+            if key == "V" and change_disk3 is not None and remote:
+                disk = AmigaDisk(self.remote[remote])
+                change_disk3(disk)
+                self.remote[remote] = disk.to_bytes()
+
+    return acceptance.run_recon(
+        path, guest=Rewritten(clock, loaded="G", writes=()),
+        guard=MapGuard(states=tuple({s for _, s, _ in title.route})),
+        holder="wish679-test", audio_proof=_audio_proof(tmp_path), title=title, measure=True)
+
+
+def _rewrite_vault_t(disk):
+    disk.remove_file("/SAVE/VaultT.DAT")
+    disk.write_file("/SAVE/VaultT.DAT", HELD_BYTES)
+
+
+def test_a_measure_run_that_ran_every_step_reports_completed(tmp_path, clock):
+    result = _seeded_reload_measure(tmp_path, clock)
+    assert result["completed"] is True and result["success"] is True
+
+
+def test_a_seeded_reload_passes_when_only_vault_t_on_disk_3_changed(tmp_path, clock):
+    result = _seeded_reload_measure(tmp_path, clock, _rewrite_vault_t)
+    assert result["disks_unchanged"]["disk3"] is False
+    assert result["disk3_vault_t"] == "changed"
+    assert result["success"] is True
+
+
+def test_a_seeded_reload_fails_when_another_disk_3_file_changed(tmp_path, clock):
+    def both(disk):
+        _rewrite_vault_t(disk)
+        disk.remove_file("/SAVE/VaultA.DAT")
+        disk.write_file("/SAVE/VaultA.DAT", HELD_BYTES)
+
+    result = _seeded_reload_measure(tmp_path, clock, both)
+    assert "disk3_vault_t" not in result and result["success"] is False
+
+
+def test_a_reload_without_a_disk_3_seed_still_fails_when_vault_t_changed(tmp_path, clock):
+    result = _seeded_reload_measure(tmp_path, clock, _rewrite_vault_t, seeded=False)
+    assert result["success"] is False
+
+
 # The disk 3 the run hashes again before it goes back into DF1.
 
 def _insert_errors(result):
