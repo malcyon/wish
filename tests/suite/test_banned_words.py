@@ -31,7 +31,7 @@ SCOPES = {
     "elide": "markdown",
     # The ban depends on meaning ("carry" is the 6502 flag, "bite" a monster
     # attack), so a reviewer reads for these.
-    "carried": None, '"X follows Y"': None, '"bites"': None,
+    "carried": None, '"X follows Y"': None, '"bites"': None, "decisions": None,
 }
 #: Self-rating phrases of the words table's sentence row; Markdown only.
 PHRASES = ("says so out loud", "the important thing here",

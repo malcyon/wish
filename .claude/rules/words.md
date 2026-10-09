@@ -2,6 +2,7 @@
 
 | instead of | say |
 |---|---|
+| **decisions**, when naming unresolved items for Donald to review | **Questions for Donald**. Use this heading in new prose; leave existing references unchanged. This entry is not enforced by the banned-words test. |
 | **corpus** | say what it is: "the saves we have", "the specimens", "every save on this machine", "the files" |
 | **load-bearing** | what holds it up, what depends on it, what breaks without it |
 | **fair**, in any construction -- "fair", "fair enough", "fair point", "that's fair" | agree or disagree in words: "you're right", "I don't think so, because" |
@@ -32,6 +33,12 @@ is the exception where the API names it: Qt's `setTextElideMode` keeps its
 spelling. `embrassed-energy` is spelled **embraced** in prose, keeping the
 typo only in the identifier, the
 archive filename and the URL.
+
+**Paraphrase Donald; do not quote him directly.** This applies to replies,
+subagent briefs, handoffs, issue text and documentation. Preserve his meaning,
+scope and authorization, and distinguish his instructions from agent advice.
+Before sending a handoff or brief, check that it contains no direct quotation
+of Donald's words.
 
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "Banned Words".
