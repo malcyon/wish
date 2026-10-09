@@ -942,6 +942,18 @@ def test_return_out_of_the_kobold_caves_with_fatima_walks_her_door(
     assert t.back is None
 
 
+def test_return_out_of_the_kobold_caves_with_an_unreadable_party_fails_and_keeps_back(
+        disks, pool_gate, monkeypatch):
+    party_with(monkeypatch, None)
+    m = pool(13)
+    t = pool_travel(monkeypatch)
+    was = engine.Waypoint(0, None, (9, 13, 0))
+    t.back = was
+    out = t.apply_back(m)
+    assert not out.ok and out.message == aft.NOT_HAPPENED
+    assert t.back == was and t.trip is None
+
+
 def test_return_out_of_the_kobold_caves_without_fatima_is_a_script_trip(
         disks, pool_gate, monkeypatch):
     party_with(monkeypatch, "ALIAS")
