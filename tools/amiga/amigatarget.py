@@ -17,6 +17,10 @@ the thing to reach for when an address stops answering.  Five commands
 (`automap.amiga.WinuaePipe`) and print one JSON row, as the FS-UAE `session`
 verbs of the same names do.
 
+`levelup MEMBER SEED` presses Wish's Level up once for that member, with
+`random.Random(SEED)` as the dice, through `fsuaegdb.levelup_row`; it writes
+to the running game.
+
 `select MEMBER` moves the game's own highlight to a member, by name or 1-based
 party line, with the key the party menu and the camp both read (`NEXT_MEMBER`),
 and reads the current-member pointer back after every press; `V` then shows
@@ -575,6 +579,11 @@ def main(argv: list[str] | None = None) -> int:
                             "--at; written in the width the title's map gives")
     poked.add_argument("--value", type=lambda s: int(s, 0),
                        help="the number to write to --var")
+    lev = sub.add_parser("levelup", help="CHANGES THE RUNNING GAME: one "
+                                         "Level up for a member, with a "
+                                         "seeded dice (over WinUAE's pipe)")
+    lev.add_argument("member", help="the member's name")
+    lev.add_argument("seed", type=int, help="the seed for the dice")
     chosen = sub.add_parser("select", help="move the game's highlight to a "
                                            "member with its own keys (over "
                                            "WinUAE's pipe)")
@@ -615,7 +624,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.holder:
         raise SystemExit("--holder is required for anything that reads the "
                          "machine: take the winuae.ps1 claim first")
-    if args.command in ("party", "pool", "poke", "select"):
+    if args.command in ("party", "pool", "poke", "select",
+                        "levelup"):
         from automap import amigaeffects  # noqa: PLC0415
         from tools.amiga import fsuaegdb  # noqa: PLC0415
 
@@ -629,6 +639,9 @@ def main(argv: list[str] | None = None) -> int:
             except (SystemExit, OSError, amiga.GuestError) as exc:
                 row = {"member": args.member,
                        "error": f"{type(exc).__name__}: {exc}"}
+        elif args.command == "levelup":
+            row = fsuaegdb.levelup_row(target, layout,
+                                       f"{args.member} {args.seed}")
         elif args.command == "poke":
             by_var = (args.var is not None and args.value is not None
                       and args.at is None and args.digits is None)

@@ -1029,6 +1029,21 @@ def test_party_prints_the_shared_party_row_as_json(fake_pipe, capsys, monkeypatc
     assert seen == {"base": BASE, "layout": SSB}
 
 
+def test_levelup_passes_the_name_and_seed_to_the_shared_row(fake_pipe, capsys,
+                                                             monkeypatch):
+    from tools.amiga import amigatarget, fsuaegdb
+    seen = {}
+
+    def row(target, layout, rest):
+        seen["rest"] = rest
+        return {"name": "EPONA"}
+
+    monkeypatch.setattr(fsuaegdb, "levelup_row", row)
+    assert amigatarget.main(["--holder", "h", "levelup", "EPONA", "7"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"name": "EPONA"}
+    assert seen == {"rest": "EPONA 7"}
+
+
 def _described(count, size, base):
     pool = amigaeffects.POOLS["secret-of-the-silver-blades"]
 
