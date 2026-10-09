@@ -768,7 +768,9 @@ this dialog, one per title.
 * **Pool of Radiance's area 30 is not in its table**, ticked or not: `ECL1E`
   is the attract-mode demo and entering it ends the session.
   `Area.fasttravelable` is asked; the id is not written down here. Curse's
-  area 30 is a different area and is offered.
+  area 30 (`ECL1E`) is the same kind of script, not a place: the title screen
+  starts it after sitting idle and no script transfers a party there. An earlier
+  version of this page called it a different, visitable area; it is not.
 * **The warning is a framed box, not a tooltip** — *"Fast travel to areas you
   haven't been to is dangerous and can break the game."*, Donald's wording, at
   the top of the section, above the tabs and not inside a page, in the
