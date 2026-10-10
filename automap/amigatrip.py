@@ -65,7 +65,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-from . import amiga, departures
+from . import amiga, amigavars, departures
 from .target import NotConnected
 
 _log = logging.getLogger("wish.automap.amigatrip")
@@ -193,8 +193,9 @@ class TripRow:
     area_file: int | None = None
     area_file_spot: Spot | None = None
     #: The travel-grid square: Pool of Radiance's `$49C3`/`$49C4` (and
-    #: `$49E6`), Pools of Darkness' overland cell `$25`/`$26`. Only Pool of
-    #: Radiance has `grid_spots` to read it back.
+    #: `$49E6`), Pools of Darkness' overland cell `$25`/`$26`. Pool of
+    #: Radiance and Pools of Darkness have `grid_spots` to read it back;
+    #: only Pool of Radiance has an `indoors_spot`.
     grid_targets: tuple[int, int] | None = None
     grid_spots: tuple[Spot, Spot] | None = None
     indoors_spot: Spot | None = None
@@ -406,6 +407,11 @@ _GRID_AREAS = tuple(_GRID.areas)
 _TILVERTON = 1
 
 
+#: The block pointer behind Pools of Darkness' variables `$1`-`$400`, which
+#: holds `$25`/`$26`.
+_POD_VARIABLES = amigavars.MAPS["pools-of-darkness"].ranges[0].pointer
+
+
 #: One row per `amiga.MACHINES` key, from the table and the live trips in
 #: `docs/96-live-memory-automapper.md`.
 ROWS: dict[str, TripRow] = {
@@ -472,8 +478,9 @@ ROWS: dict[str, TripRow] = {
         key_buffer=0x5742,
         overland_mode=3, overland_menu_kind=4, overland_menu_text=b"Encamp",
         script_file="/Disk3/ECL.GLB",
-        confirmed=True,
-        differences=(_return_landing(),)),
+        grid_spots=(Spot(0x25, 1, pointer=_POD_VARIABLES),
+                    Spot(0x26, 1, pointer=_POD_VARIABLES)),
+        confirmed=True),
 }
 
 
@@ -865,10 +872,18 @@ def square(target, row) -> tuple[int, int, int] | None:
 
 def overland(target, row) -> tuple[int, int] | None:
     """Pool of Radiance's travel-grid square while the party is outdoors
-    (`$49E6` reads 0); None indoors and on every other title."""
+    (`$49E6` reads 0); Pools of Darkness' `$25`/`$26` while its mode byte
+    reads the overland's value, since they keep the last cell indoors. None
+    otherwise."""
     row = row_for(row)
     if row.grid_spots is None or _base(target) is None:
         return None
+    if row.indoors_spot is None:
+        if target.read(_base(target) + row.mode, 1)[0] != row.overland_mode:
+            return None
+        x, y = target.read_blocks([(_address(target, s), s.width)
+                                   for s in row.grid_spots])
+        return int.from_bytes(x, "big"), int.from_bytes(y, "big")
     spots = (row.indoors_spot, *row.grid_spots)
     indoors, x, y = target.read_blocks([(_address(target, s), s.width)
                                         for s in spots])

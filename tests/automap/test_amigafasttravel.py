@@ -156,7 +156,7 @@ def test_curse_trips_into_tilverton_are_offered(disks):
     assert t.apply_back(m).ok
 
 
-def test_return_is_offered_on_curse_and_held_on_pools_of_darkness(disks):
+def test_return_is_offered_on_curse_and_pools_of_darkness(disks):
     for key in (CURSE, POD):
         m = machine(key)
         t = aft.AmigaFastTravel(key, object())
@@ -164,13 +164,7 @@ def test_return_is_offered_on_curse_and_held_on_pools_of_darkness(disks):
         assert t.apply(m, area(0x30 if key == POD else 7,
                                arrival=(1, 1, 0))).ok
         assert finish(t, m, key, 0x30 if key == POD else 7) is None
-        out = t.apply_back(m)
-        if key == CURSE:
-            assert out.ok
-            continue
-        assert not out.ok
-        assert out.message == amigaactions.unsupported(
-            aft.amiga.MACHINES[key].title)
+        assert t.apply_back(m).ok
 
 
 def test_a_pools_of_darkness_area_with_no_map_is_not_a_destination(disks):
@@ -1228,10 +1222,7 @@ def test_a_pools_of_darkness_row_comes_from_the_amiga_table():
     assert not t._row(33).overland_view
 
 
-def test_a_pools_of_darkness_return_names_the_area(disks, monkeypatch):
-    # The held Return is a separate matter; lift it to see the sentence.
-    row = dataclasses.replace(trips.ROWS[POD], differences=())
-    monkeypatch.setitem(trips.ROWS, POD, row)
+def test_a_pools_of_darkness_return_names_the_area(disks):
     t = aft.AmigaFastTravel(POD, object())
     m = machine(POD, area=33)
     assert t.apply(m, areas.area_in(0x30, areas.POOLS_OF_DARKNESS)).ok
@@ -1298,3 +1289,37 @@ def test_a_title_the_c64_table_covers_is_read_from_that_table(key, monkeypatch):
     assert rows
     for id, row in rows:
         assert t._row(id) is row
+
+
+def _cell_table(m, x, y, table=0x44000):
+    m.at(0x57AC, struct.pack(">I", table))
+    m.ram[table + 0x25] = x
+    m.ram[table + 0x26] = y
+
+
+def test_a_pools_of_darkness_return_into_an_overland_lands_on_the_cell_it_left(
+        disks):
+    t = aft.AmigaFastTravel(POD, object())
+    t._row = lambda id: areas.area_in(id, areas.POOLS_OF_DARKNESS)
+    m, row = _overland(POD, 17)
+    _cell_table(m, 20, 7)
+    assert t.apply(m, areas.area_in(22, areas.POOLS_OF_DARKNESS)).ok
+    assert finish(t, m, POD, 22) is None
+    m.at(row.mode, bytes([row.world_mode]))
+    m.at(row.menu_kind, b"\x00\x01")
+    m.at(row.menu_at, row.menu_text + b"\0")
+    out = t.apply_back(m)
+    assert out.ok
+    written = _statements(m)
+    assert trips.save(20, 0x25) + trips.save(7, 0x26) + trips.newecl(17) \
+        in written
+    assert trips.save(6, 0x25) + trips.save(12, 0x26) not in written
+
+
+def test_a_pools_of_darkness_trip_from_indoors_records_no_overland_cell(disks):
+    t = aft.AmigaFastTravel(POD, object())
+    t._row = lambda id: areas.area_in(id, areas.POOLS_OF_DARKNESS)
+    m = machine(POD, area=82)
+    _cell_table(m, 33, 1)
+    assert t.apply(m, areas.area_in(22, areas.POOLS_OF_DARKNESS)).ok
+    assert t.back.overland is None

@@ -696,8 +696,7 @@ def test_what_each_difference_holds():
     assert held("curse-of-the-azure-bonds", 1, 3) == set()
     assert held("curse-of-the-azure-bonds", 1, 3, back=True) == set()
     assert held("curse-of-the-azure-bonds", 3, 1, back=True) == set()
-    assert held("pools-of-darkness", 0x15, 0x16, back=True) == {
-        "return_landing"}
+    assert held("pools-of-darkness", 0x15, 0x16, back=True) == set()
     assert held("pools-of-darkness", 0x15, 0x16) == set()
     assert "weak_gate" not in held("pool-of-radiance", 0, 14)
     assert "leave_grid" not in {d.name for d in
@@ -1734,8 +1733,19 @@ def test_a_pools_of_darkness_trip_can_write_the_overland_cell():
     pod = trip.ROWS["pools-of-darkness"]
     assert trip.encode(pod, None, 17, grid=(6, 12)) \
         == trip.save(6, 0x25) + trip.save(12, 0x26) + trip.newecl(17)
-    # No spots to read it back with: tier 2 and `overland()` stay as they were.
-    assert pod.grid_spots is None and pod.indoors_spot is None
+
+
+def test_pools_of_darkness_reads_its_overland_cell_only_on_an_overland():
+    pod = trip.ROWS["pools-of-darkness"]
+    table = 0x44000
+    m = FakeAmiga()
+    m.at(0x57AC, struct.pack(">I", table))
+    m.poke(table + 0x25, bytes([20]))
+    m.poke(table + 0x26, bytes([7]))
+    m.at(pod.mode, bytes([pod.world_mode]))
+    assert trip.overland(m, pod) is None
+    m.at(pod.mode, bytes([pod.overland_mode]))
+    assert trip.overland(m, pod) == (20, 7)
 
 
 SILVER = "secret-of-the-silver-blades"
