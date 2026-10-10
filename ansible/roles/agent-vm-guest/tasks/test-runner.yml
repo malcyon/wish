@@ -97,15 +97,6 @@
     - control
   when: not ansible_check_mode
 
-- name: Install the disabled test-runner policy
-  become: true
-  ansible.builtin.template:
-    src: test-runner.json.j2
-    dest: "{{ agent_guest_test_runner_policy }}"
-    owner: root
-    group: root
-    mode: '0644'
-
 - name: Reload the agent's user manager
   ansible.builtin.systemd_service:
     scope: user
@@ -145,4 +136,45 @@
       - "'MemoryMax=' ~ (agent_guest_test_runner_memory_max_bytes | string) in agent_guest_test_runner_slice_properties.stdout_lines"
       - "'MemorySwapMax=0' in agent_guest_test_runner_slice_properties.stdout_lines"
     fail_msg: The test slice did not take its expected memory limits.
+  when: not ansible_check_mode
+
+- name: Read the test slice cgroup's effective memory limit
+  ansible.builtin.command:
+    argv:
+      - cat
+      - "/sys/fs/cgroup{{ (agent_guest_test_runner_slice_properties.stdout_lines | select('match', '^ControlGroup=') | first).split('=', 1)[1] }}/memory.max"
+  register: agent_guest_test_runner_cgroup_memory_max
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Confirm the cgroup took the configured memory limit
+  ansible.builtin.assert:
+    that: agent_guest_test_runner_cgroup_memory_max.stdout | int == agent_guest_test_runner_memory_max_bytes | int
+    fail_msg: The test slice cgroup does not have its configured memory limit.
+  when: not ansible_check_mode
+
+- name: Install the enabled test-runner policy after verifying the slice
+  become: true
+  ansible.builtin.template:
+    src: test-runner.json.j2
+    dest: "{{ agent_guest_test_runner_policy }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Read the installed test-runner policy
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ agent_guest_test_runner_policy }}"
+  register: agent_guest_test_runner_installed_policy
+  when: not ansible_check_mode
+
+- name: Confirm the installed policy agrees with the cgroup
+  ansible.builtin.assert:
+    that:
+      - (agent_guest_test_runner_installed_policy.content | b64decode | from_json).enabled
+      - >-
+        (agent_guest_test_runner_installed_policy.content | b64decode | from_json).memory_max_bytes | int
+        == agent_guest_test_runner_cgroup_memory_max.stdout | int
+    fail_msg: The installed test-runner policy and cgroup disagree.
   when: not ansible_check_mode

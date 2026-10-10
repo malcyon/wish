@@ -28,8 +28,8 @@ The playbooks that build the agent sandbox on your own desktop (an isolated libv
 | `inventory.yml.example` | The template for `inventory.yml`, the one file naming this machine's paths, accounts, MACs and LAN addresses; copy it and fill it in |
 | `group_vars/all/vault.yml.example` | The template for `vault.yml`, which holds the Windows guest's administrator password |
 | `roles/agent-vm-guest/tasks/plane.yml` | Provisions optional Plane trust, private credentials, pinned dependencies and both clients' restricted MCP adapter. |
-| `roles/agent-vm-guest/tasks/test-runner.yml` | Provisions the agent user's bounded test slice, shared locks, request directory and disabled host policy. |
-| `roles/agent-vm-guest/templates/wish-tests.slice.j2` | Defines the shared 8 GiB memory limit for local test services. |
+| `roles/agent-vm-guest/tasks/test-runner.yml` | Provisions the agent user's bounded test slice, shared locks, request directory and enabled host policy. |
+| `roles/agent-vm-guest/templates/wish-tests.slice.j2` | Defines the shared 7 GiB memory limit for local test services. |
 | `roles/agent-vm-guest/templates/wish-tests-tmpfiles.conf.j2` | Recreates the shared lock directory and files after boot. |
 | `roles/agent-vm-guest/templates/test-runner.json.j2` | Renders the root-owned launcher policy. |
 | `roles/agent-vm-guest/files/plane-clients.py` | Registers the Wish Plane adapter while preserving unrelated Claude and Codex settings. |
