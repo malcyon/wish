@@ -609,13 +609,23 @@ def loadpieces(first: int, second: int, third: int) -> bytes:
     return out
 
 
+# The wall loader skips a two-piece area's missing second id only when pins
+# $4BE7 and $4BE8 are set and $4BE9 is clear. A pin-1 area such as New Verdigris
+# leaves $4BE9 at 1, which a walked exit clears and a trip would not, so these
+# destinations' loads ask WALLDEF.GLB for an id it lacks. Area 0x33 also needs
+# the first two pins set, as its own exit from the village sets them.
+_CLEAR_PIN = (0x22, 0x30, 0x40, 0x41, 0x44, 0x60, 0x61, 0x62, 0x63)
+
 # ECL50's own wall load ($8038-$8051), which the village's script never does:
 # the side-5 wall-piece slots, then the pieces. It follows the area-file
 # `SAVE` because the wall path is built from that byte.
 ROWS["secret-of-the-silver-blades"] = dataclasses.replace(
     ROWS["secret-of-the-silver-blades"],
-    arrival_statements=((0x51, save(1, 0x4BE7) + save(1, 0x4BE8)
-                         + save(1, 0x4BE9) + loadpieces(3, 127, 127)),))
+    arrival_statements=(
+        (0x51, save(1, 0x4BE7) + save(1, 0x4BE8) + save(1, 0x4BE9)
+         + loadpieces(3, 127, 127)),
+        *((to, save(0, 0x4BE9)) for to in _CLEAR_PIN),
+        (0x33, save(1, 0x4BE7) + save(1, 0x4BE8) + save(0, 0x4BE9))))
 
 
 def encode(row, square, area: int, area_file: int | None = None,

@@ -206,7 +206,8 @@ def test_a_silver_blades_trip_across_groups_saves_the_area_file_before_newecl(
     t._row = lambda id: area(id, "Somewhere")
     out = t.apply(machine(BLADES, area=0x10), area(0x30, arrival=(3, 3, 1)))
     assert out.ok
-    assert (trips.save(3, 0x7F12) + trips.newecl(0x30)
+    assert (trips.save(3, 0x7F12) + trips.save(0, 0x4BE9)
+            + trips.newecl(0x30)
             in statements_written(out))
     # Within one disk side the byte is already right.
     same = aft.AmigaFastTravel(BLADES, object())

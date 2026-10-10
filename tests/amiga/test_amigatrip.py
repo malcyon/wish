@@ -1803,10 +1803,75 @@ def test_the_village_walls_load_after_the_area_file_save():
         + trip.newecl(0x51))
 
 
-@pytest.mark.parametrize("to", [0x22, 0x33, 0x34, 0x52, 0x41])
-def test_only_the_village_has_an_arrival_epilogue(to):
+@pytest.mark.parametrize("to", [0x34, 0x52])
+def test_only_the_village_and_the_wall_areas_have_an_arrival_epilogue(to):
     assert trip.arrival_epilogue(SILVER, to) == b""
     assert len(trip.arrival_epilogue(SILVER, 0x51)) == 25
+
+
+_CLEAR_ONLY = [0x22, 0x30, 0x40, 0x41, 0x44, 0x60, 0x61, 0x62, 0x63]
+
+
+@pytest.mark.parametrize("to", _CLEAR_ONLY)
+def test_a_silver_blades_trip_into_a_two_piece_wall_area_clears_the_third_pin(
+        to):
+    row = trip.ROWS[SILVER]
+    assert trip.arrival_epilogue(SILVER, to) == trip.save(0, 0x4BE9)
+    for side in (3, 4):
+        p = trip.plan(to, (3, 3, 1), area_file=side,
+                      epilogue=trip.arrival_epilogue(SILVER, to))
+        assert trip._statements(row, p).endswith(
+            trip.save(side, 0x7F12) + trip.save(0, 0x4BE9)
+            + trip.newecl(to))
+
+
+def test_a_silver_blades_trip_into_area_51_sets_all_three_pins():
+    epilogue = trip.arrival_epilogue(SILVER, 0x33)
+    assert epilogue == (trip.save(1, 0x4BE7) + trip.save(1, 0x4BE8)
+                        + trip.save(0, 0x4BE9))
+    assert len(epilogue) == 18
+
+
+def test_every_two_piece_wall_area_missing_a_piece_clears_the_third_pin():
+    """A walked arrival has $4BE9 clear; a trip from a pin-1 area has not."""
+    import struct
+
+    from automap import amiga
+    from goldbox import areas
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.areas import eclsweep
+    ids = None
+    for image in _images():
+        disk = AmigaDisk(image)
+        for path, _entry in disk.walk():
+            if path.upper().endswith("/WALLDEF.GLB"):
+                table = amiga.glib_blocks(disk.read_file(path))[0]
+                count = struct.unpack(">H", table[:2])[0]
+                ids = {i for i, _b in struct.iter_unpack(
+                    ">HH", table[2:2 + 4 * count])}
+                if 3 in ids and 21 in ids:
+                    break
+                ids = None
+        if ids:
+            break
+    if not ids:
+        pytest.skip("needs the player's Amiga Silver Blades disks")
+    row = trip.ROWS[SILVER]
+    checked = set()
+    for bodies in trip._script_copies(row, _images()):
+        for area, body in bodies.items():
+            if areas.area_in(area, row.title) is None:
+                continue
+            for at, op, operands in eclsweep.raw_loads(body):
+                second = operands[1]
+                if (op != trip.LOADPIECES or second in (127, 255)
+                        or second in ids
+                        or trip.save(0, 0x4BE9)[3:] in body[:at]):
+                    continue
+                checked.add(area)
+                assert trip.save(0, 0x4BE9) in trip.arrival_epilogue(
+                    SILVER, area), hex(area)
+    assert checked >= set(_CLEAR_ONLY) | {0x33}
 
 
 def test_leg_held_counts_the_arrival_epilogue():
@@ -1861,12 +1926,13 @@ def test_the_area_file_save_holds_no_curse_leg_on_the_players_disks(
 
 def test_leg_held_counts_the_area_file_save():
     row = trip.ROWS[SILVER]
-    assert not trip.leg_held(row, 0x20, 0x22, False, _room_lengths(21))
-    assert trip.leg_held(row, 0x20, 0x30, False, _room_lengths(21))
-    assert not trip.leg_held(row, 0x20, 0x30, False, _room_lengths(27))
+    assert not trip.leg_held(row, 0x20, 0x22, False, _room_lengths(27))
+    assert trip.leg_held(row, 0x20, 0x22, False, _room_lengths(26))
+    assert trip.leg_held(row, 0x20, 0x30, False, _room_lengths(27))
+    assert not trip.leg_held(row, 0x20, 0x30, False, _room_lengths(33))
 
 
-@pytest.mark.parametrize("to, extra", [(0x22, 0), (0x41, 12), (0x21, 12)])
+@pytest.mark.parametrize("to, extra", [(0x22, 6), (0x41, 18), (0x21, 12)])
 def test_leg_held_counts_the_arrival_writes(to, extra):
     row = trip.ROWS[SILVER]
     # The 21-byte trip fits exactly in 21 bytes of room.
