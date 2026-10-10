@@ -96,6 +96,9 @@ arrives. You:
 3. When no request is waiting, end your turn. A sibling's SendMessage resumes
    you; no polling or timer is needed.
 
+A request whose record status is `cancelled` gets no message to its requester;
+tell only the orchestrator (`main`) which IDs you skipped as cancelled.
+
 If a requester's message names an ID you cannot read, or an ID whose record
 differs from what it describes, say so in the reply and run nothing.
 

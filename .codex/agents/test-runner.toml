@@ -91,6 +91,9 @@ alone until your result arrives. You:
 3. Finish your turn when no request is waiting. A new assignment starts you
    again; do not wait in a loop for one.
 
+A request whose record status is `cancelled` gets no report to its requester;
+report only to the agent that assigned you which IDs you skipped as cancelled.
+
 If an assignment names an ID you cannot read, or an ID whose record differs
 from what it describes, say so and run nothing.
 

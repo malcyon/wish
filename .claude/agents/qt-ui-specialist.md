@@ -1,7 +1,7 @@
 ---
 name: qt-ui-specialist
 description: Implements approved Qt UI repairs and diagnoses platform layout behavior. Use when the behavior, wording, target widget, and acceptance criteria are already approved.
-tools: Read, Write, Edit, Bash, Grep, Glob
+tools: Read, Write, Edit, Bash, Grep, Glob, SendMessage
 model: sonnet
 effort: high
 memory: project

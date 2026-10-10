@@ -1,7 +1,7 @@
 ---
 name: junior-dev
 description: Issues whose fix is already specified — ports, deduplication, narrowing a check, deleting a second copy of something. Not for anything needing a design decision. Use when an issue's "What would fix it" names the mechanism rather than describing a goal.
-tools: Read, Write, Edit, Bash, Grep, Glob, TodoWrite
+tools: Read, Write, Edit, Bash, Grep, Glob, TodoWrite, SendMessage
 model: sonnet
 effort: medium
 memory: project
@@ -110,6 +110,7 @@ runs `ruff` and `genui.py --check`. Name the relevant tests that read game
 data, which CI cannot run. Do not request the whole suite: CI runs it on the
 pushed commit. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, that is a delivery failure: keep the request ID and
 report it to the orchestrator; never start a runner yourself.
+If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 `.claude/rules/commits.md` has the detail.
 
 **You do not commit.** Leave your work in the tree; the main window commits it
