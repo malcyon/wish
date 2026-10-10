@@ -543,6 +543,10 @@ def engine_default_icon(race: int, sex: int, size: int,
 #: 5 doubled once per readied power-0x81 item.
 _SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
 
+#: Source ports whose THAC0, saves, attacks and thief skills the DOS load
+#: rebuilds from the class levels and the Amiga load does not.
+_LOAD_RECOMPUTE_FROM_PORTS = ("DOS",)
+
 
 #: The power byte of a Ring of Wizardry: bit 7 for "applied when readied" and
 #: handler 1.
@@ -3569,6 +3573,15 @@ def to_pc(char: NeutralCharacter) -> tuple[bytes, Report]:
     """
     writer, rep = write_pod(char)
     record = writer.to_bytes()
+    if char.port in _LOAD_RECOMPUTE_FROM_PORTS:
+        # Imported here because amiga_pod_recompute imports this module.
+        from . import amiga_pod_recompute
+        try:
+            record = amiga_pod_recompute.recomputed_block(
+                record, dos_load=True)
+        except amiga_pod_recompute.RecomputeError as why:
+            rep.warnings.append(
+                f"{char.get('name')}: THAC0 and saving throws kept as stored: {why}")
     rep.total = len(record)
     for offset, who in writer.provenance().items():
         rep.sources[offset] = f"{who} <- {char.port} {_SOURCE_OF.get(who, who)}"

@@ -661,3 +661,118 @@ def test_a_dos_mage_whose_stored_slots_differ_crosses_the_rebuilt_value_whole(
     disk = _disk_file(tmp_path, _disk_three())
     plan = _to_amiga(party, tmp_path, disk)
     assert (plan.report.dropped, plan.report.losses) == ([], [])
+
+
+# ---------------------------------------------------------------------------
+# THAC0 and saving throws the DOS load rebuilds
+# ---------------------------------------------------------------------------
+
+_FIGHTER_14_SAVES = (5, 6, 7, 5, 8)
+_FIGHTER_15_SAVES = (4, 5, 6, 4, 7)
+
+
+def _fighter_14(folder: pathlib.Path) -> None:
+    """Slot A's character as a human pure fighter 14 with constitution 18, the
+    THAC0 and saving throws the game stored for him at that level."""
+    path = folder / "CHRDATA1.SAV"
+    record = podsheet.PodSheetRecord(path.read_bytes())
+    record.set("level_fighter", 14)
+    record.set("constitution", 18)
+    record.set("thac0_base", 52)
+    for name, value in zip(("save_paralysis", "save_petrification",
+                            "save_wands", "save_breath", "save_spell"),
+                           _FIGHTER_14_SAVES):
+        record.set(name, value)
+    path.write_bytes(record.to_bytes())
+
+
+def _amiga_first_block(plan) -> bytes:
+    [image] = plan.files.values()
+    disk = AmigaDisk(bytearray(image))
+    save = amiga_savegame.pod_parse(
+        amiga_savegame.pod_read_slot(disk, "A"))
+    return save.blocks[0]
+
+
+def test_a_dos_level_edit_reaches_the_amiga_with_the_thac0_dos_shows(
+        monkeypatch, tmp_path):
+    _flag(monkeypatch, "1")
+    folder = _dos_folder(tmp_path)
+    _fighter_14(folder)
+    party = Party(convert.Source.detect(folder, slot="A"))
+    party.members[0].record.set("level_fighter", 15)
+    disk = _disk_file(tmp_path, _disk_three())
+    plan = _to_amiga(party, tmp_path, disk)
+    block = _amiga_first_block(plan)
+    assert block[0x07F] == 54
+    assert tuple(block[0x083:0x088]) == _FIGHTER_15_SAVES
+    assert block[0x0AB] == 4
+    assert block[0x089] == 15
+    report = plan.report
+    assert (report.dropped, report.losses, report.warnings) == ([], [], [])
+
+
+def test_save_as_checks_the_rebuilt_thac0_against_what_the_writer_stored(
+        monkeypatch, tmp_path):
+    amiga = _amiga_destination(tmp_path)
+    want, _ = _pair(monkeypatch, tmp_path)
+    want.set("level_fighter", 15)
+    want.set("constitution", 18)
+    want.set("thac0_base", 52)
+    for name, value in zip(("save_paralysis", "save_petrification",
+                            "save_wands", "save_breath", "save_spell"),
+                           _FIGHTER_14_SAVES):
+        want.set(name, value)
+    right = saveplan.PodCompared(want.to_bytes())
+    right.items = want.items
+    right.set("thac0_base", 54)
+    # The current THAC0 moves by the base's two points.
+    right.set("thac0_current", 2)
+    right.set("level", 15)
+    right.set_raw("attack_forms", bytes((4,) + (0,) * 7))
+    for name, value in zip(("save_paralysis", "save_petrification",
+                            "save_wands", "save_breath", "save_spell"),
+                           _FIGHTER_15_SAVES):
+        right.set(name, value)
+    assert saveplan.compare([want], [right], amiga, source_port="dos") == []
+    stale = saveplan.PodCompared(want.to_bytes())
+    stale.items = want.items
+    fields = [line.split(":")[0] for line in
+              saveplan.compare([want], [stale], amiga, source_port="dos")]
+    assert "thac0_base" in fields
+    assert "save_paralysis" in fields
+
+
+def test_every_dos_record_we_have_is_what_the_dos_load_rebuilds(
+        monkeypatch, tmp_path):
+    from goldbox import amiga_pod_recompute, pod_rewrite
+
+    _flag(monkeypatch, "1")
+    # Wish's own Save As output, not a game save.
+    written_by_wish = ("pod-678-amiga-converted-walked-dos",
+                       "wish2-l2r8-saveas-dos-strength-edit-vault40")
+    seen: set[bytes] = set()
+    checked = 0
+    for source in _dos_sources():
+        if source.slot == "A" and any(n in str(source.path)
+                                      for n in written_by_wish):
+            continue
+        for member in Party(source).members:
+            raw = member.record.to_bytes()
+            if raw in seen:
+                continue
+            seen.add(raw)
+            amiga = pod_rewrite.amiga_record_from_dos(raw)
+            try:
+                built = amiga_pod_recompute.recomputed_block(
+                    amiga, dos_load=True)
+            except amiga_pod_recompute.RecomputeError:
+                continue
+            for name in amiga_pod_recompute.DOS_LOAD_FIELDS:
+                at, size = pod_rewrite.AMIGA_PLACES[name].span
+                if name == "thac0_current":
+                    continue
+                assert built[at:at + size] == amiga[at:at + size], (
+                    source.path, source.slot, member.record.get("name"), name)
+            checked += 1
+    assert checked >= 70

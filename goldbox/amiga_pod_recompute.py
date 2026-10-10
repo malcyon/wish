@@ -75,16 +75,18 @@ _POD_THAC0_ROWS = _pod_thac0_rows()
 _POD_TABLE_CLAMP = levels.POD_TABLE_CLAMP
 
 
-def _pod_save_cell(slot: int, level: int) -> tuple[int, ...]:
+def _pod_save_cell(slot: int, level: int,
+                   dos_saves: bool = False) -> tuple[int, ...]:
     """`g189E[slot * 110 + min(level, 21) * 5 + column]`.
 
     **The thief's slot is all zeros, and the druid's holds the thief's row**,
     so any thief level saves at 0 on all five columns (`99d7ea58`, CONFIRMED
     from the code and in 16 of 16 saved thief records on the player's disk 3). The other five
-    rows are `levels._SAVES_POD`, 105 of 105.
+    rows are `levels._SAVES_POD`, 105 of 105. The DOS load runs the same
+    routine with the thief's real row, so `dos_saves` reads that instead.
     """
     name = POD_SLOTS[slot]
-    if name == "thief":
+    if name == "thief" and not dos_saves:
         return (0, 0, 0, 0, 0)
     if name == "druid":
         name = "thief"
@@ -260,7 +262,7 @@ def _pod_capacity(rec: bytearray, items=()) -> None:
             add(mage, 5, cap(mage, 5))
 
 
-def _pod_saves(rec: bytearray, items=()) -> None:
+def _pod_saves(rec: bytearray, items=(), dos_saves: bool = False) -> None:
     """`0x3C5AC`: each column from 20, lowered to each cell below it over
     the slots with an effective level. **The first column's constitution
     steps run inside that slot loop**, once per such slot and before the
@@ -275,7 +277,7 @@ def _pod_saves(rec: bytearray, items=()) -> None:
             level = pod_effective_level(rec, slot)
             if not level:
                 continue
-            cell = _pod_save_cell(slot, level)[column]
+            cell = _pod_save_cell(slot, level, dos_saves)[column]
             if cell < value:
                 value = cell
             if column == 0:
@@ -286,11 +288,12 @@ def _pod_saves(rec: bytearray, items=()) -> None:
         rec[_POD_SAVES + column] = value & 0xFF
 
 
-def pod_recompute(rec: bytearray, items=()) -> None:
+def pod_recompute(rec: bytearray, items=(), dos_saves: bool = False) -> None:
     """`0x3C238`, the recompute training runs on the Amiga and the DOS load
     runs: THAC0, the level byte, attacks, capacity and grants, saves, thief
     skills, the class mask, and a regained class's attacks and thief skills.
-    The Amiga load does not call it."""
+    The Amiga load does not call it. `dos_saves` gives the thief the saving
+    throw row the DOS load uses, where the Amiga's own is all zeros."""
     rec[_POD_THAC0] = 0
     for slot in range(len(POD_SLOTS)):
         level = pod_effective_level(rec, slot)
@@ -312,7 +315,7 @@ def pod_recompute(rec: bytearray, items=()) -> None:
             if level > 14:
                 rec[_POD_ATTACKS] = 4
     _pod_capacity(rec, items)
-    _pod_saves(rec, items)
+    _pod_saves(rec, items, dos_saves)
     if rec[_POD_LEVELS + _POD_THIEF] > 0:
         _pod_thief_skills(rec)
     bits = 0
@@ -363,3 +366,43 @@ def readied_power(items, kind: int) -> bool:
     above 0x80 with `& 0x7F == kind`."""
     return any(len(node) > 0x41 and node[0x35] and node[0x41] > 0x80
                and node[0x41] & 0x7F == kind for node in items)
+
+
+#: The DOS field names the DOS load rebuilds from the class levels.
+DOS_LOAD_FIELDS = (
+    "thac0_base", "thac0_current", "save_paralysis", "save_petrification",
+    "save_wands", "save_breath", "save_spell", "attack_forms", "level",
+    "class_bits", "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
+    "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
+    "thief_climb_walls", "thief_read_languages")
+
+
+def recomputed_block(block: bytes, *, dos_load: bool = False) -> bytes:
+    """`block` with the game's recompute run on its record.
+
+    The Amiga load never runs the recompute for a player character: it copies
+    the stored base THAC0 into the current one and leaves the saves and
+    attacks as stored. The current THAC0 moves by the base's change, since
+    strength and items are unchanged. `dos_load` is the DOS load's version,
+    for a record that came from DOS: the thief's real save row, and the
+    source's spell capacity and spellbook kept, because the writer owns
+    the capacity (`amiga_pod.engine_spell_slots`) and the DOS book is not
+    changed. Raises :class:`RecomputeError` where the recompute's tables
+    cannot cover the record.
+    """
+    rec = bytearray(block[:amiga_pod.RECORD_BYTES])
+    character = amiga_pod.PodCharacter.from_bytes(block)
+    items = [bytes(amiga_pod.ITEM_NODE_BASE) + item.raw
+             for item in character.items]
+    old = bytes(rec)
+    pod_check(rec)
+    pod_recompute(rec, items, dos_saves=dos_load)
+    if dos_load:
+        rec[_POD_CAPACITY:_POD_CAPACITY + 27] = old[_POD_CAPACITY:
+                                                    _POD_CAPACITY + 27]
+        rec[_POD_SPELLBOOK:_POD_SPELLBOOK + 16] = old[_POD_SPELLBOOK:
+                                                      _POD_SPELLBOOK + 16]
+    rec[amiga_pod.THAC0_CURRENT] = (
+        old[amiga_pod.THAC0_CURRENT] + rec[amiga_pod.THAC0_BASE]
+        - old[amiga_pod.THAC0_BASE]) & 0xFF
+    return bytes(rec) + block[amiga_pod.RECORD_BYTES:]

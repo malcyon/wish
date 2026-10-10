@@ -1606,3 +1606,31 @@ def test_every_dos_record_but_the_pregenerated_two_converts_to_builder_slots():
         assert dict(back.spells_castable) == want, path.name
         seen += 1
     assert seen >= 10
+
+
+# --- the THAC0 and saves the DOS load rebuilds --------------------------------
+
+def _dos_thief(port="DOS"):
+    """A made-up human thief of level 37 whose stored saves are all zero."""
+    f = dos_port.FIELDS_BY_NAME_FOR[POD.key]
+    raw = bytearray(POD.record_size)
+    raw[0] = 5
+    raw[1:6] = b"SNEAK"
+    raw[f["race"].offset] = 5
+    raw[f["class_levels"].offset + 6] = 37
+    raw[f["class_bits"].offset] = 4
+    for name in ("constitution", "dexterity"):
+        raw[f[name].offset:f[name].offset + 2] = bytes((12, 12))
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(bytes(raw)))
+    char.port = port
+    return char
+
+
+def test_a_dos_thief_gets_the_saves_the_dos_load_shows():
+    pc, _ = amiga_pod.to_pc(_dos_thief())
+    assert tuple(pc[0x083:0x088]) == (8, 7, 4, 11, 5)
+
+
+def test_an_amiga_thief_keeps_the_saves_it_was_stored_with():
+    pc, _ = amiga_pod.to_pc(_dos_thief("Amiga"))
+    assert tuple(pc[0x083:0x088]) == (0, 0, 0, 0, 0)

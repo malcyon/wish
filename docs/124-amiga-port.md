@@ -2358,7 +2358,10 @@ disk-1 build; nothing was run in an emulator.
 `0x026904`, not *Add Character*. It allocates `0x194` bytes, calls the `.pc`
 loader at `0x025806`, and on success calls **`0x019428`** and then the roster
 join at `0x027394`. The inter-title import path does the same at
-`0x026326`. `0x019428` is the derived-fields rebuild §1.19a already credits
+`0x026326`, and is followed by the recompute `0x03C238`; the saved-game loop is
+not, and the roster join calls the recompute only for a record with bit 7 of
+`0x093` set, an NPC (`0x02744C`). So a player character loaded from a saved
+game keeps the stored `0x07F`, saves and attacks as they are. `0x019428` is the derived-fields rebuild §1.19a already credits
 with the item count, `hands_used` and the encumbrance word — and §2.3's probe
 wrote 1234 into that encumbrance word and read 233 off the sheet, so there is
 a run in the running game behind everything this routine does. Twenty-seven
@@ -3184,8 +3187,13 @@ Two things the whole set agrees on and neither probe was aimed at:
   second half of **base/current pairs**, and the sheet draws the current one.
   §1.5 saw that for the abilities; it is the record's general pattern.
 * **THAC0 never moved.** Every window from `0x030` to `0x0B5` left it reading
-  `4`. §2.4 explains where the sheet takes it from: `0x186` is copied from
-  `0x07F`, and only the recompute at `0x03C238` writes `0x07F`.
+  `4`. The probe loaded the file through `0x0262DE`, which calls the recompute
+  at `0x03C238` (at `0x02632C`) after the load, so `0x07F` was rebuilt from the
+  class levels. The baseline is fighter 17 and every ramped level clamps to 21,
+  so each window read the fighter row's `60 - 4`. A copied ramp byte would have
+  read `60 - 0x7F`. The saved-game loader never reaches that recompute for a
+  player character (§2.4), so the probe says nothing about what a saved game
+  does with a stale `0x07F`.
 
 **R1's seven level values were the clue nobody read.** With `0x07E`–`0x0C7`
 ramped the sheet printed **seven** numbers on the level line where R2 printed

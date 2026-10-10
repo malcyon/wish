@@ -430,22 +430,12 @@ def _recomputed_block(block: bytes) -> bytes:
     the base's change, since strength and items are unchanged. A record the
     recompute's tables cannot cover is returned as it was.
     """
-    rec = bytearray(block[:amiga_pod.RECORD_BYTES])
-    character = amiga_pod.PodCharacter.from_bytes(block)
-    items = [bytes(amiga_pod.ITEM_NODE_BASE) + item.raw
-             for item in character.items]
-    old = bytes(rec)
     try:
-        amiga_pod_recompute.pod_check(rec)
-        amiga_pod_recompute.pod_recompute(rec, items)
+        return amiga_pod_recompute.recomputed_block(block)
     except amiga_pod_recompute.RecomputeError as why:
         _log.warning("Level edit of %s saved without the recompute: %s",
-                     character.name, why)
+                     amiga_pod.PodCharacter.from_bytes(block).name, why)
         return block
-    rec[amiga_pod.THAC0_CURRENT] = (
-        old[amiga_pod.THAC0_CURRENT] + rec[amiga_pod.THAC0_BASE]
-        - old[amiga_pod.THAC0_BASE]) & 0xFF
-    return bytes(rec) + block[amiga_pod.RECORD_BYTES:]
 
 
 def _pod_rendered(member: Any) -> Any:
@@ -1881,6 +1871,28 @@ def _dos_rebuilt_slots(record: PodSheetRecord) -> dict[str, bytes]:
             "spells_castable_magic_user": bytes(built["magic-user"])}
 
 
+def _dos_load_fields(record: PodSheetRecord) -> dict[str, bytes]:
+    """The fields DOS rebuilds from class levels on its own load, as the Amiga
+    writer stores them for `record`; empty where the recompute cannot cover it."""
+    amiga = bytearray(pod_rewrite.amiga_record_from_dos(record.to_bytes()))
+    held = [amiga_pod.PodItem.from_dos_bytes(
+                dos_codec.item_from_c64(raw, dos_port.ITEM_SIZE)).raw
+            for raw in getattr(record, "items", ()) if any(raw)]
+    # The recompute reads the readied items off the chain the record counts.
+    amiga[amiga_pod.ITEM_CHAIN:amiga_pod.ITEM_CHAIN + 4] = len(held).to_bytes(
+        4, "big")
+    block = bytes(amiga) + b"".join(held)
+    try:
+        built = amiga_pod_recompute.recomputed_block(block, dos_load=True)
+    except amiga_pod_recompute.RecomputeError:
+        return {}
+    out = {}
+    for name in amiga_pod_recompute.DOS_LOAD_FIELDS:
+        at, size = pod_rewrite.AMIGA_PLACES[name].span
+        out[name] = built[at:at + size]
+    return out
+
+
 def _pod_signature(record: PodSheetRecord, name: "str | None",
                    rebuilt: bool = False
                    ) -> tuple[tuple[str, str], ...]:
@@ -1889,15 +1901,16 @@ def _pod_signature(record: PodSheetRecord, name: "str | None",
     from .podsheet import TABLE
 
     raw = record.to_bytes()
-    slots = _dos_rebuilt_slots(record) if rebuilt else {}
+    rebuilt_fields = ({**_dos_rebuilt_slots(record), **_dos_load_fields(record)}
+                      if rebuilt else {})
     out: list[tuple[str, str]] = [
         ("name", repr(record.get("name") if name is None else name))]
     for field, spec in TABLE.items():
         if field in POD_NOT_COMPARED:
             continue
         value = raw[spec.offset:spec.offset + spec.size]
-        if field in slots:
-            value = slots[field]
+        if field in rebuilt_fields:
+            value = rebuilt_fields[field]
         if field in POD_VALUE_CHANGES:
             value = POD_VALUE_CHANGES[field][0](value)
         out.append((field, repr(bytes(value))))
@@ -1917,8 +1930,9 @@ def _compare_pod(expected: "list[PodSheetRecord]",
     The items compared are the held blocks only: empty blocks are dropped on
     purpose, so the slot position of an empty block is not compared.
     """
-    # A DOS record's stored slot arrays are never shown: DOS rebuilds them on
-    # load, and the Amiga does not, so the writer stores the rebuilt figure.
+    # A DOS record's stored slot arrays, THAC0, saves and the like are never
+    # shown: DOS rebuilds them on load, and the Amiga does not, so the writer
+    # stores the rebuilt figure.
     rebuilt = (source_port == "dos" and destination is not None
                and destination.port == "amiga")
     want = sorted(_pod_signature(record, expected_names[i]

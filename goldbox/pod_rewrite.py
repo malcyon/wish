@@ -349,6 +349,19 @@ def _amiga_places() -> dict[str, Place]:
 AMIGA_PLACES: dict[str, Place] = _amiga_places()
 
 
+def amiga_record_from_dos(dos: bytes) -> bytes:
+    """The 404-byte Amiga record every :data:`AMIGA_PLACES` place writes from
+    `dos`, with the bytes no place owns zero."""
+    out = bytearray(amiga_pod.RECORD_BYTES)
+    done: set[int] = set()
+    for place in AMIGA_PLACES.values():
+        if id(place.put) in done:
+            continue
+        done.add(id(place.put))
+        place.put(out, dos, bytes(out))
+    return bytes(out)
+
+
 def rewrite_amiga_record(block: bytes, before: bytes,
                          after: bytes) -> tuple[bytes, list[str]]:
     """`block` with each DOS field `before` and `after` disagree about put
