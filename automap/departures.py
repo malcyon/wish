@@ -103,7 +103,8 @@ class Departure:
 DEPARTURES: tuple[Departure, ...] = (
     # `ECL0D $9A9D` drops Princess Fatima from the party and the roster on the
     # way out of the Kobold Caves. Walking out runs it, and asks the player
-    # whether to leave.
+    # whether to leave. Only Return reaches this row, because Fast Travel does
+    # not leave the Kobold Caves.
     Departure(POOL_OF_RADIANCE, frozenset({13}), frozenset({C64, AMIGA}),
               member="PRINCESS FATIMA", route_to=27),
     # Lizardman Keep's exit, `ECL10 $9CBD-$9CCF`, pays the commission once: it

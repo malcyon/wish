@@ -767,7 +767,7 @@ def test_the_button_carries_the_warning_as_its_own_help_text(app):
     while the button is usable; a disabled button says why it is disabled
     instead, which is the more urgent answer and the trip is not happening
     anyway."""
-    row = bar(app, machine(area=13))
+    row = bar(app, machine(area=2))
     assert row.button.isEnabled()
     assert row.button.toolTip() == (
         "Fast travel to areas you haven't been to is dangerous and can "
@@ -933,9 +933,10 @@ def test_the_flag_no_longer_decides_whether_the_row_is_built(app, tmp_path,
 
 
 def test_the_fast_travel_row_follows_the_poll(app, tmp_path, monkeypatch):
-    # Standing in the Kobold Caves, so the area the window's own settings
-    # select first -- New Phlan -- is somewhere else and the trip is legal.
-    target = machine(area=13)
+    # Standing in the Cadorna Textile House, so the area the window's own
+    # settings select first -- New Phlan -- is somewhere else and the trip is
+    # legal.
+    target = machine(area=2)
     win = window(app, tmp_path, monkeypatch, target)
     for _ in range(win.LIVE_EVERY):
         win.tick()

@@ -155,6 +155,8 @@ class FastTravelAddresses:
     #: answers `UNSUPPORTED` rather than hiding the row, so a Return out of
     #: one still reads as an unsupported action and not as an attract trap.
     held_trips: frozenset[int] = frozenset()
+    #: Areas a trip, never a Return, may not start from.
+    held_starts: frozenset[int] = frozenset()
 
     #: The live x/y/facing triple, which no title relocated.
     live_square: int = LIVE_SQUARE
@@ -273,6 +275,9 @@ POOL_OF_RADIANCE = FastTravelAddresses(
     saved_sp=0x03BF,
     main_loop_return=0x08A6,
     grid_exit_slots=(0x6E22, 6),
+    # The only way out of the Kobold Caves is the walk through the East
+    # Window, whose cave menu can send the party back in.
+    held_starts=frozenset({13}),
 )
 
 #: Curse of the Azure Bonds. `DUNGEON $21BA`, instruction for instruction Pool

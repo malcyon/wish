@@ -2064,7 +2064,8 @@ class FastTravel(Action):
             # sentence in front of it already says everything a player needs.
             return Verdict(False, "the party is already in that area")
         area_id = getattr(area, "id", None)
-        if not back and area_id in addr.held_trips:
+        if ((not back and area_id in addr.held_trips)
+                or (not back and here in addr.held_starts)):
             _log.debug("fasttravel blocked: area %s is held for %s",
                        area_id, "Return" if back else "a trip")
             return Verdict(False, UNSUPPORTED.format(title=self.game.title))

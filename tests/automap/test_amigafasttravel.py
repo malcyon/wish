@@ -1016,11 +1016,16 @@ def test_a_party_of_one_title_is_not_asked_about_another_titles_area(
     assert out.ok and not t.trip.door
 
 
-def test_a_proven_door_is_offered(disks, pool_gate):
+@pytest.mark.parametrize("fatima", [False, True])
+@pytest.mark.parametrize("to", [27, 0])
+def test_no_trip_leaves_the_kobold_caves(disks, pool_gate, monkeypatch, to,
+                                         fatima):
+    party_with(monkeypatch, *(("ALIAS", FATIMA) if fatima else ("ALIAS",)))
     m = pool(13)
     t = aft.AmigaFastTravel(POOL, object())
     t._row = lambda id: area(id, DOOR_NAME)
-    assert t.legality(m, area(27))
+    out = t.legality(m, area(to))
+    assert not out.ok and out.reason == t.not_built
 
 
 def test_return_makes_the_normal_trip_even_from_an_area_with_doors(

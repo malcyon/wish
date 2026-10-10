@@ -226,6 +226,8 @@ class TripRow:
     #: the step entry instead.
     came_from_areas: tuple[int, ...] = ()
     differences: tuple[Difference, ...] = ()
+    #: Areas a trip, never a Return, may not start from.
+    held_starts: frozenset[int] = frozenset()
     #: `(destination area, script variable, value)` stores the C64 port's walked
     #: route makes before its `NEWECL`, which the destination's script reads.
     #: Written ahead of the trip for the destination only.
@@ -478,7 +480,10 @@ ROWS: dict[str, TripRow] = {
         menu_text=b"Area Cast View Encamp Search Look",
         grid_menu_text=b"Cast View Encamp Search Look",
         script_file="/ecl.dax", script_header=2,
-        confirmed=True, door_confirmed=True),
+        confirmed=True, door_confirmed=True,
+        # The only way out of the Kobold Caves is the walk through the East
+        # Window, whose cave menu can send the party back in.
+        held_starts=frozenset({13})),
     # CONFIRMED: code and 2 trips.
     "curse-of-the-azure-bonds": TripRow(
         key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",

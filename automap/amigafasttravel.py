@@ -183,6 +183,8 @@ class AmigaFastTravel(engine.FastTravel):
     def _leg(self, row, here: int, to: int, back: bool) -> engine.Verdict:
         """Whether the trip `here` to `to` is held, by a difference, by the
         disks or by the room past the departing script."""
+        if not back and here in row.held_starts:
+            return engine.Verdict(False, self.not_built)
         if trips.leg_held(row, here, to, back, self.lengths(row),
                           self._outdoors(to), self.init_areas(row)):
             return engine.Verdict(False, self.not_built)

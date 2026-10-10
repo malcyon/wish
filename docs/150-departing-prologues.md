@@ -145,7 +145,7 @@ consequence is what a player meets when the departure is skipped.
 
 | row | leaving | guard, then what the trip does | if skipped | evidence | enabled |
 |---|---|---|---|---|---|
-| P1 | Pool, Kobold Caves (13) | `PRINCESS FATIMA` in a slot: walk out through `(13, 27)`; a trip elsewhere finishes from 27 | she stays in the party and the save; no other script removes her | CONFIRMED live under the earlier code ([below](#visible-fast-travelling-out-of-the-kobold-caves-keeps-an-npc-the-game-meant-to-take-away)); live check L2 under the current code not run | C64, Amiga |
+| P1 | Pool, Kobold Caves (13) | `PRINCESS FATIMA` in a slot: Fast Travel does not leave area 13; Return walks out through `(13, 27)` | she stays in the party and the save; no other script removes her | CONFIRMED live under the earlier code ([below](#visible-fast-travelling-out-of-the-kobold-caves-keeps-an-npc-the-game-meant-to-take-away)); live check L2 under the current code not run | C64, Amiga |
 | P2 | Pool, Lizardman Keep (16) | `$4A5D` >= 40 and `$4AB5` != 255: `$4AB5` = 254 (`ECL10 $9CBD`-`$9CCF`) | the City Hall clerk does not pay the lizardmen commission until the party walks back in and out | CONFIRMED (bytecode); Amiga trip 16 to 0 writes it, 3 of 3 guard cases | C64, Amiga |
 | P3 | Pool, Buccaneer Base (1) | `$4AA9` == 1: `$4AA9` = 254 (`ECL01 $9936`-`$993D`) | the Bivant heir reward is not paid until the party walks back in and out by the edge | CONFIRMED (bytecode); Amiga trips 1 to 0 and 1 to 25 write it, a walked control writes the same 0xFE, and a game-written save holds it | C64, Amiga |
 | P4 | Pool, Nomad Camp (17) | `$4A7C` & 5 non-zero and `$4AB7` != 255: `$4AB7` = 254 (`ECL11 $A1B9`-`$A1ED`) | the "nomads stopped" commission is not paid until the party walks back in and off an edge | CONFIRMED (bytecode); Amiga trip 17 to 0, 5 of 5 guard cases | C64, Amiga |
@@ -232,7 +232,7 @@ Each defaults to straight until its check settles it.
 
 | case | what is known | what would settle it |
 |---|---|---|
-| C64 Return (`FastTravel.apply_back`) | makes the direct jump without consulting `automap/departures.py`, so a Return out of the Kobold Caves with Princess Fatima, or out of a wilderness cave, skips the departure (code). The Amiga holds Pool Return in every area | Return looks up the same rows as a trip, with a test that a Return out of area 13 with her walks the exit |
+| Return out of a wilderness cave | `FastTravel.apply_back` and the Amiga `_back_by_door` consult `automap/departures.py`, so a Return out of the Kobold Caves with Princess Fatima walks her exit; the earlier row here said the C64 skipped it, which stopped being true once both ports looked the departure up | a live Return out of a wilderness cave |
 | L1, C64 direct trips | not run under the current code | `tools/c64/fasttravelrun.py` from `WISH-SPEC-por-c64-party-l1-intown`: 0 to 18, 18 to 9, 9 to 18, 18 to 7, 7 to 0, 0 to 1, 1 to 25, 0 to 28, 28 to 25, 0 to 26; every leg `areas_seen` [here, to], no fight, 0 to 26 on the grid with no dock text |
 | Pool castle alarm, Stojanow Gate south exit | the exit clears `$4A64`; the alarm may lapse on its own | stage NEWSAVE1 at alarm 1 in area 9, trip to 18, rest 1, 6 and 24 hours, trip back, read `$4A64` after one step; 0 within a day means not needed |
 | Pool, camp interrupted in a window-25 cave | can leave for area 1 with `$4A9E` still 255 (SPECULATIVE, game behaviour) | the breakpoint run in 58caa381 |
@@ -406,10 +406,11 @@ The reasoning, the captures and what they do *not* show is
 [walking out of the Kobold Caves drops Princess
 Fatima](50-experiments.md#walking-out-of-the-kobold-caves-drops-princess-fatima-fast-travelling-out-keeps-her-180).
 
-**What Fast Travel does about it now.** This is departure row P1: a trip out
-of the caves with her in a slot walks out through the caves' own exit, so the
+**What Fast Travel does about it now.** This is departure row P1: Fast Travel
+is held in the Kobold Caves, so only a Return out of the caves with her in a
+slot reaches it, and walks out through the caves' own exit, so the
 game asks its question and removes her the way it intends; without her the
-trip goes straight. On the C64 the walk is `automap.actions.reenter()`: the
+Return goes straight. On the C64 the walk is `automap.actions.reenter()`: the
 party is placed on the exit
 square and `DUNGEON` is re-entered at one of its own post-step points --
 `$0957` after a landed step, `$0A4C` then `$0978` for the forward key off a

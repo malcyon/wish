@@ -1332,6 +1332,39 @@ def test_leaving_by_another_door_forgets_the_start_so_back_is_not_offered(
     assert not ft.back_verdict(target)
 
 
+@pytest.mark.parametrize("members", [None, ("BRUTUS",)])
+@pytest.mark.parametrize("to", [27, 0])
+def test_no_trip_leaves_the_kobold_caves(to, members):
+    ft = actions.FastTravel()
+    verdict = ft.legality(two_hop_machine(13, members=members),
+                          actions.area_by_id(to))
+    assert not verdict.ok
+    assert verdict.reason == actions.UNSUPPORTED.format(
+        title="Pool of Radiance")
+
+
+def test_return_out_of_the_kobold_caves_is_still_offered():
+    ft = actions.FastTravel()
+    ft.back = actions.Waypoint(0, 3, (2, 3, 1))
+    assert ft.back_verdict(two_hop_machine(13)).ok
+
+
+def test_a_trip_out_of_a_neighbouring_cave_is_still_offered():
+    ft = actions.FastTravel()
+    assert ft.legality(two_hop_machine(14), actions.area_by_id(0)).ok
+
+
+def test_only_the_kobold_caves_hold_a_trip_start_on_both_ports():
+    from automap import amigatrip
+
+    assert fasttravel.POOL_OF_RADIANCE.held_starts == frozenset({13})
+    assert amigatrip.ROWS["pool-of-radiance"].held_starts == frozenset({13})
+    assert {a.key for a in fasttravel.ADDRESSES.values()
+            if a.held_starts} == {"pool-of-radiance"}
+    assert {k for k, r in amigatrip.ROWS.items()
+            if r.held_starts} == {"pool-of-radiance"}
+
+
 def test_leaving_by_the_awaited_door_is_still_the_second_hop():
     target = two_hop_machine(13)
     addr = fasttravel.POOL_OF_RADIANCE
