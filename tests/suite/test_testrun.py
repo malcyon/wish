@@ -85,12 +85,16 @@ class Clock:
         self.sleeps = 0
         self.slept = []
 
+    #: A loop that never ends must fail the test rather than hang the run.
+    CEILING = 100_000
+
     def __call__(self):
         return self.now
 
     def sleep(self, seconds):
         self.now += seconds
         self.sleeps += 1
+        assert self.sleeps <= self.CEILING, "the code under test is looping forever"
         self.slept.append(seconds)
         if self.on_sleep:
             self.on_sleep()
@@ -1298,3 +1302,56 @@ def test_output_without_a_final_newline_reaches_the_log_while_the_check_still_ru
 def test_two_empty_parent_fields_are_not_a_match_for_a_service_that_reports_none(fields):
     anonymous = {"LoadState": "loaded", "ActiveState": "active", "SubState": "running", "Job": ""}
     assert testrun._nested_parent_alive({"nested": True, **fields}, anonymous) is False
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_a_hard_stop_that_fails_at_once_is_retried_at_the_paced_interval_not_in_a_spin(
+        ctx, repo, backend, clock):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    attempts = []
+
+    def failing_stop(unit):
+        attempts.append(clock.now)
+        assert len(attempts) < 500, "the hard stop is being retried in a spin"
+        raise testrun.LaunchError("the systemd user manager is not usable: boom")
+    backend.stop = failing_stop
+    view = testrun.run_request(ctx, "r1")
+    assert view["status"] == "infrastructure_failure"
+    gaps = [b - a for a, b in zip(attempts, attempts[1:])]
+    assert len(attempts) > 5 and min(gaps) >= ctx.fast_poll - 1e-9
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_clock_that_never_stops_failing_a_loop_raises_instead_of_hanging():
+    clock = Clock()
+    with pytest.raises(AssertionError, match="looping forever"):
+        while True:
+            clock.sleep(1)
+
+
+def test_a_nested_cancel_note_without_a_recorded_parent_does_not_print_none(
+        ctx, repo, backend, monkeypatch):
+    pytest.importorskip("fcntl")
+    _nested_running(ctx, repo, backend)
+    monkeypatch.setattr(testrun, "_nested_parent_alive", lambda record, live: True)
+    record = testrun.read_record(ctx.policy, "r1")
+    record["parent_request"] = None
+    testrun.write_record(ctx.policy, record)
+    note = testrun.cancel_request(ctx, "r1")["note"]
+    assert "None" not in note and "nothing was stopped" in note
+
+
+def test_submit_and_status_print_the_absolute_path_of_the_record(ctx, repo, capsys, monkeypatch):
+    monkeypatch.chdir(repo)
+    argv = ["submit", "--id", "r1", "--session", "s1", "--workdir", str(repo),
+            "--no-ruff", "--no-genui", "--", "-n0", "tests/test_a.py"]
+    assert testrun.main(argv, ctx) == 0
+    submitted = json.loads(capsys.readouterr().out)
+    expected = str((pathlib.Path(ctx.policy.state_dir) / "r1.json").resolve())
+    assert submitted["record"] == expected and pathlib.Path(expected).is_absolute()
+    assert submitted["id"] == "r1" and submitted["status"] == "pending"
+    assert testrun.main(["status", "r1"], ctx) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["record"] == expected and shown["status"] == "pending"
+    assert pathlib.Path(shown["record"]).is_file()

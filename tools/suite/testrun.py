@@ -113,6 +113,12 @@ def _record_file(policy: testcontrol.Policy, request_id: str) -> pathlib.Path:
     return pathlib.Path(policy.state_dir) / f"{request_id}.json"
 
 
+def _record_path(policy: testcontrol.Policy, request_id: str) -> str:
+    """Absolute path of a request's JSON record, the `record` field `submit` and
+    `status` print."""
+    return str(_record_file(policy, request_id).resolve())
+
+
 def read_record(policy: testcontrol.Policy, request_id: str) -> dict | None:
     path = _record_file(policy, request_id)
     try:
@@ -962,8 +968,11 @@ def cancel_request(ctx: Context, request_id: str) -> dict:
             record = _finish_locked(ctx, record)
             note = "the service is not running this request; nothing was stopped"
             if record["status"] in ACTIVE and record.get("nested"):
-                note = (f"{request_id} runs inside the running request "
-                        f"{record.get('parent_request')}; nothing was stopped")
+                parent = record.get("parent_request")
+                note = (f"{request_id} runs inside the running request {parent}; "
+                        "nothing was stopped" if parent else
+                        f"{request_id} runs inside another running request; "
+                        "nothing was stopped")
             return {"id": request_id, "status": record["status"], "stopped": False,
                     "record": record, "note": note}
         # The unit is unloaded as soon as it stops, so read what it holds first.
@@ -1140,6 +1149,7 @@ def _wait(ctx: Context, record: dict, slice_info: dict, budget_end: float | None
                 if ctx.clock() >= give_up_stopping:
                     samples["stop_failed"] = f"the hard stop could not be issued: {err}"
                     return samples, False
+                ctx.sleep(ctx.fast_poll)
             continue
         if stop_end is not None and now >= stop_end:
             samples["stop_failed"] = ("the service was still there "
@@ -1458,8 +1468,9 @@ def main(argv=None, ctx: Context | None = None) -> int:
                 workdir=args.workdir, files=args.file, pytest_args=args.pytest_args,
                 ruff=not args.no_ruff, genui=not args.no_genui, timeout=args.timeout,
                 memory_max=args.memory_max, suiterun_args=suiterun_args)
-            _emit({"id": record["id"], "status": record["status"], "record": record,
-                   "created": created})
+            _emit({"id": record["id"], "status": record["status"],
+                   "record": _record_path(ctx.policy, record["id"]), "created": created,
+                   "details": record})
             return 0
         if args.command == "run":
             view = run_request(ctx, args.id, admission_timeout=args.admission_timeout,
@@ -1469,7 +1480,9 @@ def main(argv=None, ctx: Context | None = None) -> int:
                 return 0
             return 3 if view["status"] in ("pending", "running") else 1
         if args.command == "status":
-            _emit(read_status(ctx, args.id))
+            shown = read_status(ctx, args.id)
+            _emit({"id": shown["id"], "status": shown["status"],
+                   "record": _record_path(ctx.policy, args.id), "details": shown["record"]})
         elif args.command == "list":
             _emit(list_requests(ctx, args.session, args.active))
         elif args.command == "cancel":
