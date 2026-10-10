@@ -933,7 +933,8 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     an `items`, `join`, `ready` or `use` step are strict instead, the camp bar and each list JOIN
     redraws included, so every key of those steps goes out on a screen its guard
     recognised. A measure run settles on a screen no rule matches only in the states of the
-    steps in `NAVIGATION_VERBS`, which press keys that change no game state; `measure_blockers`
+    steps in `NAVIGATION_VERBS`, which press keys that change no game state, except the camp bar
+    and the magic menu, whose recognition gates the keys that follow; `measure_blockers`
     names the steps a measure run cannot drive, and the route's measure copy still holds them. A kept slot letter the rest menu uses as a key (`A`, for a source
     loaded from slot D) becomes a simple key on the rest menu only.
     """
@@ -955,7 +956,10 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     if CAMP_SAVE_STEP in measured:
         measured[measured.index(CAMP_SAVE_STEP):measured.index(CAMP_SAVE_STEP)] = added
     loose_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in NAVIGATION_VERBS)
-    loose = {state for _, state, _ in steps_for(loose_tokens, name, party_size)}
+    # The camp bar and the magic menu stay strict: a `memorize` or `cast` presses its second key
+    # on the magic menu, which on an unrecognised screen would memorize or cast.
+    loose = {state for _, state, _ in steps_for(loose_tokens, name, party_size)
+             } - {CAMP, MAGIC_MENU}
     simple = tuple(dict.fromkeys(
         (*title.plain_keys,
          *((key, state) for key, state, _ in added if key in title.kept_letters))))

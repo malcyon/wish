@@ -85,7 +85,7 @@ def test_a_title_with_camp_steps_measures_them_before_its_camp_save():
     added = route_camp.steps_for(("row 1 3",), "pool", 4)
     assert title.measure_route == (*route_pool.POOL.measure_route[:at], *added,
                                    *route_pool.POOL.measure_route[at:])
-    assert title.measure_loose == {state for _, state, _ in added}
+    assert title.measure_loose == {state for _, state, _ in added} - {route_camp.CAMP}
     assert route_pool.POOL.measure_loose == frozenset()
 
 
@@ -128,3 +128,45 @@ def test_a_title_whose_measure_route_ends_before_the_camp_save_keeps_none_of_the
     bare = dataclasses.replace(route_pool.POOL, measure_route=route_pool.POOL.measure_route[:2])
     title = route_camp.camp_title(bare, ("items 1",), 4, name="pool")
     assert title.measure_route == bare.measure_route
+
+
+def test_the_camp_bar_and_magic_menu_are_never_loose_but_the_lists_are():
+    title = route_camp.camp_title(route_darkness.DARKNESS, ("memorize 1 1", "cast 2", "view"), 6,
+                                  name="darkness")
+    assert not {route_camp.CAMP, route_camp.MAGIC_MENU} & title.measure_loose
+    assert {"camp_memorize", "camp_memorize_page1", "camp_cast_2"} <= title.measure_loose
+
+
+def test_a_measure_run_sends_no_list_key_until_the_magic_menu_is_recognised(tmp_path, clock):
+    class MenuNeverMatches(RowlessGuard):
+        def __contains__(self, state):
+            return state == route_camp.MAGIC_MENU or (
+                state != "title" and super().__contains__(state))
+
+        def __call__(self, state, path):
+            return False if state == route_camp.MAGIC_MENU else super().__call__(state, path)
+
+    darkness = route_camp.camp_title(route_darkness.DARKNESS, ("memorize 1",), 6, name="darkness")
+    base = dataclasses.replace(
+        route_pool.POOL, read_slot=_read_slot, slot_letters=_letters, slot_files=_files)
+    at = route_pool.POOL.measure_route.index(route_camp.CAMP_SAVE_STEP)
+    magic = route_camp.steps_for(("memorize 1",), "darkness", 6)
+    title = dataclasses.replace(
+        base, measure_route=(*base.measure_route[:at], *magic, *base.measure_route[at:]),
+        measure_loose=darkness.measure_loose)
+    slots = [("A", _slot(START, NAMES)), ("B", b"kept slot")]
+    disks = {"disk1": _adf(tmp_path / "disk1.adf", "ONE"),
+             "disk2": _adf(tmp_path / "disk2.adf", "TWO"),
+             "save": _adf(tmp_path / "save.adf", "POOLSAVE", slots)}
+    manifest = {"disks": disks, "registered": {"reg": _adf(tmp_path / "reg.adf", "REG")},
+                "loaded_letter": "A", "state_a": START, "names_a": NAMES}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    guest = PoolCampGuest(clock, items.ROWS)
+    result = acceptance.run_recon(
+        path, guest=guest, guard=MenuNeverMatches(guest), identity=RowsIdentity(),
+        holder="wish16-test", audio_proof=_audio_proof(tmp_path), title=title, measure=True)
+    keys = [c[2] for c in guest.calls if c[0] == "press"]
+    assert result["success"] is False and "camp_magic screen was not recognized" in result["error"]
+    # The camp highlight's own M opens the menu; the list's M would follow only a recognised menu.
+    assert keys.count("M") == 1 and keys[-1] == "M"
