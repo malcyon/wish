@@ -25,7 +25,7 @@ from test_podwindow import _no_box, _synthetic_folder, _window
 
 from editor import convert, podsheet, saveplan
 from editor.roster import Party
-from goldbox import amiga_savegame, dos_codec, dos_port, dos_savegame
+from goldbox import amiga_pod, amiga_savegame, dos_codec, dos_port, dos_savegame
 from goldbox.amiga_adf import AmigaDisk
 
 POD = dos_port.POOLS_OF_DARKNESS
@@ -661,6 +661,37 @@ def test_a_dos_mage_whose_stored_slots_differ_crosses_the_rebuilt_value_whole(
     disk = _disk_file(tmp_path, _disk_three())
     plan = _to_amiga(party, tmp_path, disk)
     assert (plan.report.dropped, plan.report.losses) == ([], [])
+
+
+def _regained_cleric_mage(race: int = 5) -> podsheet.PodSheetRecord:
+    """A human magic-user 12 who left cleric 11 behind, so the former class is
+    regained."""
+    record = podsheet.PodSheetRecord(bytes(podsheet.SIZE))
+    record.set_raw("name", b"\x05HILDE".ljust(16, b"\0"))
+    record.set_raw("race", bytes((race,)))
+    record.set_raw("class_bits", bytes((1,)))
+    record.set_raw("class_levels", bytes((0, 0, 0, 0, 0, 12, 0)))
+    record.set_raw("former_class_levels", bytes((11, 0, 0, 0, 0, 0, 0)))
+    record.set_raw("former_level", bytes((11,)))
+    record.set("intelligence", 18)
+    record.set("wisdom", 18)
+    return record
+
+
+def test_the_dos_rebuilt_slots_of_a_regained_former_cleric_match_the_writer():
+    record = _regained_cleric_mage()
+    want = (7, 6, 5, 4, 2, 1, 0, 0, 0)
+    assert saveplan._dos_rebuilt_slots(record)["spells_castable_cleric"] == (
+        bytes(want))
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(record.to_bytes()))
+    pc, _ = amiga_pod.to_pc(char)
+    written = dict(amiga_pod.PodCharacter.from_bytes(pc).spells_castable)
+    assert written["cleric"] == want
+
+
+def test_the_dos_rebuilt_slots_of_a_non_human_leave_the_former_class_out():
+    rebuilt = saveplan._dos_rebuilt_slots(_regained_cleric_mage(race=1))
+    assert rebuilt["spells_castable_cleric"] == bytes(9)
 
 
 # ---------------------------------------------------------------------------

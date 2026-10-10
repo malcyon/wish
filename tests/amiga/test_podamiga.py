@@ -1478,16 +1478,17 @@ def test_the_level_drain_marks_and_the_training_flag_are_written_and_read():
 # --- the spell-slot arrays a DOS source gets ----------------------------------
 
 def _dos_mage(level=28, intelligence=18, wisdom=18, stored=None, power=None,
-              readied=1, former_cleric=0, left_at=0):
+              readied=1, former_cleric=0, left_at=0, race=5, cleric=0):
     """A made-up DOS magic-user with ten fifth-level spells memorised and,
     when `power` is given, one item of that power byte."""
     f = dos_port.FIELDS_BY_NAME_FOR[POD.key]
     raw = bytearray(POD.record_size)
     raw[0] = 5
     raw[1:6] = b"HILDE"
-    raw[f["race"].offset] = 5
+    raw[f["race"].offset] = race
     raw[f["class_levels"].offset + 5] = level
-    raw[f["class_bits"].offset] = 1
+    raw[f["class_levels"].offset] = cleric
+    raw[f["class_bits"].offset] = 3 if cleric else 1
     raw[f["former_class_levels"].offset] = former_cleric
     raw[f["former_level"].offset] = left_at
     for name, value in (("intelligence", intelligence), ("wisdom", wisdom)):
@@ -1616,6 +1617,40 @@ def test_a_former_class_gives_no_slots_until_it_is_regained():
             "cleric"]
     assert not any(cleric(9, 11))
     assert any(cleric(12, 11))
+
+
+_CLERIC_11_WISDOM_18 = (7, 6, 5, 4, 2, 1, 0, 0, 0)
+_CLERIC_12_WISDOM_18 = (8, 7, 6, 4, 2, 2, 0, 0, 0)
+
+
+def _castable(char, kind="cleric"):
+    pc, _ = amiga_pod.to_pc(char)
+    return dict(amiga_pod.PodCharacter.from_bytes(pc).spells_castable)[kind]
+
+
+def test_a_regained_former_cleric_gets_exactly_the_slots_of_its_former_level():
+    got = _castable(_dos_mage(level=12, former_cleric=11, left_at=11))
+    assert got == _CLERIC_11_WISDOM_18
+    assert got == amiga_pod.engine_spell_slots(
+        (11, 0, 0, 0, 0, 12, 0), (10, 18, 18), [])["cleric"]
+
+
+def test_a_former_level_below_the_current_one_gives_the_current_slots_not_more():
+    held = _castable(_dos_mage(level=28, cleric=12))
+    assert held == _CLERIC_12_WISDOM_18
+    assert _castable(_dos_mage(
+        level=28, cleric=12, former_cleric=7, left_at=7)) == held
+
+
+def test_a_former_level_above_the_current_one_is_not_regained():
+    assert _castable(_dos_mage(
+        level=28, cleric=12, former_cleric=19, left_at=19)) == (
+            _CLERIC_12_WISDOM_18)
+
+
+def test_a_non_human_keeps_no_former_class_slots():
+    got = _castable(_dos_mage(level=12, former_cleric=11, left_at=11, race=1))
+    assert not any(got)
 
 
 # --- the THAC0 and saves the DOS load rebuilds --------------------------------
