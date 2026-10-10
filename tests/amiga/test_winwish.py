@@ -723,11 +723,34 @@ def test_main_restart_passes_map_only_through():
         assert f"$env:{name}" not in body
 
 
-def test_map_only_and_no_flag_exclude_each_other(capsys):
+@pytest.mark.parametrize("argv", [
+    ["start", "--holder", "h"],
+    ["restart", "--holder", "h"],
+    ["up", "--sha", SHA, "--holder", "h", "--zip", "x.zip"],
+])
+def test_map_only_and_no_flag_exclude_each_other(argv, capsys):
     with pytest.raises(SystemExit):
-        winwish.main(["start", "--holder", "h", "--map-only", "--no-flag"],
-                     guest=winwish.Guest(FakeRun()))
+        winwish.main([*argv, "--map-only", "--no-flag"], guest=winwish.Guest(FakeRun()))
     assert "not allowed with" in capsys.readouterr().err
+
+
+def test_main_start_passes_map_only_through():
+    run = FakeRun()
+    assert winwish.main(["start", "--holder", "h", "--map-only"],
+                        guest=winwish.Guest(run)) == 0
+    body = _task_text(run.calls[-1][2])
+    assert f"$env:{winwish.FLAG} = '1'" in body
+    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
+        assert f"$env:{name}" not in body
+
+
+def test_up_passes_map_only_through(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(winwish, "start_wish",
+                        lambda *a, **k: seen.append(k["features"]) or "ok")
+    winwish.up(winwish.Guest(FakeRun()), FakeLane(), _args(tmp_path, monkeypatch, "--map-only"))
+    winwish.up(winwish.Guest(FakeRun()), FakeLane(), _args(tmp_path, monkeypatch))
+    assert seen == [False, True]
 
 
 # `os.kill(pid, SIGTERM)` on Windows is `TerminateProcess`: no handler runs, so

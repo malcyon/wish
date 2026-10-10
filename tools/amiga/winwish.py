@@ -26,7 +26,8 @@ run uses.
     winwish.py down   --holder H
 
 Wish runs with `WISH_EXPERIMENTAL_AMIGA_WINUAE=1` (`--no-flag` leaves it unset, for
-the control; `--map-only` sets it but leaves the action and Fast Travel flags unset) and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
+the control; `--map-only` sets it but leaves the action and Fast Travel flags unset)
+and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
 `fast_travel_targets`, because the tab cannot pick a destination from the drop-down.
 Its `APPDATA` and `LOCALAPPDATA` point at a private folder per holder, seeded with `diagnostics: true` because `WISH_DEBUG`
 alone does not open the log file.  Every guest call goes through `winvm`, which
