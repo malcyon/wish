@@ -1358,3 +1358,40 @@ def test_a_retried_shot_writes_one_shot_retry_row(tmp_path, clock, readings):
     assert len(rows) == 1
     assert rows[0]["attempt"] == 1 and "exceeded its 20.0s limit" in rows[0]["error"]
     assert isinstance(rows[0]["state"], str) and rows[0]["remaining"] > 0
+
+
+class SlowGrabGuest(AcceptGuest):
+    """Fails its first `grab` as a timed-out shot, or as `error` when one is given."""
+
+    def __init__(self, clock, *, error=None, spend=0.0):
+        super().__init__(clock)
+        self.error, self.spend, self.failed = error, spend, False
+
+    def grab(self, state, raw, cropped, timeout=None):
+        if not self.failed:
+            self.failed = True
+            self.clock.now += self.spend
+            raise self.error or winuaesession.ShotTimedOut("winvm ssh exceeded its 20.0s limit")
+        return super().grab(state, raw, cropped, timeout)
+
+
+def test_a_timed_out_single_grab_is_retried_while_budget_remains(tmp_path, clock, readings):
+    guest, result = _accept(tmp_path, clock, guest=SlowGrabGuest(clock))
+    rows = [e for e in _events(tmp_path) if e["event"] == "shot_retry"]
+    assert len(rows) == 1 and rows[0]["attempt"] == 1
+    assert "exceeded its 20.0s limit" in rows[0]["error"]
+    assert result["error"] == ""
+
+
+def test_a_timed_out_single_grab_with_no_budget_for_another_still_ends_the_run(
+        tmp_path, clock, readings):
+    _, result = _accept(tmp_path, clock, guest=SlowGrabGuest(clock, spend=1e6))
+    assert "exceeded its 20.0s limit" in result["error"]
+    assert not [e for e in _events(tmp_path) if e["event"] == "shot_retry"]
+
+
+def test_a_single_grab_failing_otherwise_is_not_retried(tmp_path, clock, readings):
+    guest = SlowGrabGuest(clock, error=winuaesession.RouteError("fail line"))
+    _, result = _accept(tmp_path, clock, guest=guest)
+    assert "fail line" in result["error"]
+    assert not [e for e in _events(tmp_path) if e["event"] == "shot_retry"]

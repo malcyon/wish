@@ -142,6 +142,7 @@ from tools.amiga.winuaesession import (  # noqa: E402
     LOCAL_BOOT_CONFIG,
     SHOT_SECONDS,
     RouteError,
+    ShotTimedOut,
     WinGuest,
     terminating,
 )
@@ -2473,7 +2474,16 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             guest.capture(state, raw, cropped, timeout=limit)
         else:
             cropped.unlink(missing_ok=True)
-            if not guest.grab(state, raw, cropped, timeout=route_limit(SHOT_SECONDS)):
+            while True:
+                try:
+                    shown = guest.grab(state, raw, cropped, timeout=route_limit(SHOT_SECONDS))
+                    break
+                except ShotTimedOut as exc:
+                    # One slow screenshot is not a reason to lose a boot with budget left.
+                    if (total_end if cleanup else route_end) - time.monotonic() < SHOT_SECONDS:
+                        raise
+                    log_shot_retry(state, exc)
+            if not shown:
                 result["events"].append({"state": state, "raw": str(raw),
                                          "sha256": sha256(raw), "crop": None, **_shot_source(guest)})
                 log("grab", state=state, raw=str(raw), crop=None, **_shot_source(guest))
