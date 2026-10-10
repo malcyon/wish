@@ -1404,6 +1404,18 @@ def wrap(record_path: str) -> int:
 
 # --- command line --------------------------------------------------------------------
 
+def _present(ctx: Context, view: dict) -> dict:
+    """A view of one request as printed: `record` is the absolute path of its JSON
+    record and the record's content is under `details`."""
+    content = view.get("record")
+    if not isinstance(content, dict):
+        return view
+    shown = {k: v for k, v in view.items() if k != "record"}
+    shown["record"] = _record_path(ctx.policy, content["id"])
+    shown["details"] = content
+    return shown
+
+
 def _emit(obj: dict) -> None:
     print(json.dumps(obj, indent=1, sort_keys=True))
 
@@ -1468,25 +1480,22 @@ def main(argv=None, ctx: Context | None = None) -> int:
                 workdir=args.workdir, files=args.file, pytest_args=args.pytest_args,
                 ruff=not args.no_ruff, genui=not args.no_genui, timeout=args.timeout,
                 memory_max=args.memory_max, suiterun_args=suiterun_args)
-            _emit({"id": record["id"], "status": record["status"],
-                   "record": _record_path(ctx.policy, record["id"]), "created": created,
-                   "details": record})
+            _emit(_present(ctx, {"id": record["id"], "status": record["status"],
+                                 "record": record, "created": created}))
             return 0
         if args.command == "run":
             view = run_request(ctx, args.id, admission_timeout=args.admission_timeout,
                                budget=args.budget)
-            _emit(view)
+            _emit(_present(ctx, view))
             if view["status"] == "passed":
                 return 0
             return 3 if view["status"] in ("pending", "running") else 1
         if args.command == "status":
-            shown = read_status(ctx, args.id)
-            _emit({"id": shown["id"], "status": shown["status"],
-                   "record": _record_path(ctx.policy, args.id), "details": shown["record"]})
+            _emit(_present(ctx, read_status(ctx, args.id)))
         elif args.command == "list":
             _emit(list_requests(ctx, args.session, args.active))
         elif args.command == "cancel":
-            _emit(cancel_request(ctx, args.id))
+            _emit(_present(ctx, cancel_request(ctx, args.id)))
         elif args.command == "reconcile":
             settled = reconcile_service(ctx)
             _emit(settled)

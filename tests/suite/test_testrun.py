@@ -1355,3 +1355,21 @@ def test_submit_and_status_print_the_absolute_path_of_the_record(ctx, repo, caps
     shown = json.loads(capsys.readouterr().out)
     assert shown["record"] == expected and shown["status"] == "pending"
     assert pathlib.Path(shown["record"]).is_file()
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_run_and_cancel_print_the_record_as_a_path_with_the_content_under_details(
+        ctx, repo, capsys):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    register(ctx, repo, request_id="r2", pytest_args=["-n0", "-k", "two"])
+    expected = {i: str((pathlib.Path(ctx.policy.state_dir) / f"{i}.json").resolve())
+                for i in ("r1", "r2")}
+    assert testrun.main(["cancel", "r2"], ctx) == 0
+    cancelled = json.loads(capsys.readouterr().out)
+    assert cancelled["record"] == expected["r2"] and cancelled["details"]["id"] == "r2"
+    assert cancelled["details"]["status"] == "cancelled"
+    testrun.main(["run", "r2"], ctx)
+    ran = json.loads(capsys.readouterr().out)
+    assert ran["record"] == expected["r2"] and ran["details"]["status"] == "cancelled"
+    assert ran["status"] == "cancelled"
