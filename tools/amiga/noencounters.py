@@ -19,7 +19,9 @@ Its SPECULATIVE rest row also writes variable `$2C`, which the save stores.
 A row applies only while its area's script is loaded, so `on` reports every
 row of an area that is not loaded as stopped and writes nothing for it; `keys`
 applies the rows again before each key press and changes the row once its
-area loads.
+area loads.  A `none` row names a script that makes no random-encounter roll,
+recognised by its entry table, so that while it is loaded the reply says so
+beside the stopped rows instead of leaving them to read as a failure.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
@@ -53,7 +55,7 @@ from tools.registry import scratch  # noqa: E402
 #: nobody has seen hold the value yet.
 CONFIRMED, PROBABLE, SPECULATIVE = "CONFIRMED", "PROBABLE", "SPECULATIVE"
 
-GATE, REST = "gate", "rest"
+GATE, REST, NONE = "gate", "rest", "none"
 
 
 #: The opcode a roll starts with, and what it is changed to: `SAVE` takes the
@@ -62,6 +64,10 @@ RANDOM, SAVE = 0x08, 0x09
 
 #: A roll statement is six bytes: the opcode, its constant and its variable.
 STATEMENT = 6
+
+#: A script starts with its five entry `GOTO`s, four bytes each; their targets
+#: tell one area's script from another's.
+ENTRY_TABLE = 20
 
 
 def digest(statement: bytes) -> str:
@@ -78,7 +84,9 @@ class Row:
     when the `STATEMENT` bytes there hash to `digest`; `changes` are `(offset, value)` pairs written
     over the bytes read there, whose originals the switch keeps itself.  A rest
     row has no `changes`: it holds the bytes of `new` where the game writes a
-    chance, and puts back what it read.
+    chance, and puts back what it read.  A none row's `spec` is the script's
+    first byte and `digest` the hash of its `ENTRY_TABLE` bytes; it writes
+    nothing.
     """
 
     title: str
@@ -100,6 +108,15 @@ def _gate(title, spec, digest, grade, source, changes=_TO_SAVE):
 
 def _rest(title, spec, new, grade, source):
     return Row(title, REST, spec, "", (), bytes.fromhex(new), grade, source)
+
+
+def _none(title, spec, digest, grade, source):
+    return Row(title, NONE, spec, digest, (), b"", grade, source)
+
+
+def length(row: Row) -> int:
+    """How many bytes the switch reads at a row's address."""
+    return {GATE: STATEMENT, NONE: ENTRY_TABLE}.get(row.kind, len(row.new))
 
 
 #: Pool's buffer is `ecl.dax` at `[data+0xA4] + (A - $9900)`; the other titles'
@@ -124,8 +141,23 @@ ROWS = (
     _gate("pool-of-radiance", "*0xA4+0x23A", "a57ba371", PROBABLE,
           "Slums roll at $9B3A, ECL14: IF<= 12 EXIT, so the constant is 0",
           changes=((0, SAVE), (2, 0))),
+    _gate("pool-of-radiance", "*0xA4+0x10E", "59ff65e6", PROBABLE,
+          "area 0 step roll at $9A0E: RANDOM 19, COMPARE 19, IF= looks for "
+          "the MAD MAN in the party, whose attack brings the city watch, so "
+          "the constant is 0",
+          changes=((0, SAVE), (2, 0))),
+    _gate("pool-of-radiance", "*0xA4+0xB40", "8bb105ac", PROBABLE,
+          "area 0 tavern roll at $A440 after a tale: RANDOM 3, COMPARE 1, "
+          "IF= GOTO the drunken brawl at $A693"),
     _gate("curse-of-the-azure-bonds", "*0x5006+0x8739", "9afc9873", PROBABLE,
           "ECL02 roll at $8739: IF> EXIT"),
+    _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "0da02140", PROBABLE,
+          "world map area $50: its rolls pick the PATROL FOREST monsters the "
+          "player asked to fight ($84DE, $84F8, $8508) and whether a journey "
+          "leg shows a note ($9A1A); each leg's fight is the leg's own"),
+    _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "c27b304a", PROBABLE,
+          "world map area $51: no RANDOM statement; each leg's fight is the "
+          "leg's own"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x859D", "dc6e4e48", PROBABLE,
           "ECL10 roll at $859D: IF> EXIT"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x89F6", "dc6e4e48", PROBABLE,
@@ -195,6 +227,8 @@ class EncounterSwitch:
         self.held: dict[int, bytes] = {}
         #: Gate addresses whose statement did not match, already reported.
         self.blocked: set[int] = set()
+        #: `(address, digest)` of each none row already reported loaded.
+        self.noted: set[tuple[int, str]] = set()
         #: How many bytes each change covers: address -> span.
         self.spans: dict[int, int] = {}
         #: What each rest row holds: address -> the bytes written.
@@ -234,11 +268,22 @@ class EncounterSwitch:
 
     def apply(self) -> list[dict]:
         """Change every row that is currently loaded; return what was written
-        or blocked (a block is reported once until the bytes match)."""
+        or blocked (a block is reported once until the bytes match), and each
+        loaded script that makes no roll (reported once until it unloads)."""
         done = []
         for row in self.rows:
             address = self.resolve(row.spec)
             if address is None:
+                continue
+            if row.kind == NONE:
+                key = (address, row.digest)
+                if digest(self.read(address, ENTRY_TABLE)) != row.digest:
+                    self.noted.discard(key)
+                elif key not in self.noted:
+                    self.noted.add(key)
+                    done.append({"row": row.spec, "grade": row.grade,
+                                 "none": "the loaded script makes no "
+                                         f"random-encounter roll: {row.source}"})
                 continue
             if row.kind == GATE:
                 now = self.read(address, STATEMENT)
@@ -315,7 +360,7 @@ class EncounterSwitch:
                     if "error" not in result:
                         del self.patched[address]
                         self._record()
-                else:
+                elif row.kind == REST:
                     if (address not in self.held
                             or self.read(address, len(row.new)) != row.new):
                         continue
@@ -323,6 +368,8 @@ class EncounterSwitch:
                     if "error" not in result:
                         del self.held[address]
                         self._record()
+                else:
+                    continue
             except Exception as exc:
                 result = {"error": f"{type(exc).__name__}: {exc}"}
             done.append({"row": row.spec, "grade": row.grade, **result})
@@ -339,7 +386,7 @@ class EncounterSwitch:
         back by a reload, or for `restore_row` to judge.
         """
         left = []
-        by_spec = {row.spec: row for row in self.rows}
+        by_spec = {row.spec: row for row in self.rows if row.kind != NONE}
         for entry in rows:
             row = by_spec.get(entry.get("spec"))
             try:
@@ -555,9 +602,6 @@ class PipeMemory:
         #: Pointer offsets read in this pass.
         self.fresh: set[int] = set()
 
-    def _row_length(self, row: Row) -> int:
-        return STATEMENT if row.kind == GATE else len(row.new)
-
     def _address(self, row: Row, pointers: dict[int, int]) -> int | None:
         pointer, offset = parse_spec(row.spec)
         if pointer is None:
@@ -575,7 +619,7 @@ class PipeMemory:
         pointers = sorted({p for p, _ in (parse_spec(r.spec) for r in rows)
                            if p is not None})
         heads = [(self.target.data_base + p, 4) for p in pointers]
-        guesses = [(a, self._row_length(r)) for r in rows
+        guesses = [(a, length(r)) for r in rows
                    if (a := self._address(r, self.pointers)) is not None]
         self.fetch(heads + guesses)
         before = dict(self.pointers)
@@ -585,7 +629,7 @@ class PipeMemory:
                 self.fresh.add(p)
         moved = [r for r in rows if self._address(r, self.pointers)
                  != self._address(r, before)]
-        self.fetch([(a, self._row_length(r)) for r in moved
+        self.fetch([(a, length(r)) for r in moved
                     if (a := self._address(r, self.pointers)) is not None])
 
     def clear(self) -> None:
@@ -804,7 +848,7 @@ class WinuaeEncounters:
             self.switch = None
             raise
         return {"action": "on", "repaired": repaired, "rows": done,
-                "held": [r.spec for r in self.switch.rows]}
+                "held": [r.spec for r in self.switch.rows if r.kind != NONE]}
 
     def off(self) -> dict:
         """Put every recorded change back and record the switch as off."""
