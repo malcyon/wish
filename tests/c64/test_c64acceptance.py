@@ -3894,6 +3894,60 @@ def _dispel_run(tmp_path, before, after, rows=("DISPEL MAGIC",)):
     return run, log, sess
 
 
+class _BoxThenMagicFake(_CurseFake):
+    """The pick prompt after the cast with the game's result box drawn under
+    a shortened list, served for BOX_READS screen reads; then the game leaves
+    for the MAGIC bar on its own, as a caster whose last spell was spent."""
+
+    BOX_READS = 5
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.box_reads = 0
+
+    def screen(self):
+        if self.state == "animated":
+            self.box_reads += 1
+            if self.box_reads > self.BOX_READS:
+                self.state = "magic"
+        return super().screen()
+
+
+def test_pool_cast_waits_out_the_result_box_when_the_last_spell_is_spent(tmp_path):
+    """Run a1bf0999c9-adsilver: ROLAND's only spell, ANIMATE DEAD, is cast;
+    the pick prompt stays on row 24 under `BRUTUS IS ANIMATED`, then the game
+    goes back to the MAGIC bar with no key.  The step must not read the
+    boxed prompt as settled and look for an `EXIT` row that is gone."""
+    listed = {1: "ROLAND'S MEMORIZED SPELLS", 3: "3RD LEVEL", 4: "  ANIMATE DEAD"}
+    animated = _window({**listed, 5: "  EXIT"}, A.PICK_SPELL)
+    animated[16] = "@" + "[" * 38 + "@"
+    animated[18] = "$" + "BRUTUS".ljust(38) + "$"
+    animated[19] = "$" + "IS ANIMATED".ljust(38) + "$"
+    magic = _window({}, MAGIC)
+    magic[16] = "@" + "[" * 38 + "@"
+    screens = {**CAST_SCREENS,
+               "list": _window(listed, "CAST EXIT"),
+               "picking": _window({**listed, 5: "  EXIT"}, A.PICK_SPELL),
+               "animated": animated, "magic": magic}
+    moves = _cast_moves({("picking", ("key", "Return")): "animated",
+                         ("magic", ("bar", "EXIT")): "camp"})
+    sess = _BoxThenMagicFake(screens, moves, "camp")
+    run, log = _pool_run(tmp_path, sess)
+    party = [{"slot": 2, "name": "ROLAND", "memorised": [36]}]
+    run.panel_index = lambda who: {"ROLAND": 1}[who]
+    run.reading = lambda: {"party": party, "effects": []}
+    run._spell_ids = {"ANIMATE DEAD": {36, 90}}
+    run.memorised_entries = lambda slot: [] if ("key", "Return") in sess.sent else [36]
+    try:
+        got = run.cast("ROLAND:ANIMATE DEAD")
+    finally:
+        log.close()
+    assert (got["spell_id"], got["memorised_after"]) == (36, [])
+    assert sess.state == "camp"
+    assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
+                         ("bar", "CAST"), ("key", "Return"), ("bar", "EXIT")]
+
+
 def test_pool_dispel_picks_the_named_target_and_keeps_raw_row_checkpoints(tmp_path):
     before, after = _dispel_readings()
     run, log, sess = _dispel_run(tmp_path, before, after)

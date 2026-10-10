@@ -4046,7 +4046,15 @@ class PoolRun:
             self._scribe_walk(spell, limit=2 * len(spells) + 2)
 
     def _leave_cast_pick(self) -> None:
-        """The pick prompt's `EXIT` row, back to the spell list's bar."""
+        """The pick prompt's `EXIT` row, back to the spell list's bar.  The
+        prompt is first waited for with no result box under it; a game that
+        has left it for the list's bar or the MAGIC bar needs no key."""
+        rows = self.wait_rows(lambda r: self._cast_settled(r), CAST_REDRAW_SECONDS,
+                              "the pick prompt without a message")
+        if rows is None:
+            raise self.fail("cast-exit-row", "a message stayed over the pick prompt")
+        if PICK_SPELL not in rows[24]:
+            return
         self._scribe_walk("EXIT")
         for key in ("xtest-return", "kernal-return"):
             self._send_pick(key)
@@ -4061,13 +4069,22 @@ class PoolRun:
         shown = [t for t in (_inner(r) for r in rows[17:23]) if t and not _is_frame(t)]
         return shown if any(t.endswith(" CASTS") for t in shown) else []
 
+    @staticmethod
+    def _cast_box(rows: list[str]) -> bool:
+        """Whether a message box is drawn under the list: a frame row inside
+        the list's window cuts the list short (`BRUTUS IS ANIMATED`)."""
+        return any(_is_frame(_inner(row)) for row in rows[3:23])
+
     def _cast_settled(self, rows: list[str]) -> bool:
         """Where a cast with no target ends: the pick prompt again with no
-        message, the spell list's bar, or the MAGIC bar."""
+        message box, the spell list's bar, or the MAGIC bar.  The pick prompt
+        stays on row 24 under the result box, and when the caster's last
+        spell was spent the game then leaves it for the MAGIC bar unasked."""
         if not rows or self._cast_message(rows):
             return False
         return (self._list_bar(rows[24]) or MAGIC_BAR in rows[24]
-                or (PICK_SPELL in rows[24] and scribe_row(rows, "EXIT") is not None))
+                or (PICK_SPELL in rows[24] and not self._cast_box(rows)
+                    and scribe_row(rows, "EXIT") is not None))
 
     def _cast_list_pick(self, spell: str, slot: int, ids: set[int],
                         held: list[int], target: str | None = None) -> dict:
