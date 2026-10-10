@@ -56,7 +56,7 @@ lines of whichever check failed are the last thing printed.
 On a host whose test policy (`/etc/wish/test-runner.json`) is enabled, a run
 outside the launcher's memory-limited service stops before anything starts and
 names the command to use instead: `tools/suite/testrun.py submit --suiterun`
-and then `run ID`. Inside the service its pytest runs inherit the limit.
+and give the ID and record path to the session's test-runner, which runs it. Inside the service its pytest runs inherit the limit.
 """
 
 from __future__ import annotations

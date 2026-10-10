@@ -54,7 +54,7 @@ deliverable named in the brief exists rather than sweeping for anything else. Re
 .venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
 ```
 
-List every file the checks depend on with `--file`, and leave those files alone until the result arrives. `YOUR_ADDRESS` is your own address, which the orchestrator messages to you right after spawning you. If the message cannot be delivered, or you receive a notice that the runner was stopped, that is a delivery failure: keep the request ID and report it to the orchestrator; never start a runner yourself. The runner does not message you about a cancelled request; if the orchestrator or a notice tells you one was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. `YOUR_ADDRESS` is your own address, which the orchestrator messages to you right after spawning you (do not submit before you have it: the launcher records `unspecified` otherwise). If the message cannot be delivered, or you receive a notice that the runner was stopped, that is a delivery failure: keep the request ID and report it to the orchestrator; never start a runner yourself. The runner does not message you about a cancelled request; if the orchestrator or a notice tells you one was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 
 **Never drive a game one keystroke per turn, and never write the driver
 yourself.** The brief hands you a driver under `tools/` that runs the whole
