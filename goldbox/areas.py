@@ -100,6 +100,9 @@ __all__ = [
     "AREAS_CURSE",
     "AREAS_POOLS_OF_DARKNESS",
     "AREAS_SILVER_BLADES",
+    "LegArrival",
+    "LEG_ARRIVALS_SILVER_BLADES",
+    "leg_arrival",
     "AREAS_BY_ID",
     "TABLES",
     "areas_for",
@@ -923,6 +926,50 @@ AREAS_POOLS_OF_DARKNESS: tuple[Area, ...] = (
     _p(85, (), dynamic_geo=True, fasttravelable=False),
     _p(86, (), dynamic_geo=True, fasttravelable=False),
 )
+
+
+@dataclass(frozen=True)
+class LegArrival:
+    """Where the destination's came-from arm places a party that arrives from
+    one named neighbour, and what the walked exit stores before `NEWECL`.
+
+    `square` is what is written at the live square. `writes` are the
+    `(address, value)` stores the departing script makes before `NEWECL`,
+    which a fast travel skips.
+    """
+
+    here: int
+    to: int
+    square: Arrival
+    writes: tuple[tuple[int, int], ...] = ()
+
+
+#: Silver Blades' five neighbour legs. Facing: 0 N, 1 E, 2 S, 3 W.
+LEG_ARRIVALS_SILVER_BLADES: tuple[LegArrival, ...] = (
+    # ECL51 $80C2 keeps the facing; the walked exit is ECL52 $82F0.
+    LegArrival(0x52, 0x51, Arrival(15, 6, 3)),
+    # ECL52 $81D2 writes x, y and facing; the walked exit is ECL60 $8241.
+    LegArrival(0x60, 0x52, Arrival(15, 12, 3)),
+    # ECL33 $8122 keeps the facing and takes y from $4C88, which the walked
+    # exit ECL40 $81AE-$81CD stores; 1 is the topmost passage square.
+    LegArrival(0x40, 0x33, Arrival(15, 11, 3), ((0x4C88, 1),)),
+    # ECL34 $8114 writes all three; the walked exit from the Well, ECL21
+    # $850F-$8539, stores $4C62 and latches the shaft question off with $4C2A.
+    LegArrival(0x21, 0x34, Arrival(2, 15, 3), ((0x4C62, 5), (0x4C2A, 1))),
+    # ECL33 $80D0 keeps the facing and moves x - 3; the walked exit is ECL34
+    # $81B1-$81C5, and x 7 is the lower half of the temple door.
+    LegArrival(0x34, 0x33, Arrival(7, 0, 0)),
+)
+
+
+def leg_arrival(title: str | None, here: int, to: int) -> LegArrival | None:
+    """The entry for the leg `here` to `to`, or None outside Silver Blades."""
+    if title != SECRET_OF_THE_SILVER_BLADES:
+        return None
+    for leg in LEG_ARRIVALS_SILVER_BLADES:
+        if leg.here == here and leg.to == to:
+            return leg
+    return None
 
 
 #: Game title -> that title's areas.

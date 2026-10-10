@@ -1437,6 +1437,12 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     if overland is not None and addr.travel_square is None:
         raise ValueError(f"newecl_writes: {addr.title} has no travel grid, so "
                          f"there is no address to put an overland square at")
+    # The destination's came-from arm decides the party's square for a leg
+    # from a named neighbour, so the leg's own square replaces the row's.
+    from goldbox import areas as goldbox_areas
+    leg = goldbox_areas.leg_arrival(addr.title, from_area, to_area & 0x7F)
+    if leg is not None:
+        arrival = (leg.square.x, leg.square.y, leg.square.facing)
     writes: list[tuple[int, bytes]] = []
     if addr.walls_slot is not None:
         writes.append((addr.walls_slot, b"\xff"))
@@ -1449,6 +1455,8 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     writes.extend((at, bytes([value & 0xFF]))
                   for dest, at, value in addr.arrival_writes
                   if dest == to_area & 0x7F)
+    if leg is not None:
+        writes.extend((at, bytes([value & 0xFF])) for at, value in leg.writes)
     if disk is not None:
         writes.append((addr.disk, bytes([disk & 0xFF])))
     if arrival is not None:
@@ -2056,9 +2064,7 @@ class FastTravel(Action):
             # sentence in front of it already says everything a player needs.
             return Verdict(False, "the party is already in that area")
         area_id = getattr(area, "id", None)
-        if ((back and (here, area_id) in addr.held_return_legs)
-                or (not back and area_id in addr.held_trips)
-                or (here, area_id) in addr.held_legs):
+        if not back and area_id in addr.held_trips:
             _log.debug("fasttravel blocked: area %s is held for %s",
                        area_id, "Return" if back else "a trip")
             return Verdict(False, UNSUPPORTED.format(title=self.game.title))

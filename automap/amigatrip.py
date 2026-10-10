@@ -236,16 +236,6 @@ class TripRow:
     arrival_statements: tuple[tuple[int, bytes], ...] = ()
 
 
-#: Legs a trip cannot make: the Temple of Tyr's came-from arm in the mines
-#: places the party relative to the square the trip wrote.
-HELD_LEGS = frozenset({(0x34, 0x33)})
-
-#: Legs a Return cannot make: the arriving script places the party from a
-#: neighbour it names, and where that Return should land is not settled.
-RETURN_HELD_LEGS = frozenset({(0x52, 0x51), (0x60, 0x52), (0x40, 0x33),
-                              (0x21, 0x34), (0x34, 0x33)})
-
-
 def _return_landing() -> Difference:
     return Difference(
         "return_landing",
@@ -393,6 +383,18 @@ def arrival_epilogue(row, to: int) -> bytes:
                     if area == to)
 
 
+def leg_prologue(row, here: int | None, to: int) -> bytes:
+    """The `SAVE` statements of the bytes the walked exit for the leg `here`
+    to `to` stores ahead of its `NEWECL`."""
+    from goldbox import areas
+    if here is None:
+        return b""
+    leg = areas.leg_arrival(row_for(row).title, here, to)
+    if leg is None:
+        return b""
+    return b"".join(save(value, address) for address, value in leg.writes)
+
+
 def area_file_for(row, here: int | None, to: int) -> int | None:
     """The disk-side byte a trip into `to` writes ahead of its `NEWECL`, as a
     walked exit does. None when the title has no such byte, when either disk
@@ -429,7 +431,8 @@ def leg_held(row: TripRow, here: int | None, to: int, back: bool,
     try:
         prologue = (leave_grid_prologue(row, here, to)
                     + departure_prologue(row.key, here, to, to_overland)
-                    + arrival_prologue(row, to))
+                    + arrival_prologue(row, to)
+                    + leg_prologue(row, here, to))
     except ValueError:
         return True
     smallest = plan(to, (0, 0, 0), area_file=area_file_for(row, here, to),
@@ -502,17 +505,7 @@ ROWS: dict[str, TripRow] = {
         key_buffer=0x4F6C, area_file=0x7F12,
         script_file="/DISK2/ECL.GLB",
         confirmed=False,
-        differences=(_return_landing(),
-                     Difference("arrival_unplaced",
-                                "an arrival that places the party for this "
-                                "leg",
-                                lambda here, to, back:
-                                not back and (here, to) in HELD_LEGS),
-                     Difference("return_unplaced",
-                                "where a Return from a neighbour the "
-                                "arriving script names lands",
-                                lambda here, to, back:
-                                back and (here, to) in RETURN_HELD_LEGS)),
+        differences=(_return_landing(),),
         # The C64 row's six writes (`fasttravel.SECRET_OF_THE_SILVER_BLADES`):
         # the Well reads its landing table through `$4C62` and latches the
         # shaft event with `$4C2A`; the other four never store `$4CFD = $FF`.

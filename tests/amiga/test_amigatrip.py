@@ -703,15 +703,8 @@ def test_what_each_difference_holds():
                                 trip.ROWS["pool-of-radiance"].differences}
     assert "onto_grid" not in held("pool-of-radiance", 26, 0)
     assert "onto_grid" not in held("pool-of-radiance", 0, 26)
-    assert "arrival_unplaced" in held(SILVER, 0x34, 0x33)
-    assert "arrival_unplaced" not in held(SILVER, 0x34, 0x33, back=True)
     for to in (0x33, 0x34, 0x51, 0x52):
         assert held(SILVER, 0x10, to) == set()
-        assert "return_unplaced" not in held(SILVER, 0x10, to, back=True)
-    for here, to in trip.RETURN_HELD_LEGS:
-        assert "return_unplaced" in held(SILVER, here, to, back=True)
-    assert "return_unplaced" not in held(SILVER, 0x52, 0x51)
-    assert "return_unplaced" not in held(SILVER, 0x10, 0x41, back=True)
 
 
 # -- the player's own disks ----------------------------------------------------
@@ -1953,3 +1946,26 @@ def test_leg_held_counts_the_arrival_writes(to, extra):
     assert not trip.leg_held(row, 0x20, to, False, _room_lengths(21 + extra))
     if extra:
         assert trip.leg_held(row, 0x20, to, False, _room_lengths(20 + extra))
+
+
+def test_a_leg_prologue_stores_the_walked_exit_bytes():
+    assert trip.leg_prologue(SILVER, 0x21, 0x34) \
+        == trip.save(5, 0x4C62) + trip.save(1, 0x4C2A)
+    assert trip.leg_prologue(SILVER, 0x10, 0x34) == b""
+    assert trip.leg_prologue(SILVER, None, 0x34) == b""
+
+
+def test_leg_held_counts_the_leg_prologue(monkeypatch):
+    row = trip.ROWS[SILVER]
+    seen = []
+    real = trip.plan
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("prologue", b""))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(trip, "plan", spy)
+    trip.leg_held(row, 0x21, 0x34, False, {0x21: 100, 0x34: 100})
+    assert seen[-1].endswith(trip.save(5, 0x4C62) + trip.save(1, 0x4C2A))
+    trip.leg_held(row, 0x10, 0x34, False, {0x10: 100, 0x34: 100})
+    assert trip.save(5, 0x4C62) not in seen[-1]

@@ -1268,3 +1268,22 @@ def test_offered_pools_of_darkness_overlands_carry_a_landing_cell():
             assert a.overland is None, i
     assert overlands[17].overland == (6, 12)
     assert overlands[25].overland == (10, 4)
+
+
+def test_the_silver_blades_leg_arrivals_are_the_walked_arms():
+    got = {(leg.here, leg.to): (leg.square, leg.writes)
+           for leg in areas.LEG_ARRIVALS_SILVER_BLADES}
+    assert got == {
+        (0x52, 0x51): (areas.Arrival(15, 6, 3), ()),
+        (0x60, 0x52): (areas.Arrival(15, 12, 3), ()),
+        (0x40, 0x33): (areas.Arrival(15, 11, 3), ((0x4C88, 1),)),
+        (0x21, 0x34): (areas.Arrival(2, 15, 3),
+                       ((0x4C62, 5), (0x4C2A, 1))),
+        (0x34, 0x33): (areas.Arrival(7, 0, 0), ()),
+    }
+    assert areas.leg_arrival(areas.SECRET_OF_THE_SILVER_BLADES, 0x52, 0x51)
+
+
+def test_leg_arrival_is_silver_blades_only():
+    for title in (areas.POOL_OF_RADIANCE, areas.CURSE_OF_THE_AZURE_BONDS):
+        assert areas.leg_arrival(title, 0x52, 0x51) is None

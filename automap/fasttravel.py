@@ -155,11 +155,6 @@ class FastTravelAddresses:
     #: answers `UNSUPPORTED` rather than hiding the row, so a Return out of
     #: one still reads as an unsupported action and not as an attract trap.
     held_trips: frozenset[int] = frozenset()
-    #: `(departure, destination)` legs a Return cannot make although a trip on
-    #: the same leg is offered.
-    held_return_legs: frozenset[tuple[int, int]] = frozenset()
-    #: `(departure, destination)` legs held although both ends are offered.
-    held_legs: frozenset[tuple[int, int]] = frozenset()
 
     #: The live x/y/facing triple, which no title relocated.
     live_square: int = LIVE_SQUARE
@@ -376,13 +371,6 @@ SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
                    (0x51, 0x7F23, 0xFF), (0x51, 0x7F24, 0xFF),
                    (0x51, 0x7F26, 0xFF), (0x51, 0x7F27, 0xFF),
                    (0x51, 0x4BE7, 1), (0x51, 0x4BE8, 1), (0x51, 0x4BE9, 1)),
-    # A Return from a neighbour the arriving script names is placed by that
-    # script's own arm, and where it should land waits on a Question for Donald.
-    held_return_legs=frozenset({(0x52, 0x51), (0x60, 0x52), (0x40, 0x33),
-                                (0x21, 0x34)}),
-    # ECL33's came-from-52 arm moves the party to x - 3, y 15 from whatever
-    # square the trip wrote, which is a wall from the lift cage's 3,3.
-    held_legs=frozenset({(0x34, 0x33)}),
 )
 
 #: Every title whose overlays have been read, by `C64Container.key`. Champions of

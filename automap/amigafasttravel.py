@@ -246,11 +246,18 @@ class AmigaFastTravel(engine.FastTravel):
             return amigavars.read_variable(target, self.key, variable).value
 
         placement = None
+        # The destination's came-from arm places the party for a named
+        # neighbour, so the leg's square replaces the one the bar passed.
+        leg = (areas.leg_arrival(row.title, here, to)
+               if here is not None else None)
+        if leg is not None:
+            arrival = (leg.square.x, leg.square.y, leg.square.facing)
         try:
             prologue = (trips.leave_grid_prologue(row, here, to)
                         + trips.departure_prologue(self.key, here, to,
                                                    self._outdoors(to), read)
-                        + trips.arrival_prologue(row, to))
+                        + trips.arrival_prologue(row, to)
+                        + trips.leg_prologue(row, here, to))
             file = trips.area_file_for(row, here, to)
             epilogue = trips.arrival_epilogue(row, to)
             trip = trips.plan(to, arrival, overland, area_file=file,

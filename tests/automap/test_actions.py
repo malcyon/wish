@@ -1995,14 +1995,14 @@ def test_a_silver_blades_return_into_a_came_from_destination_is_offered(to):
     assert ft.legality(target, area=_silver_blades_row(to), back=True)
 
 
-@pytest.mark.parametrize("here, to", [(0x52, 0x51), (0x60, 0x52),
-                                      (0x40, 0x33), (0x21, 0x34)])
-def test_a_held_return_leg_is_unsupported_but_its_trip_is_offered(here, to):
+LEGS = [(0x52, 0x51), (0x60, 0x52), (0x40, 0x33), (0x21, 0x34), (0x34, 0x33)]
+
+
+@pytest.mark.parametrize("here, to", LEGS)
+def test_every_neighbour_leg_is_offered_both_ways(here, to):
     ft, target, _addr = _silver_blades_machine(here)
-    verdict = ft.legality(target, area=_silver_blades_row(to), back=True)
-    assert not verdict
-    assert verdict.reason == _unsupported(ft)
     assert ft.legality(target, area=_silver_blades_row(to))
+    assert ft.legality(target, area=_silver_blades_row(to), back=True)
 
 
 def test_the_silver_blades_village_trip_is_offered():
@@ -2032,22 +2032,11 @@ def test_the_other_came_from_trips_are_offered_from_new_verdigris(open_id):
     assert ft.legality(target, area=_silver_blades_row(open_id))
 
 
-def test_a_held_leg_is_unsupported_although_both_ends_are_offered():
-    ft, target, addr = _silver_blades_machine(0x34)
-    assert (0x34, 0x33) in addr.held_legs
-    verdict = ft.legality(target, area=_silver_blades_row(0x33))
-    assert not verdict
-    assert verdict.reason == _unsupported(ft)
-    # The same departure to a destination that is not a held leg is offered.
-    assert ft.legality(target, area=_silver_blades_row(0x52))
-
-
-def test_no_other_title_holds_a_trip_a_return_or_a_leg():
+def test_no_other_title_holds_a_trip():
     for key, addr in fasttravel.ADDRESSES.items():
         if key == "secret-of-the-silver-blades":
             continue
-        assert addr.held_trips == addr.held_return_legs == addr.held_legs \
-            == frozenset(), key
+        assert addr.held_trips == frozenset(), key
 
 
 @pytest.mark.parametrize("open_id", [0x41, 0x50])
@@ -2447,3 +2436,45 @@ def test_back_leaves_a_departure_alone_whose_guard_does_not_hold():
     _ft, target, outcome = _pool_back(16, 0, {0x4A5D: 39, 0x4AB5: 0})
     assert outcome.ok, outcome.message
     assert target.read(0x4AB5, 1) == b"\x00"
+
+
+def _leg_expectations(here, to):
+    leg = goldbox_areas.leg_arrival(goldbox_areas.SECRET_OF_THE_SILVER_BLADES,
+                                    here, to)
+    assert leg is not None
+    return leg
+
+
+def _assert_the_walked_leg(addr, target, outcome, here, to):
+    leg = _leg_expectations(here, to)
+    square = bytes((leg.square.x, leg.square.y, leg.square.facing))
+    assert (addr.live_square, square) in outcome.writes
+    assert target.read(addr.live_square, 3) == square
+    assert (addr.came_from, bytes([here])) in outcome.writes
+    for address, value in leg.writes:
+        assert (address, bytes([value])) in outcome.writes
+
+
+@pytest.mark.parametrize("here, to", LEGS)
+def test_a_return_on_a_neighbour_leg_writes_the_walked_square(here, to):
+    target, outcome = _silver_blades_back(away=here, back_to=to)
+    addr = fasttravel.SECRET_OF_THE_SILVER_BLADES
+    _assert_the_walked_leg(addr, target, outcome, here, to)
+
+
+@pytest.mark.parametrize("here, to", LEGS)
+def test_a_trip_on_a_neighbour_leg_writes_the_walked_square(here, to):
+    ft, target, addr = _silver_blades_machine(here)
+    row = _silver_blades_row(to)
+    outcome = ft.run(target, area=row, arrival=(1, 2, 1))
+    assert outcome.ok, outcome.message
+    _assert_the_walked_leg(addr, target, outcome, here, to)
+
+
+def test_leg_writes_follow_the_arrival_writes():
+    addr = fasttravel.SECRET_OF_THE_SILVER_BLADES
+    writes = actions.newecl_writes(0x40, 0x33, 3, addresses=addr)
+    names = [a for a, _ in writes]
+    last_arrival = max(names.index(at) for dest, at, _ in addr.arrival_writes
+                       if dest == 0x33)
+    assert last_arrival < names.index(0x4C88) < names.index(addr.disk)

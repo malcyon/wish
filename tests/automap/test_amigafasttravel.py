@@ -269,6 +269,31 @@ def test_a_silver_blades_return_writes_the_entrance_square(
                 + trips.newecl(0x51)) in written
 
 
+def test_a_neighbour_leg_writes_the_walked_square(disks, monkeypatch):
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True,
+                                            differences=()))
+    rows = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    t = aft.AmigaFastTravel(BLADES, object())
+    t._row = lambda id: rows[id]
+    back = t.apply_back
+    t.back = engine.Waypoint(0x33, None, (5, 6, 1))
+    out = back(machine(BLADES, area=0x34))
+    assert out.ok
+    written = statements_written(out)
+    assert (trips.save(7, 0xC04B) + trips.save(0, 0xC04C)
+            + trips.save(0, 0xC04D)) in written
+    t = aft.AmigaFastTravel(BLADES, object())
+    t._row = lambda id: rows[id]
+    out = t.apply(machine(BLADES, area=0x21), rows[0x34])
+    assert out.ok
+    written = statements_written(out)
+    assert (trips.save(5, 0x4C62) + trips.save(1, 0x4C2A)) in written
+    assert (trips.save(2, 0xC04B) + trips.save(15, 0xC04C)
+            + trips.save(3, 0xC04D)) in written
+
+
 def test_a_silver_blades_return_saves_the_departures_area_file(
         disks, monkeypatch):
     row = trips.ROWS[BLADES]
