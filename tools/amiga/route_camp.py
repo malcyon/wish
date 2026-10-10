@@ -971,6 +971,9 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
     item_states |= {joined_after(state) for state in item_states if is_join(state)}
     strict = title.strict | ({CAMP} | item_states if item_states else set())
+    # A `memorize` or `cast` presses its second key on the magic menu, so it must be recognised.
+    if any(t.split()[0] in ("memorize", "cast") for t in normalise(tokens)):
+        strict = strict | {MAGIC_MENU}
     waits = {state: _min_wait(state) for state in item_states}
     return dataclasses.replace(
         title, route=tuple(route), measure_route=tuple(measured), plain_keys=simple,

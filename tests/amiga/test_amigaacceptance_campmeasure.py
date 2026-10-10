@@ -205,3 +205,36 @@ def test_the_limbo_accept_route_puts_the_camp_steps_between_rest_and_the_camp_sa
         at = route.index(("R", "camp", "key"))
         assert route[at + 1:at + 1 + len(added)] == added
         assert route[at + 1 + len(added)][1] == "camp_save_picker"
+
+
+def test_an_accept_run_sends_no_list_key_until_the_magic_menu_is_recognised(tmp_path, clock):
+    class MenuNeverMatches(RowlessGuard):
+        def __contains__(self, state):
+            return state == route_camp.MAGIC_MENU or super().__contains__(state)
+
+        def __call__(self, state, path):
+            return False if state == route_camp.MAGIC_MENU else super().__call__(state, path)
+
+    darkness = route_camp.camp_title(route_darkness.DARKNESS, ("memorize 1",), 6, name="darkness")
+    base = dataclasses.replace(
+        route_pool.POOL, read_slot=_read_slot, slot_letters=_letters, slot_files=_files)
+    at = route_pool.POOL.route.index(route_camp.CAMP_SAVE_STEP)
+    magic = route_camp.steps_for(("memorize 1",), "darkness", 6)
+    title = dataclasses.replace(
+        base, route=(*base.route[:at], *magic, *base.route[at:]),
+        strict=base.strict | (darkness.strict - route_darkness.DARKNESS.strict))
+    slots = [("A", _slot(START, NAMES)), ("B", b"kept slot")]
+    disks = {"disk1": _adf(tmp_path / "disk1.adf", "ONE"),
+             "disk2": _adf(tmp_path / "disk2.adf", "TWO"),
+             "save": _adf(tmp_path / "save.adf", "POOLSAVE", slots)}
+    manifest = {"disks": disks, "registered": {"reg": _adf(tmp_path / "reg.adf", "REG")},
+                "loaded_letter": "A", "state_a": START, "names_a": NAMES}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    guest = PoolCampGuest(clock, items.ROWS)
+    result = acceptance.run_recon(
+        path, guest=guest, guard=MenuNeverMatches(guest), identity=RowsIdentity(),
+        holder="wish16-test", audio_proof=_audio_proof(tmp_path), title=title, accept=True)
+    keys = [c[2] for c in guest.calls if c[0] == "press"]
+    assert result["success"] is False and "camp_magic screen was not recognized" in result["error"]
+    assert keys.count("M") == 1 and keys[-1] == "M"

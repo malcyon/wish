@@ -551,5 +551,6 @@ def test_memorize_and_cast_go_before_the_camp_save_with_slot_letters_as_simple_k
                            *route_darkness.DARKNESS.route[at:])
     # C and E are kept slot letters on this route, so on these screens they are menu keys.
     assert {("C", "camp_cast_5"), ("E", "camp_magic")} <= set(title.plain_keys)
-    # No guard rule is cut for these screens yet, so a run that reaches them is a measuring one.
-    assert not {"camp_magic", "camp_memorize_5", "camp_cast_5"} & set(title.strict)
+    # The list keys follow the magic menu, so it must be recognised; the lists themselves stay loose.
+    assert route_camp.MAGIC_MENU in title.strict
+    assert not {"camp_memorize_5", "camp_cast_5"} & set(title.strict)

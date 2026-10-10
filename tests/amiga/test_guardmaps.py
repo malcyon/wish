@@ -1186,3 +1186,15 @@ def test_the_darkness_map_guards_every_strict_state_of_a_member_five_item_row_wa
     spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
     route = route_camp.camp_title(DARKNESS, ('row 5 7',), 6, name='darkness')
     assert route.strict <= spec['guards'].keys()
+
+
+def test_the_darkness_map_guards_every_strict_state_of_a_memorize_cast_and_row_walk():
+    from tools.amiga import route_camp
+    from tools.amiga.route_darkness import DARKNESS
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    route = route_camp.camp_title(
+        DARKNESS, ('memorize 5 8', 'cast 5 3', 'row 5 7'), 6, name='darkness')
+    assert route_camp.MAGIC_MENU in route.strict
+    assert route.strict <= spec['guards'].keys()
+

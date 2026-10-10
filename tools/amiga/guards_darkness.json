@@ -35,6 +35,66 @@
         "sha256": "56f79cbe0c66d65595ffc926ce39e6a4404801d01c2ed93276bd07f6fb52674c"
       }
     ],
+    "camp_cast_5": {
+      "also": [
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/31-camp_cast_5.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_page1": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/32-camp_cast_5_page1.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_page2": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page3"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/33-camp_cast_5_page2.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_page3": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/34-camp_cast_5_page3.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
     "camp_items": {
       "also": [
         "camp_items_2",
@@ -556,6 +616,197 @@
       ],
       "example": "amiga-grab-crops/wish9-b1__19-camp_items_row7.png",
       "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
+    },
+    "camp_magic": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/14-camp_magic.png",
+      "sha256": "dbc4ae19a829c6f6ab6233c7aaef7d916b9ff1e47c75cba73133bbeb41cafd0a"
+    },
+    "camp_memorize_5": {
+      "also": [
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/15-camp_memorize_5.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page1": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/16-camp_memorize_5_page1.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page2": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/17-camp_memorize_5_page2.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page3": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/18-camp_memorize_5_page3.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page4": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/19-camp_memorize_5_page4.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page5": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/20-camp_memorize_5_page5.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page6": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/21-camp_memorize_5_page6.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page7": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page8"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/22-camp_memorize_5_page7.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_page8": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/23-camp_memorize_5_page8.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
     },
     "camp_save_picker": [
       {
@@ -1695,6 +1946,17 @@
     }
   },
   "identity": {
+    "camp_cast_5": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        462,
+        62
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/31-camp_cast_5.png",
+      "sha256": "9b10e94db1ee70eb329da4239434a1d0f86433bc61093341927aeac13aefc874"
+    },
     "camp_items": [
       {
         "also": [],
@@ -1786,6 +2048,17 @@
       ],
       "example": "amiga-grab-crops/wish9-b1__34-camp_items_6.png",
       "sha256": "74fce2d07a0e624ff2c2afa566ebf6289c37e49efb71fa284a88760f0a073a31"
+    },
+    "camp_memorize_5": {
+      "also": [],
+      "box": [
+        74,
+        46,
+        494,
+        62
+      ],
+      "example": "WISH-2/guards-measure3/1/shots/15-camp_memorize_5.png",
+      "sha256": "4b4c7815a2506ded36bcbc71222b0329ca1536ae2b9a4a35b236c4ed60c764c5"
     },
     "camp_sheet": [
       {
