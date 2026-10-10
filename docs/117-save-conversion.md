@@ -2763,6 +2763,36 @@ did **not** hold for free on the reader beside it: the first real consumer of
   hit points to give; the writer blocks and reports rather than writing
   hp_max as a guess, and the party arrives at 0 hit points on the sheet.
 
+### A C64 zombie, dispelled or active
+
+A Pool of Radiance C64 member with status `$03` and no Animate Dead row (id 32,
+duration 0) in the effect list converts to DOS and the Amiga as an ordinary dead
+character, available for resurrection at the temple. A zombie that still has his
+row stays a zombie on the other side. `goldbox.c64_codec.dispelled_pool_zombie`
+makes the call and `goldbox.dos_codec` then writes the member through
+`as_ordinary_dead`. CONFIRMED live on both ports: the dispelled member's sheet
+reads DEAD, he is not placed in the next fight and the temple raises him; the
+active one arrives animated. The trip back to the C64 is not yet played
+there: the converted return disks match the registered ones byte for byte, but
+no C64 boot has shown a dispelled member arriving dead and an active one
+arriving as a zombie.
+
+**Known limitation: two histories write the same bytes.** A zombie animated while
+all 64 effect rows were taken saves byte for byte as a dispelled one. The camp
+cast stores status `$03` and trait 32 before it asks for a row and skips only the
+row stores (`SPELLE04` `$A80A`-`$A82D`); the combat cast skips its stores at
+`ECL64` `$9A2C` and writes no trait at all; Dispel Magic removes only the array
+row and runs no handler for id 32. CONFIRMED from the code (WISH-303 comments
+6eba5378, 568e3ec5, a1e74d11). The C64 runs both as zombies, so the full-list
+zombie converts as dead although he was fighting. Reaching a full list in play
+is not shown: the best run reached 19 rows, and the camp route needs about 50
+buff casts in one visit (PROBABLE).
+
+No player prompt is offered; the choice was ruled out, and the case stays an
+unresolved limitation. Whether any byte in the save separates the two histories
+is the open investigation, WISH-366. Do not write a test that treats the
+full-list zombie converting dead as the intended result.
+
 ### The portrait, which is one menu written two ways (#57 (Convert the character portrait across ports))
 
 **The two ports choose a face from the same menu, and each stores the choice

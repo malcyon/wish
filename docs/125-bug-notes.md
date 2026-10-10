@@ -1012,6 +1012,60 @@ have not been read for this. What would settle the C64: break on the Strength
 handler's write to record `0x10` when a spell runs out in a rest, and check
 whether roster `+0x0E` changes before the next fight.
 
+## N26. A dispelled Animate Dead zombie keeps fighting on the C64, and nothing can dispel him again
+
+**What the game does.** Dispel Magic removes the zombie's effect row and runs no
+handler for id 32, so the member stays at status `$03`. Nothing that decides how
+he acts reads that row: the fight setup (`COM.PREP`) skips only status 0 or bit
+7, and the engine runs a member whose `0x10C` bit 7 is set. A second Dispel has
+no row to remove (the dispel code reads the array only, `$3FE1`). CONFIRMED from
+the code (WISH-303 comment a1e74d11). His sheet reads DEAD, as an active
+zombie's does.
+
+**What the player sees.** Live, from a save the game wrote after its own Dispel
+Magic: BRUTUS is placed in the first fight at (26, 12), is run by the engine and
+attacks (`BRUTUS ATTACKS GOBLIN GUARD AND HITS FOR 13 POINTS OF DAMAGE`), the
+same as the active zombie beside it in the other run. An ordinary dead member is
+not placed at all. CONFIRMED (comment 69875c47). An earlier comment said the
+zombies' own attacks were not captured; that was wrong, and 69875c47 shows them.
+
+**How a player ends up there.** A cleric of level 5 or more animates a fallen
+fighter in camp, then later casts Dispel Magic at him from the camp spell list.
+Every value the staged chain needed has an ordinary route in the game's code, and
+two of them show up in saves nobody staged. PROBABLE, not CONFIRMED: no unstaged
+run has completed the chain, and nothing has yet shown a companion cleric
+memorising or casting in camp (comment 7d405ff8). A run that would settle it
+needs a fight that kills exactly one member other than the cleric, which neither
+attempt got.
+
+**Why it matters here.** The same bytes come from a zombie animated while all 64
+effect rows were taken, so Wish converts both as ordinary dead
+([`117-save-conversion.md`](117-save-conversion.md), "A C64 zombie, dispelled or
+active"). WISH-366 asks whether anything separates them.
+
+**Version.** Pool of Radiance, C64.
+
+## N27. A Dispel Magic that takes hold of an Animate Dead zombie stops DOS Pool of Radiance with runtime error 204
+
+**What the game does.** In DOSBox-X, in camp, a cleric casts Dispel Magic at an
+Animate Dead zombie. When the cast takes effect the game stops with
+`Runtime error 204 at 00B0:013A.` and a `C:\POOLRAD>` prompt, the party screen
+still drawn behind it, the target's name red and his hit points 0. CONFIRMED
+twice, in two runs on different save copies (WISH-303 comment ee8ca1c0): ROLAND
+at BRUTUS, then WISHCLE at WISHFTR. The first run's earlier boot, with the same
+cast, completed with no message and left the zombie unchanged (read as a failed
+50% roll, not established).
+
+**What the player sees.** The game ends in a DOS error at the prompt. A player reaches it by animating a dead character in camp and casting
+Dispel Magic at him. The steps: `CAMP`, memorise Animate Dead, cast it on the
+dead member, memorise Dispel Magic, cast it at him.
+
+**Not established.** No save was written after either error, so the target's
+state, the cause at `00B0:013A` and whether the Amiga port does the same are all
+unread.
+
+**Version.** Pool of Radiance, DOS.
+
 ## Not yet confirmed
 
 Four findings that a player *would* notice, and that are kept out of
