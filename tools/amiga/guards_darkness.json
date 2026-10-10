@@ -910,6 +910,19 @@
       "example": "WISH-6/wish6-a5/a5m1/shots/10-elminster_menu.png",
       "sha256": "c13a2d2a5e8740caf23c3725896aa001b04e7f6bb20d7c1fda47927ca43d72cb"
     },
+    "elminster_row": {
+      "also": [
+        "elminster_menu"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/train-measure/measure1/shots/15-elm-np2.png",
+      "sha256": "c13a2d2a5e8740caf23c3725896aa001b04e7f6bb20d7c1fda47927ca43d72cb"
+    },
     "encounter": {
       "also": [],
       "box": [
@@ -1372,6 +1385,28 @@
       ],
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/title.png",
       "sha256": "3067b860a75e1b749371aeddd2c5ea3eb2f5537f6d63e1c39fbf0f3e5541b425"
+    },
+    "train_menu": {
+      "also": [],
+      "box": [
+        58,
+        262,
+        698,
+        432
+      ],
+      "example": "WISH-2/train-measure/measure1/shots/17-train.png",
+      "sha256": "04f04e63c100d484b5ac85d1cb8845d3df52a662c6d9d9fdfd19f03af9448c72"
+    },
+    "train_prompt": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-2/train-measure/measure1/shots/18-train-char.png",
+      "sha256": "d972deb4735919056f67584b735279bf8e7f99cf5b3e3507cce09f10b229ea7b"
     },
     "vault_bar": [
       {
@@ -2184,6 +2219,56 @@
     "WISH-2/r9-l4/b1/shots/13-world.png": [
       "place_x11_y4_f2",
       "world"
+    ],
+    "WISH-2/train-measure/measure1/shots/14-elminster.png": [
+      "elminster_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/15-elm-np2.png": [
+      "elminster_menu",
+      "elminster_row"
+    ],
+    "WISH-2/train-measure/measure1/shots/16-elm-np2-marit.png": [
+      "elminster_menu",
+      "elminster_row"
+    ],
+    "WISH-2/train-measure/measure1/shots/17-train.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/18-train-char.png": [
+      "train_prompt"
+    ],
+    "WISH-2/train-measure/measure1/shots/19-train-yes.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/20-train-yes-b.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/21-np8-marit.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/23-sheet-E.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/24-menu-esc.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/25-begin.png": [
+      "elminster_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/26-begin-b.png": [
+      "elminster_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/27-rest-camp.png": [
+      "camp"
+    ],
+    "WISH-2/train-measure/measure1/shots/28-restored.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/29-np8-yvonne.png": [
+      "train_menu"
+    ],
+    "WISH-2/train-measure/measure1/shots/30-train-yvonne.png": [
+      "train_menu"
     ],
     "WISH-2/wish2-a1a/accept1/shots/12-world.png": [
       "place_x2_y2_f1"

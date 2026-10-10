@@ -253,16 +253,14 @@ def vault_steps(items: int, coins: bool) -> tuple[tuple[str, str, str], ...]:
     )
 
 
-def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTitle:
-    """`DARKNESS` loading a party saved in area 18: the vault, then the camp loop, a save and the exit.
+def _elminster_title(added: tuple, plain_keys: tuple, strict: frozenset,
+                     min_waits: dict[str, float]) -> AmigaTitle:
+    """`DARKNESS` loading a party saved in area 18: `added` from Elminster's menu, then the camp loop, a save and the exit.
 
     `REST` on Elminster's menu opens the camp loop, which is how the party gets back to the
-    camp save. The vault states are not strict, so a screen the guard map lacks is settled and
-    the run is marked as measuring; the camp save's picker still stops a run before any write.
+    camp save. `strict` and `min_waits` add to what every such title has.
     """
-    added = vault_steps(items, coins)
-
-    def vault_route(route: tuple) -> tuple:
+    def elminster_route(route: tuple) -> tuple:
         steps = list(route)
         at = steps.index(("RET", "world", "key"))
         steps[at:at + 1] = [("RET", VAULT_MENU, "key"), *added]
@@ -271,18 +269,96 @@ def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTi
             ("R", "camp", "key")]
         return tuple(steps)
 
-    states = {state for _, state, _ in added}
     return dataclasses.replace(
-        DARKNESS, route=vault_route(DARKNESS.route),
-        measure_route=vault_route(DARKNESS.measure_route),
-        plain_keys=(("E", "loaded_menu"), *((("E", VAULT_TAKE),) if coins else ()),
-                    ("E", VAULT_STORAGE), ("E", VAULT_MENU)),
-        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU},
+        DARKNESS, route=elminster_route(DARKNESS.route),
+        measure_route=elminster_route(DARKNESS.measure_route),
+        plain_keys=plain_keys,
+        strict=(DARKNESS.strict - {"world"}) | {VAULT_MENU} | strict,
         # The route never expects `world`, the only state the other inherited rows answer.
         interstitials=(DARKNESS_INTRO,), interstitial_letters=(), move_again_after=frozenset(),
-        min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0,
-                   **{state: 10.0 for state in states}, VAULT_ROW: route_camp.ROW_WAIT},
+        min_waits={**DARKNESS.min_waits, VAULT_MENU: 45.0, **min_waits},
     )
+
+
+def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTitle:
+    """`DARKNESS` loading a party saved in area 18: the vault, then the camp loop, a save and the exit.
+
+    The vault states are not strict, so a screen the guard map lacks is settled and
+    the run is marked as measuring; the camp save's picker still stops a run before any write.
+    """
+    added = vault_steps(items, coins)
+    states = {state for _, state, _ in added}
+    return _elminster_title(
+        added,
+        (("E", "loaded_menu"), *((("E", VAULT_TAKE),) if coins else ()),
+         ("E", VAULT_STORAGE), ("E", VAULT_MENU)),
+        frozenset(),
+        {**{state: 10.0 for state in states}, VAULT_ROW: route_camp.ROW_WAIT})
+
+
+#: `TRAIN` on Elminster's menu opens the party menu with `TRAIN CHARACTER` and `HUMAN CHANGE
+#: CLASS` offered, the member Elminster's menu highlighted still highlighted. Its `T` shows
+#: `<NAME> WILL BECOME: A LEVEL <N> <CLASS>` over the bar `DO YOU WISH TO TRAIN? YES NO`, and `Y`
+#: trains and redraws the party menu with the highlight on the next line. `BEGIN ADVENTURING`
+#: returns to Elminster's menu; the boot had both menus on one line then, so which highlight it
+#: keeps is unmeasured, and the route puts the party menu's back first so the two agree. A `T` on
+#: a member who is not ready to train left the party menu unchanged, and `ESC` on it did nothing.
+#: As measured in one WinUAE boot.
+TRAIN_MENU = "train_menu"
+TRAIN_PROMPT = "train_prompt"
+#: Elminster's menu after a highlight move: the same bar as `VAULT_MENU`, waited for briefly.
+ELMINSTER_ROW = "elminster_row"
+ELMINSTER_TRAIN = "T"
+TRAIN_CHARACTER = "T"
+TRAIN_YES = "Y"
+TRAIN_BEGIN = "B"
+#: Elminster's menu and the party menu move the highlight on the keys the camp does.
+_NEXT_MEMBER, _PREVIOUS_MEMBER = route_camp.MEMBER_KEYS["darkness"]
+_TRAIN_TEXT = re.compile(r"train ([1-9][0-9]*)")
+
+
+def parse_train(text: str) -> int:
+    """The party line, counted from 1, that the step text `train N` names."""
+    found = _TRAIN_TEXT.fullmatch(" ".join(text.split()).lower())
+    if found is None:
+        raise RouteError(f"{text!r} is not train N, with N a party line counted from 1")
+    return int(found.group(1))
+
+
+def train_steps(line: int, party_size: int) -> tuple[tuple[str, str, str], ...]:
+    """From Elminster's menu with line 1 highlighted: train party line `line` and come back there.
+
+    The highlight moves forward only, since whether Elminster's menu wraps is unmeasured. The
+    last line is blocked: where `Y` puts the highlight after the last member trains is unmeasured,
+    and the route puts the highlight back by one press. A member who is not ready to train gets
+    no `DO YOU WISH TO TRAIN?`, which the strict `TRAIN_PROMPT` guard stops the run on.
+    """
+    if not 1 <= party_size <= route_camp.PARTY_MAX:
+        raise RouteError(f"a party holds 1 to {route_camp.PARTY_MAX} members, not {party_size}")
+    if line == party_size:
+        raise RouteError(f"train {line} names the last line, after whose training the highlight "
+                         "has not been measured")
+    if not 1 <= line < party_size:
+        raise RouteError(f"train {line} names no line of a party of {party_size}")
+    moves = line - 1
+    return (
+        *[(_NEXT_MEMBER, ELMINSTER_ROW, "key")] * moves,
+        (ELMINSTER_TRAIN, TRAIN_MENU, "key"), (TRAIN_CHARACTER, TRAIN_PROMPT, "key"),
+        (TRAIN_YES, TRAIN_MENU, "key"), (_PREVIOUS_MEMBER, TRAIN_MENU, "key"),
+        (TRAIN_BEGIN, VAULT_MENU, "key"),
+        *[(_PREVIOUS_MEMBER, ELMINSTER_ROW, "key")] * moves,
+    )
+
+
+def train_title(line: int, party_size: int) -> AmigaTitle:
+    """`DARKNESS` loading a party saved in area 18: `train_steps`, then the camp loop, a save and the exit.
+
+    Every train state is strict, so `Y` goes out only on the recognised `DO YOU WISH TO TRAIN?`.
+    """
+    return _elminster_title(
+        train_steps(line, party_size), (("E", "loaded_menu"),),
+        frozenset({TRAIN_MENU, TRAIN_PROMPT, ELMINSTER_ROW}),
+        {TRAIN_MENU: 10.0, TRAIN_PROMPT: 10.0, ELMINSTER_ROW: route_camp.ROW_WAIT})
 
 
 DARKNESS_VAULT = vault_title()
