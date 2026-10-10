@@ -44,17 +44,21 @@ TERMINAL = frozenset({"passed", "failed", "timed_out", "cancelled", "interrupted
                       "stale", "infrastructure_failure"})
 ACTIVE = frozenset({"starting", "running"})
 
-#: Budgets (seconds) that add up under the 600 s a single tool call may take.
+#: Budgets (seconds) that add up under the 600 s a single tool call may take:
+#: admission, starting the service, execution, the grace past systemd's limit,
+#: and cleanup.
+TOOL_CALL_LIMIT = 600
 DEFAULT_ADMISSION = 60
-DEFAULT_TIMEOUT = 480
-MAX_TIMEOUT = 500
+SYSTEMD_RUN_TIMEOUT = 30
 CLEANUP_TIMEOUT = 30
+#: Seconds the launcher waits beyond systemd's own runtime limit before stopping.
+GRACE = 20
+MAX_TIMEOUT = 450
+DEFAULT_TIMEOUT = MAX_TIMEOUT
 #: A whole-suite diagnostic runs longer than one tool call; `run` waits in stages.
 SUITERUN_TIMEOUT = 3600
 SUITERUN_MAX_TIMEOUT = 7200
 DEFAULT_BUDGET = 480
-#: Seconds the launcher waits beyond systemd's own runtime limit before stopping.
-GRACE = 20
 CONTROL_WAIT = 45
 POLL = 1.0
 MIN_MEMORY_MAX = 16 * 1024 * 1024
@@ -88,20 +92,76 @@ def read_record(policy: testcontrol.Policy, request_id: str) -> dict | None:
         raise LaunchError(f"record {path} is unreadable: {err}") from None
 
 
-def write_record(policy: testcontrol.Policy, record: dict) -> None:
-    """Atomic replace in the state directory, mode 0600."""
+def _checked_state_dir(policy: testcontrol.Policy) -> pathlib.Path:
+    """The state directory, created 0700 when absent; one that exists must belong to
+    this user and be closed to group and others."""
     directory = pathlib.Path(policy.state_dir)
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if directory.exists():
+        if hasattr(os, "getuid"):
+            info = directory.stat()
+            if info.st_uid != os.getuid():
+                raise LaunchError(f"state directory {directory} is owned by UID "
+                                  f"{info.st_uid}, not {os.getuid()}")
+            if info.st_mode & 0o077:
+                raise LaunchError(f"state directory {directory} has mode "
+                                  f"{info.st_mode & 0o777:03o}; group and others "
+                                  "must have no access")
+    else:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return directory
+
+
+def _fsync_directory(directory: pathlib.Path) -> None:
+    if not hasattr(os, "O_DIRECTORY"):
+        return
+    handle = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
+
+
+def _write_temporary(policy: testcontrol.Policy, record: dict) -> tuple[pathlib.Path, str]:
+    directory = _checked_state_dir(policy)
     handle, temporary = tempfile.mkstemp(dir=directory, prefix=".tmp-", suffix=".json")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as out:
             json.dump(record, out, indent=1, sort_keys=True)
             out.write("\n")
+            out.flush()
+            os.fsync(out.fileno())
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise
+    return directory, temporary
+
+
+def write_record(policy: testcontrol.Policy, record: dict) -> None:
+    """Durable atomic replace in the state directory, mode 0600."""
+    directory, temporary = _write_temporary(policy, record)
+    try:
         os.replace(temporary, _record_file(policy, record["id"]))
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
         raise
+    _fsync_directory(directory)
+
+
+def create_record(policy: testcontrol.Policy, record: dict) -> bool:
+    """Write the record only if no record of that ID exists. False when one does;
+    two submissions of one ID can never overwrite each other."""
+    directory, temporary = _write_temporary(policy, record)
+    try:
+        os.link(temporary, _record_file(policy, record["id"]))
+    except FileExistsError:
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+    _fsync_directory(directory)
+    return True
 
 
 def all_records(policy: testcontrol.Policy) -> list[dict]:
@@ -213,7 +273,8 @@ class SystemBackend:
             argv += ["-p", f"{name}={value}"]
         argv += ["--", *spec["argv"]]
         try:
-            done = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            done = subprocess.run(argv, capture_output=True, text=True,
+                                  timeout=SYSTEMD_RUN_TIMEOUT)
         except (OSError, subprocess.SubprocessError) as err:
             raise LaunchError(f"systemd-run could not start: {err}") from None
         if done.returncode != 0:
@@ -477,9 +538,7 @@ def register_request(ctx: Context, *, request_id: str | None, session: str,
     }
     existing = read_record(policy, request_id)
     if existing is not None:
-        if existing["request"] != request:
-            raise LaunchError(f"request ID {request_id} already holds a different request")
-        return existing, False
+        return _same_request(existing, request, request_id), False
     record = {"schema": 1, "id": request_id, "request": request,
               "submitted": _iso(ctx.clock()), "status": "pending", "dirty": dirty,
               "invocation_id": None, "cancel_requested": False}
@@ -487,8 +546,16 @@ def register_request(ctx: Context, *, request_id: str | None, session: str,
         record["note"] = ("A whole-suite diagnostic outlasts one 600 s tool call: call "
                           "`run ID` again to keep waiting; it re-attaches to the "
                           "running service and never starts it twice.")
-    write_record(policy, record)
+    if not create_record(policy, record):
+        # Another submission of this ID won between the read and the create.
+        return _same_request(read_record(policy, request_id), request, request_id), False
     return record, True
+
+
+def _same_request(existing: dict, request: dict, request_id: str) -> dict:
+    if existing["request"] != request:
+        raise LaunchError(f"request ID {request_id} already holds a different request")
+    return existing
 
 
 # --- status, results ------------------------------------------------------------
@@ -578,7 +645,12 @@ def classify(state: dict, record: dict, checks_doc: dict | None, cleanup_ok: boo
         return "infrastructure_failure"
     if record.get("cancel_requested"):
         return "cancelled"
-    if state.get("Result") == "timeout" or record.get("timeout_enforced"):
+    if record.get("timeout_enforced"):
+        return "timed_out"
+    recorded = record.get("invocation_id")
+    if not recorded or state.get("InvocationID") != recorded:
+        return "interrupted"
+    if state.get("Result") == "timeout":
         return "timed_out"
     if not state.get("Result") or state.get("ExecMainCode") in (None, "", "0"):
         return "interrupted"
@@ -628,10 +700,8 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
     request = record["request"]
     unit = policy.service
     samples = samples or {}
-    try:
-        live = ctx.backend.unit_state(unit)
-    except LaunchError as err:
-        live = {"LoadState": "not-found", "_error": str(err)}
+    # A failed query leaves the record active: an unknown service is never unloaded.
+    live = ctx.backend.unit_state(unit)
     mine = (live.get("LoadState") != "not-found"
             and unit_request(live) == record["id"]
             and record.get("invocation_id") in (None, live.get("InvocationID")))
@@ -639,16 +709,16 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
         raise LaunchError(f"{record['id']} is still running; it cannot be finalised")
     # Without a matching, finished service there is no completion evidence.
     state = live if mine else {}
+    checks_doc = _read_json(record.get("checks_file"))
     result: dict = {"unit": unit, "invocation_id": record.get("invocation_id"),
                     "tree_dirty": bool(record.get("dirty")),
-                    "effective": {"pytest_args": request["pytest_args"],
-                                  "PYTEST_ADDOPTS": request["env"].get("PYTEST_ADDOPTS")},
+                    "effective": (checks_doc or {}).get("effective") or {
+                        "observed": False, "pytest_args": request["pytest_args"],
+                        "PYTEST_ADDOPTS": request["env"].get("PYTEST_ADDOPTS")},
                     "log": record.get("log")}
     if not mine:
-        result["reason"] = ("the service does not hold this request"
-                            + (f" ({live['_error']})" if live.get("_error") else ""))
+        result["reason"] = "the service does not hold this request"
     now = ctx.clock()
-    checks_doc = _read_json(record.get("checks_file"))
     run_cg = samples.get("run_cgroup") or record.get("run_cgroup") or ""
     exit_info = {k: state.get(k) for k in ("Result", "ExecMainCode", "ExecMainStatus")}
     if not run_cg:
@@ -861,14 +931,33 @@ def _start_locked(ctx: Context, request_id: str, slice_info: dict, timeout: int)
         try:
             invocation = ctx.backend.start(_service_spec(ctx, record, log, checks_file))
         except LaunchError as err:
-            record.update(status="infrastructure_failure", finished=_iso(ctx.clock()),
-                          result={"reason": f"the service did not start: {err}"})
-            write_record(policy, record)
-            return record
+            return _after_failed_start(ctx, record, err)
         record.update(status="running", invocation_id=invocation,
                       unit=policy.service)
         write_record(policy, record)
         return record
+
+
+def _after_failed_start(ctx: Context, record: dict, err: LaunchError) -> dict:
+    """`backend.start` failed, but the unit may exist (a systemd-run that timed out
+    after systemd accepted it). A unit carrying this request stays active in the
+    record for reconcile to finalise; only a missing one is a failed start."""
+    policy = ctx.policy
+    try:
+        live = ctx.backend.unit_state(policy.service)
+    except LaunchError:
+        live = None
+    if live is None:
+        # Unknown: leave `starting`, which reconcile resolves once the manager answers.
+        record["start_error"] = str(err)
+    elif live.get("LoadState") != "not-found" and unit_request(live) == record["id"]:
+        record.update(status="running", unit=policy.service, start_error=str(err),
+                      invocation_id=live.get("InvocationID") or None)
+    else:
+        record.update(status="infrastructure_failure", finished=_iso(ctx.clock()),
+                      result={"reason": f"the service did not start: {err}"})
+    write_record(policy, record)
+    return record
 
 
 def _wait(ctx: Context, record: dict, slice_info: dict, budget_end: float | None) -> tuple[dict, bool]:
@@ -961,26 +1050,44 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
     return done
 
 
-def _run_nested(ctx: Context, record: dict) -> dict:
-    """Run inside the parent request's service: no new service and no lock."""
+def _claim_nested(ctx: Context, request_id: str) -> tuple[dict, float, dict | None]:
+    """Move a pending request to running under the control lock, so two nested
+    launchers of one ID cannot both execute it. `(record, timeout, view)`; a view means the
+    request was not claimed."""
     policy = ctx.policy
-    state = ctx.backend.unit_state(policy.service)
-    parent = next((r for r in all_records(policy)
-                   if r["status"] == "running"
-                   and r.get("invocation_id") == state.get("InvocationID")), None)
-    timeout = float(record["request"]["timeout"])
-    if parent is not None:
-        timeout = min(timeout, parent["deadline_epoch"] - ctx.clock() - 5)
-    if timeout <= 0:
-        record.update(status="timed_out", finished=_iso(ctx.clock()),
-                      result={"reason": "the parent request has no time left"})
+    with control_lock(ctx):
+        record = read_record(policy, request_id)
+        if record is None:
+            raise LaunchError(f"no request {request_id}")
+        if record["status"] != "pending":
+            return record, 0.0, _result_view(record, note="not pending", nested=True)
+        state = ctx.backend.unit_state(policy.service)
+        parent = next((r for r in all_records(policy)
+                       if r["status"] == "running"
+                       and r.get("invocation_id") == state.get("InvocationID")), None)
+        timeout = float(record["request"]["timeout"])
+        if parent is not None:
+            timeout = min(timeout, parent["deadline_epoch"] - ctx.clock() - 5)
+        if timeout <= 0:
+            record.update(status="timed_out", finished=_iso(ctx.clock()),
+                          result={"reason": "the parent request has no time left"})
+            write_record(policy, record)
+            return record, 0.0, _result_view(record, nested=True)
+        scratch_dir = scratch.ensure(scratch.scratch_dir("testrun"))
+        log = str(scratch_dir / f"{record['id']}.log")
+        record.update(status="running", started=_iso(ctx.clock()), log=log, nested=True,
+                      started_epoch=ctx.clock())
         write_record(policy, record)
-        return _result_view(record, nested=True)
-    scratch_dir = scratch.ensure(scratch.scratch_dir("testrun"))
-    log = str(scratch_dir / f"{record['id']}.log")
-    record.update(status="running", started=_iso(ctx.clock()), log=log, nested=True,
-                  started_epoch=ctx.clock())
-    write_record(policy, record)
+        return record, timeout, None
+
+
+def _run_nested(ctx: Context, record: dict) -> dict:
+    """Run inside the parent request's service: no new service and no execution lock."""
+    policy = ctx.policy
+    record, timeout, view = _claim_nested(ctx, record["id"])
+    if view is not None:
+        return view
+    log = record["log"]
     done = _checks_in_process(record, timeout, log)
     bad = [n for n, c in done.items() if c["returncode"] != 0]
     timed_out = any(c["returncode"] in (124, -9) for c in done.values())
@@ -1015,6 +1122,7 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
         return _run_nested(ctx, record)
     if record["status"] == "running":
         return _attach(ctx, record, info, budget)
+    admission_end = ctx.clock() + admission_timeout
     held = acquire(ctx, policy.execution_lock, admission_timeout,
                    on_wait=lambda: ctx.say(
                        f"Waiting for the test execution lock for up to "
@@ -1024,7 +1132,7 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
                             note=f"admission timed out after {admission_timeout:g} s; "
                                  "the request is still pending")
     try:
-        deadline = ctx.clock() + admission_timeout
+        deadline = admission_end
         while True:
             settled = reconcile_service(ctx)
             if settled["state"] == "free":
@@ -1040,10 +1148,11 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
         if changed:
             with control_lock(ctx):
                 record = read_record(policy, request_id)
-                record.update(status="stale", finished=_iso(ctx.clock()),
-                              result={"reason": "requested files changed before the start; "
-                                                "nothing ran", "changed": changed})
-                write_record(policy, record)
+                if record["status"] == "pending":
+                    record.update(status="stale", finished=_iso(ctx.clock()),
+                                  result={"reason": "requested files changed before the "
+                                                    "start; nothing ran", "changed": changed})
+                    write_record(policy, record)
             return _result_view(record)
         timeout = record["request"]["timeout"]
         record = _start_locked(ctx, request_id, info, timeout)
@@ -1086,7 +1195,12 @@ def wrap(record_path: str) -> int:
     after each one, and the exit status is nonzero if any failed."""
     record = json.loads(pathlib.Path(record_path).read_text(encoding="utf-8"))
     target = pathlib.Path(record["checks_file"])
-    report: dict = {"id": record["id"], "complete": False, "checks": {}}
+    pytest_check = next((c for c in record["request"]["checks"] if c["name"] == "pytest"), None)
+    report: dict = {"id": record["id"], "complete": False, "checks": {},
+                    "effective": {"observed": True,
+                                  "PYTEST_ADDOPTS": os.environ.get("PYTEST_ADDOPTS"),
+                                  "pytest_argv": pytest_check["argv"] if pytest_check else None,
+                                  "pytest_args": record["request"]["pytest_args"]}}
 
     def save() -> None:
         report["memory"] = _own_memory()

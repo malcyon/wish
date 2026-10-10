@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import pathlib
 import re
-import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -67,7 +66,7 @@ def read_policy(path: str | pathlib.Path = POLICY_PATH) -> Policy:
     """The parsed policy; `PolicyMissing` when absent, `PolicyError` when wrong."""
     try:
         text = pathlib.Path(path).read_text(encoding="utf-8")
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         raise PolicyMissing(f"{path} does not exist") from None
     except (OSError, UnicodeDecodeError) as err:
         raise PolicyError(f"{path} cannot be read: {err}") from None
@@ -150,21 +149,19 @@ def check_limit(policy: Policy, slice_cgroup: str, cgroup_root: str = CGROUP_ROO
             f"but the policy requires {policy.memory_max_bytes}")
 
 
-def slice_cgroup(policy: Policy, runner=subprocess.run) -> str:
-    """The slice's real cgroup path, asked of the user manager and never assumed
-    (systemd nests a dashed name such as wish-tests.slice under wish.slice)."""
-    try:
-        done = runner(["systemctl", "--user", "show", policy.slice,
-                       "-p", "ControlGroup", "--value"],
-                      capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.SubprocessError) as err:
-        raise PolicyError(f"the systemd user manager cannot be asked about "
-                          f"{policy.slice}: {err}") from None
-    path = done.stdout.strip()
-    if done.returncode != 0 or not path.startswith("/"):
-        detail = (done.stderr or done.stdout).strip() or "no cgroup reported"
-        raise PolicyError(f"{policy.slice} has no cgroup in the user manager: {detail}")
-    return path
+def slice_cgroup(policy: Policy) -> str:
+    """The slice's cgroup path in the policy user's manager, derived from its name.
+
+    systemd nests a dashed slice name under its prefixes (`wish-tests.slice` lives
+    in `wish.slice`), and the user manager sits under the user's own slice. Reading
+    it from the name needs no `systemctl`, which a contained child with a scrubbed
+    environment cannot reach.
+    """
+    stem = policy.slice.removesuffix(".slice")
+    parts = stem.split("-")
+    nested = ["-".join(parts[:i + 1]) + ".slice" for i in range(len(parts))]
+    return (f"/user.slice/user-{policy.uid}.slice/user@{policy.uid}.service/"
+            + "/".join(nested))
 
 
 _POPEN = re.compile(r"^(\d+\*)?popen(//.*)?$")
@@ -178,8 +175,7 @@ def remote_xdist(specs) -> list[str]:
 def guard_message(policy_path: str | pathlib.Path = POLICY_PATH, *,
                   platform: str | None = None,
                   proc_cgroup_file: str | pathlib.Path = PROC_CGROUP,
-                  cgroup_root: str = CGROUP_ROOT, runner=subprocess.run,
-                  tx=(), command: str = LAUNCHER_COMMAND) -> str | None:
+                  cgroup_root: str = CGROUP_ROOT, tx=(), command: str = LAUNCHER_COMMAND) -> str | None:
     """Why this process may not run pytest, or None when it may.
 
     A host without the policy, or with it disabled, and every non-Linux
@@ -197,10 +193,7 @@ def guard_message(policy_path: str | pathlib.Path = POLICY_PATH, *,
     if not policy.enabled:
         return None
     use = f"Run it through the launcher: {command}."
-    try:
-        slice_cg = slice_cgroup(policy, runner)
-    except PolicyError as err:
-        return f"Direct pytest is not allowed here ({err}). {use}"
+    slice_cg = slice_cgroup(policy)
     try:
         proc = pathlib.Path(proc_cgroup_file).read_text(encoding="utf-8")
     except OSError as err:
@@ -218,15 +211,14 @@ def guard_message(policy_path: str | pathlib.Path = POLICY_PATH, *,
     return None
 
 
-def inside_run_service(policy: Policy, runner=subprocess.run,
+def inside_run_service(policy: Policy,
                        proc_cgroup_file: str | pathlib.Path = PROC_CGROUP) -> bool:
     """Whether this process already runs inside the fixed run service, which
     makes a nested launcher call part of that request rather than a new one."""
     if not sys.platform.startswith("linux"):
         return False
     try:
-        slice_cg = slice_cgroup(policy, runner)
         proc = pathlib.Path(proc_cgroup_file).read_text(encoding="utf-8")
-    except (PolicyError, OSError):
+    except OSError:
         return False
-    return check_membership(policy, proc, slice_cg)
+    return check_membership(policy, proc, slice_cgroup(policy))
