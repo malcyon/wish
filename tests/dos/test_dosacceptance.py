@@ -5799,6 +5799,131 @@ def test_an_up_that_moves_the_roster_stops_the_walk(tmp_path):
     assert game.keys == ["m", "Up"]
 
 
+#: The overland party marker as WISH-2's two DOS boots drew it: a white ring
+#: in an 8-pixel cell, (column, row) offsets of its lit pixels.
+_POD_RING = tuple((x, y) for y, xs in ((1, (3, 4)), (2, (2, 3, 4, 5)),
+                                       (3, (1, 2, 5, 6)), (4, (1, 2, 5, 6)),
+                                       (5, (2, 3, 4, 5)), (6, (3, 4))) for x in xs)
+
+
+class FakeOverland(FakeDungeon):
+    """Pools of Darkness' overland as WISH-2's boots drew it: no roster and no
+    status line, the map picture under both, a white ring for the party at
+    cell (22, 5) of the 8-pixel grid from (8, 8) (inside the camp roster's
+    rectangle, so the ring reads as a highlighted roster line), a static white
+    pointer elsewhere, and an unchanging picture where the status line would
+    be.  In move mode the arrows move the ring a cell (`blocked` names the
+    keys that do not), and `Escape` leaves."""
+
+    MAP_BAR = b"\x37\x38"
+
+    def __init__(self, tmp, blocked=(), **kw):
+        super().__init__(tmp, **kw)
+        self.cell, self.blocked = [22, 5], set(blocked)
+
+    def key(self, k, gap=0.0):
+        self.keys.append(k)
+        if self.mode == "dmap" and k == "m":
+            self.mode = "move"
+        elif self.mode == "move" and k == self.exit_key:
+            self.mode = "dmap"
+        elif self.mode == "move" and k not in self.blocked:
+            dx, dy = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0),
+                      "Right": (1, 0)}.get(k, (0, 0))
+            self.cell = [self.cell[0] + dx, self.cell[1] + dy]
+
+    def capture(self):
+        bar = self.MOVE_BAR if self.mode == "move" else self.MAP_BAR
+        px = bytearray(_screen(bar, b"").px)
+        for x in range(161, 175):          # the pointer, never moved
+            at = ((101 + x - 161) * W + x) * 3
+            px[at:at + 3] = _WHITE
+        cx, cy = 8 + 8 * self.cell[0], 8 + 8 * self.cell[1]
+        for x, y in _POD_RING:
+            at = ((cy + y) * W + cx + x) * 3
+            px[at:at + 3] = _WHITE
+        _draw_name(px, screens.STATUS_TEXT_X, dosbox.STATUS[1],
+                   b"\x81\x18\x21", _CYAN)
+        return dosbox.Screen(W, H, bytes(px))
+
+
+def _overland_driver(tmp_path, monkeypatch, **kw):
+    game = FakeOverland(tmp_path, **kw)
+    monkeypatch.setitem(da.POD_MAP_BARS, "overland",
+                        screens.bar_signature(game.capture()))
+    d = da.Driver(game, lambda **k: None, "A", "darkness", party_size=game.size)
+    d.where = "map"
+    d.world_ink = game.capture().ink(dosbox.BAR)
+    d.world_sig = screens.bar_signature(game.capture())
+    return game, d
+
+
+def test_the_overland_ring_reads_as_a_roster_line_to_the_dungeon_check(tmp_path,
+                                                                     monkeypatch):
+    """The live failure: the ring at row 5 lies in the camp roster's rectangle."""
+    game, _ = _overland_driver(tmp_path, monkeypatch)
+    before = screens.roster_line(game.capture(), "camp", game.size)
+    game.cell[1] -= 1
+    assert before is not None
+    assert screens.roster_line(game.capture(), "camp", game.size) != before
+
+
+def test_pools_of_darkness_walks_one_square_on_the_overland(tmp_path, monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch)
+    map_ink = d.world_ink
+    got = d.walk("1")
+    assert game.keys == ["m", "Up", "Escape"]
+    assert game.cell == [22, 4] and game.mode == "dmap"
+    assert got["map_kind"] == "overland" and got["step_key"] == "Up"
+    assert (got["square_before"], got["square_after"]) == ("22,5", "22,4")
+    assert d.game.world_bar == map_ink
+
+
+def test_an_overland_walk_tries_the_other_arrows_past_a_blocked_one(tmp_path,
+                                                                   monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch, blocked=("Up", "Right"))
+    got = d.walk("1")
+    assert game.keys == ["m", "Up", "Right", "Down", "Escape"]
+    assert got["step_key"] == "Down" and got["square_after"] == "22,6"
+
+
+def test_an_overland_walk_with_every_arrow_blocked_stops_blocked(tmp_path, monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch,
+                               blocked=("Up", "Right", "Down", "Left"))
+    with pytest.raises(da.StepFailed, match="no arrow moved the party marker"):
+        d.walk("1")
+    assert game.keys == ["m", "Up", "Right", "Down", "Left"]
+
+
+def test_an_overland_jump_of_more_than_a_cell_stops_the_walk(tmp_path, monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch)
+    real = game.key
+
+    def key(k, gap=0.0):
+        real(k, gap)
+        if k == "Up":
+            game.cell[1] -= 2
+
+    game.key = key
+    with pytest.raises(da.StepFailed, match="not to a neighbouring cell"):
+        d.walk("1")
+
+
+def test_an_overland_with_no_party_marker_stops_before_any_key(tmp_path, monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch)
+    game.cell = [-5, -5]
+    with pytest.raises(da.StepFailed, match="no party marker"):
+        d.walk("1")
+    assert game.keys == []
+
+
+def test_turn_on_the_overland_stops_before_any_key(tmp_path, monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch)
+    with pytest.raises(da.StepFailed, match="no facing"):
+        d.turn(2)
+    assert game.keys == []
+
+
 def test_a_blank_status_after_a_step_is_reported_as_that_and_turns_nothing(tmp_path):
     game, d = _dungeon_driver(tmp_path, blank_after_up=True)
     with pytest.raises(da.StepFailed, match="blank after the step"):

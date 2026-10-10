@@ -85,7 +85,7 @@ a source whose title does not match `--title`:
 | `shot NAME` | one PNG and the screen digests, nothing pressed |
 | `snapshot NAME`, `restore NAME` | DOSBox-X only (`dossnapshot.SnapshotSession`; a run with either step boots it): `snapshot` saves the whole machine under NAME (letters, digits, `-`, `_`); `restore` puts it back and settles, and the `SAVE` files changed since the snapshot are logged and recorded as `changed_saves`, because a game save stays on disk.  A `restore` needs an earlier `snapshot` of that name and no `save` between them; the run stops before boot otherwise.  Each is in `run.jsonl` and `summary.json`.  Random encounters stay on, except under `--no-encounters`, where a `restore` clears the values the switch wrote and re-arms it.  A `snapshot` after a `press` is taken only once the screen has held unchanged for `Driver.SNAPSHOT_QUIET` seconds (30 s at most) and fails if it never does or changes while the state is written; its digest is recorded as `screen`, and a `restore` of that name fails unless the same screen comes back |
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot`, `read`, `snapshot` and `restore` (and in darkness `map`, `continue` and `exit`) may come after it, and none of the last two after a `prayer-watch` |
-| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
+| `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  On the Pools of Darkness overland, which draws no roster and no status line, the step is judged by the cell of the party's white ring (`pod_overland_cell`) and the arrows `Up`, `Right`, `Down`, `Left` are tried in turn until one moves it a neighbouring cell; `turn` is not driven there.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `walk KKIIJI` | Pool: a run of `I` (step forward), `J` (turn left) and `K` (turn right), each move judged by the place the DOSBox-X debugger reads at `POOL_PLACE` and the area byte `POOL_AREA`, both logged as `place`: a step must change the square or the area and a turn must leave both alone, so the area changes only on the step that crosses into the next one (`crossings` lists them).  A story box a step lands on gets `Return`.  The last step may end on a screen that is not the map, whose text is kept as `arrival` (the temple's `DO YOU SEEK HEALING?` for `temple raise`); on any earlier move such a screen stops the run |
 | `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
@@ -999,6 +999,22 @@ POD_MOVE_EXIT = "Escape"
 #: Curse has no move mode: `Up` steps at the map bar.
 #: Pools of Darkness keeps `m` and `Escape`.
 MOVE_KEYS = {"darkness": (POD_MOVE, POD_MOVE_EXIT), "ssb": ("m", "e")}
+#: Pools of Darkness' overland (bar `MOVE ENCAMP`) draws no roster and no
+#: status line: the map picture fills both places, and the party is a white
+#: ring in one cell of an 8-pixel grid starting at (8, 8), 38 cells by 15.
+#: The ring's lit pixels, as (column, row) offsets in its cell, were read off
+#: WISH-2's two boots of `pod-650-savgama-join-weight-dos`, where it sat in
+#: cell (22, 5), inside the camp roster's rectangle, so a dungeon walk's
+#: roster check read it as a highlighted line.
+POD_OVERLAND_GRID = (8, 8, 38, 15)
+POD_OVERLAND_RING = frozenset(
+    (x, y) for y, xs in ((1, (3, 4)), (2, (2, 3, 4, 5)), (3, (1, 2, 5, 6)),
+                         (4, (1, 2, 5, 6)), (5, (2, 3, 4, 5)), (6, (3, 4)))
+    for x in xs)
+#: The arrows an overland walk tries in move mode, one at a time, until one
+#: moves the ring.  `Up` moved it one cell north in both WISH-2 boots; the
+#: other three are untried there and are judged by the ring alike.
+POD_OVERLAND_STEPS = ("Up", "Right", "Down", "Left")
 #: Curse's party-menu `bar_signature`, the loaded menu and the empty one alike:
 #: CONFIRMED on 12 shots of 4 boots.  It does not tell a loaded menu from an
 #: empty one, so `check_party_drawn` still reads the roster.
@@ -1300,6 +1316,21 @@ def cast_list(screen: dosbox.Screen, font: dict[bytes, str]) -> dosbox.SpellList
         head=text_row(screen, SCRIBE_HEAD_ROW, font, DISPLAY_COLUMNS).strip(),
         bar=text_row(screen, BAR_ROW, font).strip(),
         spells=tuple(spells))
+
+
+def pod_overland_cell(screen: dosbox.Screen) -> tuple[int, int] | None:
+    """The overland grid cell whose white pixels are exactly the party ring
+    (`POD_OVERLAND_RING`), or None when no cell, or more than one, is."""
+    x0, y0, columns, rows = POD_OVERLAND_GRID
+    found = []
+    for row in range(rows):
+        for column in range(columns):
+            px = screen.rows((x0 + CELL * column, y0 + CELL * row, CELL, CELL))
+            lit = {(i // 3 % CELL, i // 3 // CELL) for i in range(0, len(px), 3)
+                   if min(px[i:i + 3]) >= 0xF0}
+            if lit == POD_OVERLAND_RING:
+                found.append((column, row))
+    return found[0] if len(found) == 1 else None
 
 
 def roster_text(screen: dosbox.Screen, line: int, font: dict[bytes, str]) -> str:
@@ -5104,6 +5135,92 @@ class Driver:
                             f"{origin_place['x']},{origin_place['y']})")
         return same is None
 
+    def on_overland(self) -> bool:
+        """Whether the world bar is Pools of Darkness' overland one."""
+        return (self.title.key == "darkness" and self.world_sig is not None
+                and self.world_sig == POD_MAP_BARS.get("overland"))
+
+    def _walk_overland(self) -> dict:
+        """Pools of Darkness' overland: MOVE, one arrow, `Escape` back.
+
+        The overland draws no roster and no status line (`POD_OVERLAND_RING`),
+        so the party's place is the cell its ring is in (`pod_overland_cell`).
+        The arrows of `POD_OVERLAND_STEPS` are tried in turn until one moves
+        the ring; a ring that is lost, or moves further than a neighbouring
+        cell, stops the run, and so does a move bar that does not come back
+        (a fight; `--no-encounters` covers area 17's roll).
+        """
+        screens: list[dict] = []
+        enter, leave = MOVE_KEYS[self.title.key]
+        map_screen = self.s.capture()
+        if not self.on_world(map_screen):
+            raise self.fail("walk-before", "the map bar is not showing")
+        start = pod_overland_cell(map_screen)
+        if start is None:
+            raise self.fail("walk-status", "no party marker on the overland "
+                            "(no one cell holds the white ring)")
+        map_bar = self.world_sig
+        try:
+            self.s.key(enter)
+            if not self.s.wait_while_ink(dosbox.BAR, self.world_ink, 15.0):
+                raise self.fail("walk-move", f"the map bar did not change after "
+                                f"{enter} (no move mode)")
+            settled = self.s.settle(quiet=0.6, timeout=30.0)
+            move_bar = bar_signature(settled)
+            if move_bar == self.world_sig:
+                raise self.fail("walk-move", f"the map bar did not change after "
+                                f"{enter} (no move mode)")
+            self.game.record_map(settled)
+            origin = pod_overland_cell(settled)
+            screens.append({"shot": self.shot("walk-move"), "bar": move_bar,
+                            "square": None if origin is None else "%d,%d" % origin})
+            if origin != start:
+                raise self.fail("walk-status", "the party marker moved or was "
+                                f"lost on entering move mode ({start} to {origin})")
+            cell, used = origin, None
+            for n, key in enumerate(POD_OVERLAND_STEPS, 1):
+                label = f"walk-step-{n}"
+                if not self.game.move(key):
+                    raise self.fail(label, f"the move bar did not return after "
+                                    f"{key} (combat or an unknown screen)")
+                screen = self.s.settle(quiet=0.6, timeout=30.0)
+                if bar_signature(screen) != move_bar:
+                    raise self.fail(label, "the move bar did not return (combat "
+                                    "or an unknown screen)")
+                cell = pod_overland_cell(screen)
+                screens.append({"shot": self.shot(label), "bar": move_bar,
+                                "key": key,
+                                "square": None if cell is None else "%d,%d" % cell})
+                if cell is None:
+                    raise self.fail("walk-status", f"the party marker was lost "
+                                    f"after {key}")
+                if cell != origin:
+                    if max(abs(cell[0] - origin[0]), abs(cell[1] - origin[1])) != 1:
+                        raise self.fail(label, f"the party marker moved from "
+                                        f"{origin} to {cell}, not to a "
+                                        "neighbouring cell")
+                    used = key
+                    break
+            if used is None:
+                raise self.fail("walk-blocked", "no arrow moved the party marker "
+                                f"({', '.join(POD_OVERLAND_STEPS)} all left it "
+                                f"at {origin})")
+            if bar_signature(self.s.capture()) != move_bar:
+                raise self.fail("walk-back", "not at the move bar to leave it")
+            self.s.key(leave)
+            if not self.s.wait_until_ink(dosbox.BAR, self.world_ink, 15.0):
+                raise self.fail("walk-back", f"{leave} did not return "
+                                "to the map bar")
+            back = self.s.settle(quiet=0.6, timeout=30.0)
+            screens.append({"shot": self.shot("walk-back"),
+                            "bar": bar_signature(back)})
+            return {"route": "1", "map_kind": "overland", "map_bar": map_bar,
+                    "move_bar": move_bar, "step_key": used,
+                    "square_before": "%d,%d" % origin,
+                    "square_after": "%d,%d" % cell, "screens": screens}
+        finally:
+            self.game.record_map(map_screen)
+
     def _walk_one(self) -> dict:
         """Press MOVE, step one square forward, and press EXIT back to the map.
 
@@ -5114,7 +5231,10 @@ class Driver:
         `Up`; past a wall it turns right and tries again, three turns at most.
         A step is believed only when the `x,y` on the status line changes,
         and a key that moved the roster highlight instead stops the run.
+        Pools of Darkness' overland has neither, so `_walk_overland` walks it.
         """
+        if self.on_overland():
+            return self._walk_overland()
         screens: list[dict] = []
         column = status_column(self.title.key)
         enter, leave = MOVE_KEYS[self.title.key]
@@ -5262,6 +5382,10 @@ class Driver:
         turn's reading is the baseline and only the turns after it are
         compared; one turn alone then proves nothing and stops the run.
         """
+        if self.on_overland():
+            raise StepFailed("turn is not driven on the Pools of Darkness "
+                             "overland: the party is a ring with no facing, and "
+                             "an arrow moves it a cell")
         screens: list[dict] = []
         column = status_column(self.title.key)
         enter, leave = MOVE_KEYS[self.title.key]
