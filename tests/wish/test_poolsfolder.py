@@ -19,7 +19,7 @@ from automap.area import RESIDENT_GEO
 from automap.config import Settings
 from automap.maps import AMIGA_ONLY_TITLES
 from automap.target import MemoryTarget
-from goldbox import c64_port
+from goldbox import c64_port, titles
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.geo import (
     BARRIERS,
@@ -907,3 +907,14 @@ def test_with_either_flag_on_a_pools_dos_install_is_named(tmp_path, monkeypatch,
     folder = dos_install(tmp_path / "dos")
     rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
     assert rows["Titles"] == POD.title
+
+
+def test_another_title_with_no_disks_keeps_its_old_text(tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    old = "none; no .adf disk images here"
+    for other in (titles.CURSE_OF_THE_AZURE_BONDS, titles.POOL_OF_RADIANCE):
+        assert title_folder_report(str(empty), other) == old
+        rows = dict(preferences.report(Settings(), flag=str(empty), game=other))
+        assert rows["Titles"] == old
