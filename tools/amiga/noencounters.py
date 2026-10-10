@@ -196,6 +196,29 @@ ROWS = (
           "encounter menu", area="bfb373ae"),
     _none("secret-of-the-silver-blades", "*0x6956+0x8000", "9a483961", PROBABLE,
           "area 48 ($30): no RANDOM statement"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x9074", "dc6e4e48", PROBABLE,
+          "area 51 ($33) roll at $9074, reached from the step entry on an "
+          "ordinary square once step counter [$4C02] passes 20: COMPARE 35, "
+          "roll, IF<= GOTO $97FC (EXIT), else the monster tables and SETUPMON; "
+          "while [$4CD9] is 1 the step entry takes the $9761 roll instead, "
+          "which only prints a message", area="bf712cb6"),
+    _none("secret-of-the-silver-blades", "*0x6956+0x8000", "57e281fe", PROBABLE,
+          "area 52 ($34): no RANDOM statement"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x84B3", "761f6670", PROBABLE,
+          "area 82 ($52) roll at $84B3 into [$4C06], reached from the step "
+          "entry off a type-31 square when [$4CBE] is 255, [$7ECA] is 1 and "
+          "the try counter [$4CBD] is at most 10: IF> 50 GOTO the square "
+          "dispatch, else TREASURE and COMBAT at $84F2", area="3dff39b8"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x85B0", "dc6e4e48", PROBABLE,
+          "area 82 ($52) roll at $85B0 on an ordinary square when the "
+          "[$4C07] wait is 0: IF> 50, 20 or 10 GOTO $8943 (EXIT), by [$4CBE] "
+          "and [$7ECA], else the monster tables and SETUPMON or the $86E6 "
+          "event table", area="3dff39b8"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x86D5", "dc6e4e48", PROBABLE,
+          "area 82 ($52) roll at $86D5 on an ordinary square while the "
+          "[$4C07] wait counts down after a fight: IF> 5 GOTO $8938 (EXIT), "
+          "else the $86E6 event table, two of whose ten events are COMBAT",
+          area="3dff39b8"),
     _gate("pools-of-darkness", "*0x6EA6+0x82EA", "e43dac29", PROBABLE,
           "GLB block 17 roll at $82EA, reached from the step entry on an "
           "ordinary square: IF> 5 EXIT, else a fight; decoded with Pools of "

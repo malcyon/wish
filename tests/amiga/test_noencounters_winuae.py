@@ -677,14 +677,21 @@ def test_curse_on_names_the_world_map_script_and_writes_nothing_there(state, mon
 # -- Secret of the Silver Blades, against the player's disks --------------------
 
 SILVER = "secret-of-the-silver-blades"
-COMBAT, SETUPMON, RETURN = 0x24, 0x0C, 0x13
+COMBAT, SETUPMON, RETURN, ENCOUNTER_MENU = 0x24, 0x0C, 0x13, 0x29
+FIGHTS = {COMBAT, SETUPMON, ENCOUNTER_MENU}
 
 #: Each Silver Blades gate's script offset and the one area whose script holds
-#: its statement there; every one is `RANDOM 99` into the same variable.
-SILVER_GATES = {0x59D: 16, 0x9F6: 32, 0x34F: 33, 0x3ED: 65, 0x1827: 81}
+#: its statement there; every one is `RANDOM 99`.
+SILVER_GATES = {0x59D: 16, 0x9F6: 32, 0x34F: 33, 0x3ED: 65, 0x1827: 81,
+                0x1074: 51, 0x4B3: 82, 0x5B0: 82, 0x6D5: 82}
 
-#: The area the `none` row names, whose script makes no `RANDOM` at all.
-SILVER_NONE = 48
+#: The areas the `none` rows name, whose scripts make no `RANDOM` at all.
+SILVER_NONE = {48, 52}
+
+#: A gate whose other side joins the square dispatch, and that dispatch's
+#: offset: the step reaches it without the roll too, and the ordinary square's
+#: rolls behind it are gates of their own (area 82's at $85B0 and $86D5).
+SILVER_REJOIN = {0x4B3: 0x4F3}
 
 
 def silver_scripts() -> dict[int, bytes]:
@@ -696,23 +703,66 @@ def silver_scripts() -> dict[int, bytes]:
     return {s.area: blocks[s.block] for s in tripspace.spaces(SILVER, library)}
 
 
-def _reaches(model, body, at, ops, limit=40):
-    """Whether the straight path from `at`, taking every `GOTO`, meets one of
-    `ops` before an `EXIT` or `RETURN`."""
+def _fight_reachable(model, skip, body, at, known, saves=(), stops=(), limit=5000):
+    """Whether some path from `at` meets a fight statement before it stops or
+    reaches one of `stops`.
+
+    Only the variables in `known` hold a value, and only until a statement
+    other than `SAVE` of a constant names them; every comparison with an
+    unknown side, and every flag a statement other than a condition or `GOTO`
+    may have changed, takes both ways.  A `GOSUB`, `ON GOTO` or `ON GOSUB`
+    is followed to every target, and a call also past it, with nothing known
+    from there on.  The `RANDOM 99` at each offset in `saves` is read as the
+    `SAVE 99` the switch changes it to.
+    """
     from tools.amiga import tripspace
 
-    for _ in range(limit):
-        statement = tripspace.decode(model, body, at)
-        if statement.op in ops:
+    work = [(at, tuple(sorted(known.items())), None)]
+    seen = set()
+    while work:
+        state = work.pop()
+        if state in seen:
+            continue
+        seen.add(state)
+        assert len(seen) < limit, f"more than {limit} states from {at + SCRIPT_BASE:#x}"
+        i, values, flag = state
+        s = tripspace.decode(model, body, i)
+        assert s is not None, f"undecodable statement at {i + SCRIPT_BASE:#x}"
+        if s.op in FIGHTS:
             return True
-        if statement.op in (EXIT, RETURN):
-            return False
-        at = (statement.address(0) - SCRIPT_BASE if statement.op == tripspace.GOTO
-              else statement.end)
+        if s.op in (EXIT, RETURN, tripspace.NEWECL) or i in stops:
+            continue
+        if i in saves and s.op == ne.RANDOM:
+            s = dataclasses.replace(s, op=ne.SAVE)
+        held = dict(values)
+        if s.op == COMPARE:
+            sides = [o[1] if o[0] == 0 else held.get(o) for o in s.operands]
+            work.append((s.end, values, None if None in sides else tuple(sides)))
+        elif s.op in CONDITIONS:
+            past = tripspace.decode(skip, body, s.end).end
+            outcomes = (True, False) if flag is None else (CONDITIONS[s.op](*flag),)
+            work += [(s.end if taken else past, values, flag) for taken in outcomes]
+        elif s.op == tripspace.GOTO:
+            work.append((s.address(0) - SCRIPT_BASE, values, flag))
+        elif s.op in (tripspace.GOSUB, tripspace.ONGOTO, tripspace.ONGOSUB):
+            targets = ([s.address(0)] if s.op == tripspace.GOSUB else
+                       [s.address(k) for k in range(2, len(s.operands))])
+            work += [(t - SCRIPT_BASE, (), None) for t in targets if t is not None]
+            if s.op != tripspace.ONGOTO:
+                work.append((s.end, (), None))
+        else:
+            if s.op == ne.SAVE and s.operands[0][0] == 0:
+                held[s.operands[1]] = s.operands[0][1]
+            else:
+                held.update({o: None for o in s.operands if o[0] not in (0, 0x80)})
+            work.append((s.end, tuple(sorted((k, v) for k, v in held.items()
+                                             if v is not None)), None))
     return False
 
 
 def test_each_silver_gate_is_the_fight_roll_of_one_area_and_save_skips_the_fight():
+    import itertools
+
     from tools.amiga import amigasaves, tripspace
 
     scripts = silver_scripts()
@@ -731,42 +781,54 @@ def test_each_silver_gate_is_the_fight_roll_of_one_area_and_save_skips_the_fight
         body = scripts[area]
         roll = tripspace.decode(model, body, at)
         assert roll.op == ne.RANDOM and roll.operands[0][0] == 0, row.spec
-        limit, variable = roll.operands[0][1], roll.operands[1]
-        compare = tripspace.decode(model, body, roll.end)
-        assert compare.op == COMPARE and variable in compare.operands, row.spec
-        condition = tripspace.decode(model, body, compare.end)
-        assert condition.op in CONDITIONS, row.spec
-        # A limit held in a variable is one of the constants the statements
-        # just before the roll save into it (area 16: 4, or 15 when [$4C2D] is 1).
-        found, _bad = tripspace.walk(SILVER, model, skip, body)
-        other = next(o for o in compare.operands if o != variable)
-        limits = ([other[1]] if other[0] == 0 else
-                  [s.operands[0][1] for i, s in found.items()
-                   if at - 0x20 <= i < at and s.op == ne.SAVE
-                   and s.operands[0][0] == 0 and s.operands[1] == other])
-        assert limits, row.spec
-        for value in limits:
-            a, b = ((limit, value) if compare.operands[0] == variable
-                    else (value, limit))
-            assert CONDITIONS[condition.op](a, b), f"SAVE {limit} misses the skip at {row.spec}"
-        taken = tripspace.decode(model, body, condition.end)
-        assert taken.op in (EXIT, tripspace.GOTO), row.spec
-        assert not _reaches(model, body, condition.end, {COMBAT, SETUPMON}), row.spec
-        assert _reaches(model, body, taken.end, {COMBAT, SETUPMON}), row.spec
+        assert roll.operands[0][1] == 99, row.spec
+        variable = roll.operands[1]
+        found, bad = tripspace.walk(SILVER, model, skip, body)
+        assert at in found and not bad, row.spec
+        # A limit held in a variable, in a comparison just after the roll, takes
+        # each constant the statements just before the roll save into it (area
+        # 16: 4, or 15 when [$4C2D] is 1); any other variable stays unknown.
+        others = {o for i, s in found.items()
+                  if at < i < at + 0x40 and s.op == COMPARE and variable in s.operands
+                  for o in s.operands if o != variable and o[0] != 0}
+        limits = {o: sorted({s.operands[0][1] for i, s in found.items()
+                             if at - 0x20 <= i < at and s.op == ne.SAVE
+                             and s.operands[0][0] == 0 and s.operands[1] == o})
+                  for o in others}
+        limits = {o: values for o, values in limits.items() if values}
+        saves = {a for a, other in SILVER_GATES.items() if other == area}
+        stops = {SILVER_REJOIN[at]} if at in SILVER_REJOIN else set()
+        for stop in stops:
+            # The step reaches the dispatch past the roll by a GOTO before it.
+            assert any(s.op == tripspace.GOTO and s.address(0) == stop + SCRIPT_BASE
+                       for i, s in found.items() if i < at), row.spec
+        for chosen in itertools.product(*limits.values()):
+            known = dict(zip(limits, chosen, strict=True))
+            # With the area's gates changed, the stored 99 leads to no fight;
+            # the game's lowest roll, 0, does.
+            assert not _fight_reachable(model, skip, body, roll.end,
+                                        {**known, variable: 99}, saves, stops), (
+                row.spec, known)
+            assert _fight_reachable(model, skip, body, roll.end,
+                                    {**known, variable: 0}, saves, stops), (row.spec, known)
 
 
-def test_the_silver_none_row_is_the_one_script_with_no_roll_it_names():
+def test_each_silver_none_row_is_the_one_script_with_no_roll_it_names():
     from tools.amiga import amigasaves, tripspace
 
     scripts = silver_scripts()
     model, skip = tripspace.glib_model(SILVER, amigasaves.images())
-    (row,) = [r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.NONE]
-    hits = [a for a, body in scripts.items()
-            if ne.digest(body[:ne.ENTRY_TABLE]) == row.digest]
-    assert hits == [SILVER_NONE]
-    found, bad = tripspace.walk(SILVER, model, skip, scripts[SILVER_NONE])
-    assert not bad and found
-    assert not any(s.op == ne.RANDOM for s in found.values())
+    rows = [r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.NONE]
+    named = set()
+    for row in rows:
+        hits = [a for a, body in scripts.items()
+                if ne.digest(body[:ne.ENTRY_TABLE]) == row.digest]
+        assert len(hits) == 1 and hits[0] in SILVER_NONE, row.digest
+        named.add(hits[0])
+        found, bad = tripspace.walk(SILVER, model, skip, scripts[hits[0]])
+        assert not bad and found, hits[0]
+        assert not any(s.op == ne.RANDOM for s in found.values()), hits[0]
+    assert named == SILVER_NONE and len(rows) == len(SILVER_NONE)
 
 
 def test_silver_on_changes_only_the_loaded_area_s_roll_and_off_puts_the_script_back(
@@ -786,7 +848,7 @@ def test_silver_on_changes_only_the_loaded_area_s_roll_and_off_puts_the_script_b
         assert changed_at == {at for at, a in SILVER_GATES.items() if a == area}, area
         assert all(now[at] == ne.SAVE for at in changed_at), area
         named = [r for r in result["rows"] if "none" in r]
-        assert len(named) == (area == SILVER_NONE), area
+        assert len(named) == (area in SILVER_NONE), area
         off = switch(pipe, SILVER, state).off()
         assert "error" not in off, area
         assert pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER) == script, area
@@ -795,6 +857,7 @@ def test_silver_on_changes_only_the_loaded_area_s_roll_and_off_puts_the_script_b
 def test_a_silver_roll_left_past_a_short_script_s_end_is_not_changed(state, monkeypatch):
     """The Ruins lead to area 48, whose script is shorter than the Ruins' roll
     offset; the game does not clear the buffer, so the roll is still there."""
+    short = 48
     monkeypatch.setattr(ne, "ROWS", REAL_ROWS)
     scripts = silver_scripts()
     pipe = FakePipe()
@@ -802,9 +865,9 @@ def test_a_silver_roll_left_past_a_short_script_s_end_is_not_changed(state, monk
     gate = next(r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.GATE)
     buffer = int.from_bytes(pipe.get(DATA_BASE + ne.parse_spec(gate.spec)[0], 4), "big")
     ruins = next(at for at, a in SILVER_GATES.items() if a == 32)
-    assert len(scripts[SILVER_NONE]) < ruins
+    assert len(scripts[short]) < ruins
     pipe.put(buffer + SCRIPT_BASE, scripts[32].ljust(SCRIPT_BUFFER, b"\0"))
-    pipe.put(buffer + SCRIPT_BASE, scripts[SILVER_NONE])
+    pipe.put(buffer + SCRIPT_BASE, scripts[short])
     before = pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER)
     result = switch(pipe, SILVER, state).on()
     assert pipe.writes() == []
