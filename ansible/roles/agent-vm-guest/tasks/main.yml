@@ -9,13 +9,6 @@
 # disks image, which are a separate step, and every credential of the operator's
 # own. Nothing of the operator's is in this guest.
 
-- name: Provision the managed local test runner
-  ansible.builtin.include_tasks:
-    file: test-runner.yml
-    apply:
-      tags: test_runner
-  tags: test_runner
-
 # --- first boot -------------------------------------------------------------
 
 - name: First boot
@@ -267,7 +260,7 @@
 # Without linger the agent's user manager exists only while somebody is logged
 # in, and a timer in it would never fire on an idle guest.
 - name: Let the agent's user timers run without a login
-  tags: [herdr, codex]
+  tags: [herdr, codex, test_runner]
   become: true
   block:
     - name: Enable linger
@@ -276,7 +269,7 @@
         creates: "/var/lib/systemd/linger/{{ ansible_user_id }}"
 
 - name: The user timer directory
-  tags: [herdr, codex]
+  tags: [herdr, codex, test_runner]
   block:
     - name: Wait for the agent's user manager
       ansible.builtin.wait_for:
@@ -288,6 +281,13 @@
         path: "{{ ansible_user_dir }}/.config/systemd/user"
         state: directory
         mode: "0755"
+
+- name: Provision the managed local test runner
+  ansible.builtin.include_tasks:
+    file: test-runner.yml
+    apply:
+      tags: test_runner
+  tags: test_runner
 
 - name: The herdr multiplexer
   ansible.builtin.include_tasks:
