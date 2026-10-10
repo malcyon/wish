@@ -68,8 +68,9 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 
 | step | what it does and reads |
 |---|---|
-| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is not a `remove`; `--checkpoint` and `--read-at` are rejected when no such step follows, and no reading is logged after a step that ends on the party menu |
+| `load` | boot, `LOAD SAVED GAME`, `BEGIN ADVENTURING`; arms every `--checkpoint`. Followed by `remove` or `add`, it stops on the party menu instead, and `BEGIN ADVENTURING` waits for the first step that is neither; `--checkpoint` and `--read-at` are rejected when no such step follows, and no reading is logged after a step that ends on the party menu |
 | `remove WHO` | the party menu's `REMOVE CHARACTER FROM PARTY`, then WHO's row on the list it puts up; waits for the list to come back one name shorter, `EXIT`s to the party menu, then keeps the save disk as `removed-N.D64` (attaching the image again when VICE has left the directory open) with its directory (`added`, `gone` and `changed` against the directory before) and the 1541's error-message buffer (`$02D5` in the drive). WHO is a panel number, counted on the list as it stands, so a second `remove 1` takes the member who was second; or a whole name, and a name picks the first row drawing it, so a duplicated name needs the number. Only straight after `load` or another `remove`. A `MAKE SAVE GAME DISK ? YES NO` in place of the shorter list is the game rejecting the write: it is answered NO, never YES (YES formats a disk), the disk and the drive's buffer are kept, and the step fails unless the list then comes back without WHO |
+| `add WHO` | Pool only: the party menu's `ADD CHARACTER TO PARTY`, then WHO's row on the list it puts up (a whole name drawn without the star that marks a member already in the party); waits for the game to star WHO, `EXIT`s to the party menu and reads its panel, which must list WHO. Only on the party menu, straight after `load`, a `remove` or another `add`; nothing on the disk is kept, since the game writes the member into memory alone |
 | `camp-list [WHO]` | `ENCAMP > MAGIC > DISPLAY`, then each name the game offers (or WHO alone, which may be `THE WHOLE PARTY`): the spells it lists as in effect, page by page. Curse first shows the list of the member under the panel highlight and asks on whom only after its last page; that list is logged as `camp-list-highlighted` and the whom menu is then read the same way |
 | `items WHO`, `view WHO` | `VIEW` and the ITEMS list, or the sheet alone, as text, with each item's Detect Magic mark; on Curse and Silver Blades it then leaves through the list's `EXIT`, the sheet's `EXIT` and the camp's `EXIT`, so the next step starts in the world |
 | `rest offered` | Pool only: camp `REST` and the rest time the game proposes (`REST TIME = 0 DAYS 6 HRS 45 MINS` for one third-level spell), read off the screen and checked against `CAMP`'s rest-time field, then that bar's `REST`. Every action is a key and nothing is written, the area's rest interruption included, `--no-encounters` or not. Straight after a `scribe` or a `memorize` it rests in the camp that step left open. The rest is over when the clock stands still for ten reads; the result has `offered`, `elapsed_minutes`, `rest_completed`, `ended` and, after a `memorize`, `memorised` as the timed rest does, and a rest that ran short with no interruption fails. A rest the area's check stopped (`YOUR REST IS RUDELY INTERRUPTED!`, `$6DD3` = `$FF`, or `CAMP` gone) is its own outcome: the step waits, sending no key, for the fight, watch, page or world bar it leads to, logs `rest-outcome` with the text read, records it as `lost_reading` and as the last entry of the summary's `results` (`outcome` `interrupted`, `minute`, `interruption`; `completed` stays false), and fails with `RestInterrupted`, leaving the step-start snapshot for `--resume-from`. The game's dice replay from that snapshot, so the same rest is interrupted the same way again |
@@ -521,6 +522,16 @@ PARTY_MENU = "BEGIN ADVENTURING"
 REMOVE_ROW = "REMOVE CHARACTER FROM PARTY"
 REMOVE_BAR = "REMOVE CHARACTER"
 MAKE_SAVE_DISK = "MAKE SAVE GAME DISK"
+#: The party menu's `ADD` row, which is also the prompt the list under it
+#: draws below its last name; the column the list's names start in, a star
+#: one column left of it marking a member already in the party; and how long
+#: the game may take to star the member picked (seconds).
+ADD_ROW = "ADD CHARACTER TO PARTY"
+ADD_NAME_COLUMN = 4
+ADD_WAIT = 60
+#: The verbs that run on the party menu, which `load` stops on when one of
+#: them comes next.
+MENU_VERBS = ("remove", "add")
 #: How long a removal may take to write the member out and redraw the list
 #: one row shorter (seconds); Pool's took more than 12 in `cited/258/run3`.
 REMOVE_WAIT = 120
@@ -786,7 +797,8 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "scribe": "must", "temple-probe": "must", "warp": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
          "fight-flee": "may", "snapshot": "must", "restore": "must",
-         "fight-cast": "must", "memorize": "must", "site": "must"}
+         "fight-cast": "must", "memorize": "must", "site": "must",
+         "add": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -1296,6 +1308,9 @@ def parse_steps(texts) -> list[Step]:
             raise ValueError(f"{verb} {arg!r}: seconds, more than zero")
         elif verb == "remove" and arg.isdigit() and not 0 < int(arg) <= PARTY_SLOTS:
             raise ValueError(f"remove {arg!r}: a panel number is 1 to {PARTY_SLOTS}")
+        elif verb == "add" and arg.isdigit():
+            raise ValueError(f"add {arg!r}: the add list holds the disk's characters "
+                             "as well as the party, so WHO is a whole name")
         steps.append(Step(verb, arg))
     if not steps or steps[0].verb != "load":
         raise ValueError("the first step is load")
@@ -1317,16 +1332,16 @@ def parse_steps(texts) -> list[Step]:
                     f"the machine back while the game's save stays on the disk "
                     f"image, so the run would no longer be one consistent game")
     for before, step in zip(steps, steps[1:]):
-        if step.verb == "remove" and before.verb not in ("load", "remove"):
-            raise ValueError(f"{step.text!r}: remove runs on the party menu, "
-                             "so it comes straight after load or another remove")
+        if step.verb in MENU_VERBS and before.verb not in ("load", *MENU_VERBS):
+            raise ValueError(f"{step.text!r}: {step.verb} runs on the party menu, "
+                             "so it comes straight after load, a remove or an add")
     return steps
 
 
 def ends_on_party_menu(steps: list[Step]) -> bool:
-    """True when every step after `load` is a `remove`, so the party never
-    enters the world and nothing armed there is ever armed."""
-    return len(steps) > 1 and all(s.verb == "remove" for s in steps[1:])
+    """True when every step after `load` is a `remove` or an `add`, so the
+    party never enters the world and nothing armed there is ever armed."""
+    return len(steps) > 1 and all(s.verb in MENU_VERBS for s in steps[1:])
 
 
 #: The facing `$C04D` an area's arrival script writes over any arrival square
@@ -2058,6 +2073,48 @@ def listed_name(row: str) -> str:
     return re.split(r"\s{2,}", row.strip())[0]
 
 
+def add_list(rows: list[str]) -> list[tuple[str, bool]] | None:
+    """The names an `ADD CHARACTER TO PARTY` list offers, top first, each with
+    whether the star of a member already in the party leads it, or None when
+    the list is not up.
+
+    The names start in column `ADD_NAME_COLUMN` from row 2, `EXIT` under the
+    last, and the prompt below that; the party menu carries the prompt's words
+    as a choice, so a screen showing `BEGIN ADVENTURING` is the menu.
+    """
+    if len(rows) < 25 or _has(rows[:24], PARTY_MENU):
+        return None
+    prompt = next((r for r in range(3, 23) if _inner(rows[r]) == ADD_ROW), None)
+    if prompt is None:
+        return None
+    out = []
+    for r in range(2, prompt):
+        name = rows[r][ADD_NAME_COLUMN:39].strip()
+        if name == "EXIT":
+            return out
+        if name:
+            out.append((name, rows[r][ADD_NAME_COLUMN - 1] == "*"))
+    return None
+
+
+def menu_panel(rows: list[str]) -> list[str]:
+    """The party panel's rows on the party menu, under its `NAME ... AC HP`
+    heading and down to the first blank row."""
+    head = next((r for r in range(24) if "NAME" in rows[r] and "AC HP" in rows[r]),
+                None)
+    if head is None:
+        return []
+    out = []
+    for r in range(head + 1, 24):
+        text = _inner(rows[r])
+        if not text:
+            if out:
+                break
+            continue
+        out.append(text)
+    return out
+
+
 def drive_message(raw: bytes) -> str:
     """The message at the head of the 1541's error buffer, `NN, TEXT,TT,SS`.
 
@@ -2693,6 +2750,50 @@ class PoolRun:
             raise self.fail("remove", f"the game rejected the write ({rejected!r}), "
                                       f"NO was answered, and the list did not come "
                                       f"back without {listed_name(row)}")
+        return got
+
+    # -- `add`: the party menu's ADD CHARACTER TO PARTY ---------------------------
+    def add(self, who: str) -> dict:
+        """`ADD CHARACTER TO PARTY`, WHO, the star, `EXIT`, then the panel."""
+        if not self.at_menu:
+            raise self.fail("add", "add runs on the party menu, straight after load")
+        if not self.sess.select_row(ADD_ROW, timeout=self.budget(30, ADD_ROW)):
+            raise self.fail("add", f"{ADD_ROW} could not be chosen")
+        rows = self.wait_rows(lambda r: add_list(r) is not None,
+                              self.budget(60, "the add list"), "the add list")
+        if rows is None:
+            raise self.fail("add", "the add list never came up")
+        self.capture(f"add-{who}-list", rows)
+        listed = add_list(rows)
+        wanted = (who.upper(), screens.as_drawn(who).upper())
+        name = next((n for n, starred in listed if n.upper() in wanted and not starred),
+                    None)
+        if name is None:
+            raise self.fail("add", f"{who} is not offered unstarred on the add list: "
+                                   f"{listed}")
+        if not self.sess.select_row(name, timeout=self.budget(30, name),
+                                    column=ADD_NAME_COLUMN):
+            raise self.fail("add", f"the highlight would not go onto {name}")
+        rows = self.wait_rows(
+            lambda r: _has(r, PARTY_MENU) or (name, True) in (add_list(r) or []),
+            self.budget(ADD_WAIT, f"the star on {name}"), f"the star on {name}")
+        if rows is None:
+            raise self.fail("add", f"the game never starred {name} after {ADD_WAIT} s")
+        starred = add_list(rows) is not None
+        self.capture(f"add-{who}-done", rows)
+        if starred and not self.sess.select_row("EXIT", timeout=self.budget(30, "EXIT"),
+                                                column=ADD_NAME_COLUMN):
+            raise self.fail("add", "EXIT could not be chosen on the add list")
+        rows = self.wait_rows(lambda r: _has(r, PARTY_MENU) and menu_panel(r),
+                              self.budget(60, "the party menu"), "the party menu")
+        if rows is None:
+            raise self.fail("add", "the party menu never came back after the list")
+        panel = menu_panel(rows)
+        got = {"who": who, "name": name, "listed": [list(e) for e in listed],
+               "starred": starred, "panel": panel}
+        if not any(listed_name(row).upper() in wanted for row in panel):
+            self.log.emit("add-not-taken", **got)
+            raise self.fail("add", f"the party panel does not list {name}: {panel}")
         return got
 
     # -- `--read-at`: stop at a PC, read memory, resume --------------------------
@@ -10133,7 +10234,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             pool.joy = getattr(args, "joy", False)
         # A `remove` runs on the party menu, so a load followed by one stops
         # there, and the world is entered before the first other step.
-        menu_first = len(steps) > 1 and steps[1].verb == "remove"
+        menu_first = len(steps) > 1 and steps[1].verb in MENU_VERBS
         if resume is not None:
             summary["resume"] = {"snapshots": True, "why_not": None, "record": None}
         first_step = 1
@@ -10168,7 +10269,7 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             if step.verb not in ("rest", "scribe", "memorize"):
                 pool.scribing = False
                 pool.memorize_pending = None
-            if step.verb not in ("load", "remove") and getattr(pool, "at_menu", False):
+            if step.verb not in ("load", *MENU_VERBS) and getattr(pool, "at_menu", False):
                 entered = pool.enter_world()
             if getattr(pool, "fast_flee", False) and \
                     step.verb not in ("load", "fight-flee", "fight-cast"):
@@ -10182,6 +10283,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                         sess, game, roster_writes, log)
             elif step.verb == "remove":
                 got = pool.remove(step.arg)
+            elif step.verb == "add":
+                got = pool.add(step.arg)
             elif step.verb == "camp-list":
                 got = pool.camp_list(step.arg)
             elif step.verb == "items":
@@ -10582,12 +10685,14 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--read-at: Pool of Radiance only")
     if (args.checkpoint or args.read_at) and ends_on_party_menu(steps):
         ap.error("--checkpoint and --read-at are armed when the party enters the "
-                 "world, and every step after load is a remove, so the run never "
-                 "does; add a step after the removes")
+                 "world, and every step after load is a remove or an add, so the "
+                 "run never does; add a step after them")
     if any(x.verb == "warp" for x in steps) and args.title not in ("pool",
                                                                    "curse"):
         ap.error("the warp step: Pool of Radiance and Curse of the Azure "
                  "Bonds only")
+    if any(x.verb == "add" for x in steps) and args.title != "pool":
+        ap.error("the add step: Pool of Radiance only")
     if any(x.verb == "site" for x in steps) and args.title != "pool":
         ap.error("the site step: Pool of Radiance only")
     if any(x.verb == "walk-fight" for x in steps) and args.title != "pool":
