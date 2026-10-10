@@ -11,6 +11,7 @@ buffer instead, and skip without the disks.
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import json
 
 import pytest
@@ -83,12 +84,22 @@ class FakePipe:
 @pytest.fixture(autouse=True)
 def synthetic_digests(monkeypatch):
     """Every gate is recognised by the synthetic statement's hash, and a gate
-    that names its area by the synthetic entry table's."""
-    monkeypatch.setattr(ne, "ROWS", tuple(
-        dataclasses.replace(r, digest=ne.digest(STATEMENT),
-                            area=r.area and ne.digest(ENTRIES))
-        if r.kind == ne.GATE else r
-        for r in ne.ROWS))
+    that names its area by the synthetic entry table's.  Rows of different
+    areas can lie within one statement of each other, or share an address,
+    which one synthetic buffer cannot hold, so a gate whose statement would
+    overlap an earlier one's is left out."""
+    rows, taken = [], {}
+    for r in ne.ROWS:
+        if r.kind == ne.GATE:
+            at = ne.parse_spec(r.spec)
+            near = taken.setdefault((r.title, at[0]), [])
+            if any(abs(at[1] - other) < len(STATEMENT) for other in near):
+                continue
+            near.append(at[1])
+            r = dataclasses.replace(r, digest=ne.digest(STATEMENT),
+                                    area=r.area and ne.digest(ENTRIES))
+        rows.append(r)
+    monkeypatch.setattr(ne, "ROWS", tuple(rows))
 
 
 def build(pipe: FakePipe, title: str) -> dict[str, int]:
@@ -400,28 +411,103 @@ def test_an_old_per_guest_state_file_stops_the_command_line(tmp_path, monkeypatc
     assert "winuae.json" in out and "per-holder" in out
 
 
-# -- Pools of Darkness, against the player's script library -------------------
+def test_rows_of_two_areas_at_one_address_apply_only_in_their_own_area(state, monkeypatch):
+    """Pools of Darkness area 67 has the counter `ADD` of one release where the
+    other release's roll is: each row writes only while its area is loaded,
+    and the other is reported stopped once."""
+    other = bytes(range(0x60, 0x60 + ne.ENTRY_TABLE))
+    add = ne.Row("pools-of-darkness", ne.GATE, "*0x6EA6+0x8566", ne.digest(STATEMENT),
+                 ((2, 0),), b"", ne.PROBABLE, "the ADD", ne.digest(ENTRIES))
+    roll = dataclasses.replace(add, changes=((0, ne.SAVE), (2, 255)), source="the roll",
+                               area=ne.digest(other))
+    monkeypatch.setattr(ne, "ROWS", (add, roll))
+    pipe = FakePipe()
+    address = build(pipe, "pools-of-darkness")[add.spec]
+    pipe.put(pipe_address(pipe, ne.script_spec(roll)), other)
+    held = switch(pipe, "pools-of-darkness", state)
+    result = held.on()
+    want = bytearray(STATEMENT)
+    want[0], want[2] = ne.SAVE, 255
+    assert pipe.get(address, len(STATEMENT)) == bytes(want)
+    assert [r["stopped"] for r in result["rows"] if "stopped" in r][0].count("entry table") == 1
+    assert len([r for r in result["rows"] if "stopped" in r]) == 1
+    assert held.keys(["NP8", "NP8"])["applied"] == []
+    assert "error" not in switch(pipe, "pools-of-darkness", state).off()
+    assert pipe.get(address, len(STATEMENT)) == STATEMENT
+
+
+def pipe_address(pipe, spec):
+    pointer, offset = ne.parse_spec(spec)
+    return int.from_bytes(pipe.get(DATA_BASE + pointer, 4), "big") + offset
+
+
+# -- Pools of Darkness, against the player's script libraries -----------------
 
 DARKNESS = "pools-of-darkness"
 SCRIPT_BASE = 0x8000
 SCRIPT_BUFFER = 0x1E00
 
-#: Each `Disk3/ECL.GLB` release (sha256 prefix), the roll address of each
-#: encounter gate in it, and the area whose script holds that roll.
+#: Each `Disk3/ECL.GLB` release (sha256 prefix): every area whose script makes
+#: a random-encounter roll, and the ECL address of each of its rows.  Every
+#: other area has a `none` row.
 DARKNESS_GATES = {
-    "becddc5926af": {0x8BC7: 17, 0x8371: 25, 0x82EA: 32},
-    "adb9afbd3eca": {0x8B88: 17, 0x838E: 25, 0x82EA: 32},
+    "becddc5926af": {
+        16: {0x89A3}, 17: {0x8BC7}, 19: {0x825E}, 21: {0x8603, 0x86BE, 0x9737},
+        22: {0x9B3E}, 25: {0x8371}, 26: {0x81EE}, 32: {0x82EA}, 33: {0x8302},
+        34: {0x8286}, 35: {0x887C}, 36: {0x8472}, 37: {0x8345}, 39: {0x8631},
+        40: {0x8178}, 48: {0x856A, 0x9030}, 50: {0x9C39}, 51: {0x81D6},
+        52: {0x87CA}, 53: {0x9313}, 54: {0x998C}, 64: {0x8724},
+        65: {0x8B56, 0x912D}, 66: {0x8B78}, 67: {0x83C5, 0x8559, 0x8566},
+        68: {0x84A5}, 69: {0x8DDB, 0x8E62, 0x8ED7, 0x8F5B, 0x9CE3}, 70: {0x853F},
+        71: {0x80E7}, 74: {0x87A8}, 80: {0x82C0}, 81: {0x9B9D}, 82: {0x9BD3}},
+    "adb9afbd3eca": {
+        16: {0x89A2}, 17: {0x8B88}, 19: {0x8248}, 21: {0x85E4, 0x869F, 0x9709},
+        22: {0x9B66}, 25: {0x838E}, 26: {0x81FD}, 32: {0x82EA}, 33: {0x82FD},
+        34: {0x827A}, 35: {0x88C5}, 36: {0x849F}, 37: {0x833D}, 39: {0x868F},
+        40: {0x8178}, 48: {0x8586, 0x9098}, 50: {0x9AB6}, 51: {0x81D6},
+        52: {0x87A9}, 53: {0x9341}, 54: {0x964B}, 64: {0x8700},
+        65: {0x8B20, 0x90A8}, 66: {0x8A98}, 67: {0x83D4, 0x8566, 0x8573},
+        68: {0x84E9}, 69: {0x8D31, 0x8DA8, 0x8E26, 0x8EA2, 0x9CFA}, 70: {0x8543},
+        71: {0x80E7}, 74: {0x87F9}, 80: {0x82A3}, 81: {0x9BC6}, 82: {0x9BCB}},
 }
 
-COMPARE, EXIT = 0x03, 0x00
+#: Rolls the step entry makes that decide a fight but sit inside a fixed event,
+#: by release and area: each is left alone.
+DARKNESS_EVENT_ROLLS = {
+    "becddc5926af": {19: {0x8D9B}, 36: {0x89A3}, 64: {0x8D51}, 81: {0x8751}},
+    "adb9afbd3eca": {19: {0x8D0A}, 36: {0x8A0D}, 64: {0x8D47}, 81: {0x8742}},
+}
+#: What each fixed event is, the same in both releases.
+DARKNESS_EVENTS = {
+    19: "a once-only square event: OR 4 into [250] before the roll, then a "
+        "surprise check and 15 of 100 fight",
+    36: "the second half of a staged fight, after its first COMBAT",
+    64: "after WHO and the event's own menu: 80 of 100 fight",
+    81: "after SPRITEOFF at a fixed square: whether the party is approached",
+}
+
+#: A counter the roll is compared with that no statement before the roll
+#: sets: area 67's chase counter [163], which only `ADD 1` writes, as a byte
+#: below 255.
+DARKNESS_ASSUMED = {67: {(1, 163): (0, 20, 254)}}
+
+COMPARE, EXIT, ADD, SUB, MUL, DIV = 0x03, 0x00, 0x04, 0x05, 0x07, 0x06
 CONDITIONS = {0x16: lambda a, b: a == b, 0x17: lambda a, b: a != b,
               0x18: lambda a, b: a < b, 0x19: lambda a, b: a > b,
               0x1A: lambda a, b: a <= b, 0x1B: lambda a, b: a >= b}
+#: Pools of Darkness' `$23` clears the text window and exits.
+DARKNESS_STOPS = {EXIT, 0x13, 0x20, 0x23}
+#: Statements a comparison's result survives: the scripts compare, then
+#: `SAVE`, `ADD` or `SUB`, then test (area 40 `$8B02`, area 67 `$855F`, area
+#: 35 `$886A`).
+KEEPS_FLAGS = {ne.SAVE, ADD, SUB, MUL, DIV}
+#: An operand that is a constant: `$00` a byte, `$02` a word.
+CONSTANTS = (0x00, 0x02)
 
 
-def darkness_libraries() -> dict[str, tuple[list[bytes], dict[int, int]]]:
+def darkness_libraries() -> dict[str, dict[int, bytes]]:
     """Every distinct Pools of Darkness `ECL.GLB` on the player's Amiga disks,
-    by sha256 prefix: its blocks and its area-to-block table."""
+    by sha256 prefix: each area's script, as the buffer holds it."""
     import hashlib
 
     from automap.amiga import glib_blocks
@@ -430,71 +516,255 @@ def darkness_libraries() -> dict[str, tuple[list[bytes], dict[int, int]]]:
     found = {}
     for _t, _label, _path, body in tripspace.disk_files(
             amigasaves.images(), {DARKNESS: "ECL.GLB"}):
-        table = {s.area: s.block for s in tripspace.spaces(DARKNESS, body)}
-        found[hashlib.sha256(body).hexdigest()[:12]] = (glib_blocks(body), table)
+        blocks = glib_blocks(body)
+        found[hashlib.sha256(body).hexdigest()[:12]] = {
+            s.area: blocks[s.block] for s in tripspace.spaces(DARKNESS, body)}
     if not found:
         pytest.skip("needs the player's Amiga Pools of Darkness disk 3")
     return found
 
 
-def darkness_gates():
-    return [r for r in REAL_ROWS if r.title == DARKNESS and r.kind == ne.GATE]
+def darkness_model():
+    import contextlib
+    import io
+
+    from tools.amiga import amigasaves, tripspace
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        got = tripspace.glib_model(DARKNESS, amigasaves.images())
+    if got is None:
+        pytest.skip("needs one readable Amiga Pools of Darkness executable")
+    return got
 
 
-def test_each_darkness_gate_is_the_encounter_roll_of_one_area_and_save_takes_its_exit():
+def darkness_rows(kind):
+    return [r for r in REAL_ROWS if r.title == DARKNESS and r.kind == kind]
+
+
+def matched(body: bytes) -> list[ne.Row]:
+    """The gate rows that apply to `body` loaded in the buffer: its entry table
+    is their area's and their statement is at their address."""
+    entries = ne.digest(body[:ne.ENTRY_TABLE])
+    out = []
+    for row in darkness_rows(ne.GATE):
+        at = ne.parse_spec(row.spec)[1] - SCRIPT_BASE
+        if row.area == entries and ne.digest(body[at:at + ne.STATEMENT]) == row.digest:
+            out.append(row)
+    return out
+
+
+def switched(body: bytes, rows) -> bytes:
+    """`body` with every row's changes written, as the switch leaves it."""
+    out = bytearray(body)
+    for row in rows:
+        at = ne.parse_spec(row.spec)[1] - SCRIPT_BASE
+        for offset, value in row.changes:
+            out[at + offset] = value
+    return bytes(out)
+
+
+def _darkness_fight(model, skip, body, at, known, limit=20000):
+    """Whether a path from `at` meets `COMBAT`, `SETUPMON` or the encounter
+    menu before it stops.  Only the variables in `known` hold a value, until a
+    statement other than `SAVE` of a constant names them; a comparison with an
+    unknown side takes both ways, and its result is kept only across
+    `KEEPS_FLAGS`.  A call is followed into and past, with nothing known."""
     from tools.amiga import tripspace
 
-    # Operand counts for the three statements read here, from the script format.
-    model = [(0, False)] * 0x100
-    model[COMPARE] = model[ne.RANDOM] = (2, False)
-    libraries = darkness_libraries()
-    for key, (blocks, table) in libraries.items():
+    work = [(at, tuple(sorted(known.items())), None)]
+    seen = set()
+    while work:
+        state = work.pop()
+        if state in seen:
+            continue
+        seen.add(state)
+        assert len(seen) < limit, f"more than {limit} states from {at + SCRIPT_BASE:#x}"
+        i, values, flag = state
+        s = tripspace.decode(model, body, i)
+        assert s is not None, f"undecodable statement at {i + SCRIPT_BASE:#x}"
+        if s.op in FIGHTS:
+            return True
+        if s.op in DARKNESS_STOPS:
+            continue
+        held = dict(values)
+        if s.op == COMPARE:
+            sides = [o[1] if o[0] in CONSTANTS else held.get(o) for o in s.operands]
+            work.append((s.end, values, None if None in sides else tuple(sides)))
+            continue
+        if s.op in CONDITIONS:
+            past = tripspace.decode(skip, body, s.end).end
+            outcomes = (True, False) if flag is None else (CONDITIONS[s.op](*flag),)
+            work += [(s.end if taken else past, values, flag) for taken in outcomes]
+            continue
+        if s.op == tripspace.GOTO:
+            work.append((s.address(0) - SCRIPT_BASE, values, flag))
+            continue
+        if s.op in (tripspace.GOSUB, tripspace.ONGOTO, tripspace.ONGOSUB):
+            targets = ([s.address(0)] if s.op == tripspace.GOSUB else
+                       [s.address(k) for k in range(2, len(s.operands))])
+            work += [(t - SCRIPT_BASE, (), None) for t in targets if t is not None]
+            if s.op != tripspace.ONGOTO:
+                work.append((s.end, (), None))
+            continue
+        if s.op == ne.SAVE and s.operands[0][0] in CONSTANTS:
+            held[s.operands[1]] = s.operands[0][1]
+        else:
+            held.update({o: None for o in s.operands if o[0] not in (*CONSTANTS, 0x80)})
+        work.append((s.end, tuple(sorted((k, v) for k, v in held.items()
+                                         if v is not None)),
+                     flag if s.op in KEEPS_FLAGS else None))
+    return False
+
+
+def _limits(found, at, variable, area):
+    """Each value a variable compared with the roll at `at` can hold: the
+    constants the statements just before the roll save into it, or the
+    values `DARKNESS_ASSUMED` gives it."""
+    compare = found.get(next((i for i in sorted(found) if i > at), None))
+    others = {o for o in (compare.operands if compare and compare.op == COMPARE else ())
+              if o != variable and o[0] not in CONSTANTS}
+    out = {}
+    for o in others:
+        values = sorted({s.operands[0][1] for i, s in found.items()
+                         if at - 0x20 <= i < at and s.op == ne.SAVE
+                         and s.operands[0][0] in CONSTANTS and s.operands[1] == o})
+        out[o] = values or list(DARKNESS_ASSUMED.get(area, {}).get(o, ()))
+        assert out[o], f"nothing gives [{o[1]}] a value before ${at + SCRIPT_BASE:04X}"
+    return out
+
+
+def test_every_darkness_area_on_the_disks_has_a_row():
+    """Every area script of each release has its gate rows, or a `none` row
+    when it makes no random-encounter roll, and no row names a script no
+    release holds."""
+    nones = {r.digest for r in darkness_rows(ne.NONE)}
+    used = set()
+    for key, scripts in darkness_libraries().items():
         assert key in DARKNESS_GATES, f"ECL.GLB {key} is a release with no rows"
-        offsets = {ne.parse_spec(r.spec)[1] for r in darkness_gates()}
-        assert set(DARKNESS_GATES[key]) <= offsets, key
-        for row in darkness_gates():
-            at = ne.parse_spec(row.spec)[1] - SCRIPT_BASE
-            hits = sorted(area for area, block in table.items()
-                          if ne.digest(blocks[block][at:at + ne.STATEMENT]) == row.digest)
-            want = DARKNESS_GATES[key].get(at + SCRIPT_BASE)
-            assert hits == ([want] if want is not None else []), (key, row.spec)
-            if want is None:
+        for area, body in sorted(scripts.items()):
+            gates = matched(body)
+            used.update(r.spec + r.area for r in gates)
+            named = ne.digest(body[:ne.ENTRY_TABLE]) in nones
+            want = DARKNESS_GATES[key].get(area, set())
+            assert {ne.parse_spec(r.spec)[1] for r in gates} == want, (key, area)
+            assert named == (not want), (key, area)
+            if named:
+                used.add(ne.digest(body[:ne.ENTRY_TABLE]))
+    assert used == {r.spec + r.area for r in darkness_rows(ne.GATE)} | nones
+
+
+def test_each_darkness_gate_s_change_takes_the_exit_and_the_roll_can_fight():
+    from tools.amiga import tripspace
+
+    model, skip = darkness_model()
+    for key, scripts in darkness_libraries().items():
+        for area, body in sorted(scripts.items()):
+            rows = matched(body)
+            if not rows:
                 continue
-            body = blocks[table[want]]
-            roll = tripspace.decode(model, body, at)
-            assert roll.op == ne.RANDOM and roll.operands[0][0] == 0, row.spec
-            limit, variable = roll.operands[0][1], roll.operands[1]
-            compare = tripspace.decode(model, body, roll.end)
-            assert compare.op == COMPARE and variable in compare.operands, row.spec
-            condition = tripspace.decode(model, body, compare.end)
-            assert condition.op in CONDITIONS, row.spec
-            assert body[condition.end] == EXIT, row.spec
-            (ka, va), (kb, vb) = compare.operands
-            a = limit if (ka, va) == variable else va
-            b = limit if (kb, vb) == variable else vb
-            assert CONDITIONS[condition.op](a, b), f"SAVE {limit} misses the EXIT at {row.spec}"
+            after = switched(body, rows)
+            found, bad = tripspace.walk(DARKNESS, model, skip, body)
+            assert not bad, (key, area)
+            for row in rows:
+                at = ne.parse_spec(row.spec)[1] - SCRIPT_BASE
+                roll = tripspace.decode(model, body, at)
+                if roll.op == ADD:
+                    # Area 67's counter, two statements past its roll.
+                    assert row.changes == ((2, 0),) and roll.operands[0] == (0, 1)
+                    before = [i for i in found if at - 0x10 < i < at
+                              and found[i].op == ne.RANDOM]
+                    assert len(before) == 1 and found[before[0]].operands[1] == (1, 191)
+                    continue
+                assert roll.op == ne.RANDOM, (key, area, row.spec)
+                assert at in found, (key, area, row.spec)
+                variable = roll.operands[1]
+                saved = tripspace.decode(model, after, at)
+                assert saved.op == ne.SAVE and saved.operands[0][0] in CONSTANTS
+                assert saved.end == roll.end and saved.operands[1] == variable
+                limits = _limits(found, at, variable, area)
+                top = roll.operands[0][1] if roll.operands[0][0] == 0 else 10
+                for chosen in itertools.product(*limits.values()):
+                    known = dict(zip(limits, chosen, strict=True))
+                    assert not _darkness_fight(model, skip, after, at, known), (
+                        key, area, row.spec, known)
+                    assert any(_darkness_fight(model, skip, body, roll.end,
+                                               {**known, variable: v})
+                               for v in range(top + 1)), (key, area, row.spec, known)
 
 
-def test_darkness_on_changes_only_the_loaded_area_s_roll_and_off_puts_the_script_back(
+def test_no_other_darkness_step_roll_decides_a_fight():
+    """Past the gates, every roll the step entries reach (entries 0 and 1) with a
+    constant limit and a comparison of constants either always or never leads
+    to a fight, or is one of `DARKNESS_EVENT_ROLLS`.  A roll with a variable
+    limit or compared with another variable is not judged here; each was read
+    by hand and is either a row or a party-member pick, a `WHO` check or a
+    fixed event's."""
+    from tools.amiga import tripspace
+
+    model, skip = darkness_model()
+    for key, scripts in darkness_libraries().items():
+        for area, body in sorted(scripts.items()):
+            gates = {ne.parse_spec(r.spec)[1] - SCRIPT_BASE for r in matched(body)}
+            after = switched(body, matched(body))
+            deciding = set()
+            for entry in (0, 1):
+                head = tripspace.decode(model, body, 4 * entry)
+                work, seen = [head.address(0) - SCRIPT_BASE], set()
+                while work:
+                    i = work.pop()
+                    if i in seen or i in gates:
+                        continue
+                    seen.add(i)
+                    s = tripspace.decode(model, body, i)
+                    if s is None:
+                        continue
+                    if s.op in (tripspace.GOTO, tripspace.GOSUB) and s.address(0):
+                        work.append(s.address(0) - SCRIPT_BASE)
+                    if s.op in (tripspace.ONGOTO, tripspace.ONGOSUB):
+                        work += [s.address(k) - SCRIPT_BASE
+                                 for k in range(2, len(s.operands)) if s.address(k)]
+                    if s.op not in DARKNESS_STOPS | {tripspace.GOTO}:
+                        work.append(s.end)
+                    if s.op in CONDITIONS:
+                        work.append(tripspace.decode(skip, body, s.end).end)
+                    if s.op != ne.RANDOM or s.operands[0][0] != 0:
+                        continue
+                    compare = tripspace.decode(model, body, s.end)
+                    if compare.op == COMPARE and any(
+                            o != s.operands[1] and o[0] not in CONSTANTS
+                            for o in compare.operands):
+                        continue
+                    fights = sum(_darkness_fight(model, skip, after, s.end,
+                                                 {s.operands[1]: v})
+                                 for v in range(s.operands[0][1] + 1))
+                    if 0 < fights <= s.operands[0][1]:
+                        deciding.add(i + SCRIPT_BASE)
+            want = DARKNESS_EVENT_ROLLS[key].get(area, set())
+            assert deciding == want, (key, area, sorted(map(hex, deciding)))
+
+
+def test_darkness_on_changes_only_the_loaded_area_s_rows_and_off_puts_the_script_back(
         state, monkeypatch):
     monkeypatch.setattr(ne, "ROWS", REAL_ROWS)
-    libraries = darkness_libraries()
-    for key, (blocks, table) in libraries.items():
+    for key, scripts in darkness_libraries().items():
         pipe = FakePipe()
         build(pipe, DARKNESS)
-        pointer = ne.parse_spec(darkness_gates()[0].spec)[0]
+        pointer = ne.parse_spec(darkness_rows(ne.GATE)[0].spec)[0]
         buffer = int.from_bytes(pipe.get(DATA_BASE + pointer, 4), "big")
-        for area, block in sorted(table.items()):
-            script = blocks[block].ljust(SCRIPT_BUFFER, b"\0")
+        for area, body in sorted(scripts.items()):
+            script = body.ljust(SCRIPT_BUFFER, b"\0")
             pipe.put(buffer + SCRIPT_BASE, script)
-            switch(pipe, DARKNESS, state).on()
+            result = switch(pipe, DARKNESS, state).on()
             now = pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER)
-            changed_at = [i + SCRIPT_BASE for i in range(SCRIPT_BUFFER) if now[i] != script[i]]
-            want = sorted(at for at, a in DARKNESS_GATES.get(key, {}).items() if a == area)
-            assert changed_at == want, (key, area)
-            assert all(now[at - SCRIPT_BASE] == ne.SAVE for at in want)
-            result = switch(pipe, DARKNESS, state).off()
-            assert "error" not in result, (key, area)
+            changed_at = {i for i in range(SCRIPT_BUFFER) if now[i] != script[i]}
+            assert now == switched(script, matched(body)), (key, area)
+            assert bool(changed_at) == (area in DARKNESS_GATES[key]), (key, area)
+            named = [r["none"] for r in result["rows"] if "none" in r]
+            assert len(named) == (area not in DARKNESS_GATES[key]), (key, area)
+            assert all(f"area {area} " in n for n in named), (key, area)
+            assert not any("error" in r for r in result["rows"]), (key, area)
+            off = switch(pipe, DARKNESS, state).off()
+            assert "error" not in off, (key, area)
             assert pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER) == script, (key, area)
 
 

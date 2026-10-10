@@ -11,10 +11,10 @@ address and changed again whenever a reload brings it back.
 The saved game carries the loaded script for Pool and Curse, so
 `no_encounters off` comes before any save; it stays off until turned on again.
 The Pools of Darkness save holds no script, but `off` still comes first there:
-with the switch on, each patched `SAVE` leaves 99 in variable 191 or 192 and
-skips resetting the step counter, and that save stores those variables.  `off`
-restores the script, not them; 99 is a value the game's own roll can produce.
-Its SPECULATIVE rest row also writes variable `$2C`, which the save stores.
+with the switch on, each patched `SAVE` leaves its constant (mostly 99) in the
+roll's variable and skips resetting the step counter, and that save stores
+those variables.  `off` restores the script, not them.  Its SPECULATIVE rest
+row also writes variable `$2C`, which the save stores.
 
 A row applies only while its area's script is loaded, so `on` reports every
 row of an area that is not loaded as stopped and writes nothing for it; `keys`
@@ -136,18 +136,273 @@ def script_spec(row: Row) -> str:
     return f"*{pointer:#x}+{SCRIPT_START.get(row.title, 0x8000):#x}"
 
 
+#: `SAVE 0`, where the limit would land on the fight side.
+_TO_ZERO = ((0, SAVE), (2, 0))
+#: `SAVE 255`: a byte constant above any byte counter it is compared with.
+_TO_SAVE_255 = ((0, SAVE), (2, 255))
+#: A roll whose limit is a variable, `RANDOM [v], [w]`, is seven bytes; it
+#: becomes `SAVE 99, [w]` with the first operand's kind changed from `$01`
+#: (byte variable) to `$02` (immediate word), so its length stays the same.
+_TO_SAVE_WORD = ((0, SAVE), (1, 0x02), (2, 99), (3, 0))
+#: `ADD 1, [v], [v]` becomes `ADD 0`.
+_ADD_NOTHING = ((2, 0),)
+
+DARKNESS = "pools-of-darkness"
+
+#: The two Pools of Darkness `Disk3/ECL.GLB` releases, by sha256 prefix.
+_LIBRARY = {"becddc": "becddc5926af library", "adb9af": "adb9afbd3eca library",
+            "both": "both libraries"}
+
+#: Every Pools of Darkness roll that decides whether a step starts a fight:
+#: `(ECL address, statement hash, entry-table hash, changes, area, library,
+#: what the script does)`.  Each is reached from the step entry (entry 1),
+#: most after a step counter passes its limit; its change takes the `EXIT`.
+#: Rolls the step entry reaches only past one of these, rolls in the camp
+#: entries, and rolls inside a fixed event (after a `WHO`, a once-only flag or
+#: an `APPROACH`) are not here.
+_DARKNESS_GATES = (
+    (0x89A2, "b0469054", "f219fc88", _TO_SAVE, 16, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8A18"),
+    (0x89A3, "b0469054", "7afab110", _TO_SAVE, 16, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8A15"),
+    (0x8B88, "b0469054", "afb581b9", _TO_SAVE, 17, "adb9af",
+     "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $9435"),
+    (0x8BC7, "b0469054", "f90bb419", _TO_SAVE, 17, "becddc",
+     "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $9470"),
+    (0x8248, "b0469054", "1a87c6e7", _TO_SAVE, 19, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF>= EXIT: 10 of 100 fight, COMBAT at $82CB"),
+    (0x825E, "b0469054", "ed590f7d", _TO_SAVE, 19, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF>= EXIT: 10 of 100 fight, COMBAT at $82DE"),
+    (0x85E4, "b0469054", "7b88e1b9", _TO_SAVE, 21, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $9D56"),
+    (0x8603, "b0469054", "68fa88b9", _TO_SAVE, 21, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $9D7C"),
+    (0x869F, "b0469054", "7b88e1b9", _TO_SAVE, 21, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $9D56"),
+    (0x86BE, "b0469054", "68fa88b9", _TO_SAVE, 21, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $9D7C"),
+    (0x9709, "b0469054", "7b88e1b9", _TO_SAVE, 21, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 70; IF> $23: 71 of 100 fight, COMBAT at $96A7"),
+    (0x9737, "b0469054", "68fa88b9", _TO_SAVE, 21, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 70; IF> $23: 71 of 100 fight, COMBAT at $96D5"),
+    (0x9B3E, "ada9bdc3", "38d311f7", _TO_SAVE, 22, "becddc",
+     "RANDOM 99 [173]; COMPARE 3, [173]; IF<= EXIT: 3 of 100 fight, COMBAT at $9D54"),
+    (0x9B66, "ada9bdc3", "33adf784", _TO_SAVE, 22, "adb9af",
+     "RANDOM 99 [173]; COMPARE 3, [173]; IF<= EXIT: 3 of 100 fight, COMBAT at $9D79"),
+    (0x8371, "b0469054", "3e2ccabc", _TO_SAVE, 25, "becddc",
+     "RANDOM 99 [191]; COMPARE 5, [191]; IF<= EXIT: 5 of 100 fight, COMBAT at $8A2A"),
+    (0x838E, "b0469054", "3e2ccabc", _TO_SAVE, 25, "adb9af",
+     "RANDOM 99 [191]; COMPARE 5, [191]; IF<= EXIT: 5 of 100 fight, COMBAT at $8A97"),
+    (0x81EE, "b0469054", "3dff99c5", _TO_SAVE, 26, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF>= EXIT: 10 of 100 fight, COMBAT at $826A"),
+    (0x81FD, "b0469054", "908f1b94", _TO_SAVE, 26, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF>= EXIT: 10 of 100 fight, COMBAT at $827C"),
+    (0x82EA, "e43dac29", "637295c6", _TO_SAVE, 32, "both",
+     "RANDOM 99 [192]; COMPARE [192], 5; IF> EXIT: 6 of 100 fight, COMBAT at $835A"),
+    (0x82FD, "570b9230", "bbcfd12e", _TO_SAVE, 33, "adb9af",
+     "RANDOM 99 [160]; COMPARE [160], 5; IF> EXIT: 6 of 100 fight, COMBAT at $83F7"),
+    (0x8302, "570b9230", "796119d3", _TO_SAVE, 33, "becddc",
+     "RANDOM 99 [160]; COMPARE [160], 5; IF> EXIT: 6 of 100 fight, COMBAT at $83FD"),
+    (0x827A, "b0469054", "2632d2ab", _TO_SAVE, 34, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $82C1"),
+    (0x8286, "b0469054", "eeacfd0b", _TO_SAVE, 34, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $82D0"),
+    (0x887C, "93204a53", "5137aec2", _TO_SAVE_WORD, 35, "becddc",
+     "RANDOM [351] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x88C5, "93204a53", "3d47504b", _TO_SAVE_WORD, 35, "adb9af",
+     "RANDOM [351] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x8472, "52c253aa", "e97376fc", _TO_SAVE_WORD, 36, "becddc",
+     "RANDOM [417] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x849F, "52c253aa", "bdf570fe", _TO_SAVE_WORD, 36, "adb9af",
+     "RANDOM [417] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x833D, "b0469054", "6fe8210f", _TO_SAVE, 37, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $83DA"),
+    (0x8345, "b0469054", "0a27efc0", _TO_SAVE, 37, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $83E4"),
+    (0x8631, "b0469054", "3c13761f", _TO_SAVE, 39, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $8699"),
+    (0x868F, "b0469054", "8e6f6178", _TO_SAVE, 39, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $86FC"),
+    (0x8178, "b0469054", "8de718f2", _TO_SAVE, 40, "both",
+     "RANDOM 99 [191]; COMPARE [191], 5; IF> EXIT: 6 of 100 fight, COMBAT at $81DF"),
+    (0x856A, "93204a53", "e61534bf", _TO_SAVE_WORD, 48, "becddc",
+     "RANDOM [351] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x8586, "93204a53", "861c1c80", _TO_SAVE_WORD, 48, "adb9af",
+     "RANDOM [351] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x9030, "eea428e6", "e61534bf", _TO_SAVE_WORD, 48, "becddc",
+     "RANDOM [362] [193], [362] counting moves since the last fight square; COMPARE [193], 0; IF!= EXIT, else SETUPMON and COMBAT"),
+    (0x9098, "eea428e6", "861c1c80", _TO_SAVE_WORD, 48, "adb9af",
+     "RANDOM [362] [193], [362] counting moves since the last fight square; COMPARE [193], 0; IF!= EXIT, else SETUPMON and COMBAT"),
+    (0x9AB6, "b0469054", "8d2f1fb3", _TO_SAVE, 50, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 1; IF> EXIT: 2 of 100 fight, COMBAT at $9B96"),
+    (0x9C39, "b0469054", "92432309", _TO_SAVE, 50, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 1; IF> EXIT: 2 of 100 fight, COMBAT at $9D33"),
+    (0x81D6, "b0469054", "8741c491", _TO_SAVE, 51, "both",
+     "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $843B"),
+    (0x87A9, "b0469054", "b70d73e6", _TO_SAVE, 52, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $87FB"),
+    (0x87CA, "b0469054", "ade77ad6", _TO_SAVE, 52, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8820"),
+    (0x9313, "b0469054", "3daa5cf8", _TO_SAVE, 53, "becddc",
+     "RANDOM 99 [191]; COMPARE [192], [191], [192] set to 5 or 10 just before; IF< EXIT, else the event table"),
+    (0x9341, "b0469054", "0f284d7a", _TO_SAVE, 53, "adb9af",
+     "RANDOM 99 [191]; COMPARE [192], [191], [192] set to 5 or 10 just before; IF< EXIT, else the event table"),
+    (0x964B, "b0469054", "4b6a014b", _TO_SAVE, 54, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 1; IF> EXIT: 2 of 100 fight, COMBAT at $9731"),
+    (0x998C, "b0469054", "a10e2cb1", _TO_SAVE, 54, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 1; IF> EXIT: 2 of 100 fight, COMBAT at $9A7D"),
+    (0x8700, "b0469054", "a355d97d", _TO_SAVE, 64, "adb9af",
+     "RANDOM 99 [191]; COMPARE 10, [191]; IF< EXIT: 11 of 100 fight, COMBAT at $9D99"),
+    (0x8724, "b0469054", "18349f46", _TO_SAVE, 64, "becddc",
+     "RANDOM 99 [191]; COMPARE 10, [191]; IF< EXIT: 11 of 100 fight, COMBAT at $9D8D"),
+    (0x8B20, "03bea0b8", "204207f4", _TO_SAVE_WORD, 65, "adb9af",
+     "RANDOM [156] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x8B56, "03bea0b8", "9e68e602", _TO_SAVE_WORD, 65, "becddc",
+     "RANDOM [156] [191] after a step counter; COMPARE [191], 1; IF>= EXIT, else the monster tables and COMBAT"),
+    (0x90A8, "38811a45", "204207f4", _TO_SAVE, 65, "adb9af",
+     "RANDOM 5 [192]; COMPARE [192], 0; IF!= EXIT: 1 of 6 fight, COMBAT at $8BE8"),
+    (0x912D, "38811a45", "9e68e602", _TO_SAVE, 65, "becddc",
+     "RANDOM 5 [192]; COMPARE [192], 0; IF!= EXIT: 1 of 6 fight, COMBAT at $8C24"),
+    (0x8A98, "b0469054", "08f9aa28", _TO_SAVE, 66, "adb9af",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8AEF"),
+    (0x8B78, "b0469054", "c4c3178d", _TO_SAVE, 66, "becddc",
+     "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8BD9"),
+    (0x83C5, "4010ca26", "ad7ad6cc", _TO_SAVE, 67, "becddc",
+     "RANDOM 20 [191]; COMPARE [191], 1; IF> EXIT: 2 of 21 fight, COMBAT at $844B"),
+    (0x83D4, "4010ca26", "ae6a331f", _TO_SAVE, 67, "adb9af",
+     "RANDOM 20 [191]; COMPARE [191], 1; IF> EXIT: 2 of 21 fight, COMBAT at $845A"),
+    (0x8559, "4010ca26", "ad7ad6cc", _TO_SAVE_255, 67, "becddc",
+     "RANDOM 20 [191]; COMPARE [191], [163]; ADD 1 [163]; IF> EXIT, else [163] guards and COMBAT"),
+    (0x8566, "96f6c8f8", "ad7ad6cc", _ADD_NOTHING, 67, "becddc",
+     "ADD 1 [163] after the roll; ADD 0 keeps the counter the roll is compared with"),
+    (0x8566, "4010ca26", "ae6a331f", _TO_SAVE_255, 67, "adb9af",
+     "RANDOM 20 [191]; COMPARE [191], [163]; ADD 1 [163]; IF> EXIT, else [163] guards and COMBAT"),
+    (0x8573, "96f6c8f8", "ae6a331f", _ADD_NOTHING, 67, "adb9af",
+     "ADD 1 [163] after the roll; ADD 0 keeps the counter the roll is compared with"),
+    (0x84A5, "b0469054", "6119e551", _TO_ZERO, 68, "becddc",
+     "RANDOM 99 [191]; COMPARE 15, [191]; IF> EXIT: 85 of 100 fight, COMBAT at $8526"),
+    (0x84E9, "b0469054", "7c3d1e77", _TO_ZERO, 68, "adb9af",
+     "RANDOM 99 [191]; COMPARE 15, [191]; IF> EXIT: 85 of 100 fight, COMBAT at $8570"),
+    (0x8D31, "b0469054", "76d88dbd", _TO_SAVE, 69, "adb9af",
+     "RANDOM 99 [191]; COMPARE 10, [191]; IF<= EXIT: 10 of 100 fight, COMBAT at $8E08"),
+    (0x8DA8, "b0123001", "76d88dbd", _TO_SAVE, 69, "adb9af",
+     "RANDOM 50 [192]; COMPARE 10, [192]; IF<= EXIT: 10 of 51 fight, COMBAT at $8E08"),
+    (0x8DDB, "b0469054", "cd4dcd8d", _TO_SAVE, 69, "becddc",
+     "RANDOM 99 [191]; COMPARE 10, [191]; IF<= EXIT: 10 of 100 fight, COMBAT at $8EB9"),
+    (0x8E26, "b0469054", "76d88dbd", _TO_SAVE, 69, "adb9af",
+     "RANDOM 99 [191]; COMPARE 10, [191]; IF<= EXIT: 10 of 100 fight, COMBAT at $8F0B"),
+    (0x8E62, "b0123001", "cd4dcd8d", _TO_SAVE, 69, "becddc",
+     "RANDOM 50 [192]; COMPARE 10, [192]; IF<= EXIT: 10 of 51 fight, COMBAT at $8EB9"),
+    (0x8EA2, "b0123001", "76d88dbd", _TO_SAVE, 69, "adb9af",
+     "RANDOM 50 [192]; COMPARE 10, [192]; IF<= $23: 10 of 51 fight, COMBAT at $8F0B"),
+    (0x8ED7, "b0469054", "cd4dcd8d", _TO_SAVE, 69, "becddc",
+     "RANDOM 99 [191]; COMPARE 10, [191]; IF<= EXIT: 10 of 100 fight, COMBAT at $8FB4"),
+    (0x8F5B, "b0123001", "cd4dcd8d", _TO_SAVE, 69, "becddc",
+     "RANDOM 50 [192]; COMPARE 10, [192]; IF<= $23: 10 of 51 fight, COMBAT at $8FB4"),
+    (0x9CE3, "b0469054", "cd4dcd8d", _TO_SAVE, 69, "becddc",
+     "RANDOM 99 [191]; COMPARE [193], [191], [193] set to 7 or 13 just before; IF< EXIT, else SETUPMON and COMBAT"),
+    (0x9CFA, "b0469054", "76d88dbd", _TO_SAVE, 69, "adb9af",
+     "RANDOM 99 [191]; COMPARE [193], [191], [193] set to 7 or 13 just before; IF< EXIT, else SETUPMON and COMBAT"),
+    (0x853F, "66750d9e", "a2ec60b1", _TO_SAVE_WORD, 70, "becddc",
+     "RANDOM [368] [191] after a step counter; COMPARE [191], [194], [194] set to 1 just before; IF> EXIT, else the monster tables and COMBAT"),
+    (0x8543, "66750d9e", "499c9d38", _TO_SAVE_WORD, 70, "adb9af",
+     "RANDOM [368] [191] after a step counter; COMPARE [191], [194], [194] set to 1 just before; IF> EXIT, else the monster tables and COMBAT"),
+    (0x80E7, "b0469054", "5d99e4dc", _TO_ZERO, 71, "both",
+     "RANDOM 99 [191]; COMPARE 15, [191]; IF> EXIT: 85 of 100 fight, COMBAT at $8145"),
+    (0x87A8, "03bea0b8", "d6c42656", _TO_SAVE_WORD, 74, "becddc",
+     "RANDOM [156] [191] after a step counter; COMPARE [191], 2; IF< another event, IF> EXIT, else the monster tables and COMBAT"),
+    (0x87F9, "03bea0b8", "2e7611b3", _TO_SAVE_WORD, 74, "adb9af",
+     "RANDOM [156] [191] after a step counter; COMPARE [191], 2; IF< another event, IF> EXIT, else the monster tables and COMBAT"),
+    (0x82A3, "b0469054", "397d3b27", _TO_SAVE, 80, "adb9af",
+     "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $853D"),
+    (0x82C0, "b0469054", "397d3b27", _TO_SAVE, 80, "becddc",
+     "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $8552"),
+    (0x9B9D, "b0469054", "76d88a00", _TO_SAVE, 81, "becddc",
+     "RANDOM 99 [191]; COMPARE 5, [191]; IF< $23: 6 of 100 fight, COMBAT at $9C1B"),
+    (0x9BC6, "b0469054", "618c819e", _TO_SAVE, 81, "adb9af",
+     "RANDOM 99 [191]; COMPARE 5, [191]; IF< $23: 6 of 100 fight, COMBAT at $9C44"),
+    (0x9BCB, "e43dac29", "884fdcd9", _TO_SAVE, 82, "adb9af",
+     "RANDOM 99 [192]; COMPARE 5, [192]; IF<= EXIT: 5 of 100 fight, COMBAT at $9C9D"),
+    (0x9BD3, "e43dac29", "42eb97bd", _TO_SAVE, 82, "becddc",
+     "RANDOM 99 [192]; COMPARE 5, [192]; IF<= EXIT: 5 of 100 fight, COMBAT at $9CA4"),
+)
+
+#: Every Pools of Darkness area script that makes no such roll:
+#: `(entry-table hash, area, library, whether it has no RANDOM at all)`.
+_DARKNESS_NONE = (
+    ("8a8ad741", 1, "becddc", True),
+    ("8fbf813a", 1, "adb9af", True),
+    ("f16ebadc", 2, "both", True),
+    ("44ad59e8", 3, "both", True),
+    ("7ab30909", 4, "becddc", True),
+    ("7dac702f", 4, "adb9af", True),
+    ("f25013ea", 18, "becddc", True),
+    ("52c17257", 18, "adb9af", True),
+    ("1aeb3802", 20, "becddc", True),
+    ("6916a7ae", 20, "adb9af", True),
+    ("916184f4", 23, "becddc", True),
+    ("2657dd9c", 23, "adb9af", True),
+    ("0fb407b2", 24, "becddc", False),
+    ("50e74057", 24, "adb9af", False),
+    ("149bd555", 27, "becddc", True),
+    ("4cef5eab", 27, "adb9af", True),
+    ("380063e4", 38, "becddc", False),
+    ("0965b9b1", 38, "adb9af", False),
+    ("2c5a28f5", 41, "becddc", False),
+    ("0e4f4046", 41, "adb9af", False),
+    ("4d922233", 42, "becddc", True),
+    ("abcd9c23", 42, "adb9af", True),
+    ("c5ef44ff", 49, "becddc", True),
+    ("d438ad54", 49, "adb9af", True),
+    ("ec1ba714", 55, "becddc", False),
+    ("f6c5488f", 55, "adb9af", False),
+    ("09d0cf78", 72, "becddc", False),
+    ("bb43b658", 72, "adb9af", False),
+    ("2db3e1ec", 73, "becddc", False),
+    ("7e6034b8", 73, "adb9af", False),
+    ("69e3bb4d", 75, "becddc", False),
+    ("6c4af453", 75, "adb9af", False),
+    ("c5a16e7c", 76, "becddc", True),
+    ("b0548a95", 76, "adb9af", True),
+    ("bec73726", 77, "becddc", True),
+    ("3a26be0e", 77, "adb9af", True),
+    ("42d1340f", 83, "becddc", False),
+    ("0f039f51", 83, "adb9af", False),
+    ("8b5809f7", 84, "becddc", True),
+    ("1c8e21aa", 84, "adb9af", True),
+    ("66441a6c", 85, "becddc", False),
+    ("d849daec", 85, "adb9af", False),
+    ("72015941", 86, "becddc", True),
+    ("e93f946c", 86, "adb9af", True),
+)
+
+_DARKNESS_ROWS = tuple(
+    _gate(DARKNESS, f"*0x6EA6+0x{at:04X}", statement, PROBABLE,
+          f"area {area} ({_LIBRARY[library]}) at ${at:04X}: {what}",
+          changes=changes, area=entries)
+    for at, statement, entries, changes, area, library, what in _DARKNESS_GATES
+) + tuple(
+    _none(DARKNESS, "*0x6EA6+0x8000", entries, PROBABLE,
+          f"area {area} ({_LIBRARY[library]}): "
+          + ("no RANDOM statement" if bare else
+             "none of its rolls decides whether a step starts a fight"))
+    for entries, area, library, bare in _DARKNESS_NONE
+)
+
+
 #: Pool's buffer is `ecl.dax` at `[data+0xA4] + (A - $9900)`; the other titles'
 #: is `[data+pointer] + A`.  The Slums roll (`$9B3A`) has its encounter on the
 #: high side, so its constant, two bytes on, is zeroed as well.
 #:
 #: Pools of Darkness has two `Disk3/ECL.GLB` releases (sha256 `becddc5926af`
-#: and `adb9afbd3eca`) whose wilderness rolls sit at different addresses, so
-#: each has its own row; at each row's offset only its own area's block holds
-#: the statement.  Every Pools of Darkness gate is reached from step entry 1
-#: after a step counter passes its limit, and `SAVE 99` takes its `EXIT`.  The
-#: `SAVE` leaves 99, a value the roll can produce, in variable 191 (save offset
-#: `0xBE`) or 192 (`0xBF`), and the counter unreset (variable 217, `0xD8`, in
-#: areas 17 and 25; 161, `0xA0`, in area 32).
+#: and `adb9afbd3eca`) whose rolls mostly sit at different addresses, so each
+#: has its own rows (`_DARKNESS_GATES`), and every row names its area's entry
+#: table; with both hashes, each row matches its own area of its own release
+#: and nothing else.  The `SAVE` leaves its constant, mostly 99, a value the
+#: roll can produce, in the roll's variable (191, save offset `0xBE`, for
+#: most), and a step counter unreset.  Area 67's chase roll stores 255 instead,
+#: and its `ADD 1` to the counter the roll is compared with becomes `ADD 0`,
+#: because that counter also sets how many guards the fight brings.
 ROWS = (
     _gate("pool-of-radiance", "*0xA4+0x7B3", "59ff65e6", PROBABLE,
           "ECL25 wilderness roll at $A0B3, same statement as area 26"),
@@ -219,26 +474,7 @@ ROWS = (
           "[$4C07] wait counts down after a fight: IF> 5 GOTO $8938 (EXIT), "
           "else the $86E6 event table, two of whose ten events are COMBAT",
           area="3dff39b8"),
-    _gate("pools-of-darkness", "*0x6EA6+0x82EA", "e43dac29", PROBABLE,
-          "GLB block 17 roll at $82EA, reached from the step entry on an "
-          "ordinary square: IF> 5 EXIT, else a fight; decoded with Pools of "
-          "Darkness' own operand counts"),
-    _gate("pools-of-darkness", "*0x6EA6+0x8BC7", "b0469054", PROBABLE,
-          "area 17 wilderness roll at $8BC7 (becddc5926af library, GLB block "
-          "6): RANDOM 99 [191] after step counter [217] reaches 6; COMPARE "
-          "20, [191] then IF<= EXIT (20 <= roll), else the monster tables and "
-          "COMBAT at $9470"),
-    _gate("pools-of-darkness", "*0x6EA6+0x8B88", "b0469054", PROBABLE,
-          "area 17 wilderness roll at $8B88 (adb9afbd3eca library, GLB block "
-          "6): the same statements as $8BC7, COMBAT at $9435"),
-    _gate("pools-of-darkness", "*0x6EA6+0x8371", "b0469054", PROBABLE,
-          "area 25 overland roll at $8371 (becddc5926af library, GLB block "
-          "14): RANDOM 99 [191] after step counter [217] reaches 10; COMPARE "
-          "5, [191] then IF<= EXIT (5 <= roll), else the monster tables and "
-          "COMBAT"),
-    _gate("pools-of-darkness", "*0x6EA6+0x838E", "b0469054", PROBABLE,
-          "area 25 overland roll at $838E (adb9afbd3eca library, GLB block "
-          "14): the same statements as $8371"),
+    *_DARKNESS_ROWS,
     _rest("pool-of-radiance", "*0x9C+0x5A6", "0000", SPECULATIVE,
           "$6DD3 chance word, confirmed on DOS, not run on the Amiga"),
     _rest("curse-of-the-azure-bonds", "*0x3DBE+0xFDA6", "0000", SPECULATIVE,
@@ -281,8 +517,10 @@ class EncounterSwitch:
         self.patched: dict[int, tuple[bytes, bytes]] = {}
         #: Rest values this switch overwrote: address -> what was there.
         self.held: dict[int, bytes] = {}
-        #: Gate addresses whose statement did not match, already reported.
-        self.blocked: set[int] = set()
+        #: What is already reported stopped: the address of a gate whose
+        #: statement did not match or of a rest row outside memory, and
+        #: `(address, area)` of a gate whose area is not loaded.
+        self.blocked: set[int | tuple[int, str]] = set()
         #: `(address, digest)` of each none row already reported loaded.
         self.noted: set[tuple[int, str]] = set()
         #: How many bytes each change covers: address -> span.
@@ -342,13 +580,16 @@ class EncounterSwitch:
                                          f"random-encounter roll: {row.source}"})
                 continue
             if row.kind == GATE:
+                # Rows of two areas can share an address, so a row stopped
+                # for its area is remembered by both.
                 elsewhere = self._other_area(row)
                 if elsewhere is not None:
-                    if address not in self.blocked:
-                        self.blocked.add(address)
+                    if (address, row.area) not in self.blocked:
+                        self.blocked.add((address, row.area))
                         done.append({"row": row.spec, "grade": row.grade,
                                      "stopped": elsewhere})
                     continue
+                self.blocked.discard((address, row.area))
                 now = self.read(address, STATEMENT)
                 if address in self.patched and now == self.patched[address][1]:
                     continue
@@ -434,8 +675,7 @@ class EncounterSwitch:
                         del self.patched[address]
                         self._record()
                         continue        # the script was reloaded already
-                    span = max(offset for offset, _ in row.changes) + 1
-                    result = self.write(address, original[:span])
+                    result = self.write(address, original[:self.spans[address]])
                     if "error" not in result:
                         del self.patched[address]
                         self._record()
@@ -465,9 +705,16 @@ class EncounterSwitch:
         back by a reload, or for `restore_row` to judge.
         """
         left = []
-        by_spec = {row.spec: row for row in self.rows if row.kind != NONE}
+        by_spec = {}
+        for row in self.rows:
+            if row.kind != NONE:
+                by_spec.setdefault(row.spec, []).append(row)
         for entry in rows:
-            row = by_spec.get(entry.get("spec"))
+            # Rows of two areas can share a spec; the recorded digest picks one.
+            found = by_spec.get(entry.get("spec"), [])
+            row = next((r for r in found if r.kind != GATE
+                        or r.digest == entry.get("digest")),
+                       found[0] if found else None)
             try:
                 address = int(entry["address"])
                 original = bytes.fromhex(entry["original"])

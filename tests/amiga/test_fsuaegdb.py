@@ -2752,12 +2752,12 @@ POD_PATCHED = bytes([0x09, 0x11, 0x22, 0x33, 0x44, 0x55])
 def scripted(driven, monkeypatch):
     """The driven machine with Pools of Darkness' script buffer loaded.
 
-    The table's hash is swapped for one of the made-up statement, so the test
-    memory holds no real script bytes.
+    The table's hash is swapped for one of the made-up statement, and its
+    entry-table check dropped, so the test memory holds no real script bytes.
     """
     from tools.amiga import noencounters
     monkeypatch.setattr(noencounters, "ROWS", tuple(
-        dataclasses.replace(r, digest=noencounters.digest(POD_GATE))
+        dataclasses.replace(r, digest=noencounters.digest(POD_GATE), area="")
         if r.title == "pools-of-darkness" and r.kind == noencounters.GATE
         else r for r in noencounters.ROWS))
     guest, log = driven
@@ -2986,7 +2986,7 @@ def test_bytes_that_are_neither_ours_nor_the_original_are_put_back_and_reported(
 
 def _with_digest(noencounters, statement, memory, addresses=(0x3000,)):
     import pytest as _pytest
-    rows = tuple(dataclasses.replace(r, digest=noencounters.digest(statement))
+    rows = tuple(dataclasses.replace(r, digest=noencounters.digest(statement), area="")
                  if r.kind == noencounters.GATE else r
                  for r in noencounters.ROWS)
     mp = _pytest.MonkeyPatch()
