@@ -604,6 +604,43 @@ def test_the_slot_arrays_are_compared_on_every_save_as(
             "spells_castable_magic_user"]
 
 
+def _ringed_pair(monkeypatch, tmp_path, written_level_five):
+    from goldbox import spells
+    from goldbox.items import READIED
+
+    want, _ = _pair(monkeypatch, tmp_path)
+    want.set("level_magic_user", 28)
+    want.set("intelligence", 18)
+    want.set("wisdom", 18)
+    ring = bytearray(16)
+    ring[6] = READIED
+    ring[15] = 0x81
+    want.items = (bytes(ring),)
+    base = spells.pod_slot_arrays({"magic-user": 28}, 18, 18)
+    got = saveplan.PodCompared(want.to_bytes())
+    got.items = want.items
+    for _name, field in podsheet.SLOT_ARRAYS:
+        got.set_raw(field, bytes(base["cleric" if "cleric" in field else
+                                   "druid" if "druid" in field
+                                   else "magic-user"]))
+    mage = list(base["magic-user"])
+    mage[4] = written_level_five
+    got.set_raw("spells_castable_magic_user", bytes(mage))
+    return want, got
+
+
+def test_a_readied_ring_is_expected_to_double_level_five_on_the_amiga(
+        monkeypatch, tmp_path):
+    amiga = _amiga_destination(tmp_path)
+    want, got = _ringed_pair(monkeypatch, tmp_path, 12)
+    assert saveplan.compare([want], [got], amiga, source_port="dos") == []
+    (tmp_path / "again").mkdir()
+    want, ignored = _ringed_pair(monkeypatch, tmp_path / "again", 6)
+    lines = saveplan.compare([want], [ignored], amiga, source_port="dos")
+    assert [line.split(":")[0] for line in lines] == [
+        "spells_castable_magic_user"]
+
+
 def test_a_dos_mage_whose_stored_slots_differ_crosses_the_rebuilt_value_whole(
         monkeypatch, tmp_path):
     _flag(monkeypatch, "1")

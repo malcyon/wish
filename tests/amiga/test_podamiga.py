@@ -1553,6 +1553,16 @@ def test_a_readied_power_0x81_item_doubles_level_five_once_per_item():
         "magic-user"][4] == 6
 
 
+def test_six_readied_rings_wrap_the_byte_as_the_game_does():
+    raw = bytearray(amiga_pod.ITEM_FILE_SIZE)
+    raw[amiga_pod.ITEM_FIELD_AT["power"]] = 0x81
+    raw[amiga_pod.ITEM_FIELD_AT["readied"]] = 1
+    levels = (0, 0, 0, 0, 0, 28, 0)
+    abilities = (10, 18, 18, 10, 10, 10)
+    slots = amiga_pod.engine_spell_slots(levels, abilities, [bytes(raw)] * 6)
+    assert slots["magic-user"][4] == (6 * 64) & 0xFF == 128
+
+
 def test_the_intelligence_and_wisdom_ceilings_zero_the_high_levels():
     from goldbox import spells
 

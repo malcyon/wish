@@ -544,6 +544,11 @@ def engine_default_icon(race: int, sex: int, size: int,
 _SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
 
 
+#: The power byte of a Ring of Wizardry: bit 7 for "applied when readied" and
+#: handler 1.
+RING_POWER = 0x81
+
+
 def engine_spell_slots(class_levels: Sequence[int], abilities: Sequence[int],
                        items: Sequence[bytes]) -> dict[str, tuple[int, ...]]:
     """The three spell-slot arrays a character holds once its rings are readied.
@@ -552,14 +557,15 @@ def engine_spell_slots(class_levels: Sequence[int], abilities: Sequence[int],
     order, `abilities` the six in-force scores in `ABILITY_KEYS` order and
     `items` the twenty-byte nodes. The base rows are the Amiga builder's
     (`0x03BE7C`), whose own ring test compares `0x41` and never fires. Readying
-    a power-`0x81` item runs the item-power routine (`0x21FDE`, case 1, ready
-    at `0x2226E`; DOS `0x24F06`), which doubles magic-user level 5 once per
-    such readied node, and DOS's builder repeats that on every load
-    (`GAME.OVR:0x38333`).
+    a power-`0x81` item calls the item-power routine at `0x21FDE` from the
+    ready call site at `0x2225E`-`0x2226E`; its case 1 (`0x2202E`-`0x22036`)
+    doubles magic-user level 5 as a byte, once per such readied node. DOS has
+    the same routine (`0x24F06`, doubling at `0x24F66`-`0x24F78`), and its
+    builder repeats the doubling on every load (`GAME.OVR:0x38333`).
     """
-    rings = sum(1 for node in items
-                if PodItem.from_bytes(node).get("power") == RING_POWER
-                and PodItem.from_bytes(node).readied)
+    parsed = [PodItem.from_bytes(node) for node in items]
+    rings = sum(1 for item in parsed
+                if item.get("power") == RING_POWER and item.readied)
     return _slots_with_rings(class_levels, abilities, rings)
 
 
@@ -573,11 +579,6 @@ def dos_rebuilt_spell_slots(class_levels: Sequence[int],
     return _slots_with_rings(class_levels, abilities, rings)
 
 
-#: The power byte of a Ring of Wizardry: bit 7 for "applied when readied" and
-#: handler 1.
-RING_POWER = 0x81
-
-
 def _slots_with_rings(class_levels: Sequence[int], abilities: Sequence[int],
                       rings: int) -> dict[str, tuple[int, ...]]:
     by_name = {"cleric": 0, "paladin": 3, "ranger": 4, "magic-user": 5}
@@ -585,7 +586,9 @@ def _slots_with_rings(class_levels: Sequence[int], abilities: Sequence[int],
               if i < len(class_levels)}
     out = spells.pod_slot_arrays(levels, int(abilities[1]), int(abilities[2]))
     mage = list(out["magic-user"])
-    mage[4] *= 2 ** rings
+    # Both games double the byte in place, so it wraps at 256.
+    for _ in range(rings):
+        mage[4] = (mage[4] * 2) & 0xFF
     out["magic-user"] = tuple(mage)
     return out
 
