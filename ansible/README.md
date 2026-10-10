@@ -28,6 +28,10 @@ The playbooks that build the agent sandbox on your own desktop (an isolated libv
 | `inventory.yml.example` | The template for `inventory.yml`, the one file naming this machine's paths, accounts, MACs and LAN addresses; copy it and fill it in |
 | `group_vars/all/vault.yml.example` | The template for `vault.yml`, which holds the Windows guest's administrator password |
 | `roles/agent-vm-guest/tasks/plane.yml` | Provisions optional Plane trust, private credentials, pinned dependencies and both clients' restricted MCP adapter. |
+| `roles/agent-vm-guest/tasks/test-runner.yml` | Provisions the agent user's bounded test slice, shared locks, request directory and disabled host policy. |
+| `roles/agent-vm-guest/templates/wish-tests.slice.j2` | Defines the shared 8 GiB memory limit for local test services. |
+| `roles/agent-vm-guest/templates/wish-tests-tmpfiles.conf.j2` | Recreates the shared lock directory and files after boot. |
+| `roles/agent-vm-guest/templates/test-runner.json.j2` | Renders the root-owned launcher policy. |
 | `roles/agent-vm-guest/files/plane-clients.py` | Registers the Wish Plane adapter while preserving unrelated Claude and Codex settings. |
 | `roles/agent-vm-guest/templates/wish-plane.sh.j2` | Launches the policy adapter with private configuration and system certificate trust. |
 | `roles/sandbox-network/files/service-spoof-test.py` | Captures a bounded Windows source-spoof attempt and its controls, with scheduled and immediate network cleanup. |
@@ -49,7 +53,7 @@ ansible-playbook -i ansible/inventory.yml ansible/sandbox-isolation-test.yml   #
 
 Every playbook is idempotent. The first `agent-vm.yml` run downloads Canonical's cloud image (about 600 MB, once, checksum-verified), builds the guest from it with a cloud-init seed, boots it, then installs the toolchain over ssh; the DOSBox-X source build is the long part. Nothing is downloaded by hand and no installer is involved, except the Windows ISO below.
 
-A section can be run alone by its tag: `boot`, `packages`, `gh`, `claude`, `vice`, `dosbox`, `wish`, `fsuae`, `node`, `agenthud`, `herdr`, `codex`, `c64u`, `herdr_integrations`, `environment`, `credential`, `disks`, `exporter`, `login`, `codewheel`; or `agent_vm` for play 1, `agent_vm_guest` for play 2, `isolation` for the test, `agent_network` for the `sandbox-network` role in `sandbox-network.yml`, `winvm` for the `windows-vm` role, `winvm_harness` for the WinUAE harness in a running Windows guest, `winvm_access` for `agent-winvm-access.yml`.
+A section can be run alone by its tag: `boot`, `packages`, `gh`, `claude`, `vice`, `dosbox`, `wish`, `fsuae`, `node`, `agenthud`, `herdr`, `codex`, `c64u`, `herdr_integrations`, `environment`, `credential`, `disks`, `exporter`, `login`, `codewheel`, `test_runner`; or `agent_vm` for play 1, `agent_vm_guest` for play 2, `isolation` for the test, `agent_network` for the `sandbox-network` role in `sandbox-network.yml`, `winvm` for the `windows-vm` role, `winvm_harness` for the WinUAE harness in a running Windows guest, `winvm_access` for `agent-winvm-access.yml`.
 
 `inventory.yml` and `group_vars/all/vault.yml` hold one machine's own values and are gitignored; `tests/suite/test_repository_contents.py` fails on a tracked file under `ansible/` that names a home directory, a LAN address or a credential.
 

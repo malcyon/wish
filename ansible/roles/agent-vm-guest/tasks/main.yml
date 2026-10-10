@@ -9,6 +9,13 @@
 # disks image, which are a separate step, and every credential of the operator's
 # own. Nothing of the operator's is in this guest.
 
+- name: Provision the managed local test runner
+  ansible.builtin.include_tasks:
+    file: test-runner.yml
+    apply:
+      tags: test_runner
+  tags: test_runner
+
 # --- first boot -------------------------------------------------------------
 
 - name: First boot

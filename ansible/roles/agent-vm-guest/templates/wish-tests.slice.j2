@@ -1,0 +1,7 @@
+[Unit]
+Description=Memory boundary for local Wish test commands
+
+[Slice]
+MemoryAccounting=yes
+MemoryMax={{ agent_guest_test_runner_memory_max }}
+MemorySwapMax=0

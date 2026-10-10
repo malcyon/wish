@@ -41,6 +41,35 @@ agent_guest_disks_source: "{{ agent_vm_disks_dir }}"
 # repository's own addopts, so its `-n` wins.
 agent_guest_pytest_workers: "{{ ansible_processor_nproc }}"
 
+# The host policy stays disabled until the launcher passes containment checks.
+agent_guest_test_runner_enabled: false
+agent_guest_test_runner_memory_max: 8G
+agent_guest_test_runner_memory_max_bytes: 8589934592
+agent_guest_test_runner_slice: wish-tests.slice
+agent_guest_test_runner_service: wish-tests-run.service
+agent_guest_test_runner_lock_dir: /run/wish-tests
+agent_guest_test_runner_policy: /etc/wish/test-runner.json
+agent_guest_test_runner_state_dir: "{{ ansible_user_dir }}/.local/state/wish/test-requests"
+agent_guest_test_runner_allowed_environment:
+  - HOME
+  - PATH
+  - LANG
+  - LC_ALL
+  - LC_CTYPE
+  - TZ
+  - XDG_RUNTIME_DIR
+  - QT_QPA_PLATFORM
+  - DISPLAY
+  - XAUTHORITY
+  - PYTEST_ADDOPTS
+  - PYTHONPATH
+  - WISH_SPECIMENS
+  - POR_DISKS
+  - POR_HEADLESS
+  - VICE_PATH
+  - SDL_AUDIODRIVER
+  - ALSOFT_DRIVERS
+
 agent_guest_apt_packages:
   # Python, and what PyQt6's wheel does not carry (the CI list, wish's
   # .github/workflows/test.yml).
