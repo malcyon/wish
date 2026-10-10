@@ -945,12 +945,15 @@ class AmigaToDos(C64ToDos):
             party, savgam = amiga_savegame.read_por_slot(disk, source.slot)
             state = amiga_savegame.read_por_state(
                 savgam, source=f"{source.path} slot {source.slot}")
-            characters = [dos_codec.to_neutral(c) for c in party]
+            characters = [c64_codec.living_player(dos_codec.to_neutral(c))
+                          for c in party]
         else:
             save = amiga_savegame.read_slot(disk, source.slot, self.deltas.key)
             state = amiga_savegame.state_from_savegame(save)
             party = list(save.characters)
-            characters = [amiga_later.to_neutral_later(c) for c in party]
+            characters = [c64_codec.living_player(
+                              amiga_later.to_neutral_later(c))
+                          for c in party]
         # Cannot fire today: an Amiga name is at most fifteen characters and
         # the DOS field holds the same fifteen. Called anyway, so a
         # direction added later does not have to remember to.
@@ -1475,7 +1478,8 @@ class DosToAmiga(Direction):
             savgam_path = pathlib.Path(folder) / (
                 f"SAVGAM{letter}{container.suffix}")
             savgam = savgam_path.read_bytes()
-        party = [dos_codec.to_neutral(c) for c in raw_party]
+        party = [c64_codec.living_player(dos_codec.to_neutral(c))
+                 for c in raw_party]
         # Cannot fire today: a DOS name is at most fifteen characters and an
         # Amiga field holds the same fifteen (`amiga_por._por_name_bytes`).
         # Called anyway, so a direction added later does not have to

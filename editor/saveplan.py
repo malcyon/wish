@@ -1670,29 +1670,28 @@ def charmed_pool_fields(record: CharacterRecord, neutral: NeutralCharacter,
     return {}
 
 
-def dispelled_zombie_fields(member, snapshot,
-                            destination: "Destination") -> dict[str, int]:
-    """The four bytes a dispelled C64 Pool zombie should be read back holding
-    from a DOS or Amiga save.
+def zombie_player_fields(member, snapshot,
+                         destination: "Destination") -> dict[str, int]:
+    """The bytes a zombie Pool player character should be read back holding
+    from a converted save.
 
-    The sheet shows the C64's own zombie form, and the conversion makes him an
-    ordinary dead character (`dos_codec.c64_member_dispelled_zombie`), so
-    `movement`, `turn_class`, `creature_type` and the ability flag differ by
-    that rule and not by a loss. `{}` for any other character or route.
+    Every port converts him into an ordinary living member
+    (`c64_codec.living_player`), so `movement`, `turn_class`, `creature_type`
+    and the ability flag differ from the sheet by that rule and not by a
+    loss. `{}` for any other character or route.
     """
     if destination.native or not _is_pool(destination):
         return {}
-    if snapshot.port != "c64" or destination.port not in ("dos", "amiga"):
-        return {}
-    if not dos_codec.c64_member_dispelled_zombie(
-            snapshot.save0, snapshot.save1, snapshot.title, member.index):
-        return {}
     neutral = source_neutral(member, snapshot, snapshot.title)
-    return {"movement": int(neutral.get("movement")),
-            "turn_class": int(neutral.get("turn_class")),
-            "creature_type": int(neutral.get("creature_type")),
-            "flags_0b8": c64_codec.pool_ability_flag(
-                int(neutral.get("treasure_share"))) or 0}
+    if not c64_codec.zombie_player(neutral):
+        return {}
+    fields = {"movement": 12, "turn_class": 0, "creature_type": 0}
+    if not c64_codec.pool_charmed_player(c64_codec.living_player(neutral)):
+        # A charmed zombie's ability byte is the charm's, set by
+        # `charmed_pool_fields`.
+        fields["flags_0b8"] = c64_codec.pool_ability_flag(
+            int(neutral.get("treasure_share"))) or 0
+    return fields
 
 
 def _is_pool(destination: "Destination") -> bool:
@@ -2389,10 +2388,12 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
                 source.port, destination)
             for name, value in fields.items():
                 record.set(name, value)
-        for member, record in zip(party.members, expected):
-            for name, value in dispelled_zombie_fields(
-                    member, snapshot, destination).items():
-                record.set(name, value)
+    # After the charm fields, so a charmed zombie keeps the charm's values
+    # wherever `living_player` left them alone.
+    for member, record in zip(party.members, expected):
+        for name, value in zombie_player_fields(
+                member, snapshot, destination).items():
+            record.set(name, value)
     validate(destination, files, expected, accounted=losses(report),
              expected_names=expected_names, source_port=source.port)
     if report is not None and report.warnings:

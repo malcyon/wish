@@ -195,7 +195,6 @@ __all__ = [
     "item_type_table",
     "WRITE_NO_SUCH_FIELD",
     "write_field_disposition",
-    "c64_member_dispelled_zombie",
     "c64_member_neutral",
     "c64_party",
     "write_dos_save_from",
@@ -3628,6 +3627,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   name: str | None = None,
                   leave_effects: Collection[int] = (),
                   drop_type_zero: bool = False,
+                  zombie_lives: bool = False,
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -3653,6 +3653,11 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     `leave_effects` is the neutral `running_effects` indices the player chose
     to leave out, applied after `leave` and before the C64 record is built.
 
+    `zombie_lives` makes a zombie player character a living one
+    (`c64_codec.living_player`) before the C64 record is built, which is what
+    a conversion wants; left off, he stays a zombie, which the editor's DOS
+    and Amiga sheet relies on.
+
     `drop_type_zero` leaves out the items the C64 counts as an empty slot
     (see :func:`_without_type_zero`), after `leave` and `leave_effects`.  Left off, the C64 writer still writes
     them and reports each as dropped, which the editor's DOS sheet and the
@@ -3668,6 +3673,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     :func:`c64_name`.
     """
     out = to_neutral(dos, portraits=portraits)
+    if zombie_lives:
+        out = c64_codec.living_player(out)
     if name is not None:
         held = out.fields["name"]
         out.fields["name"] = dataclasses.replace(
@@ -8446,7 +8453,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             source_icon = (neutral_icons[index]
                            if neutral_icons is not None else None)
             size = "large" if char.get("size_small") else "small"
-            kept = _unjoined_for_c64(char)
+            kept = _unjoined_for_c64(c64_codec.living_player(char))
             if left:
                 kept = _without_left_behind(kept, left)
             if left_effects:
@@ -8469,7 +8476,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
                 leave=left, item_types=item_types,
                 name=(names or {}).get(index),
-                leave_effects=left_effects, drop_type_zero=drop_zero)
+                leave_effects=left_effects, drop_type_zero=drop_zero,
+                zombie_lives=True)
             name = (names or {}).get(index, char.name)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -9882,12 +9890,6 @@ def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins) -> "NeutralCharacter"
                                source=f"C64 slot {char_slot.index}",
                                payload=save0, party_slot=char_slot.index,
                                clock_minutes=clock_mins)
-    if c64_codec.dispelled_pool_zombie(
-            c64, c64_codec.roster_status(char_slot.record, block),
-            save0, char_slot.index):
-        c64_codec.as_ordinary_dead(character)
-        _log.debug("C64 slot %d: a dispelled zombie converts as an "
-                   "ordinary dead character", char_slot.index)
     return character
 
 
@@ -9901,18 +9903,6 @@ def c64_member_neutral(save0: bytes, save1: bytes | None, game,
         if char_slot.index == index:
             return _read_c64_slot(char_slot, sg1, c64, save0, clock_mins)
     raise ValueError(f"C64 slot {index} holds no character")
-
-
-def c64_member_dispelled_zombie(save0: bytes, save1: bytes | None, game,
-                                index: int) -> bool:
-    """Whether the C64 member in slot `index` is a dispelled zombie, which
-    `c64_party` converts as an ordinary dead character."""
-    c64 = c64_save.container_for(game)
-    sg, sg1, _clock = _c64_save_context(save0, save1, c64)
-    block = sg1.roster(index) if sg1 is not None else None
-    (char_slot,) = [s for s in sg.characters if s.index == index]
-    return c64_codec.dispelled_pool_zombie(
-        c64, c64_codec.roster_status(char_slot.record, block), save0, index)
 
 
 def _write_prayer_holder(save0: bytearray, report: Report,
@@ -10029,7 +10019,8 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     out: "list[NeutralCharacter]" = []
     icons: "list[DosIcon | None]" = []
     for char_slot in party:
-        character = _read_c64_slot(char_slot, sg1, c64, save0, clock_mins)
+        character = c64_codec.living_player(
+            _read_c64_slot(char_slot, sg1, c64, save0, clock_mins))
         icon = None
         if icon_parts is not None:
             # Not `char_slot.record.get_raw("region_220")`: `Slot.record`

@@ -685,9 +685,8 @@ class DispelledZombieNode(bytes):
     It is the form the C64 writer needs for a C64-to-C64 conversion: its bytes
     equal a camp cast at caster level 15, which a C64 row of that magnitude
     also reads to, so only the type tells the writer to write the trait and no
-    row. A C64-to-DOS or C64-to-Amiga conversion turns this character into an
-    ordinary dead one before any writer sees the node
-    (`dos_codec._read_c64_slot`), so the type never reaches their files.
+    row. A conversion to DOS or the Amiga makes the member living
+    (`living_player`) before any writer sees the node.
     """
 
     __slots__ = ()
@@ -695,12 +694,6 @@ class DispelledZombieNode(bytes):
 #: The roster status a Pool of Radiance camp Animate Dead writes over the
 #: raised character (`SPELLE04 $AA11`): dead, bit 7 clear.
 ZOMBIE_STATUS = 0x03
-
-#: The ids DOS's and the Amiga's death write removes the first node of
-#: (DOS table DS:0C14, Amiga h8+0x39C; both images hold the same bytes).
-DEATH_WRITE_EFFECT_IDS = (7, 11, 30, 31, 32, 51, 52, 53, 54, 58, 59, 95, 98,
-                          137, 74, 75)
-
 
 def roster_status(rec, roster=None):
     """The roster status byte `read` reads: the roster block's when the save
@@ -713,58 +706,60 @@ def roster_status(rec, roster=None):
     return rec.get("roster_in_use") if rec.is_stored("roster_in_use") else None
 
 
-def dispelled_pool_zombie(game, roster_status, payload, party_slot) -> bool:
-    """Whether a Pool of Radiance character is a zombie whose Animate Dead
-    row was dispelled.
+def zombie_player(char: NeutralCharacter) -> bool:
+    """Whether `char` is a zombie player character: status animated under the
+    control byte DOS gives a player character it has taken over. A zombie
+    companion keeps `$B2`, so it is not one."""
+    return (char.get("status") == "animated"
+            and char.get("npc_control_byte") == DOS_PC_TAKEN_OVER)
 
-    Status `$03` with no duration-0 id-32 row owned by `party_slot` is what
-    Dispel Magic leaves. It is also what a zombie animated in camp or in a
-    fight leaves while all 64 effect rows were taken, and the C64 still runs
-    that member as a zombie. The two are byte-identical, so both convert as
-    ordinary dead. Only bytes decide: a row of any magnitude keeps the
-    character a zombie. `roster_status` is `None` when neither the roster
-    block nor the record stores one (`roster_status()`).
+
+def living_player(char: NeutralCharacter) -> NeutralCharacter:
+    """`char` as an ordinary living player character when it is a zombie
+    player character, else `char` itself.
+
+    Every port converts a zombie player character into a living one under the
+    player's orders with at least 1 hit point, whatever its Animate Dead
+    rows, dispelling or remove-and-add history. Zombie-only state is cleared:
+    the animated status and control byte, the combat side flags, Animate Dead
+    in every effect list, and the movement, turning and creature-type values
+    the cast wrote. Memorised spells and every other effect are left as read,
+    so no spell the cast emptied is invented. A zombie still under a charm
+    keeps the charm's control byte, side and quickfight, which the charm needs.
     """
-    if deltas_for(game) is not POOL_OF_RADIANCE_RECORD:
-        return False
-    if roster_status != ZOMBIE_STATUS:
-        return False
-    return not any(r.owner == party_slot and r.id == ANIMATE_DEAD_ID
-                   and r.duration == 0
-                   for r in effects.active_effects(bytes(payload)))
+    if not zombie_player(char):
+        return char
+    why = ("a zombie player character converts to an ordinary living, "
+           "player-controlled one")
+    out = NeutralCharacter(char.port, source=char.source, game=char.game)
+    out.fields = dict(char.fields)
+    out.dropped = list(char.dropped)
+    out.warnings = list(char.warnings)
 
+    def put(name, value):
+        out.set(name, value, why, Confidence.CONFIRMED, Provenance.COMPUTED)
 
-def as_ordinary_dead(char: NeutralCharacter) -> None:
-    """Turn a dispelled zombie into the ordinary dead character DOS and the
-    Amiga leave when their own Dispel removes node 32: their handler resets
-    the animation fields and runs the death write. A C64-to-C64 conversion
-    never calls this, so the C64's own form is untouched.
-    """
-    why = ("a dispelled zombie converts to an ordinary dead character: "
-           "DOS and the Amiga Dispel handler for Animate Dead followed by "
-           "their death write")
-    for name, value in (("status", "dead"), ("active", False),
-                        ("hp_current", 0), ("hostile", False),
-                        ("quickfight", False), ("turn_class", 0),
-                        ("movement", 12), ("creature_type", 0)):
-        char.set(name, value, why, Confidence.CONFIRMED, Provenance.COMPUTED)
-    if char.get("npc_control_byte") == DOS_PC_TAKEN_OVER:
-        char.set("npc", False, why, Confidence.CONFIRMED, Provenance.COMPUTED)
-        char.fields.pop("npc_control_byte", None)
-    # The death write removes the first node of each id, and
-    # `dos_codec.write` lays granted nodes into `.SPC` before running ones.
-    lists = {name: list(char.get(name) or ())
-             for name in ("granted_effects", "running_effects")
-             if char.get(name) is not None}
-    for eid in DEATH_WRITE_EFFECT_IDS:
-        for nodes in lists.values():
-            hit = next((i for i, n in enumerate(nodes)
-                        if bytes(n)[0] == eid), None)
-            if hit is not None:
-                del nodes[hit]
-                break
-    for name, nodes in lists.items():
-        char.set(name, nodes, why, Confidence.CONFIRMED, Provenance.COMPUTED)
+    for name in ("granted_effects", "running_effects"):
+        nodes = out.get(name)
+        if nodes is not None:
+            put(name, [n for n in nodes if bytes(n)[0] != ANIMATE_DEAD_ID])
+    innate = out.get("innate_effects")
+    if innate is not None:
+        put("innate_effects", [i for i in innate if i != ANIMATE_DEAD_ID])
+    charmed = pool_charmed_player(out)
+    put("status", "okay")
+    put("active", True)
+    put("hp_current", max(1, out.get("hp_current") or 0))
+    put("turn_class", 0)
+    put("movement", 12)
+    put("creature_type", 0)
+    out.fields.pop("turn_power", None)
+    if not charmed:
+        put("hostile", False)
+        put("quickfight", False)
+        put("npc", False)
+        out.fields.pop("npc_control_byte", None)
+    return out
 
 #: What a player is told when the source's status has no C64 value.
 #:
