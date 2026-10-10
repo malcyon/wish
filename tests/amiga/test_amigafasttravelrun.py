@@ -270,6 +270,61 @@ def test_the_answer_is_pressed_once_when_the_screen_changes_with_the_key_taken(w
     assert got["answered"] and got["result"] == "idle"
 
 
+class _Arrives(Travel):
+    """Leaves the starting area at once and shows a question that holds the gate shut."""
+
+    def continue_pending(self, target):
+        _Arrives.world.area, _Arrives.world.screen = 26, b"take boat?"
+        return super().continue_pending(target)
+
+
+def _arriving(world, monkeypatch):
+    _Arrives.world = world
+    world.asked = False
+
+    def gate(target, row):
+        return world.pressed != [] or world.asked
+    monkeypatch.setattr(amigatrip, "gate", gate)
+
+
+def test_an_arrival_answer_is_pressed_once_and_settles_the_leg(world, monkeypatch):
+    _arriving(world, monkeypatch)
+    got = world.drive(_Arrives(polls=1), arrival_answer="y")
+    assert world.pressed == ["y"]
+    assert got["arrival_answered"] and got["settled"] and got["result"] == "idle"
+    assert [e["key"] for e in world.events() if e["event"] == "arrival_answer"] == ["y"]
+
+
+def test_without_an_arrival_answer_the_leg_stays_unsettled(world, monkeypatch):
+    _arriving(world, monkeypatch)
+    got = world.drive(_Arrives(polls=1))
+    assert world.pressed == []
+    assert not got["arrival_answered"] and not got["settled"]
+
+
+def test_an_arrival_answer_is_not_pressed_in_the_starting_area(world, monkeypatch):
+    _arriving(world, monkeypatch)
+
+    class Stays(_Arrives):
+        def continue_pending(self, target):
+            world.screen = b"other"
+            return Travel.continue_pending(self, target)
+
+    got = world.drive(Stays(polls=1), arrival_answer="y")
+    assert world.pressed == [] and not got["arrival_answered"]
+
+
+def test_the_arrival_answer_reaches_both_legs(monkeypatch, tmp_path):
+    seen = _fake_main(monkeypatch, tmp_path, ["--to", "32", "--back", "--arrival-answer", "y"])
+    assert [(c["back"], c["arrival_answer"]) for c in seen["calls"]] == [(False, "y"), (True, "y")]
+
+
+def test_an_unknown_arrival_answer_key_is_a_usage_error(tmp_path):
+    with pytest.raises(SystemExit):
+        ftr.main(["--holder", "h", "--disks", "D", "--to", "5", "--out", str(tmp_path),
+                  "--arrival-answer", "nonsense-key"])
+
+
 def test_no_answer_is_pressed_when_the_area_byte_changed(world):
     class Leaves(Travel):
         def continue_pending(self, target):
@@ -653,7 +708,8 @@ def _fake_main(monkeypatch, tmp_path, argv, title="secret-of-the-silver-blades")
     def run_trip(fasttravel, target, row, area, *args, **kwargs):
         seen["calls"].append({"area": area, "back": kwargs.get("back", False),
                               "row": row, "staged": fasttravel.back,
-                              "answer": kwargs.get("answer")})
+                              "answer": kwargs.get("answer"),
+                              "arrival_answer": kwargs.get("arrival_answer")})
         return {"result": "idle", "settled": True}
 
     monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)

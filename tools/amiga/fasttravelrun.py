@@ -15,6 +15,11 @@ reason is disarmed.
 area table. `--to` is the destination area id. `--answer KEY` presses KEY once per leg
 (each leg's result records `answered`), when the door key has been taken, the area byte is still the starting area and the
 screen differs from the one before the trip (the game is asking something).
+`--arrival-answer KEY` presses KEY once per leg (recorded as `arrival_answered`)
+when the area byte has left the starting area, the game's menu gate is still shut
+once the trip is idle and the screen differs from the one before the trip (a
+question in the destination, such as a boat or a leave prompt); it is looked for
+for `ANSWER_SECONDS` and applies to the way back too.
 `--back` makes `apply_back` once the trip has finished.
 `--waypoint AREA,X,Y,F` stages `fasttravel.back` as a party that stood on that
 square of that area, and with `--back` and no `--to` the run makes `apply_back`
@@ -190,17 +195,22 @@ def _peek(target, title, variables, why: str, log: Log) -> None:
             r.as_log() for r in amigavars.read_variables(target, title, variables)])
 
 
-def _settle(target, row, log: Log, sleep, clock) -> bool:
+def _settle(target, row, log: Log, sleep, clock,
+            ask: Callable[[float], None] | None = None) -> bool:
     """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
 
     The trip is idle when the area byte has changed, but the game is still
     drawing the arrival; a shot then matches the one before the second hop.
-    Returns whether the gate passed.
+    Returns whether the gate passed. `ask`, when given, is called with the
+    seconds waited on each poll of the shut gate, so a question in the
+    destination can be answered.
     """
     began = clock()
     log("settle_start", budget=SETTLE_BUDGET_SECONDS)
     while (not amigatrip.gate(target, row)
            and clock() - began < SETTLE_BUDGET_SECONDS):
+        if ask is not None:
+            ask(clock() - began)
         sleep(POLL_SECONDS)
     passed = bool(amigatrip.gate(target, row))
     log("settle", gate=passed, waited=round(clock() - began, 3))
@@ -214,7 +224,8 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              sleep: Callable[[float], None] = time.sleep,
              clock: Callable[[], float] = time.monotonic,
              budget: float = BUDGET_SECONDS, party: Callable | None = None,
-             peek_vars=(), title: str | None = None) -> dict:
+             peek_vars=(), title: str | None = None,
+             arrival_answer: str | None = None) -> dict:
     """One trip, or the way back, driven as the window's timer drives it.
 
     Returns `{"result": ..., "outcomes": [...], "answered": bool, "settled": bool, ...}`
@@ -224,11 +235,13 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     read. `party` reads the party (as `amigaparty.read_party`); its names are
     logged and returned before and after the trip. `peek_vars` are read
     through `amigavars` for `title` before and after, and logged.
+    `arrival_answer` is pressed once, if the game is asking something in the
+    destination while the menu gate stays shut; `arrival_answered` records it.
     """
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
     log("legality", ok=bool(verdict), reason=verdict.reason, back=back)
     summary = {"result": "not_legal", "outcomes": [], "answered": False,
-               "settled": True, "areas_seen": [], "party_before": None, "party_after": None}
+               "arrival_answered": False, "settled": True, "areas_seen": [], "party_before": None, "party_after": None}
     if not verdict:
         return summary
     screen = _Screen(out, shot, log)
@@ -304,7 +317,26 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         _disarm(fasttravel, target)
         log("timeout", budget=budget)
     if summary["result"] == "idle":
-        summary["settled"] = _settle(target, row, log, sleep, clock)
+        next_look = clock()
+
+        def ask(waited: float) -> None:
+            nonlocal next_look
+            if (arrival_answer is None or summary["arrival_answered"]
+                    or waited >= ANSWER_SECONDS or clock() < next_look
+                    or summary["areas_seen"][-1] == before["area"]):
+                return
+            next_look = clock() + SHOT_SECONDS
+            screen.take("arrival")
+            why = tripprobe._unanswered(
+                {"key_taken": True, "area_changed": False}, baseline, screen.last)
+            if why is None:
+                log("arrival_answer", key=arrival_answer)
+                press(arrival_answer)
+                summary["arrival_answered"] = True
+                sleep(SETTLE_SECONDS)
+            else:
+                log("arrival_answer_held", reason=why)
+        summary["settled"] = _settle(target, row, log, sleep, clock, ask)
     screen.take("after")
     last = _reading(target, row)
     seen(last["area"])
@@ -345,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--legality", action="store_true",
                         help="print each area with its legality verdict and make no trip")
     parser.add_argument("--answer", help="the key that answers the game's question")
+    parser.add_argument("--arrival-answer",
+                        help="the key that answers a question in the destination area")
     parser.add_argument("--back", action="store_true",
                         help="make apply_back once the trip has finished")
     parser.add_argument("--waypoint", metavar="AREA,X,Y,F",
@@ -375,6 +409,11 @@ def main(argv: list[str] | None = None) -> int:
             amigakeys.lookup(args.answer)
         except KeyError:
             parser.error(f"--answer {args.answer!r} is not a key name")
+    if args.arrival_answer is not None:
+        try:
+            amigakeys.lookup(args.arrival_answer)
+        except KeyError:
+            parser.error(f"--arrival-answer {args.arrival_answer!r} is not a key name")
     try:
         peek_vars = amigavars.parse_list(args.peek_var)
     except ValueError:
@@ -436,6 +475,7 @@ def main(argv: list[str] | None = None) -> int:
                         leg = 1
                         finished(run_trip(fasttravel, target, row, area, out, shot, press, log,
                                           answer=args.answer, budget=args.budget,
+                                          arrival_answer=args.arrival_answer,
                                           party=amigaparty.read_party,
                                           peek_vars=peek_vars, title=args.title))
                     if args.back and results and results[0]["result"] == "idle" \
@@ -446,6 +486,7 @@ def main(argv: list[str] | None = None) -> int:
                         finished(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                           back=True, budget=args.budget,
                                           answer=args.answer,
+                                          arrival_answer=args.arrival_answer,
                                           party=amigaparty.read_party,
                                           peek_vars=peek_vars, title=args.title))
             except BaseException as exc:

@@ -1320,6 +1320,7 @@ def test_a_pools_of_darkness_trip_from_indoors_records_no_overland_cell(disks):
     t = aft.AmigaFastTravel(POD, object())
     t._row = lambda id: areas.area_in(id, areas.POOLS_OF_DARKNESS)
     m = machine(POD, area=82)
+    assert m.ram[BASE + trips.ROWS[POD].mode] != trips.ROWS[POD].overland_mode
     _cell_table(m, 33, 1)
     assert t.apply(m, areas.area_in(22, areas.POOLS_OF_DARKNESS)).ok
     assert t.back.overland is None
