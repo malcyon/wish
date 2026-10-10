@@ -358,7 +358,62 @@ def test_an_arrival_answer_is_not_pressed_in_the_starting_area(world, monkeypatc
 
 def test_the_arrival_answer_reaches_both_legs(monkeypatch, tmp_path):
     seen = _fake_main(monkeypatch, tmp_path, ["--to", "32", "--back", "--arrival-answer", "y"])
-    assert [(c["back"], c["arrival_answer"]) for c in seen["calls"]] == [(False, "y"), (True, "y")]
+    assert [(c["back"], c["arrival_answer"]) for c in seen["calls"]] == [(False, ("y",)), (True, ("y",))]
+
+
+def _two_prompts(world, monkeypatch, second_screen):
+    """Arrives at a first prompt; the first key shows `second_screen`; the gate opens after the second key."""
+    _Arrives.world = world
+    world.asked = False
+
+    def press(key):
+        world.pressed.append(key)
+        world.screen = second_screen if len(world.pressed) == 1 else b"menu"
+    world.press = press
+    monkeypatch.setattr(amigatrip, "gate", lambda t, row: len(world.pressed) >= 2)
+
+
+def _drive_with(world, **kwargs):
+    got = ftr.run_trip(_Arrives(polls=1), Target(), ROW, SimpleNamespace(id=5), world.out,
+                       lambda p: p.write_bytes(world.screen), world.press, world.log,
+                       sleep=world.clock.sleep, clock=world.clock, **kwargs)
+    world.stream.close()
+    return got
+
+
+def test_an_arrival_answer_sequence_presses_each_key_on_its_own_screen(world, monkeypatch):
+    _two_prompts(world, monkeypatch, b"second page")
+    got = _drive_with(world, arrival_answer=("Return", "Return"))
+    assert world.pressed == ["Return", "Return"]
+    assert got["settled"] and got["arrival_keys"] == ["Return", "Return"]
+    assert [e["key"] for e in world.events() if e["event"] == "arrival_answer"] == [
+        "Return", "Return"]
+
+
+def test_the_next_arrival_key_waits_for_the_screen_to_change(world, monkeypatch):
+    _two_prompts(world, monkeypatch, b"take boat?")
+    got = _drive_with(world, arrival_answer=("Return", "Return"))
+    assert world.pressed == ["Return"] and not got["settled"]
+
+
+def test_arrival_answer_is_repeatable_on_the_command_line(monkeypatch, tmp_path):
+    seen = _fake_main(monkeypatch, tmp_path, ["--to", "32", "--arrival-answer", "Return",
+                                              "--arrival-answer", "l"])
+    assert seen["calls"][0]["arrival_answer"] == ("Return", "l")
+    for argv in (["--arrival-answer", "Return", "--arrival-answer", "nonsense-key"],
+                 ["--arrival-answer", "nonsense-key", "--arrival-answer", "Return"]):
+        with pytest.raises(SystemExit):
+            ftr.main(["--holder", "h", "--disks", "D", "--to", "5", "--out", str(tmp_path),
+                      *argv])
+
+
+@pytest.mark.parametrize("areas, hinted", [([16, 51], True), ([16], False)])
+def test_an_unsettled_leg_that_reached_another_area_names_arrival_answer(
+        monkeypatch, tmp_path, capsys, areas, hinted):
+    _back_run(monkeypatch, tmp_path, [{"result": "idle", "settled": False, "areas_seen": areas}])
+    err = capsys.readouterr().err
+    assert "never became ready" in err
+    assert ("--arrival-answer" in err) is hinted
 
 
 def test_an_unknown_arrival_answer_key_is_a_usage_error(tmp_path):

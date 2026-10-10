@@ -15,12 +15,16 @@ reason is disarmed.
 area table. `--to` is the destination area id. `--answer KEY` presses KEY once per leg
 (each leg's result records `answered`), when the door key has been taken, the area byte is still the starting area and the
 screen differs from the one before the trip (the game is asking something).
-`--arrival-answer KEY` presses KEY once per leg (recorded as `arrival_answered`)
-when the area byte has left the starting area, the game's menu gate is still shut
-once the trip is idle and the screen differs from the one before the trip (a
-question in the destination, such as a boat or a leave prompt); it is looked for
-for `ANSWER_SECONDS` or `ARRIVAL_MIN_POLLS` screenshots, whichever lasts longer, and
-applies to the way back too. The key goes only after the
+`--arrival-answer KEY` presses KEY (recorded as `arrival_answered`, with the keys
+pressed in `arrival_keys`) when the area byte has left the starting area, the
+game's menu gate is still shut once the trip is idle and the screen differs from
+the one before the trip (a question in the destination, such as a boat or a leave
+prompt); it is looked for for `ANSWER_SECONDS` or `ARRIVAL_MIN_POLLS` screenshots,
+whichever lasts longer, and applies to the way back too. Repeat the flag for
+destinations that ask several questions in a row: each further key goes only once
+the screen differs from the one kept at the previous press, with the same window
+restarted from that press, so a key the game ignores ends the sequence and the
+leg stays unsettled. A key goes only after the
 screen has held unchanged for a full screenshot poll with the gate shut, so a
 slow arrival that keeps redrawing is not answered; the `arrival_answer` event
 records the gate and the count of unchanged polls. A leg whose last area equals
@@ -66,7 +70,7 @@ import pathlib
 import signal
 import sys
 import time
-from typing import Callable
+from typing import Callable, Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
@@ -233,7 +237,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              clock: Callable[[], float] = time.monotonic,
              budget: float = BUDGET_SECONDS, party: Callable | None = None,
              peek_vars=(), title: str | None = None,
-             arrival_answer: str | None = None) -> dict:
+             arrival_answer: str | Sequence[str] | None = None) -> dict:
     """One trip, or the way back, driven as the window's timer drives it.
 
     Returns `{"result": ..., "outcomes": [...], "answered": bool, "settled": bool, ...}`
@@ -243,13 +247,16 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     read. `party` reads the party (as `amigaparty.read_party`); its names are
     logged and returned before and after the trip. `peek_vars` are read
     through `amigavars` for `title` before and after, and logged.
-    `arrival_answer` is pressed once, if the game is asking something in the
-    destination while the menu gate stays shut; `arrival_answered` records it.
+    `arrival_answer`, a key or several, is pressed in order, each on a screen
+    that differs from the one at the previous press, if the game is asking
+    something in the destination while the menu gate stays shut;
+    `arrival_answered` records that one went and `arrival_keys` which.
     """
+    arrival_keys = (arrival_answer,) if isinstance(arrival_answer, str) else tuple(arrival_answer or ())
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
     log("legality", ok=bool(verdict), reason=verdict.reason, back=back)
     summary = {"result": "not_legal", "outcomes": [], "answered": False,
-               "arrival_answered": False, "settled": True, "areas_seen": [], "party_before": None, "party_after": None}
+               "arrival_answered": False, "arrival_keys": [], "settled": True, "areas_seen": [], "party_before": None, "party_after": None}
     if not verdict:
         return summary
     screen = _Screen(out, shot, log)
@@ -325,13 +332,14 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         _disarm(fasttravel, target)
         log("timeout", budget=budget)
     if summary["result"] == "idle":
-        next_look = clock()
+        next_look = window_began = clock()
         held = looks = 0
+        kept = baseline
 
         def ask(waited: float) -> None:
-            nonlocal next_look, held, looks
-            if (arrival_answer is None or summary["arrival_answered"]
-                    or (waited >= ANSWER_SECONDS and looks >= ARRIVAL_MIN_POLLS)
+            nonlocal next_look, held, looks, window_began, kept
+            if (len(summary["arrival_keys"]) == len(arrival_keys)
+                    or (clock() - window_began >= ANSWER_SECONDS and looks >= ARRIVAL_MIN_POLLS)
                     or clock() < next_look
                     or summary["areas_seen"][-1] == before["area"]):
                 return
@@ -339,15 +347,19 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
             looks += 1
             held = 0 if screen.take("arrival") else held + 1
             why = tripprobe._unanswered(
-                {"key_taken": True, "area_changed": False}, baseline, screen.last)
+                {"key_taken": True, "area_changed": False}, kept, screen.last)
             if why is None and held < 1:
                 why = "the screen was still changing"
             if why is None:
-                log("arrival_answer", key=arrival_answer,
+                key = arrival_keys[len(summary["arrival_keys"])]
+                log("arrival_answer", key=key,
                     gate=bool(amigatrip.gate(target, row)), unchanged_polls=held)
-                press(arrival_answer)
+                press(key)
+                summary["arrival_keys"].append(key)
                 summary["arrival_answered"] = True
+                kept, held, looks = screen.last, 0, 0
                 sleep(SETTLE_SECONDS)
+                window_began = clock()
             else:
                 log("arrival_answer_held", reason=why)
         summary["settled"] = _settle(target, row, log, sleep, clock, ask)
@@ -391,8 +403,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--legality", action="store_true",
                         help="print each area with its legality verdict and make no trip")
     parser.add_argument("--answer", help="the key that answers the game's question")
-    parser.add_argument("--arrival-answer",
-                        help="the key that answers a question in the destination area")
+    parser.add_argument("--arrival-answer", action="append",
+                        help="the key that answers a question in the destination area; "
+                             "repeat it for each further screen")
     parser.add_argument("--back", action="store_true",
                         help="make apply_back once the trip has finished")
     parser.add_argument("--waypoint", metavar="AREA,X,Y,F",
@@ -423,11 +436,12 @@ def main(argv: list[str] | None = None) -> int:
             amigakeys.lookup(args.answer)
         except KeyError:
             parser.error(f"--answer {args.answer!r} is not a key name")
-    if args.arrival_answer is not None:
+    for key in args.arrival_answer or ():
         try:
-            amigakeys.lookup(args.arrival_answer)
+            amigakeys.lookup(key)
         except KeyError:
-            parser.error(f"--arrival-answer {args.arrival_answer!r} is not a key name")
+            parser.error(f"--arrival-answer {key!r} is not a key name")
+    arrival_answer = tuple(args.arrival_answer) if args.arrival_answer else None
     try:
         peek_vars = amigavars.parse_list(args.peek_var)
     except ValueError:
@@ -492,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
                         leg = 1
                         finished(run_trip(fasttravel, target, row, area, out, shot, press, log,
                                           answer=args.answer, budget=args.budget,
-                                          arrival_answer=args.arrival_answer,
+                                          arrival_answer=arrival_answer,
                                           party=amigaparty.read_party,
                                           peek_vars=peek_vars, title=args.title))
                     if args.back and results and results[0]["result"] == "idle" \
@@ -503,7 +517,7 @@ def main(argv: list[str] | None = None) -> int:
                         finished(run_trip(fasttravel, target, row, None, out, shot, press, log,
                                           back=True, budget=args.budget,
                                           answer=args.answer,
-                                          arrival_answer=args.arrival_answer,
+                                          arrival_answer=arrival_answer,
                                           party=amigaparty.read_party,
                                           peek_vars=peek_vars, title=args.title))
             except BaseException as exc:
@@ -517,6 +531,11 @@ def main(argv: list[str] | None = None) -> int:
         if not result.get("settled", True):
             which = "the way back" if number > 1 else "the trip"
             print(f"Leg {number} ({which}) never became ready for Fast Travel.", file=sys.stderr)
+            seen = result.get("areas_seen") or []
+            if len(seen) > 1 and seen[-1] != seen[0]:
+                print(f"The leg reached area {seen[-1]} and the game is still waiting on its screen; "
+                      "give its keys with --arrival-answer (repeat it for several screens).",
+                      file=sys.stderr)
             return 1
     return 0 if all(r["result"] == "idle" for r in results) else 1
 
