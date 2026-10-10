@@ -197,6 +197,26 @@ def test_a_decided_difference_is_offered(disks, monkeypatch):
     assert travel().apply(machine(CURSE), area(1)).ok
 
 
+def test_a_silver_blades_trip_across_groups_saves_the_area_file_before_newecl(
+        disks, monkeypatch):
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True))
+    t = aft.AmigaFastTravel(BLADES, object())
+    t._row = lambda id: area(id, "Somewhere")
+    out = t.apply(machine(BLADES, area=0x10), area(0x30, arrival=(3, 3, 1)))
+    assert out.ok
+    assert (trips.save(3, 0x7F12) + trips.newecl(0x30)
+            in statements_written(out))
+    # Within one disk side the byte is already right.
+    same = aft.AmigaFastTravel(BLADES, object())
+    same._row = lambda id: area(id, "Somewhere")
+    out = same.apply(machine(BLADES, area=0x10), area(0x11, arrival=(3, 3, 1)))
+    assert out.ok
+    assert trips.save(1, 0x7F12) not in statements_written(out)
+    assert b"\x7f\x12" not in statements_written(out)
+
+
 def test_an_unconfirmed_row_no_disks_or_no_write_is_unsupported(disks, monkeypatch):
     m = machine(CURSE)
     assert travel(disks_=None).legality(m, area(7)).reason == UNSUPPORTED

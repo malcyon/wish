@@ -1787,7 +1787,24 @@ def test_other_titles_have_no_arrival_writes():
     assert trip.arrival_prologue(POOL, 0x21) == b""
 
 
-@pytest.mark.parametrize("to, extra", [(0x22, 0), (0x41, 6), (0x21, 12)])
+def test_area_file_for_names_the_destination_group_only_across_groups():
+    assert trip.area_file_for(SILVER, 0x10, 0x30) == 3
+    assert trip.area_file_for(SILVER, 0x10, 0x11) is None
+    assert trip.area_file_for(SILVER, 0x10, 0x51) == 5
+    assert trip.area_file_for(SILVER, 0x30, 0x10) == 1
+    assert trip.area_file_for("curse-of-the-azure-bonds", 1, 16) == 3
+    assert trip.area_file_for(POOL, 0x21, 0x22) is None
+    assert trip.area_file_for("pools-of-darkness", 1, 2) is None
+
+
+def test_leg_held_counts_the_area_file_save():
+    row = trip.ROWS[SILVER]
+    assert not trip.leg_held(row, 0x20, 0x22, False, _room_lengths(21))
+    assert trip.leg_held(row, 0x20, 0x30, False, _room_lengths(21))
+    assert not trip.leg_held(row, 0x20, 0x30, False, _room_lengths(27))
+
+
+@pytest.mark.parametrize("to, extra", [(0x22, 0), (0x41, 12), (0x21, 12)])
 def test_leg_held_counts_the_arrival_writes(to, extra):
     row = trip.ROWS[SILVER]
     # The 21-byte trip fits exactly in 21 bytes of room.

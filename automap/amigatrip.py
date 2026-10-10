@@ -369,6 +369,24 @@ def arrival_prologue(row, to: int) -> bytes:
                     if area == to)
 
 
+def area_file_for(row, here: int | None, to: int) -> int | None:
+    """The disk-side byte a trip into `to` writes ahead of its `NEWECL`, as a
+    walked exit does. None when the title has no such byte, when either disk
+    side is unknown, or when `here` is on the same side (no `SAVE` is needed
+    and the room is kept)."""
+    from goldbox import areas
+    row = row_for(row)
+    if row.area_file is None:
+        return None
+    target = areas.area_in(to, row.title)
+    if target is None or target.disk is None:
+        return None
+    origin = areas.area_in(here, row.title) if here is not None else None
+    if origin is not None and origin.disk == target.disk:
+        return None
+    return target.disk
+
+
 def leg_held(row: TripRow, here: int | None, to: int, back: bool,
              lengths: Mapping[int, int], to_overland: bool | None = None,
              init_areas: frozenset[int] = frozenset()) -> bool:
@@ -390,7 +408,8 @@ def leg_held(row: TripRow, here: int | None, to: int, back: bool,
                     + arrival_prologue(row, to))
     except ValueError:
         return True
-    smallest = plan(to, (0, 0, 0), prologue=prologue)
+    smallest = plan(to, (0, 0, 0), area_file=area_file_for(row, here, to),
+                    prologue=prologue)
     return free_tail(row, here, lengths, smallest, init_areas) not in (1, 2)
 
 
