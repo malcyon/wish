@@ -21,9 +21,11 @@ row of an area that is not loaded as stopped and writes nothing for it; `keys`
 applies the rows again before each key press and changes the row once its
 area loads.  A gate that names its `area` is also checked against the loaded
 script's entry table, because Silver Blades does not clear the buffer before a
-load: a short script leaves an earlier area's roll in place past its end.  A `none` row names a script that makes no random-encounter roll,
-recognised by its entry table, so that while it is loaded the reply names the script
-as having no random roll, beside the stopped rows instead of leaving them to read as a failure.
+load: a short script leaves an earlier area's roll in place past its end.
+A `none` row names a script that makes no random-encounter roll, recognised by
+its entry table, so that while it is loaded the reply names the script as
+having no random roll, beside the stopped rows instead of leaving them to read
+as a failure.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
@@ -382,6 +384,9 @@ class EncounterSwitch:
         seen = None if head is None else digest(self.read(head, ENTRY_TABLE))
         if seen == row.area:
             return None
+        if seen is None:
+            return ("the entry-table address is unresolved, so the row's area "
+                    "cannot be checked")
         return (f"the loaded script's {ENTRY_TABLE}-byte entry table does not "
                 f"match the row's area ({seen}, not {row.area}), so its area "
                 "is not loaded")

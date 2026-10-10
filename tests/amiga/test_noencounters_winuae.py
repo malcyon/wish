@@ -813,3 +813,12 @@ def test_a_silver_roll_left_past_a_short_script_s_end_is_not_changed(state, monk
                .replace("0X", "0x")]
     assert len(stopped) == 1 and "entry table" in stopped[0]["stopped"]
     assert len([r for r in result["rows"] if "none" in r]) == 1
+
+
+def test_an_unresolved_entry_table_address_is_named_not_printed_as_none(monkeypatch):
+    monkeypatch.setattr(ne, "ROWS", REAL_ROWS)
+    switch_ = ne.EncounterSwitch(SILVER, lambda spec: None, lambda a, n: b"",
+                                 lambda a, d: {})
+    row = next(r for r in switch_.rows if r.area)
+    why = switch_._other_area(row)
+    assert "unresolved" in why and "None" not in why
