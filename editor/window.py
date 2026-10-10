@@ -2739,6 +2739,9 @@ class EditorBinding(QObject):
                                      self.party.game)
             if found:
                 if port != own:
+                    _log.debug("no %s item type table; using the %s one "
+                               "without rows %s", own, port,
+                               sorted(amiga_pod.ITEM_TYPE_PORT_ROWS))
                     for row in amiga_pod.ITEM_TYPE_PORT_ROWS:
                         found.pop(row, None)
                 return found

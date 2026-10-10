@@ -1722,3 +1722,10 @@ def test_the_file_comes_from_the_disk_that_carries_the_program():
 def test_a_file_of_the_wrong_length_gives_no_table():
     assert amiga_pod.item_type_table(
         [_disk(program=True, rows=_rows() + b"\0\0")]) is None
+
+
+def test_a_wrong_sized_file_on_one_disk_does_not_hide_a_later_disk():
+    bad = _disk(program=True, rows=_rows() + b"\0\0")
+    good = _disk(program=True, rows=_rows())
+    table = amiga_pod.item_type_table([bad, good])
+    assert table is not None and table[5 * 16] == 5

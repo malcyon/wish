@@ -41,6 +41,7 @@ here imports any of the other three titles' modules at all.
 
 from __future__ import annotations
 
+import logging
 import struct
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -50,6 +51,8 @@ from . import amiga_port, dos_port, neutral, spell_names, spells, titles
 from .amiga_shared import ABILITY_KEYS, SAVE_KEYS, THIEF_KEYS, _name, u16, u32
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
+
+_log = logging.getLogger(__name__)
 
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
 COMBAT_BIAS = 60
@@ -3749,6 +3752,7 @@ def item_type_table(where) -> bytes | None:
         try:
             entries = list(disk.walk())
         except Exception:
+            _log.debug("could not list the files on %s", disk, exc_info=True)
             continue
         if not any(p.strip("/").lower() == program for p, _e in entries):
             continue
@@ -3757,7 +3761,8 @@ def item_type_table(where) -> bytes | None:
                 continue
             data = bytes(disk.read_file(path))
             if len(data) != 2048:
-                return None
+                _log.debug("%s is %d bytes, not 2048", path, len(data))
+                break
             rows = [data[ITEM_TYPE_SWAP.get(i, i) * 16:][:16]
                     for i in range(128)]
             return b"".join(rows)
