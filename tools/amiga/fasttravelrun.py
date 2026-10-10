@@ -19,7 +19,11 @@ screen differs from the one before the trip (the game is asking something).
 when the area byte has left the starting area, the game's menu gate is still shut
 once the trip is idle and the screen differs from the one before the trip (a
 question in the destination, such as a boat or a leave prompt); it is looked for
-for `ANSWER_SECONDS` and applies to the way back too.
+for `ANSWER_SECONDS` and applies to the way back too. The key goes only after the
+screen has held unchanged for a full screenshot poll with the gate shut, so a
+slow arrival that keeps redrawing is not answered; the `arrival_answer` event
+records the gate and the count of unchanged polls. A leg whose last area equals
+its start area (A to B to A) gets no arrival key.
 `--back` makes `apply_back` once the trip has finished.
 `--waypoint AREA,X,Y,F` stages `fasttravel.back` as a party that stood on that
 square of that area, and with `--back` and no `--to` the run makes `apply_back`
@@ -318,19 +322,23 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         log("timeout", budget=budget)
     if summary["result"] == "idle":
         next_look = clock()
+        held = 0
 
         def ask(waited: float) -> None:
-            nonlocal next_look
+            nonlocal next_look, held
             if (arrival_answer is None or summary["arrival_answered"]
                     or waited >= ANSWER_SECONDS or clock() < next_look
                     or summary["areas_seen"][-1] == before["area"]):
                 return
             next_look = clock() + SHOT_SECONDS
-            screen.take("arrival")
+            held = 0 if screen.take("arrival") else held + 1
             why = tripprobe._unanswered(
                 {"key_taken": True, "area_changed": False}, baseline, screen.last)
+            if why is None and held < 1:
+                why = "the screen was still changing"
             if why is None:
-                log("arrival_answer", key=arrival_answer)
+                log("arrival_answer", key=arrival_answer,
+                    gate=bool(amigatrip.gate(target, row)), unchanged_polls=held)
                 press(arrival_answer)
                 summary["arrival_answered"] = True
                 sleep(SETTLE_SECONDS)

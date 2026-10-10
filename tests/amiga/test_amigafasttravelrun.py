@@ -295,6 +295,28 @@ def test_an_arrival_answer_is_pressed_once_and_settles_the_leg(world, monkeypatc
     assert [e["key"] for e in world.events() if e["event"] == "arrival_answer"] == ["y"]
 
 
+def test_a_screen_that_keeps_changing_gets_no_arrival_key_and_the_gate_opens_alone(
+        world, monkeypatch):
+    _arriving(world, monkeypatch)
+    redraws = iter(range(10_000))
+
+    def gate(target, row):
+        world.screen = b"redraw %d" % next(redraws)
+        return world.clock.now >= 1000.0 + 8.0
+    monkeypatch.setattr(amigatrip, "gate", gate)
+    got = world.drive(_Arrives(polls=1), arrival_answer="y")
+    assert world.pressed == [] and not got["arrival_answered"] and got["settled"]
+    assert any(e["event"] == "arrival_answer_held" and "changing" in e["reason"]
+               for e in world.events())
+
+
+def test_the_arrival_press_logs_the_gate_and_the_unchanged_polls(world, monkeypatch):
+    _arriving(world, monkeypatch)
+    world.drive(_Arrives(polls=1), arrival_answer="y")
+    (event,) = [e for e in world.events() if e["event"] == "arrival_answer"]
+    assert event["gate"] is False and event["unchanged_polls"] >= 1
+
+
 def test_without_an_arrival_answer_the_leg_stays_unsettled(world, monkeypatch):
     _arriving(world, monkeypatch)
     got = world.drive(_Arrives(polls=1))
