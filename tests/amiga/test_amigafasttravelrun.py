@@ -563,6 +563,19 @@ def test_areas_seen_lists_the_start_then_each_new_area_byte(world, monkeypatch):
     assert got["areas_seen"] == [7, 8, 5]
 
 
+def test_an_area_read_inside_continue_pending_is_recorded(world):
+    class Inside(Travel):
+        def continue_pending(self, target):
+            if len(self.calls) == 2:
+                world.area = 27
+                amigatrip.area_id(target, ROW)
+                world.area = 0
+            return super().continue_pending(target)
+
+    world.area = 13
+    assert world.drive(Inside(polls=4))["areas_seen"] == [13, 27, 0]
+
+
 def test_a_trip_that_never_leaves_sees_one_area(world):
     assert world.drive(Travel(polls=3))["areas_seen"] == [7]
 

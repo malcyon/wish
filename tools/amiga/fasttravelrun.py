@@ -167,6 +167,23 @@ def _reading(target, row) -> dict:
             "entry_words": amigatrip.entry_words(target, row).hex()}
 
 
+@contextlib.contextmanager
+def _watching_area(seen: Callable[[int | None], None]):
+    """Record every area byte read through `amigatrip.area_id` meanwhile, so a
+    hop the game takes inside one `continue_pending` call is not missed."""
+    real = amigatrip.area_id
+
+    def area_id(*args, **kwargs):
+        got = real(*args, **kwargs)
+        seen(got)
+        return got
+    amigatrip.area_id = area_id
+    try:
+        yield
+    finally:
+        amigatrip.area_id = real
+
+
 class _Screen:
     """Screenshots kept only when they differ from the last one kept."""
 
@@ -286,7 +303,8 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         summary["result"] = "timeout"
         while clock() - started < budget:
             sleep(POLL_SECONDS)
-            got = fasttravel.continue_pending(target)
+            with _watching_area(seen):
+                got = fasttravel.continue_pending(target)
             if got is not None:
                 log("continue", ok=got.ok, message=got.message)
                 summary["outcomes"].append({"ok": got.ok, "message": got.message})
