@@ -17,7 +17,7 @@ addresses. `--peek ADDR[:LEN]` (hex, repeatable) logs those bytes before and
 after every leg. `--stage N:ADDR=VALUE` writes one byte (VALUE decimal, or hex
 with `$` or `0x`) before leg N, counted from 0. Every leg also logs the party's
 names before and after, the live square after `apply`, and `areas_seen`: each
-area the `$6E1B`-style cache slot showed on any 0.2 s poll, in order, without
+area the title's cache-slot byte showed on any 0.2 s poll, in order, without
 repeats.
 
 `--no-encounters` calls `Session.suppress_encounters` (the switch of
@@ -27,7 +27,9 @@ loads is covered as well as the one the party starts in, and
 `restore_encounter_gates` when the run ends, logging each; Only areas in `tools/c64/session.py` `ENCOUNTER_GATES` are covered; an
 area with no gate there is logged as `encounters-live`.
 
-A trip has arrived when `$6E1B` and `$49F2` both equal the destination and
+A trip has arrived when the cache-slot and came-from bytes both equal the destination
+(`$6E1B`/`$49F2` on Pool of Radiance, `$7F1B`/`$4BF2` on Curse of the Azure Bonds and
+Silver Blades) and
 `legality` toward a different area passes; a check toward the destination
 itself answers "already in that area" and proves nothing. Each poll first lets
 `Session.handle_prompt` answer an `insert a disk` prompt, and only then
@@ -279,10 +281,10 @@ def container_for(key: str):
 
 
 def reading(target, addresses=None) -> dict:
-    """The cache-slot and came-from bytes of a title (Pool of Radiance when None)."""
+    """The cache-slot and came-from bytes of a title (Pool of Radiance when None), keyed `slot` and `came_from`."""
     addresses = addresses or fasttravel.POOL_OF_RADIANCE
-    return {"area6E1B": _byte(target, addresses.slot),
-            "script49F2": _byte(target, addresses.came_from)}
+    return {"slot": _byte(target, addresses.slot),
+            "came_from": _byte(target, addresses.came_from)}
 
 
 def other_area(dest: int, title=engine.ANY_TITLE) -> int:
@@ -508,8 +510,10 @@ class Driver:
         try:
             with self.target() as target:
                 before = reading(target, self.addresses)
-                self.log("pre-apply", tag=tag, **before)
-            self.see(summary, before["area6E1B"])
+                self.log("pre-apply", tag=tag, **before,
+                         slot_addr=f"${self.addresses.slot:04X}",
+                         came_from_addr=f"${self.addresses.came_from:04X}")
+            self.see(summary, before["slot"])
             ok, message, _ = self._retry_busy(tag, apply)
             self.log("apply", tag=tag, ok=ok, message=message)
             if not ok:
@@ -578,7 +582,7 @@ class Driver:
                     self.log("step-exit-square", tag=tag, square=list(live))
                     tries = tries[1:]
             with self.target() as target:
-                area_before = reading(target, self.addresses)["area6E1B"]
+                area_before = reading(target, self.addresses)["slot"]
             before = read()
             key, after, moved = None, before, False
             for keys in tries[:STEP_TRIES]:
@@ -597,7 +601,7 @@ class Driver:
                 if moved:
                     break
             with self.target() as target:
-                area_after = reading(target, self.addresses)["area6E1B"]
+                area_after = reading(target, self.addresses)["slot"]
             screen = sess.screen()
             sess.handle_prompt(screen)
             menu = self.encounter_menu(screen)
@@ -653,18 +657,18 @@ class Driver:
         if now is None:
             with self.target() as target:
                 now = reading(target, self.addresses)
-        self._held_at = (now["script49F2"], now["area6E1B"] & 0x7F)
+        self._held_at = (now["came_from"], now["slot"] & 0x7F)
         self.sess.no_encounters = True
         self.sess.suppress_encounters()
-        area = now["script49F2"] & 0x7F
+        area = now["came_from"] & 0x7F
         self.log("no_encounters", tag=tag, on=True, area=area)
         if (self.game.key, area) not in self._gate_table():
             self.log("encounters-live", tag=tag, area=area)
 
     def follow_encounters(self, tag: str, now: dict) -> None:
         """Apply the switch again once a hop has changed the came-from or cache-slot byte."""
-        if self.no_encounters and (now["script49F2"],
-                                   now["area6E1B"] & 0x7F) != self._held_at:
+        if self.no_encounters and (now["came_from"],
+                                   now["slot"] & 0x7F) != self._held_at:
             self.hold_encounters(tag, now)
 
     def _gate_table(self) -> dict:
@@ -712,7 +716,7 @@ class Driver:
                         summary["reason"] = got.message
                         return "failed"
                 now = reading(target, self.addresses)
-            self.see(summary, now["area6E1B"])
+            self.see(summary, now["slot"])
             self.follow_encounters(tag, now)
             if self.clock() >= next_look:
                 next_look = self.clock() + SCREEN_SECONDS
@@ -725,7 +729,7 @@ class Driver:
                 if looks % SHOT_EVERY == 0:
                     self.shot(f"{tag}-poll-{looks:03d}")
                 looks += 1
-            if now["area6E1B"] == dest_id and now["script49F2"] == dest_id:
+            if now["slot"] == dest_id and now["came_from"] == dest_id:
                 with self.target() as target:
                     other = engine.area_by_id(
                         other_area(dest_id, self.game.title), self.game.title)

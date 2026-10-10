@@ -690,7 +690,9 @@ def test_title_picks_the_addresses_the_table_and_the_other_area():
                      game=silver, party_reader=lambda target, game: None)
     result = drv.trip(0x20, "t")
     assert result["result"] == "arrived" and result["areas_seen"] == [0x10, 0x20]
-    assert [e["area6E1B"] for e in events(stream) if e["event"] == "pre-apply"] == [0x10]
+    pre = [e for e in events(stream) if e["event"] == "pre-apply"]
+    assert [e["slot"] for e in pre] == [0x10]
+    assert pre[0]["slot_addr"] == "$7F1B" and pre[0]["came_from_addr"] == "$4BF2"
     assert engine.area_by_id(ftr.other_area(0x20, silver.title), silver.title) is not None
     assert ftr.other_area(0x20, silver.title) != 0x20
 
