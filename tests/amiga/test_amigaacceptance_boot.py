@@ -19,10 +19,12 @@ class LaneGuest:
     remote_path = staticmethod(WinGuest.remote_path)
     silence = staticmethod(WinGuest.silence)
 
-    def __init__(self, *, fail_start=False, fail_stop=False, fail_release=False):
+    def __init__(self, *, fail_start=False, fail_stop=False, fail_release=False,
+                 fail_get=False):
         self.calls = []
         self.fail_start, self.fail_stop = fail_start, fail_stop
         self.fail_release = fail_release
+        self.fail_get = fail_get
 
     def claim(self, holder, timeout=None, **kw):
         self.calls.append(("claim", holder))
@@ -46,6 +48,8 @@ class LaneGuest:
 
     def get(self, remote, local, timeout=None):
         self.calls.append(("get", remote))
+        if self.fail_get:
+            raise RouteError("download failed")
         local.write_bytes(b"disk " + remote.encode())
 
     def release(self, holder, timeout=None):
@@ -177,6 +181,7 @@ def test_a_halt_whose_stop_fails_fetches_nothing_and_still_releases(tmp_path):
     with pytest.raises(RouteError, match="stop: no emulator"):
         acceptance.halt_lane(failing, "wish679-boot", manifest_path=manifest_for(tmp_path))
     assert [c[0] for c in failing.calls] == ["stop", "release"]
+    assert not [c for c in failing.calls if c[0] == "get"]
 
 
 def test_a_halt_with_no_boot_record_stops_releases_and_says_why(tmp_path):
@@ -194,3 +199,55 @@ def test_the_halt_command_takes_the_manifest(tmp_path, monkeypatch):
     guest.calls.clear()
     assert acceptance.main(["halt", "--holder", "wish679-boot", "--manifest", str(path)]) == 0
     assert [c[0] for c in guest.calls] == ["stop", "get", "get", "get", "release"]
+
+
+def test_a_failed_fetch_still_releases_the_lane(tmp_path):
+    _boot(tmp_path, LaneGuest())
+    guest = LaneGuest(fail_get=True)
+    with pytest.raises(RouteError, match="fetch boot: download failed"):
+        acceptance.halt_lane(guest, "wish679-boot", manifest_path=manifest_for(tmp_path))
+    assert [c[0] for c in guest.calls][-1] == "release"
+
+
+def test_a_failed_boot_writes_an_error_line_and_halt_fetches_from_the_last_good_boot(tmp_path):
+    path = manifest_for(tmp_path)
+    good = _boot(tmp_path, LaneGuest())
+    with pytest.raises(RouteError, match="did not start"):
+        _boot(tmp_path, LaneGuest(fail_start=True))
+    lines = _lane_lines(path)
+    assert "error" not in lines[0] and "did not start" in lines[1]["error"]
+    guest = LaneGuest()
+    acceptance.halt_lane(guest, "wish679-boot", manifest_path=path)
+    assert {c[1] for c in guest.calls if c[0] == "get"} == set(good["remotes"].values())
+
+
+def test_an_unwritable_lane_log_at_boot_still_releases_the_lane(tmp_path):
+    (manifest_for(tmp_path).parent / "lanes.jsonl").mkdir()
+    guest = LaneGuest(fail_start=True)
+    with pytest.raises(RouteError, match="did not start.*log:"):
+        _boot(tmp_path, guest)
+    assert [c[0] for c in guest.calls][-2:] == ["stop", "release"]
+
+
+def test_an_unwritable_lane_log_after_a_good_boot_leaves_the_run_going(tmp_path):
+    (manifest_for(tmp_path).parent / "lanes.jsonl").mkdir()
+    guest = LaneGuest()
+    result = _boot(tmp_path, guest)
+    assert result["start"] == "ok pid=1" and "log_error" in result
+    assert [c[0] for c in guest.calls][-1] == "start"
+
+
+def test_a_corrupt_lane_log_at_halt_still_stops_and_releases(tmp_path):
+    path = manifest_for(tmp_path)
+    (path.parent / "lanes.jsonl").write_text("not json\n", encoding="utf-8")
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="read lanes.jsonl"):
+        acceptance.halt_lane(guest, "wish679-boot", manifest_path=path)
+    assert [c[0] for c in guest.calls] == ["stop", "release"]
+
+
+def test_a_plain_halt_creates_no_lane_log_and_no_halt_folder(tmp_path):
+    path = manifest_for(tmp_path)
+    acceptance.halt_lane(LaneGuest(), "wish679-boot")
+    assert not (path.parent / "lanes.jsonl").exists()
+    assert not list(path.parent.glob("halt-*"))

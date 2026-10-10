@@ -5052,10 +5052,7 @@ def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | N
         result["start"] = guest.start(
             holder, *(None if key is None else remotes[key] for key in title.mounted),
             timeout=timeout, options=title.options)
-        record()
     except BaseException as exc:
-        if claimed:
-            record(error=f"{type(exc).__name__}: {exc}")
         problems: list[str] = []
         if claimed:
             for name, step, run in (("stop", guest.stop, start_attempted),
@@ -5066,10 +5063,20 @@ def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | N
                     step(holder, timeout=30)
                 except Exception as cleanup:  # noqa: BLE001 - a lane left behind must be named
                     problems.append(f"{name}: {cleanup}")
+            # Logged after the cleanup, so a log that cannot be written never leaves the lane claimed.
+            try:
+                record(error=f"{type(exc).__name__}: {exc}")
+            except Exception as logging_failure:  # noqa: BLE001
+                problems.append(f"log: {logging_failure}")
         if problems and isinstance(exc, Exception):
             raise RouteError(f"{exc}; cleanup failed, lane {holder} may be left claimed: "
                              + "; ".join(problems)) from exc
         raise
+    # Outside the cleanup-covered try: a log that cannot be written after a good start leaves the run going.
+    try:
+        record()
+    except Exception as logging_failure:  # noqa: BLE001
+        result["log_error"] = str(logging_failure)
     return result
 
 
@@ -5085,7 +5092,13 @@ def halt_lane(guest: Any, holder: str, timeout: float = 30.0, *,
     result: dict[str, Any] = {}
     problems: list[str] = []
     folder = None if manifest_path is None else manifest_path.parent
-    boots = [] if folder is None else _lane_events(folder, "boot", holder)
+    boots: list[dict[str, Any]] = []
+    if folder is not None:
+        try:
+            # A boot that failed also has a line; only a boot that started has disks to fetch.
+            boots = [b for b in _lane_events(folder, "boot", holder) if "error" not in b]
+        except Exception as exc:  # noqa: BLE001 - a bad log must not keep the lane claimed
+            problems.append(f"read lanes.jsonl: {exc}")
     try:
         result["stop"] = guest.stop(holder, timeout=timeout)
         stopped = True
@@ -5093,17 +5106,21 @@ def halt_lane(guest: Any, holder: str, timeout: float = 30.0, *,
         problems.append(f"stop: {exc}")
         stopped = False
     if folder is not None and stopped and boots:
-        out = folder / f"halt-{holder}-{len(_lane_events(folder, 'halt', holder)) + 1}"
-        out.mkdir(parents=True, exist_ok=True)
-        fetched: dict[str, Any] = {}
-        for key, remote in boots[-1]["remotes"].items():
-            local = out / f"fetched-{key}.adf"
-            try:
-                guest.get(remote, local, timeout=timeout)
-                fetched[key] = _entry(local)
-            except Exception as exc:  # noqa: BLE001
-                problems.append(f"fetch {key}: {exc}")
-        result["fetched"] = fetched
+        try:
+            out = folder / f"halt-{holder}-{len(_lane_events(folder, 'halt', holder)) + 1}"
+            out.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"fetch folder: {exc}")
+        else:
+            fetched: dict[str, Any] = {}
+            for key, remote in boots[-1]["remotes"].items():
+                local = out / f"fetched-{key}.adf"
+                try:
+                    guest.get(remote, local, timeout=timeout)
+                    fetched[key] = _entry(local)
+                except Exception as exc:  # noqa: BLE001
+                    problems.append(f"fetch {key}: {exc}")
+            result["fetched"] = fetched
     try:
         result["release"] = guest.release(holder, timeout=timeout)
     except Exception as exc:  # noqa: BLE001
@@ -5111,8 +5128,11 @@ def halt_lane(guest: Any, holder: str, timeout: float = 30.0, *,
     if folder is not None:
         if not boots:
             problems.append(f"no boot record for {holder} in {folder}")
-        _lane_log(folder, {"event": "halt", "holder": holder, "command": None if command is None else list(command),
-                           **result, **({"errors": problems} if problems else {})})
+        try:
+            _lane_log(folder, {"event": "halt", "holder": holder, "command": None if command is None else list(command),
+                               **result, **({"errors": problems} if problems else {})})
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"log: {exc}")
     if problems:
         raise RouteError("; ".join(problems))
     return result
