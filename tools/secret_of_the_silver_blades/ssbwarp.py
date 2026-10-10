@@ -322,7 +322,8 @@ def walk_proof(sess, keys: str = "JIKI") -> dict:
 
 def return_via_actions(sess, addr, maps, ft, target, row, out: pathlib.Path,
                        tag: str, origin: int,
-                       timeout: float = ARRIVAL_TIMEOUT) -> dict:
+                       timeout: float = ARRIVAL_TIMEOUT,
+                       departure: int | None = None) -> dict:
     """Return to where the last trip started, on the same `FastTravel` object.
 
     `back` is set by `FastTravel.apply`, so the object that made the hop has to
@@ -347,13 +348,14 @@ def return_via_actions(sess, addr, maps, ft, target, row, out: pathlib.Path,
     idle, _pc = wait_idle(sess, addr, timeout)
     sess.settle(3)
     after = measure(sess, addr, maps, row, out, tag)
+    expect_arrival(after, row, departure)
     after["idle"] = idle
     reached = after.get("area") == origin
     after["reached_target"] = reached
     res = {"back": made, "landed": reached, "reached_target": reached,
            "idle": idle, "state": after, "square": after["square"]}
     if row is not None:
-        res["verdict"] = verdict_of(after, row)
+        res["verdict"] = verdict_of(after, row, departure=departure)
     if not reached:
         print(f"Return ended in ${after.get('area', 0):02X}, not "
               f"${origin:02X}", flush=True)
@@ -417,17 +419,27 @@ def measure(sess, addr, maps, row, out: pathlib.Path, tag: str) -> dict:
 SPOIL_SQUARE = (1, 1, 2)
 
 
-def verdict_of(state: dict, row, spoiled: bool = False) -> dict:
+def expect_arrival(state: dict, row, departure: int | None) -> None:
+    """Replace the table's square in a measured `state` with the departure's."""
+    if row is None:
+        return
+    want = row.arrival_for(departure)
+    state["expected_arrival"] = str(want) if want else None
+
+
+def verdict_of(state: dict, row, spoiled: bool = False,
+               departure: int | None = None) -> dict:
     """Does this landing match the row the table predicted? Field by field.
 
     Three independent columns, each reported as its own answer rather than
     rolled into one boolean: a run that gets the map right and the square
-    wrong is a different finding from one that gets neither.
+    wrong is a different finding from one that gets neither. The arrival is
+    judged against the square for the `departure` actually taken.
     """
     got_geo = state.get("resident", {}).get("name")
     want = list(row.geos)
     square = state.get("square") or []
-    arrival = row.arrival
+    arrival = row.arrival_for(departure)
     out = {
         "area": state.get("area") == row.id,
         "area_seen": f"0x{state.get('area', 0):02X}",
@@ -573,6 +585,7 @@ def run(args) -> int:
             idle, pc = wait_idle(sess, addr, args.arrival_timeout)
             sess.settle(3)
             after = measure(sess, addr, maps, row, out, tag)
+            expect_arrival(after, row, here["area"])
             after["idle"] = idle
             # **The landing test is the area byte, not the program counter.**
             # `ECL22` arrives on an encounter menu drawn in bitmap mode, whose
@@ -596,7 +609,8 @@ def run(args) -> int:
                 print("not idle:", json.dumps(after["where"]), flush=True)
             hop = {"target": f"0x{want:02X}", "writes": made,
                    "landed": landed, "idle": idle, "spoiled": spoiled,
-                   "state": after, "verdict": verdict_of(after, row, spoiled)}
+                   "state": after, "verdict": verdict_of(after, row, spoiled,
+                                           here["area"])}
             print(f"verdict {tag}:", json.dumps(hop["verdict"]), flush=True)
             report["hops"].append(hop)
             (out / "report.json").write_text(json.dumps(report, indent=1))
@@ -609,7 +623,7 @@ def run(args) -> int:
                     ft, target, areas.area_in(here["area"],
                                               areas.SECRET_OF_THE_SILVER_BLADES),
                     out, f"back{n}-{here['area']:02x}", here["area"],
-                    args.arrival_timeout)
+                    args.arrival_timeout, departure=want)
                 (out / "report.json").write_text(json.dumps(report, indent=1))
                 break
             if args.walk and n == len(chain) and idle:

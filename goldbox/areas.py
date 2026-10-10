@@ -184,6 +184,11 @@ class Area:
     #: The overland square-data file, for areas 25-27 only.
     sqrdata: str | None = None
     arrival: Arrival | None = None
+    #: For an area whose init script places the party by departure: the one
+    #: departing area `arrival` belongs to. Every other departure lands on
+    #: `arrival_elsewhere`. None where `arrival` holds from any departure.
+    arrival_from: int | None = None
+    arrival_elsewhere: Arrival | None = None
     #: Where a fast travel puts the party on the travel grid, window-local
     #: (x, y), for areas 25-27 only -- written to `$49C3`/`$49C4`.
     #: `arrival` is the `GEO` square in `$C04B`, and stays None for these
@@ -310,6 +315,16 @@ class Area:
     def name_for(self, geo: str) -> str | None:
         """This area's name for one of its maps."""
         return self.geo_names.get(geo, self.name)
+
+    def arrival_for(self, departure: int | None) -> Arrival | None:
+        """The square the party lands on when it comes from `departure`.
+
+        An unknown departure gets `arrival`.
+        """
+        if (self.arrival_from is None or departure is None
+                or departure == self.arrival_from):
+            return self.arrival
+        return self.arrival_elsewhere
 
     @property
     def label(self) -> str:
@@ -556,7 +571,8 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # leaves anything in a state a later area minds.
     _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1), Confidence.CONFIRMED),
     _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3), Confidence.CONFIRMED,
-       name="New Verdigris"),
+       name="New Verdigris", arrival_from=0x20,
+       arrival_elsewhere=Arrival(3, 0, 3)),
     _s(0x11, 1, (), None, Confidence.CONFIRMED),
     _s(0x20, 2, ("GEO20",), None, Confidence.PROBABLE, name="The Ruins"),
     _s(0x21, 2, ("GEO21",), None, Confidence.CONFIRMED,
@@ -614,7 +630,8 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     _s(0x41, 4, ("GEO41",), Arrival(13, 9, 1), Confidence.PROBABLE,
        name="The Dungeon, middle level"),
     _s(0x42, 4, ("GEO42",), Arrival(12, 13, 0), Confidence.CONFIRMED,
-       name="The Dungeon, top level"),
+       name="The Dungeon, top level", arrival_from=0x60,
+       arrival_elsewhere=Arrival(0, 7, 3)),
     _s(0x44, 4, ("GEO44",), Arrival(7, 15, 0), Confidence.PROBABLE,
        name="The Compound"),
     _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1), Confidence.CONFIRMED,
@@ -623,10 +640,14 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
        name="Frost giant village"),
     _s(0x52, 5, ("GEO52",), None, Confidence.CONFIRMED,
        name="The Crevasses, castle gates"),
+    # Every departure but 0x61 lands on 0,7 E, or 0,8 E when `$4BF1` is 12;
+    # only the first is recorded.
     _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3), Confidence.CONFIRMED,
-       name="Castle of the Twins, entry level"),
+       name="Castle of the Twins, entry level", arrival_from=0x61,
+       arrival_elsewhere=Arrival(0, 7, 1)),
     _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3), Confidence.CONFIRMED,
-       name="Castle of the Twins, second level"),
+       name="Castle of the Twins, second level", arrival_from=0x60,
+       arrival_elsewhere=Arrival(0, 15, 1)),
     _s(0x62, 6, ("GEO62",), Arrival(0, 15, 1), Confidence.CONFIRMED,
        name="Castle of the Twins, Sanctum of the Dreadlord"),
     # `ECL63` loads `GEO62`, one of the five rows where the map is not the
