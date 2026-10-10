@@ -1414,6 +1414,11 @@ def _place_text(place: dict[str, Any]) -> str:
     return f"area {place['area']} {place['x']},{place['y']} facing {place['facing']}"
 
 
+def _next_state(steps: Any, n: int) -> str | None:
+    """The state of the step after step `n` (counted from 1) when that step presses a key."""
+    return steps[n][1] if n < len(steps) and steps[n][2] == "key" else None
+
+
 def fights(title: AmigaTitle | None) -> bool:
     """Whether `title`'s route walks until an encounter, which makes its run a `fight` run."""
     return title is not None and any(kind == "until_encounter" for *_, kind in title.route)
@@ -1436,7 +1441,9 @@ def _read_encounter(title: AmigaTitle, result: dict[str, Any], out: pathlib.Path
             result["fetched_save_error"] = f"{type(exc).__name__}: {exc}"
     shot = result.get("battlefield")
     verdicts = [(f"met {walk.get('state')} after {walk.get('steps')} steps and "
-                 f"{walk.get('turns')} turns") if walk.get("met") else
+                 f"{walk.get('turns')} turns"
+                 + (f", which opened {walk['opened']} without it" if walk.get("opened") else ""))
+                if walk.get("met") else
                 "no encounter was met",
                 f"battlefield: {shot}" if shot else "no first command bar was captured"]
     result["read"] = {"encounter_walk": walk, "battlefield": shot, "verdicts": verdicts}
@@ -2337,6 +2344,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     #: still ran, and what the run looked like at the miss.
     resume: dict[str, Any] = {}
     previous = ""
+    #: Step number to the next step's screen an encounter walk found already open, so that next
+    #: step's key is not pressed.
+    opened: dict[int, str] = {}
 
     def encounter_gate(kind: str) -> None:
         """Turn the switch on for a walk step and off for any other, so a save never meets it on."""
@@ -2796,7 +2806,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                         return hit, digest
                 else:
                     wrong.update(error=None, digest=None, count=0)
-                    interstitial(states[0], crop, done)
+                    if interstitial(states[0], crop, done):
+                        # As in `until_guard`: the limit is for the wait, not the answer.
+                        started = time.monotonic()
             if time.monotonic() - started >= GUARD_LIMIT:
                 if wrong["error"] is not None:
                     raise wrong["error"]
@@ -2804,9 +2816,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                                   f"{GUARD_LIMIT:.0f}s; kept {crop}")
             wait(GUARD_POLL)
 
-    def walk_to_encounter(key: tuple, state: str, n: int) -> None:
+    def walk_to_encounter(key: tuple, state: str, n: int, then: str | None = None) -> None:
         """Press the step key until `state` shows, turning after a step the world screen did not change.
 
+        `then` is the screen the next step's key opens from `state`. An encounter that opens it
+        without `state`, as a surprised party's fight opens after its page, meets the encounter
+        too: `opened` in the walk names it, and `opened` maps step `n` to it, so the route waits
+        for it at this step and does not press the next step's key.
         The crops are kept as `NN-world-again-K`, so a guard check reads them as the world
         screen; the walk is listed in `result["encounter_walk"]`. More than the step's most steps
         stops the run.
@@ -2814,6 +2830,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         step_key, turn_key, most = key
         walk = result["encounter_walk"] = {"state": state, "steps": 0, "turns": 0,
                                            "met": False, "blocked_at": []}
+        wanted = (state, "world", *((then,) if then not in (None, state, "world") else ()))
         before = ""
         shown = 0
         while walk["steps"] < most:
@@ -2823,15 +2840,17 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             log("key", key=step_key, step=n, walk=walk["steps"])
             shown += 1
             name = f"{n:02d}-world-again-{shown:02d}"
-            hit, digest = until_any((state, "world"), name, min_waits.get("world_after_move", 0))
-            if hit == state:
-                # Named for the screen it shows, so a guard check reads it as `state`.
+            hit, digest = until_any(wanted, name, min_waits.get("world_after_move", 0))
+            if hit != "world":
+                # Named for the screen it shows, so a guard check reads it as that screen.
                 event = result["events"][-1]
                 for suffix, field in ((".png", "crop"), (".raw.png", "raw")):
-                    kept = shots / f"{n:02d}-{state}-again-{shown:02d}{suffix}"
+                    kept = shots / f"{n:02d}-{hit}-again-{shown:02d}{suffix}"
                     os.replace(shots / f"{name}{suffix}", kept)
                     event[field] = str(kept)
                 walk["met"] = True
+                if hit != state:
+                    walk["opened"] = opened[n] = hit
                 log("encounter_walk", **walk)
                 return
             if digest == before:
@@ -2846,10 +2865,13 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         log("encounter_walk", **walk)
         raise RouteError(f"step {n}: no {state} screen within {most} steps")
 
-    def perform(key: Any, kind: str, state: str, n: int) -> None:
-        """Press one route step's key, after putting a disk in the drive when it is an `insert`."""
+    def perform(key: Any, kind: str, state: str, n: int, then: str | None = None) -> None:
+        """Press one route step's key, after putting a disk in the drive when it is an `insert`.
+
+        `then` is the next step's state, which an `until_encounter` walk may find opened already.
+        """
         if kind == "until_encounter":
-            walk_to_encounter(key, state, n)
+            walk_to_encounter(key, state, n, then)
             return
         if kind == "insert":
             drive, disk_key, key = key
@@ -3221,6 +3243,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     result["events"].append({"key": key, "step": n})
                 else:
                     key, state, kind = step
+                    if not at_resume and opened.get(n - 1) == state:
+                        result["events"].append({"skipped": key, "step": n, "opened_by": n - 1})
+                        sent.append(sent_entry(key, "skipped"))
+                        continue
                     if not at_resume:
                         if kind in ("write", "answer"):
                             # The measured route ends where the run would first write or answer.
@@ -3228,8 +3254,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                             stopped_at_write = True
                             break
                         encounter_gate(kind)
-                        perform(key, kind, state, n)
+                        perform(key, kind, state, n, _next_state(steps_m, n))
                         sent.append(sent_entry(key, kind))
+                        state = opened.get(n, state)
                 name = f"{n:02d}-{state}" + ("-resumed" if at_resume else "")
                 guarded = True
                 if title is not None:
@@ -3291,13 +3318,19 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                             result["events"].append({"skipped": key, "step": n})
                             sent.append(sent_entry(key, "skipped"))
                             continue
+                        if opened.get(n - 1) == state:
+                            result["events"].append({"skipped": key, "step": n,
+                                                     "opened_by": n - 1})
+                            sent.append(sent_entry(key, "skipped"))
+                            continue
                         encounter_gate(kind)
                         if kind == "answer":
                             run_answer()
                         else:
                             mark = len(result["events"])
-                            perform(key, kind, state, n)
+                            perform(key, kind, state, n, _next_state(steps, n))
                         sent.append(sent_entry(key, kind))
+                        state = opened.get(n, state)
                     name = (f"{n:02d}-post_write" if kind == "write" and state == "loaded_menu"
                             else f"{n:02d}-{state}") + ("-resumed" if at_resume else "")
                     if kind == "move":

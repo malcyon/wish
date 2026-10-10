@@ -474,6 +474,45 @@ def test_the_fight_crops_name_the_world_screen_for_the_guard_check(tmp_path, clo
     assert (shots / "07-encounter-again-02.png").read_bytes() == b"encounter"
 
 
+class SurpriseGuest(FightGuest):
+    """`FightGuest` whose `met`-th step shows the surprise page, which RETURN turns into the first
+    command bar with no encounter menu between, as a surprised party's fight opens."""
+
+    def press(self, holder, key, timeout=None):
+        surprised = self.shown == "surprised"
+        super().press(holder, key, timeout)
+        if self.shown == "encounter":
+            self.shown = "surprised"
+        elif surprised and key == "RET":
+            self.shown = "combat"
+
+
+def _surprise_guard():
+    guard = _fight_guard()
+    guard.states.add("surprised")
+    guard.on["surprised"] = lambda p: _content(p) == "surprised"
+    return guard
+
+
+def test_a_surprised_party_answers_the_page_and_reaches_the_first_command_bar_without_combat(
+        tmp_path, clock):
+    path = title_run.manifest_for(tmp_path)
+    path.write_text(json.dumps({**json.loads(path.read_text()), "encounter": True}))
+    guest = SurpriseGuest(clock, met=2)
+    title = dataclasses.replace(_fight_title(), interstitials=route_pool.POOL_ENCOUNTER.interstitials)
+    result = acceptance.run_recon(
+        path, guest=guest, guard=_surprise_guard(), identity=_IdentityMap(),
+        holder="wish303-test", audio_proof=_audio_proof(tmp_path), title=title, reload=True)
+    assert result["success"], result["error"]
+    keys = title_run._keys(guest)
+    assert keys[keys.index("NP8"):] == ["NP8", "NP8", "RET"]
+    assert result["encounter_walk"] == {"state": "encounter", "steps": 2, "turns": 0,
+                                        "met": True, "blocked_at": [], "opened": "combat_bar"}
+    assert {"skipped": "C", "step": 8, "opened_by": 7} in result["events"]
+    assert result["battlefield"].endswith("07-combat_bar.png")
+    assert (tmp_path / "recon1" / "shots" / "07-combat_bar-again-02.png").read_bytes() == b"combat"
+
+
 def test_route_kinds_include_until_encounter():
     assert "until_encounter" in route._STEP_KINDS
 

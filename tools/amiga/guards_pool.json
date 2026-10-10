@@ -193,6 +193,28 @@
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/05-sheet.png",
       "sha256": "fc25aaadb2454618b62603f367c1e648f20a867131c23f83765a8f9ccfcfaca2"
     },
+    "surprised": {
+      "also": [],
+      "and": [
+        {
+          "box": [
+            54,
+            418,
+            634,
+            432
+          ],
+          "sha256": "c4c5d70e18210d1267c28b11d9d972626a6c63cb39c49e26a23fe72e10230132"
+        }
+      ],
+      "box": [
+        72,
+        306,
+        392,
+        320
+      ],
+      "example": "WISH-303/a2-L3/1/shots/failure.png",
+      "sha256": "15afa97897286bfcb96ff56891f0e69ebfef43934829ff462339868f106abd98"
+    },
     "temple": {
       "also": [],
       "box": [

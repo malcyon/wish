@@ -447,6 +447,11 @@ ENCOUNTER_MOVES = 40
 #: Phlan, where it meets no random encounter (measured), so the walk turns left.
 ENCOUNTER_STEP = ("NP8", "NP4", ENCOUNTER_MOVES)
 
+#: RETURN on `YOU ARE SURPRISED BY ...` over a `PRESS <RETURN>` bar, met in place of the
+#: encounter menu when the monsters surprise the party; the fight opens without the menu, so the
+#: walk then finds the first command bar itself and COMBAT is never pressed.
+_SURPRISED = ("surprised", ("keys", "RET"), frozenset({"encounter"}), 1)
+
 #: Pool's first-bar run: the load and sheet, a walk until the encounter menu, COMBAT, and the
 #: first command bar, whose crop is the battlefield. It saves nothing.
 POOL_ENCOUNTER = dataclasses.replace(
@@ -455,6 +460,7 @@ POOL_ENCOUNTER = dataclasses.replace(
            ("C", "combat_bar", "key")),
     measure_route=(("RET", "title", "key"), *_POOL_LOAD,
                    (ENCOUNTER_STEP, "encounter", "until_encounter"), ("C", "combat_bar", "key")),
+    interstitials=(*POOL.interstitials, _SURPRISED),
     control_letter=None, after_letter=None, turn=None,
     strict=POOL.strict | {"encounter", "combat_bar"},
     min_waits={**POOL.min_waits, "combat_bar": 5.0})

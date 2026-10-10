@@ -1138,3 +1138,29 @@ def test_darkness_use_route_states_for_line_5_all_have_a_guard():
     route = route_camp.camp_title(route_darkness.DARKNESS, ('use 5 3 SYY',), 7, name='darkness')
     assert {'camp_items_5_row2', 'camp_items_5_row3'} <= route.strict
     assert route.strict <= spec['guards'].keys()
+
+
+def test_the_pool_surprised_guard_matches_the_kept_surprise_page_and_not_the_encounter_menu(tmp_path):
+    """Reads crops kept from live runs, so it skips on a machine without them.
+
+    `YOU ARE SURPRISED BY KOBOLDS.` over `PRESS <RETURN> OR BUTTON TO CONTINUE` is the page a
+    surprised party meets instead of the encounter menu; the party's own surprise of the
+    monsters shows the menu under a different line.
+    """
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    surprised = root / 'WISH-303/a2-L3/1/shots/failure.png'
+    menu = root / 'amiga-grab-crops/wish303-a1__32-encounter.png'
+    tour_page = root / '679/619-l3-pool-jrsmith/measure1/shots/05-world.png'
+    if not all(crop.is_file() for crop in (surprised, menu, tour_page)):
+        pytest.skip('the kept Pool surprise and encounter crops are not on this machine')
+    maps = guardmaps.pathlib.Path(guardmaps.__file__).parent
+    out = tmp_path / 'pool'
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'pool', '--out', str(out)]) == 0
+    guard = screens.PixelGuards(out / 'guards.json')
+    assert guard('surprised', surprised)
+    assert not guard('encounter', surprised) and not guard('world', surprised)
+    assert not guard('surprised', menu) and guard('encounter', menu)
+    assert guard('continue', tour_page) and not guard('surprised', tour_page)
