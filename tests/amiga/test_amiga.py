@@ -3336,7 +3336,11 @@ def _pod_source(port, **fields):
 @pytest.mark.parametrize("port", ["DOS", "Amiga"])
 def test_to_pc_copies_the_combat_tail_from_a_pods_source(port):
     record, rep = amiga_pod.to_pc(_pod_source(port, **_TAIL_VALUES))
-    assert record[0x186] == 41
+    # A DOS source's current THAC0 moves by the change of base THAC0 the DOS
+    # load makes. The sample stores base 0 and its class levels give base 41,
+    # so the stored 41 becomes 82; an Amiga source is copied as it is.
+    assert record[0x186] == (82 if port == "DOS" else 41)
+    assert (record[0x07F] == 41) == (port == "DOS")
     assert record[0x187] == 52
     assert record[0x188:0x191] == _TAIL_VALUES["roster_tail"]
     assert record[0x192] == 9
@@ -3347,7 +3351,9 @@ def test_to_pc_copies_the_combat_tail_from_a_pods_source(port):
 
 def test_to_pc_writes_zero_where_a_pods_source_has_no_combat_tail():
     record, rep = amiga_pod.to_pc(_pod_source("DOS"))
-    assert record[0x186:0x191] == bytes(11)
+    # No stored current THAC0, so it is the base THAC0 the DOS load rebuilds.
+    assert record[0x186] == record[0x07F] == 41
+    assert record[0x187:0x191] == bytes(10)
     assert record[0x192] == 0
     assert rep.sources[0x186].startswith("left zero")
 
