@@ -44,23 +44,47 @@ TERMINAL = frozenset({"passed", "failed", "timed_out", "cancelled", "interrupted
                       "stale", "infrastructure_failure"})
 ACTIVE = frozenset({"starting", "running"})
 
-#: Budgets (seconds) that add up under the 600 s a single tool call may take:
-#: admission, starting the service, execution, the grace past systemd's limit,
-#: and cleanup.
+#: Budgets (seconds) that add up under the 600 s a single tool call may take. One
+#: `run` spends them in order: admission (the execution lock and every control-lock
+#: wait while reconciling), the control-lock wait before starting, execution, the
+#: grace past systemd's limit, the control-lock wait before a hard stop, the
+#: service's own stop time, the control-lock wait before finalising, and cleanup.
+#: `systemd-run` and the service's start-up fall inside the execution window,
+#: because its deadline is set before the service is created.
 TOOL_CALL_LIMIT = 600
 DEFAULT_ADMISSION = 60
+START_LOCK_WAIT = 10
 SYSTEMD_RUN_TIMEOUT = 30
-CLEANUP_TIMEOUT = 30
 #: Seconds the launcher waits beyond systemd's own runtime limit before stopping.
 GRACE = 20
-MAX_TIMEOUT = 450
+STOP_LOCK_WAIT = 10
+#: `TimeoutStopSec` of the service: after it systemd sends SIGKILL.
+STOP_SETTLE = 15
+FINISH_LOCK_WAIT = 10
+CLEANUP_TIMEOUT = 30
+MAX_TIMEOUT = 430
 DEFAULT_TIMEOUT = MAX_TIMEOUT
+
+
+def worst_case_seconds(timeout: float = DEFAULT_TIMEOUT,
+                       admission: float = DEFAULT_ADMISSION) -> float:
+    """The longest one `run` call can take for a request of `timeout` seconds,
+    lock waits included. It leaves out the exit time of git and systemctl themselves,
+    which a hung user manager could stretch."""
+    return (admission + START_LOCK_WAIT + timeout + GRACE + STOP_LOCK_WAIT
+            + STOP_SETTLE + FINISH_LOCK_WAIT + CLEANUP_TIMEOUT)
+
+
 #: A whole-suite diagnostic runs longer than one tool call; `run` waits in stages.
 SUITERUN_TIMEOUT = 3600
 SUITERUN_MAX_TIMEOUT = 7200
 DEFAULT_BUDGET = 480
 CONTROL_WAIT = 45
 POLL = 1.0
+#: The first seconds of a run are sampled faster, because a run that is killed
+#: early leaves no cgroup to read afterwards.
+FAST_POLL = 0.1
+FAST_WINDOW = 2.0
 MIN_MEMORY_MAX = 16 * 1024 * 1024
 
 DESCRIPTION = "wish-tests {}"
@@ -97,6 +121,8 @@ def _checked_state_dir(policy: testcontrol.Policy) -> pathlib.Path:
     this user and be closed to group and others."""
     directory = pathlib.Path(policy.state_dir)
     if directory.exists():
+        if not directory.is_dir():
+            raise LaunchError(f"state directory {directory} is not a directory")
         if hasattr(os, "getuid"):
             info = directory.stat()
             if info.st_uid != os.getuid():
@@ -107,7 +133,10 @@ def _checked_state_dir(policy: testcontrol.Policy) -> pathlib.Path:
                                   f"{info.st_mode & 0o777:03o}; group and others "
                                   "must have no access")
     else:
-        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        except OSError as err:
+            raise LaunchError(f"state directory {directory} cannot be created: {err}") from None
     return directory
 
 
@@ -123,13 +152,20 @@ def _fsync_directory(directory: pathlib.Path) -> None:
 
 def _write_temporary(policy: testcontrol.Policy, record: dict) -> tuple[pathlib.Path, str]:
     directory = _checked_state_dir(policy)
-    handle, temporary = tempfile.mkstemp(dir=directory, prefix=".tmp-", suffix=".json")
+    try:
+        handle, temporary = tempfile.mkstemp(dir=directory, prefix=".tmp-", suffix=".json")
+    except OSError as err:
+        raise LaunchError(f"a record cannot be written in {directory}: {err}") from None
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as out:
             json.dump(record, out, indent=1, sort_keys=True)
             out.write("\n")
             out.flush()
             os.fsync(out.fileno())
+    except OSError as err:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise LaunchError(f"a record cannot be written in {directory}: {err}") from None
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
@@ -142,11 +178,15 @@ def write_record(policy: testcontrol.Policy, record: dict) -> None:
     directory, temporary = _write_temporary(policy, record)
     try:
         os.replace(temporary, _record_file(policy, record["id"]))
+        _fsync_directory(directory)
+    except OSError as err:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise LaunchError(f"a record cannot be written in {directory}: {err}") from None
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
         raise
-    _fsync_directory(directory)
 
 
 def create_record(policy: testcontrol.Policy, record: dict) -> bool:
@@ -157,10 +197,15 @@ def create_record(policy: testcontrol.Policy, record: dict) -> bool:
         os.link(temporary, _record_file(policy, record["id"]))
     except FileExistsError:
         return False
+    except OSError as err:
+        raise LaunchError(f"a record cannot be written in {directory}: {err}") from None
     finally:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
-    _fsync_directory(directory)
+    try:
+        _fsync_directory(directory)
+    except OSError as err:
+        raise LaunchError(f"a record cannot be written in {directory}: {err}") from None
     return True
 
 
@@ -263,7 +308,7 @@ class SystemBackend:
         properties = {"Type": "exec", "ExitType": "main", "KillMode": "control-group",
                       "OOMPolicy": "kill", "Restart": "no",
                       "RuntimeMaxSec": str(int(spec["runtime_max"])),
-                      "TimeoutStopSec": "15s", "SendSIGKILL": "yes",
+                      "TimeoutStopSec": f"{STOP_SETTLE}s", "SendSIGKILL": "yes",
                       "MemorySwapMax": "0", "StandardInput": "null",
                       "StandardOutput": f"append:{spec['log']}",
                       "StandardError": "inherit"}
@@ -289,7 +334,7 @@ class SystemBackend:
         return state["InvocationID"]
 
     def stop(self, unit: str) -> None:
-        self._systemctl("stop", unit, timeout=90)
+        self._systemctl("stop", unit, timeout=STOP_SETTLE + 5)
 
     def reset_failed(self, unit: str) -> None:
         self._systemctl("reset-failed", unit)
@@ -343,6 +388,7 @@ class Context:
     err: object = None
     cleanup_timeout: float = CLEANUP_TIMEOUT
     poll: float = POLL
+    fast_poll: float = FAST_POLL
 
     def say(self, line: str) -> None:
         print(line, file=self.err or sys.stderr, flush=True)
@@ -383,11 +429,14 @@ def acquire(ctx: Context, path: str, timeout: float, on_wait=None) -> int | None
 
 
 @contextlib.contextmanager
-def control_lock(ctx: Context):
-    fd = acquire(ctx, ctx.policy.control_lock, CONTROL_WAIT)
+def control_lock(ctx: Context, deadline: float | None = None):
+    """The control lock, waited for at most `CONTROL_WAIT` and never past `deadline`
+    (a clock time), so a caller inside a budgeted phase cannot overrun it."""
+    wait = CONTROL_WAIT if deadline is None else min(CONTROL_WAIT, max(0.0, deadline - ctx.clock()))
+    fd = acquire(ctx, ctx.policy.control_lock, wait)
     if fd is None:
         raise LaunchError(f"the control lock {ctx.policy.control_lock} stayed busy "
-                          f"for {CONTROL_WAIT} s")
+                          f"for {wait:g} s")
     try:
         yield
     finally:
@@ -640,7 +689,7 @@ def unmet_conditions(state: dict, invocation_id: str | None, checks_doc: dict | 
 
 
 def classify(state: dict, record: dict, checks_doc: dict | None, cleanup_ok: bool,
-             unmet: list[str]) -> str:
+             unmet: list[str], oom_killed: bool = False) -> str:
     if not cleanup_ok:
         return "infrastructure_failure"
     if record.get("cancel_requested"):
@@ -652,6 +701,10 @@ def classify(state: dict, record: dict, checks_doc: dict | None, cleanup_ok: boo
         return "interrupted"
     if state.get("Result") == "timeout":
         return "timed_out"
+    if not (checks_doc or {}).get("complete") and not oom_killed:
+        # The wrapper never finished its report (killed, crashed): no check outcome
+        # exists to call a failure.
+        return "interrupted"
     if not state.get("Result") or state.get("ExecMainCode") in (None, "", "0"):
         return "interrupted"
     return "passed" if not unmet else "failed"
@@ -691,6 +744,25 @@ def _unload(ctx: Context, run_cgroup: str, state: dict) -> tuple[bool, str]:
         ctx.sleep(0.25)
 
 
+def _nested_parent_alive(record: dict, live: dict) -> bool:
+    """Whether `record` is a nested run whose parent invocation is still active, which
+    makes the parent's service the only thing that can say the child has ended."""
+    return bool(record.get("nested") and live.get("LoadState") != "not-found"
+                and unit_request(live) == record.get("parent_request")
+                and live.get("InvocationID") == record.get("parent_invocation")
+                and not unit_finished(live))
+
+
+def _tail(path: str | None, lines: int = 40) -> str | None:
+    if not path:
+        return None
+    try:
+        text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return "".join(text.splitlines(keepends=True)[-lines:]) or None
+
+
 def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
                    unload: bool = True) -> dict:
     """Finalise `record` from the service and its report. Caller holds the control lock."""
@@ -702,6 +774,8 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
     samples = samples or {}
     # A failed query leaves the record active: an unknown service is never unloaded.
     live = ctx.backend.unit_state(unit)
+    if _nested_parent_alive(record, live):
+        return record
     mine = (live.get("LoadState") != "not-found"
             and unit_request(live) == record["id"]
             and record.get("invocation_id") in (None, live.get("InvocationID")))
@@ -721,6 +795,16 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
     now = ctx.clock()
     run_cg = samples.get("run_cgroup") or record.get("run_cgroup") or ""
     exit_info = {k: state.get(k) for k in ("Result", "ExecMainCode", "ExecMainStatus")}
+    before_stop = record.get("observed_before_stop") or {}
+    # A stopped unit is unloaded before it can be read again; the values read just
+    # before the stop are then the only ones there are.
+    from_before_stop = not state and bool(before_stop)
+    if from_before_stop:
+        exit_info = {k: (before_stop.get("unit") or {}).get(k) for k in exit_info}
+        samples = {**samples, "peak": before_stop.get("memory_peak"),
+                   "events": before_stop.get("events") or {},
+                   "max_processes": before_stop.get("pytest_processes"),
+                   "sampled": True}
     if not run_cg:
         cleanup_ok, detail = True, "no cgroup path"
     elif unload and (mine or live.get("LoadState") == "not-found"):
@@ -730,12 +814,23 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
     requested = [c["name"] for c in request["checks"]]
     unmet = unmet_conditions(state, record.get("invocation_id"), checks_doc,
                              requested, cleanup_ok)
-    status = classify(state, record, checks_doc, cleanup_ok, unmet)
     mem = (checks_doc or {}).get("memory") or {}
     events = samples.get("events") or {}
     before = record.get("slice_events_before") or {}
     after = samples.get("slice_events_after") or (
         ctx.backend.slice_events(run_cg.rsplit("/", 1)[0]) if run_cg else {})
+    oom_killed = (state.get("Result") == "oom-kill"
+                  or after.get("oom_kill", 0) > before.get("oom_kill", 0))
+    status = classify(state, record, checks_doc, cleanup_ok, unmet, oom_killed)
+    run_oom = max(events.get("oom", 0), mem.get("oom", 0))
+    run_kill = max(events.get("oom_kill", 0), mem.get("oom_kill", 0))
+    slice_oom = after.get("oom", 0) - before.get("oom", 0)
+    slice_kill = after.get("oom_kill", 0) - before.get("oom_kill", 0)
+    # The run cgroup is gone by finalisation, so its numbers exist only if a sample
+    # or the wrapper caught them; a slice that counted an OOM the run counters missed
+    # shows they were read too early.
+    observed = bool(samples.get("sampled") or mem) and not (
+        (slice_oom or slice_kill) and not (run_oom or run_kill))
     ran = (checks_doc or {}).get("checks", {})
     pytest_out = ran.get("pytest", {})
     changed = [name for name, digest in
@@ -745,13 +840,16 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
         "exit": exit_info,
         "elapsed_seconds": round(now - record["started_epoch"], 1)
         if record.get("started_epoch") else None,
-        "pytest_processes": samples.get("max_processes"),
+        "run_values_observed": observed,
+        "exit_and_memory_taken_before_stop": from_before_stop,
+        "observed_before_stop": before_stop or None,
+        "pytest_processes": samples.get("max_processes") if observed else None,
         "memory_peak_bytes": max(filter(None, [samples.get("peak"), mem.get("peak")]),
-                                 default=None),
-        "oom": {"oom": max(events.get("oom", 0), mem.get("oom", 0)),
-                "oom_kill": max(events.get("oom_kill", 0), mem.get("oom_kill", 0)),
-                "slice_oom_delta": after.get("oom", 0) - before.get("oom", 0),
-                "slice_oom_kill_delta": after.get("oom_kill", 0) - before.get("oom_kill", 0),
+                                 default=None) if observed else None,
+        "oom": {"oom": run_oom if observed else None,
+                "oom_kill": run_kill if observed else None,
+                "slice_oom_delta": slice_oom,
+                "slice_oom_kill_delta": slice_kill,
                 "memory_oom_group": samples.get("oom_group")},
         "counts": pytest_out.get("counts", {}),
         "checks": {n: {"returncode": c.get("returncode"), "elapsed": c.get("elapsed")}
@@ -760,19 +858,21 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
         "failure_output": next((c.get("tail") for c in ran.values()
                                 if c.get("returncode") != 0), None),
         "cleanup": {"complete": cleanup_ok, "detail": detail},
-        "oom_killed": (state.get("Result") == "oom-kill"
-                       or after.get("oom_kill", 0) > before.get("oom_kill", 0)),
+        "oom_killed": oom_killed,
         "conditions_unmet": unmet,
         "files_changed_during_run": changed,
         "valid_as_acceptance": status == "passed" and not changed,
     })
+    if status == "timed_out" and not result["failure_output"]:
+        result["failure_output"] = _tail(record.get("log"))
     record.update(status=status, finished=_iso(now), result=result)
     write_record(policy, record)
     return record
 
 
-def finish_request(ctx: Context, request_id: str, samples: dict | None = None) -> dict:
-    with control_lock(ctx):
+def finish_request(ctx: Context, request_id: str, samples: dict | None = None,
+                   deadline: float | None = None) -> dict:
+    with control_lock(ctx, deadline):
         record = read_record(ctx.policy, request_id)
         if record is None:
             raise LaunchError(f"no request {request_id}")
@@ -791,7 +891,8 @@ def _reconcile_locked(ctx: Context) -> dict:
         for record in all_records(policy):
             if record["status"] in ACTIVE and record["id"] != keep:
                 finished = _finish_locked(ctx, read_record(policy, record["id"]))
-                finalized.append(finished["id"])
+                if finished["status"] in TERMINAL:
+                    finalized.append(finished["id"])
 
     if state.get("LoadState") == "not-found" and not state.get("Job"):
         settle_others(None)
@@ -818,11 +919,12 @@ def _reconcile_locked(ctx: Context) -> dict:
     return {"state": "free", "finalized": finalized}
 
 
-def reconcile_service(ctx: Context) -> dict:
+def reconcile_service(ctx: Context, deadline: float | None = None) -> dict:
     """Make the fixed service free for the next request without stopping a healthy
     run: a busy service blocks, a finished one is finalised and unloaded, and a
-    record left active with no service becomes `interrupted`."""
-    with control_lock(ctx):
+    record left active with no service becomes `interrupted`. The control-lock wait
+    never passes `deadline`."""
+    with control_lock(ctx, deadline):
         return _reconcile_locked(ctx)
 
 
@@ -852,9 +954,23 @@ def cancel_request(ctx: Context, request_id: str) -> dict:
             return {"id": request_id, "status": record["status"], "stopped": False,
                     "record": record,
                     "note": "the service is not running this request; nothing was stopped"}
+        # The unit is unloaded as soon as it stops, so read what it holds first.
+        observed = {"unit": {k: state.get(k) for k in (
+            "ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus", "MainPID")}}
+        if record.get("run_cgroup"):
+            got = ctx.backend.sample(record["run_cgroup"])
+            python = [p for p in got["procs"] if p[1].startswith("python")]
+            observed.update(memory_peak=got["peak"], events=got["events"],
+                            pytest_processes=max(len(python) - 1, 0))
         record["cancel_requested"] = True
+        record["observed_before_stop"] = observed
         write_record(policy, record)
         ctx.backend.stop(policy.service)
+        after = ctx.backend.unit_state(policy.service)
+        if after.get("LoadState") != "not-found":
+            observed["after_stop"] = {k: after.get(k) for k in (
+                "ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus")}
+            write_record(policy, record)
         record = _finish_locked(ctx, record)
         return {"id": request_id, "status": record["status"], "stopped": True,
                 "record": record}
@@ -867,6 +983,10 @@ def _preflight(ctx: Context, memory_max: int | None) -> dict:
     if hasattr(os, "getuid") and os.getuid() != policy.uid:
         raise LaunchError(f"the policy permits UID {policy.uid}, not {os.getuid()}")
     info = ctx.backend.slice_info(policy)
+    expected = testcontrol.slice_cgroup(policy)
+    if info["cgroup"].rstrip("/") != expected:
+        raise LaunchError(f"{policy.slice} is at {info['cgroup']} in the user manager, but "
+                          f"the policy's path is {expected}; nothing started")
     if info["memory_max"] != policy.memory_max_bytes:
         raise LaunchError(f"{policy.slice} has memory.max {info['memory_max']}, but the "
                           f"policy requires {policy.memory_max_bytes}; nothing started")
@@ -907,11 +1027,12 @@ def _service_spec(ctx: Context, record: dict, log: str, checks_file: str) -> dic
                      str(_record_file(ctx.policy, record["id"]))]}
 
 
-def _start_locked(ctx: Context, request_id: str, slice_info: dict, timeout: int) -> dict | None:
+def _start_locked(ctx: Context, request_id: str, slice_info: dict, timeout: int,
+                  deadline: float | None = None) -> dict | None:
     """Persist `starting`, create the service, capture its invocation. None when the
-    request is no longer pending."""
+    request is no longer pending. The control-lock wait never passes `deadline`."""
     policy = ctx.policy
-    with control_lock(ctx):
+    with control_lock(ctx, deadline):
         record = read_record(policy, request_id)
         if record is None or record["status"] != "pending":
             return record
@@ -947,8 +1068,9 @@ def _after_failed_start(ctx: Context, record: dict, err: LaunchError) -> dict:
         live = ctx.backend.unit_state(policy.service)
     except LaunchError:
         live = None
-    if live is None:
-        # Unknown: leave `starting`, which reconcile resolves once the manager answers.
+    if live is None or (live.get("LoadState") == "not-found" and live.get("Job")):
+        # Unknown (no answer, or a job still creating the unit): leave `starting`,
+        # which reconcile resolves once the manager settles.
         record["start_error"] = str(err)
     elif live.get("LoadState") != "not-found" and unit_request(live) == record["id"]:
         record.update(status="running", unit=policy.service, start_error=str(err),
@@ -982,10 +1104,12 @@ def _wait(ctx: Context, record: dict, slice_info: dict, budget_end: float | None
         if got["events"]:
             samples["events"] = got["events"]
         samples["oom_group"] = got["oom_group"] or samples.get("oom_group")
+        samples["sampled"] = samples.get("sampled") or bool(
+            got["procs"] or got["peak"] or got["events"])
         now = ctx.clock()
         if now >= hard_stop and not stopped:
             stopped = True
-            with control_lock(ctx):
+            with control_lock(ctx, now + STOP_LOCK_WAIT):
                 current = read_record(policy, record["id"])
                 if current and current["status"] == "running":
                     current["timeout_enforced"] = True
@@ -996,7 +1120,8 @@ def _wait(ctx: Context, record: dict, slice_info: dict, budget_end: float | None
             continue
         if budget_end is not None and now >= budget_end:
             return samples, False
-        ctx.sleep(ctx.poll)
+        started = record.get("started_epoch") or now
+        ctx.sleep(ctx.fast_poll if now - started < FAST_WINDOW else ctx.poll)
     samples["slice_events_after"] = ctx.backend.slice_events(slice_info["cgroup"])
     return samples, True
 
@@ -1076,7 +1201,8 @@ def _claim_nested(ctx: Context, request_id: str) -> tuple[dict, float, dict | No
         scratch_dir = scratch.ensure(scratch.scratch_dir("testrun"))
         log = str(scratch_dir / f"{record['id']}.log")
         record.update(status="running", started=_iso(ctx.clock()), log=log, nested=True,
-                      started_epoch=ctx.clock())
+                      started_epoch=ctx.clock(), parent_request=unit_request(state),
+                      parent_invocation=state.get("InvocationID"))
         write_record(policy, record)
         return record, timeout, None
 
@@ -1091,17 +1217,25 @@ def _run_nested(ctx: Context, record: dict) -> dict:
     done = _checks_in_process(record, timeout, log)
     bad = [n for n, c in done.items() if c["returncode"] != 0]
     timed_out = any(c["returncode"] in (124, -9) for c in done.values())
-    record.update(status="passed" if not bad else ("timed_out" if timed_out else "failed"),
-                  finished=_iso(ctx.clock()),
-                  result={"nested": True, "checks": {n: {"returncode": c["returncode"],
-                                                       "elapsed": c["elapsed"]}
-                                                   for n, c in done.items()},
-                          "counts": done.get("pytest", {}).get("counts", {}),
-                          "failure_output": next((c["tail"] for c in done.values()
-                                                  if c["returncode"] != 0), None),
-                          "log": log, "tree_dirty": bool(record.get("dirty"))})
-    write_record(policy, record)
-    return _result_view(record, nested=True)
+    with control_lock(ctx):
+        # Reconcile may have settled this record while the checks ran; its verdict
+        # stands, because it is the one made with the parent's service in view.
+        current = read_record(policy, record["id"])
+        if current is None or current["status"] != "running" or not current.get("nested"):
+            return _result_view(current or record, nested=True,
+                                note="the record was finalised while the checks ran")
+        current.update(
+            status="passed" if not bad else ("timed_out" if timed_out else "failed"),
+            finished=_iso(ctx.clock()),
+            result={"nested": True, "checks": {n: {"returncode": c["returncode"],
+                                                   "elapsed": c["elapsed"]}
+                                               for n, c in done.items()},
+                    "counts": done.get("pytest", {}).get("counts", {}),
+                    "failure_output": next((c["tail"] for c in done.values()
+                                            if c["returncode"] != 0), None),
+                    "log": log, "tree_dirty": bool(current.get("dirty"))})
+        write_record(policy, current)
+    return _result_view(current, nested=True)
 
 
 def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEFAULT_ADMISSION,
@@ -1115,11 +1249,12 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
     if record["status"] == "starting":
         raise LaunchError(f"{request_id} is starting in another launcher; run "
                           "`reconcile` if that launcher has died")
-    info = _preflight(ctx, record["request"].get("memory_max"))
     if ctx.backend.inside_service(policy):
+        # Part of the parent's request: no systemctl, no slice checks, no new service.
         if record["status"] != "pending":
             return _result_view(record, note="not pending")
         return _run_nested(ctx, record)
+    info = _preflight(ctx, record["request"].get("memory_max"))
     if record["status"] == "running":
         return _attach(ctx, record, info, budget)
     admission_end = ctx.clock() + admission_timeout
@@ -1134,7 +1269,7 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
     try:
         deadline = admission_end
         while True:
-            settled = reconcile_service(ctx)
+            settled = reconcile_service(ctx, deadline)
             if settled["state"] == "free":
                 break
             if ctx.clock() >= deadline:
@@ -1146,7 +1281,7 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
             return _result_view(record, note="no longer pending")
         changed = stale_files(record)
         if changed:
-            with control_lock(ctx):
+            with control_lock(ctx, ctx.clock() + START_LOCK_WAIT):
                 record = read_record(policy, request_id)
                 if record["status"] == "pending":
                     record.update(status="stale", finished=_iso(ctx.clock()),
@@ -1155,7 +1290,8 @@ def run_request(ctx: Context, request_id: str, *, admission_timeout: float = DEF
                     write_record(policy, record)
             return _result_view(record)
         timeout = record["request"]["timeout"]
-        record = _start_locked(ctx, request_id, info, timeout)
+        record = _start_locked(ctx, request_id, info, timeout,
+                               ctx.clock() + START_LOCK_WAIT)
         if record is None or record["status"] != "running":
             return _result_view(record)
         return _attach(ctx, record, info, budget)
@@ -1172,7 +1308,7 @@ def _attach(ctx: Context, record: dict, info: dict, budget: float | None) -> dic
     if not finished:
         current = read_record(ctx.policy, record["id"])
         return _result_view(current, note="still running; call `run ID` again to keep waiting")
-    record = finish_request(ctx, record["id"], samples)
+    record = finish_request(ctx, record["id"], samples, ctx.clock() + FINISH_LOCK_WAIT)
     return _result_view(record)
 
 

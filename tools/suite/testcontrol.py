@@ -90,6 +90,9 @@ def read_policy(path: str | pathlib.Path = POLICY_PATH) -> Policy:
     for key in ("slice", "service", "execution_lock", "control_lock", "state_dir"):
         if not data[key]:
             raise PolicyError(f"{path}: {key} is empty")
+    for key, suffix in (("slice", ".slice"), ("service", ".service")):
+        if not data[key].endswith(suffix):
+            raise PolicyError(f"{path}: {key} must end in {suffix}")
     if data["memory_max_bytes"] <= 0:
         raise PolicyError(f"{path}: memory_max_bytes must be positive")
     names = data["allowed_environment"]

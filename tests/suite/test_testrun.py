@@ -83,6 +83,7 @@ class Clock:
         self.now = 1_000_000.0
         self.on_sleep = None
         self.sleeps = 0
+        self.slept = []
 
     def __call__(self):
         return self.now
@@ -90,6 +91,7 @@ class Clock:
     def sleep(self, seconds):
         self.now += seconds
         self.sleeps += 1
+        self.slept.append(seconds)
         if self.on_sleep:
             self.on_sleep()
 
@@ -352,7 +354,7 @@ def test_a_missing_report_is_not_a_pass_even_with_a_clean_exit(ctx, repo, backen
     register(ctx, repo)
     clock.on_sleep = lambda: backend.finish()
     view = testrun.run_request(ctx, "r1")
-    assert view["status"] == "failed"
+    assert view["status"] == "interrupted"
     assert "check pytest did not report" in view["result"]["conditions_unmet"]
     assert view["result"]["checks_not_run"] == ["pytest"]
 
@@ -459,10 +461,13 @@ def test_a_running_service_blocks_admission_and_is_left_alone(ctx, repo, backend
 
 
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
-def test_a_failed_service_is_finalised_from_its_record_and_unloaded(ctx, repo, backend):
+def test_a_failed_service_is_finalised_from_its_record_and_unloaded(ctx, repo, backend, tmp_path):
     pytest.importorskip("fcntl")
     register(ctx, repo)
-    mark(ctx, "r1", "running", "invF")
+    record = mark(ctx, "r1", "running", "invF")
+    record["checks_file"] = str(tmp_path / "checks.json")
+    testrun.write_record(ctx.policy, record)
+    write_report(record, pytest=1)
     backend.run_elsewhere("r1", "invF", "failed", "failed")
     backend.finish("exit-code", "1", "1")
     settled = testrun.reconcile_service(ctx)
@@ -826,13 +831,40 @@ def test_a_start_that_failed_with_no_unit_is_an_infrastructure_failure(policy, r
     assert record["status"] == "infrastructure_failure"
 
 
-def test_the_default_worst_case_stays_under_one_tool_call():
-    worst = (testrun.DEFAULT_ADMISSION + testrun.SYSTEMD_RUN_TIMEOUT + testrun.DEFAULT_TIMEOUT
-             + testrun.GRACE + testrun.CLEANUP_TIMEOUT)
-    assert worst < testrun.TOOL_CALL_LIMIT
+def test_the_worst_case_of_one_run_call_including_every_lock_wait_stays_under_one_tool_call():
     assert testrun.DEFAULT_TIMEOUT <= testrun.MAX_TIMEOUT
-    assert (testrun.DEFAULT_ADMISSION + testrun.SYSTEMD_RUN_TIMEOUT + testrun.MAX_TIMEOUT
-            + testrun.GRACE + testrun.CLEANUP_TIMEOUT) < testrun.TOOL_CALL_LIMIT
+    for timeout in (testrun.DEFAULT_TIMEOUT, testrun.MAX_TIMEOUT):
+        worst = (testrun.DEFAULT_ADMISSION + testrun.START_LOCK_WAIT + timeout + testrun.GRACE
+                 + testrun.STOP_LOCK_WAIT + testrun.STOP_SETTLE + testrun.FINISH_LOCK_WAIT
+                 + testrun.CLEANUP_TIMEOUT)
+        assert worst == testrun.worst_case_seconds(timeout) < testrun.TOOL_CALL_LIMIT
+    # Every control-lock wait inside a run is capped below the general limit.
+    for cap in (testrun.START_LOCK_WAIT, testrun.STOP_LOCK_WAIT, testrun.FINISH_LOCK_WAIT):
+        assert cap < testrun.CONTROL_WAIT
+    assert testrun.SYSTEMD_RUN_TIMEOUT < testrun.MAX_TIMEOUT  # inside the execution window
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_control_lock_wait_never_passes_the_deadline_of_its_phase(ctx, repo, clock, policy):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    busy = hold(policy.control_lock)
+    try:
+        began = clock.now
+        with pytest.raises(testrun.LaunchError, match="stayed busy for 5 s"):
+            testrun.reconcile_service(ctx, deadline=clock.now + 5)
+        assert clock.now - began < 6
+        began = clock.now
+        with pytest.raises(testrun.LaunchError):
+            testrun.finish_request(ctx, "r1", deadline=clock.now + testrun.FINISH_LOCK_WAIT)
+        assert clock.now - began <= testrun.FINISH_LOCK_WAIT + 1
+        began = clock.now
+        with pytest.raises(testrun.LaunchError):
+            testrun._start_locked(ctx, "r1", {"cgroup": SLICE_CG}, 100,
+                                  deadline=clock.now + testrun.START_LOCK_WAIT)
+        assert clock.now - began <= testrun.START_LOCK_WAIT + 1
+    finally:
+        os.close(busy)
 
 
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
@@ -898,3 +930,235 @@ def test_a_policy_path_through_a_file_is_a_missing_policy(tmp_path):
     (tmp_path / "file").write_text("")
     with pytest.raises(testcontrol.PolicyMissing):
         testcontrol.read_policy(tmp_path / "file" / "policy.json")
+
+
+# --- second review round -------------------------------------------------------------------------
+
+def _nested_running(ctx, repo, backend, parent_alive=True):
+    register(ctx, repo)
+    record = testrun.read_record(ctx.policy, "r1")
+    record.update(status="running", nested=True, parent_request="parent",
+                  parent_invocation="invP", invocation_id=None)
+    testrun.write_record(ctx.policy, record)
+    if parent_alive:
+        backend.run_elsewhere("parent", "invP")
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_reconcile_and_cancel_leave_a_nested_record_alone_while_its_parent_runs(
+        ctx, repo, backend):
+    pytest.importorskip("fcntl")
+    _nested_running(ctx, repo, backend)
+    settled = testrun.reconcile_service(ctx)
+    assert settled["state"] == "blocked" and settled["finalized"] == []
+    assert testrun.read_record(ctx.policy, "r1")["status"] == "running"
+    testrun.cancel_request(ctx, "r1")
+    assert testrun.read_record(ctx.policy, "r1")["status"] == "running"
+    assert backend.stopped == []
+    backend.unit = {"LoadState": "not-found"}
+    assert testrun.reconcile_service(ctx) == {"state": "free", "finalized": ["r1"]}
+    assert testrun.read_record(ctx.policy, "r1")["status"] == "interrupted"
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_nested_child_cannot_overwrite_a_record_reconcile_already_settled(
+        ctx, repo, backend, policy, monkeypatch):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    backend.inside = True
+    backend.run_elsewhere("parent", "invP")
+    record = testrun.read_record(policy, "r1")
+    record["request"]["checks"] = [{"name": "pytest", "argv": [sys.executable, "-c", "pass"]}]
+    testrun.write_record(policy, record)
+
+    def checks_while_the_parent_dies(rec, timeout, log):
+        backend.unit = {"LoadState": "not-found"}
+        testrun.reconcile_service(ctx)
+        return {"pytest": {"returncode": 0, "elapsed": 0.1, "counts": {}, "tail": ""}}
+    monkeypatch.setattr(testrun, "_checks_in_process", checks_while_the_parent_dies)
+    view = testrun._run_nested(ctx, testrun.read_record(policy, "r1"))
+    assert testrun.read_record(policy, "r1")["status"] == "interrupted"
+    assert view["status"] == "interrupted"
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_nested_record_names_its_parent_request_and_invocation(ctx, repo, backend, policy):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    record = testrun.read_record(policy, "r1")
+    record["request"]["checks"] = [{"name": "pytest", "argv": [sys.executable, "-c", "pass"]}]
+    testrun.write_record(policy, record)
+    backend.inside = True
+    backend.run_elsewhere("parent", "invP")
+    claimed, _, view = testrun._claim_nested(ctx, "r1")
+    assert view is None
+    assert (claimed["parent_request"], claimed["parent_invocation"]) == ("parent", "invP")
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_slice_at_another_cgroup_than_the_policys_starts_nothing(ctx, repo, backend):
+    register(ctx, repo)
+    backend.slice_info = lambda policy: {"cgroup": "/system.slice/wish-tests.slice",
+                                         "memory_max": LIMIT, "swap_max": "0"}
+    with pytest.raises(testrun.LaunchError, match="policy's path is /user.slice"):
+        testrun.run_request(ctx, "r1")
+    assert backend.started == []
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_nested_run_skips_the_slice_preflight(ctx, repo, backend, policy):
+    register(ctx, repo)
+    record = testrun.read_record(policy, "r1")
+    record["request"]["checks"] = [{"name": "pytest", "argv": [sys.executable, "-c", "pass"]}]
+    testrun.write_record(policy, record)
+    backend.inside = True
+    backend.run_elsewhere("parent", "invP")
+
+    def forbidden(policy):
+        raise AssertionError("no systemctl in a nested run")
+    backend.slice_info = forbidden
+    assert testrun.run_request(ctx, "r1")["status"] == "passed"
+
+
+def test_a_state_directory_that_is_a_file_is_a_launch_error_and_json_on_the_command_line(
+        policy, capsys, tmp_path):
+    pathlib.Path(policy.state_dir).write_text("not a directory")
+    with pytest.raises(testrun.LaunchError, match="is not a directory"):
+        testrun.write_record(policy, {"id": "r1"})
+    ctx = testrun.Context(policy, FakeBackend())
+    assert testrun.main(["status", "r1"], ctx) == 2
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="file modes are POSIX")
+def test_a_failing_temporary_file_or_link_is_a_launch_error(policy, monkeypatch):
+    def no_space(*a, **kw):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(testrun.tempfile, "mkstemp", no_space)
+    with pytest.raises(testrun.LaunchError, match="No space"):
+        testrun.write_record(policy, {"id": "r1"})
+    monkeypatch.undo()
+    monkeypatch.setattr(os, "link", no_space)
+    with pytest.raises(testrun.LaunchError, match="No space"):
+        testrun.create_record(policy, {"id": "r2"})
+
+
+@pytest.mark.parametrize("change, message", [
+    ({"slice": "wish-tests"}, "slice must end in .slice"),
+    ({"service": "wish-tests-run"}, "service must end in .service"),
+])
+def test_a_slice_or_service_without_its_unit_suffix_is_a_policy_error(tmp_path, change, message):
+    with pytest.raises(testcontrol.PolicyError, match=message):
+        testcontrol.read_policy(_write_policy(tmp_path, **change))
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_failed_start_with_a_job_still_creating_the_unit_stays_starting(policy, repo, clock):
+    pytest.importorskip("fcntl")
+    backend = _StartFails(leave_unit=False)
+    backend.unit = {"LoadState": "not-found", "Job": "42"}
+    ctx = testrun.Context(policy, backend, clock=clock, sleep=clock.sleep, err=open(os.devnull, "w"))
+    register(ctx, repo)
+    record = testrun._start_locked(ctx, "r1", backend.slice_info(policy), 450)
+    assert record["status"] == "starting" and "timed out" in record["start_error"]
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_cancelled_run_records_what_the_unit_and_cgroup_held_before_the_stop(
+        ctx, repo, backend):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    mark(ctx, "r1", "running", "invOLD")
+    backend.run_elsewhere("r1", "invOLD")
+    backend.unit.update(Result="success", ExecMainCode="0", ExecMainStatus="0", MainPID="77")
+    outcome = testrun.cancel_request(ctx, "r1")
+    result = outcome["record"]["result"]
+    assert outcome["status"] == "cancelled"
+    assert result["exit"] == {"Result": "success", "ExecMainCode": "0", "ExecMainStatus": "0"}
+    assert result["exit_and_memory_taken_before_stop"] is True
+    assert result["memory_peak_bytes"] == 5000 and result["pytest_processes"] == 2
+    assert result["observed_before_stop"]["unit"]["MainPID"] == "77"
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_the_first_two_seconds_of_a_run_are_sampled_every_tenth_of_a_second(
+        ctx, repo, backend, clock):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    state = {"n": 0}
+
+    def react():
+        state["n"] += 1
+        if state["n"] == 40:
+            write_report(testrun.read_record(ctx.policy, "r1"))
+            backend.finish()
+            clock.on_sleep = None
+    clock.on_sleep = react
+    testrun.run_request(ctx, "r1")
+    polls = [d for d in clock.slept if d in (0.1, 1.0)]
+    fast = polls.index(1.0)
+    assert 19 <= fast <= 21 and polls[:fast] == [0.1] * fast and set(polls[fast:]) == {1.0}
+
+
+class _KilledEarly(FakeBackend):
+    """The run is OOM-killed before any sample sees the kill: the slice counted it,
+    the run cgroup is gone."""
+
+    def slice_events(self, cgroup):
+        return {"oom": 0, "oom_kill": 1 if self.unit.get("Result") == "oom-kill" else 0}
+
+    def sample(self, cgroup):
+        return {"procs": [(1, "bash")], "peak": 3_000_000, "oom_group": "1", "events": {}}
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_run_counters_the_slice_contradicts_are_null_and_marked_not_observed(policy, repo, clock):
+    pytest.importorskip("fcntl")
+    backend = _KilledEarly()
+    ctx = testrun.Context(policy, backend, clock=clock, sleep=clock.sleep, err=open(os.devnull, "w"))
+    register(ctx, repo)
+
+    def react():
+        backend.finish(result="oom-kill", code="2", status="9")
+        clock.on_sleep = None
+    clock.on_sleep = react
+    view = testrun.run_request(ctx, "r1")
+    result = view["result"]
+    assert result["oom_killed"] is True and result["oom"]["slice_oom_kill_delta"] == 1
+    assert result["run_values_observed"] is False
+    assert result["oom"]["oom"] is None and result["oom"]["oom_kill"] is None
+    assert result["memory_peak_bytes"] is None and result["pytest_processes"] is None
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_a_killed_wrapper_with_no_report_is_interrupted_not_failed(ctx, repo, backend, clock):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    clock.on_sleep = lambda: backend.finish(result="signal", code="2", status="9")
+    view = testrun.run_request(ctx, "r1")
+    assert view["status"] == "interrupted"
+
+
+def test_an_incomplete_report_is_interrupted_but_an_oom_kill_keeps_its_own_outcome():
+    state = {"InvocationID": "i", "Result": "oom-kill", "ExecMainCode": "2", "ExecMainStatus": "9"}
+    record = {"invocation_id": "i"}
+    unmet = ["the wrapper did not finish its report"]
+    assert testrun.classify(state, record, None, True, unmet) == "interrupted"
+    assert testrun.classify(state, record, None, True, unmet, oom_killed=True) == "failed"
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_a_timed_out_run_reports_the_last_forty_log_lines_as_its_failure_output(
+        ctx, repo, backend, clock):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+
+    def write_log():
+        record = testrun.read_record(ctx.policy, "r1")
+        pathlib.Path(record["log"]).write_text("".join(f"line {n}\n" for n in range(1, 51)))
+        clock.on_sleep = None
+    clock.on_sleep = write_log
+    view = testrun.run_request(ctx, "r1")
+    lines = view["result"]["failure_output"].splitlines()
+    assert view["status"] == "timed_out" and len(lines) == 40
+    assert lines[0] == "line 11" and lines[-1] == "line 50"
