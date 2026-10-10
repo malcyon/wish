@@ -120,3 +120,42 @@ def test_a_party_member_off_the_map_is_named_even_when_the_count_agrees():
 def test_a_fight_that_cannot_be_read_is_said_so_rather_than_passing():
     assert roll_call(FakeSession(None)) == {}
     assert "could not be read" in undrawn({}, blocks=0)[0]
+
+
+class _SlotClaimed(Exception):
+    pass
+
+
+def _main_on_disk(tmp_path, monkeypatch, container):
+    from goldbox.d64 import D64
+    disk = D64.blank()
+    disk.write_file(container.save_file, b"\x00\x00")
+    path = tmp_path / "save.d64"
+    disk.save(path)
+
+    def claim(*args, **kwargs):
+        raise _SlotClaimed
+
+    monkeypatch.setattr(savecheck.S, "claim_slot", claim)
+    return lambda: savecheck.main(["--disk", str(path), "--disks", str(tmp_path),
+                                   "--out", str(tmp_path / "log.jsonl")])
+
+
+def test_another_titles_save_stops_before_a_slot_is_claimed(tmp_path, monkeypatch):
+    import pytest
+
+    from goldbox.c64_save import SECRET_OF_THE_SILVER_BLADES
+    call = _main_on_disk(tmp_path, monkeypatch, SECRET_OF_THE_SILVER_BLADES)
+    with pytest.raises(SystemExit) as stop:
+        call()
+    assert "secret-of-the-silver-blades" in str(stop.value)
+    assert "acceptance.py --title" in str(stop.value)
+
+
+def test_a_pool_save_gets_past_the_title_check(tmp_path, monkeypatch):
+    import pytest
+
+    from goldbox.c64_save import POOL_OF_RADIANCE
+    call = _main_on_disk(tmp_path, monkeypatch, POOL_OF_RADIANCE)
+    with pytest.raises(_SlotClaimed):
+        call()

@@ -31,6 +31,9 @@ What it reads, in order:
   figure is drawn from -- which is the only place a converted combat icon is
   ever seen.
 
+It boots Pool of Radiance saves only; another title's save goes through
+`tools/c64/acceptance.py --title KEY`.
+
 `tools/dos/dosdisk.py --sheet` prints the DOS side of the same comparison.
 
 Nothing is written to the player's disks: `Session.attach` rejects a path
@@ -51,6 +54,8 @@ sys.path.insert(0, str(ROOT))
 
 from automap import combat as C  # noqa: E402
 from automap.paths import tool_disks  # noqa: E402
+from goldbox import c64_port  # noqa: E402
+from goldbox.d64 import D64, D64Error  # noqa: E402
 from tools.c64 import session as S  # noqa: E402
 from tools.c64.runlog import Log, catch_signals  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -1259,6 +1264,18 @@ def run(args, log: Log) -> int:
     return rc
 
 
+def _require_pool_save(disk: str) -> None:
+    """Stop before a slot is claimed when the disk holds another title's save."""
+    try:
+        found = c64_port.detect(D64.open(disk))
+    except (D64Error, OSError):
+        return
+    if found is not None and found is not c64_port.POOL_OF_RADIANCE:
+        raise SystemExit(f"{disk} holds a {found.key} save; savecheck boots "
+                         f"Pool of Radiance only. Use tools/c64/acceptance.py "
+                         f"--title {found.key}.")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--disk", required=True, help="the save .d64 to boot")
@@ -1312,6 +1329,7 @@ def main(argv=None) -> int:
         p.error("--fight needs encounters; drop --no-encounters")
     if args.disks is None:
         raise SystemExit("No game disks found. Set $POR_DISKS.")
+    _require_pool_save(args.disk)
     stem = pathlib.Path(args.disk).stem
     args.tag = args.tag or stem
     out = pathlib.Path(args.out) if args.out else (
