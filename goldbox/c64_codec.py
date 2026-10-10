@@ -717,11 +717,13 @@ def dispelled_pool_zombie(game, roster_status, payload, party_slot) -> bool:
     """Whether a Pool of Radiance character is a zombie whose Animate Dead
     row was dispelled.
 
-    Status `$03` with no duration-0 id-32 row owned by `party_slot` is the
-    residue of Dispel Magic, and also of a camp-animated zombie whose row
-    found the 64 effect entries full. Only bytes decide: a row of any
-    magnitude keeps the character a zombie. `roster_status` is `None` when
-    neither the roster block nor the record stores one (`roster_status()`).
+    Status `$03` with no duration-0 id-32 row owned by `party_slot` is what
+    Dispel Magic leaves. It is also what a zombie animated in camp or in a
+    fight leaves while all 64 effect rows were taken, and the C64 still runs
+    that member as a zombie. The two are byte-identical, so both convert as
+    ordinary dead. Only bytes decide: a row of any magnitude keeps the
+    character a zombie. `roster_status` is `None` when neither the roster
+    block nor the record stores one (`roster_status()`).
     """
     if deltas_for(game) is not POOL_OF_RADIANCE_RECORD:
         return False

@@ -8,6 +8,10 @@ slot, because the disk's default slot is another party.
 from __future__ import annotations
 
 import json
+import os
+import pathlib
+import subprocess
+import sys
 
 import pytest
 from gamedata import specimen
@@ -82,3 +86,31 @@ def test_the_tool_blocks_a_slot_that_is_not_a_letter(tmp_path, capsys):
             "--source-slot", "K", "--out-dir", str(tmp_path),
             "--summary", str(tmp_path / "s.json")])
     assert "one letter" in capsys.readouterr().err
+
+
+def test_the_command_line_runs_without_an_application_already_made(tmp_path):
+    """The `app` fixture hides a crash: run `main` in a process that has no
+    QApplication of its own, as the command line does."""
+    specimen_file = tmp_path / "specimen.adf"
+    specimen_file.write_bytes(b"x")
+    summary = tmp_path / "summary.json"
+    code = (
+        "import sys\n"
+        "from tools.convert import convertamigatoc64, saveasdrive\n"
+        "import editor.window\n"
+        "class Binding:\n"
+        "    def __init__(self, *a, **k): pass\n"
+        "    def close(self): pass\n"
+        "saveasdrive.save_as = lambda *a, **k: {}\n"
+        "editor.window.EditorBinding = Binding\n"
+        "sys.exit(convertamigatoc64.main(sys.argv[1:]))\n")
+    repo = pathlib.Path(__file__).resolve().parents[2]
+    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen",
+           "PYTHONPATH": str(repo)}
+    done = subprocess.run(
+        [sys.executable, "-c", code, "--tree", str(repo),
+         "--specimen", str(specimen_file), "--disks", str(tmp_path),
+         "--out-dir", str(tmp_path / "out"), "--summary", str(summary)],
+        cwd=repo, env=env, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert summary.exists()

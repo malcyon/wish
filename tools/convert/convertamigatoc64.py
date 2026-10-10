@@ -58,7 +58,7 @@ def main(argv=None):
 
     from PyQt6.QtWidgets import QApplication, QWidget
 
-    QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])  # noqa: F841
 
     from editor.window import EditorBinding
 
