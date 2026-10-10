@@ -80,9 +80,12 @@ from tools.amiga.route_darkness import (  # noqa: E402
     _prepare_darkness_reload,
     _prepare_darkness_spare_reload,
     camp_in_place_title,
+    parse_train,
     published_reload_title,
     published_title,
     spare_title_for,
+    train_steps,
+    train_title,
     vault_evidence,
     vault_steps,
     vault_title,
@@ -395,7 +398,7 @@ ENCOUNTER_TITLES = {
     "ssb": "secret-of-the-silver-blades", "curse": "curse-of-the-azure-bonds",
     "pool": "pool-of-radiance", "darkness": "pools-of-darkness",
     "darkness-reload": "pools-of-darkness", "darkness-unstarted": "pools-of-darkness",
-    "darkness-vault": "pools-of-darkness",
+    "darkness-vault": "pools-of-darkness", "darkness-train": "pools-of-darkness",
 }
 
 #: The snapshot a walk retry restores; a `--camp` step may not use the name.
@@ -3653,16 +3656,22 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     return result
 
 
+#: Stands for `darkness-train` in `TITLES`; the route accept and measure run is `_train_title_for`
+#: the line and party size the manifest recorded.
+DARKNESS_TRAIN = train_title(1, 2)
+
 TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE, "darkness": DARKNESS,
                                  "darkness-reload": DARKNESS_RELOAD,
                                  "darkness-unstarted": DARKNESS_UNSTARTED,
-                                 "darkness-vault": DARKNESS_VAULT}
+                                 "darkness-vault": DARKNESS_VAULT,
+                                 "darkness-train": DARKNESS_TRAIN}
 
 _PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse, "darkness": _prepare_darkness,
             "darkness-reload": _prepare_darkness_reload,
             "darkness-unstarted": functools.partial(
                 _prepare_darkness, loaded=DARKNESS_UNSTARTED_LOADED),
-            "darkness-vault": functools.partial(_prepare_darkness, vault=True)}
+            "darkness-vault": functools.partial(_prepare_darkness, vault=True),
+            "darkness-train": _prepare_darkness}
 
 
 def _name(title: AmigaTitle) -> str:
@@ -3674,7 +3683,7 @@ def _name(title: AmigaTitle) -> str:
 
 #: Titles with a slot importer for their own save format.
 _SUBSTITUTABLE = frozenset(
-    {"darkness", "darkness-vault", *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
+    {"darkness", "darkness-vault", "darkness-train", *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
                    if source.import_slot is not None)})
 
 
@@ -3692,7 +3701,7 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
             encounter: bool = False, stage_record: str | None = None,
             spare: pathlib.Path | None = None,
             spare_seed_rows: int | None = None,
-            disk3_seed_rows: int | None = None) -> pathlib.Path:
+            disk3_seed_rows: int | None = None, train: str | None = None) -> pathlib.Path:
     """Copy the title's registered images and specimen into a run folder, write `prepare.json`, and return it.
 
     Blocks when any pinned hash differs, the loaded slot does not decode, or a
@@ -3720,6 +3729,8 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
     rows into the run copy of the spare's loaded-letter vault (`route_darkness._prepare_darkness`).
     `disk3_seed_rows` (`darkness-reload` with `spare` only) does the same for the run copy of
     disk 3, from its control-letter vault (`route_darkness._prepare_darkness_spare_reload`).
+    `train` (`darkness-train` only, and required there) is the step text `train N`: the manifest
+    records line N and the party size, which accept and measure build the route from.
     """
     if not HOLDER.fullmatch(run_id):
         raise RouteError("run id must use letters, digits, dot, underscore or hyphen")
@@ -3741,6 +3752,11 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError("--disk3-seed-rows is for darkness-reload with --spare-disk")
     if camp and name not in CAMP_TITLES:
         raise RouteError(f"{name} takes camp steps only on a published prepare")
+    if (train is None) == (name == "darkness-train"):
+        raise RouteError("--train is for darkness-train, which needs it")
+    if train is not None and camp:
+        raise RouteError("darkness-train takes no camp steps")
+    line = parse_train(train) if train is not None else None
     if issue is not None and not ISSUE_ARGUMENT.fullmatch(issue):
         raise RouteError("the issue is a number or WISH-N")
     if camp:
@@ -3781,6 +3797,14 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         except (RouteError, StageError) as exc:
             shutil.rmtree(run)
             raise RouteError(str(exc)) from exc
+    if line is not None:
+        # A line the route cannot train blocks here, and takes the folder with it.
+        try:
+            train_steps(line, len(manifest["names_a"]))
+        except RouteError:
+            shutil.rmtree(run)
+            raise
+        manifest["train"] = {"line": line, "party_size": len(manifest["names_a"])}
     if "vault" in manifest:
         # A vault outside the route's bounds blocks here, and takes the folder with it.
         try:
@@ -3963,6 +3987,19 @@ def _vault_title_for(manifest_path: pathlib.Path) -> AmigaTitle:
         return vault_title(held["items"], any(held["coins"]))
     except (KeyError, TypeError) as exc:
         raise RouteError(f"the manifest {manifest_path} records no vault: {exc!r}") from exc
+
+
+def _train_title_for(manifest_path: pathlib.Path) -> AmigaTitle:
+    """The `darkness-train` route for the line and party size its manifest recorded."""
+    try:
+        manifest = json.loads(pathlib.Path(manifest_path).read_text())
+    except (OSError, ValueError) as exc:
+        raise RouteError(f"the manifest {manifest_path} cannot be read: {exc}") from exc
+    try:
+        held = manifest["train"]
+        return train_title(held["line"], held["party_size"])
+    except (KeyError, TypeError) as exc:
+        raise RouteError(f"the manifest {manifest_path} records no train step: {exc!r}") from exc
 
 
 def _spare_title(manifest_path: pathlib.Path, name: str, title: AmigaTitle,
@@ -5017,6 +5054,8 @@ def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, di
             title = POOL_ENCOUNTER
         if args.title == "darkness-vault":
             title = _vault_title_for(args.manifest)
+        if args.title == "darkness-train":
+            title = _train_title_for(args.manifest)
         if args.title in ("darkness", "darkness-reload"):
             title = published_darkness_title(args.manifest, args.title) or title
         if args.title in SPARE_TITLES:
@@ -5109,6 +5148,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--spare-seed-rows", type=int, default=None,
                    help="darkness-vault with --spare-disk: put this many rows of the staged "
                         "vault into the run copy of the spare's loaded-letter vault")
+    p.add_argument("--train", default=None, metavar="'train N'",
+                   help="darkness-train only: train party line N (counted from 1, not the last) "
+                        "at Elminster before the camp save")
     p.add_argument("--disk3-seed-rows", type=int, default=None,
                    help="darkness-reload with --spare-disk: put this many rows of disk 3's "
                         "control-letter vault into the run copy of disk 3's loaded-letter vault")
@@ -5245,6 +5287,9 @@ def main(argv: list[str] | None = None) -> int:
                 or args.title not in SPARE_TITLES):
             raise RouteError(f"--spare-disk is for {', '.join(sorted(SPARE_TITLES))}, "
                              "not a published disk")
+        if args.command == "prepare" and args.train is not None and (
+                args.published_disk_one or args.published_disk_three):
+            raise RouteError("--train is not for a published disk")
         if args.command == "prepare" and args.spare_seed_rows is not None and (
                 args.published_disk_one or args.published_disk_three):
             raise RouteError("--spare-seed-rows is not for a published disk")
@@ -5375,7 +5420,8 @@ def main(argv: list[str] | None = None) -> int:
                               **({"spare_seed_rows": args.spare_seed_rows}
                                  if args.spare_seed_rows is not None else {}),
                               **({"disk3_seed_rows": args.disk3_seed_rows}
-                                 if args.disk3_seed_rows is not None else {})))
+                                 if args.disk3_seed_rows is not None else {}),
+                              **({"train": args.train} if args.train is not None else {})))
                 return 0
             title, manifest, legacy = _route_title(args, silver_blades)
             attempt = args.attempt or ("recon1" if args.command == "measure" else

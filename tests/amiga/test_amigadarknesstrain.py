@@ -18,10 +18,9 @@ _LEAD = (
 _TAIL = (("R", "camp", "key"), ("S", "camp_save_picker", "key"),
          ("G", "exit_game", "write"), ("N", "camp", "key"))
 
-# As measured on the Amiga with MARIT on line 3 of six: NP2 moves Elminster's highlight, his
-# TRAIN opens the party menu with TRAIN CHARACTER offered, whose T asks DO YOU WISH TO TRAIN?,
-# Y trains and puts the highlight on line 4, NP8 puts it back, and BEGIN ADVENTURING returns
-# to Elminster's menu with line 3 still highlighted.
+# Line 3 of six: NP2 moves Elminster's highlight, his TRAIN opens the party menu with TRAIN
+# CHARACTER offered, whose T asks DO YOU WISH TO TRAIN?, Y trains and puts the highlight on line 4,
+# NP8 puts it back, and BEGIN ADVENTURING returns to Elminster's menu, assumed to keep line 3.
 _TRAIN_3_OF_6 = (
     ("NP2", "elminster_row", "key"), ("NP2", "elminster_row", "key"),
     ("T", "train_menu", "key"), ("T", "train_prompt", "key"), ("Y", "train_menu", "key"),

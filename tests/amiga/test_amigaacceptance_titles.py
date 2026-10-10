@@ -4164,3 +4164,71 @@ def test_an_accept_run_fails_when_a_save_holds_another_vault(tmp_path, monkeypat
                                   (staged, dos_codec.EMPTY_POD_VAULT))
     assert result["vault_problems"] == ["vault G differs from the vault staged in slot B"]
     assert result["success"] is False
+
+
+def _train_prepare_with(monkeypatch, tmp_path):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+
+    def fake(run, specimen, **kw):
+        scratch.ensure(run)
+        return {"title": "darkness", "names_a": NAMES}
+
+    monkeypatch.setattr(foundation, "_PREPARE", {"darkness-train": fake, "darkness": fake})
+
+
+def test_a_train_prepare_records_the_line_and_the_party_size(tmp_path, monkeypatch):
+    _train_prepare_with(monkeypatch, tmp_path)
+    path = foundation.prepare(foundation.TITLES["darkness-train"], "run", train="train 1")
+    assert json.loads(path.read_text())["train"] == {"line": 1, "party_size": len(NAMES)}
+
+
+@pytest.mark.parametrize("text", ["train 0", f"train {len(NAMES)}", "train 99", "rest"])
+def test_a_train_prepare_blocks_a_line_the_route_cannot_train_and_frees_its_run_id(
+        tmp_path, monkeypatch, text):
+    _train_prepare_with(monkeypatch, tmp_path)
+    with pytest.raises(winuaesession.RouteError):
+        foundation.prepare(foundation.TITLES["darkness-train"], "run", train=text)
+    assert not (tmp_path / "acceptance" / foundation.ISSUE / "run").exists()
+
+
+def test_train_goes_with_the_train_title_only(tmp_path, monkeypatch):
+    _train_prepare_with(monkeypatch, tmp_path)
+    with pytest.raises(winuaesession.RouteError, match="--train"):
+        foundation.prepare(foundation.TITLES["darkness-train"], "run")
+    with pytest.raises(winuaesession.RouteError, match="--train"):
+        foundation.prepare(foundation.DARKNESS, "run", train="train 1")
+
+
+def test_the_cli_passes_train_to_prepare(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(foundation, "prepare",
+                        lambda title, run_id, **kw: seen.append((title, kw)) or tmp_path / "p.json")
+    assert foundation.main(["prepare", "--title", "darkness-train", "--run-id", "r",
+                            "--train", "train 2"]) == 0
+    assert seen[0][0] is foundation.TITLES["darkness-train"] and seen[0][1]["train"] == "train 2"
+
+
+@pytest.mark.parametrize("command", ["measure", "accept"])
+def test_the_cli_runs_a_train_title_at_the_line_and_party_size_its_manifest_recorded(
+        tmp_path, monkeypatch, command):
+    called = _Called()
+    monkeypatch.setattr(foundation, "run_recon", called)
+    monkeypatch.setattr(foundation, "WinGuest", lambda: object())
+    monkeypatch.setattr(foundation, "PixelGuards", lambda path: ("guards", str(path)))
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text(json.dumps({"train": {"line": 3, "party_size": 6}}))
+    extra = ["--guards", "g.json"] + (["--identity", "i.json"] if command == "accept" else [])
+    assert foundation.main([command, "--title", "darkness-train", "--manifest", str(manifest),
+                            "--audio-proof", str(tmp_path / "mute.json"),
+                            "--attempt", "a1", *extra]) == 0
+    assert called.calls[-1]["title"] == route_darkness.train_title(3, 6)
+
+
+def test_a_train_manifest_without_a_train_step_or_with_a_bad_one_builds_no_title(tmp_path):
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text("{}")
+    with pytest.raises(winuaesession.RouteError, match="records no train step"):
+        foundation._train_title_for(manifest)
+    manifest.write_text(json.dumps({"train": {"line": 6, "party_size": 6}}))
+    with pytest.raises(winuaesession.RouteError, match="last line"):
+        foundation._train_title_for(manifest)

@@ -300,10 +300,9 @@ def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTi
 #: CLASS` offered, the member Elminster's menu highlighted still highlighted. Its `T` shows
 #: `<NAME> WILL BECOME: A LEVEL <N> <CLASS>` over the bar `DO YOU WISH TO TRAIN? YES NO`, and `Y`
 #: trains and redraws the party menu with the highlight on the next line. `BEGIN ADVENTURING`
-#: returns to Elminster's menu; the boot had both menus on one line then, so which highlight it
-#: keeps is unmeasured, and the route puts the party menu's back first so the two agree. A `T` on
-#: a member who is not ready to train left the party menu unchanged, and `ESC` on it did nothing.
-#: As measured in one WinUAE boot.
+#: returns to Elminster's menu, assumed to keep the party menu's highlight, so the route puts the
+#: party menu's back on line N first. A `T` on a member who is not ready to train leaves the party
+#: menu unchanged, and `ESC` on it does nothing.
 TRAIN_MENU = "train_menu"
 TRAIN_PROMPT = "train_prompt"
 #: Elminster's menu after a highlight move: the same bar as `VAULT_MENU`, waited for briefly.
