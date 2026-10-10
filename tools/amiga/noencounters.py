@@ -19,7 +19,9 @@ Its SPECULATIVE rest row also writes variable `$2C`, which the save stores.
 A row applies only while its area's script is loaded, so `on` reports every
 row of an area that is not loaded as stopped and writes nothing for it; `keys`
 applies the rows again before each key press and changes the row once its
-area loads.  A `none` row names a script that makes no random-encounter roll,
+area loads.  A gate that names its `area` is also checked against the loaded
+script's entry table, because Silver Blades does not clear the buffer before a
+load: a short script leaves an earlier area's roll in place past its end.  A `none` row names a script that makes no random-encounter roll,
 recognised by its entry table, so that while it is loaded the reply names the script
 as having no random roll, beside the stopped rows instead of leaving them to read as a failure.
 
@@ -86,7 +88,8 @@ class Row:
     row has no `changes`: it holds the bytes of `new` where the game writes a
     chance, and puts back what it read.  A none row's `spec` is the script's
     first byte and `digest` the hash of its `ENTRY_TABLE` bytes; it writes
-    nothing.
+    nothing.  A gate's `area`, when set, is that hash for the script the roll
+    belongs to, and the gate applies only while that script is loaded.
     """
 
     title: str
@@ -97,13 +100,14 @@ class Row:
     new: bytes
     grade: str
     source: str
+    area: str = ""
 
 
 _TO_SAVE = ((0, SAVE),)
 
 
-def _gate(title, spec, digest, grade, source, changes=_TO_SAVE):
-    return Row(title, GATE, spec, digest, changes, b"", grade, source)
+def _gate(title, spec, digest, grade, source, changes=_TO_SAVE, area=""):
+    return Row(title, GATE, spec, digest, changes, b"", grade, source, area)
 
 
 def _rest(title, spec, new, grade, source):
@@ -117,6 +121,17 @@ def _none(title, spec, digest, grade, source):
 def length(row: Row) -> int:
     """How many bytes the switch reads at a row's address."""
     return {GATE: STATEMENT, NONE: ENTRY_TABLE}.get(row.kind, len(row.new))
+
+
+#: Where a script starts in the buffer a spec's pointer gives: Pool's
+#: `ecl.dax` at its first byte, the other titles' at ECL address `$8000`.
+SCRIPT_START = {"pool-of-radiance": 0}
+
+
+def script_spec(row: Row) -> str:
+    """The spec of the first byte of the script a row's spec reads into."""
+    pointer, _offset = parse_spec(row.spec)
+    return f"*{pointer:#x}+{SCRIPT_START.get(row.title, 0x8000):#x}"
 
 
 #: Pool's buffer is `ecl.dax` at `[data+0xA4] + (A - $9900)`; the other titles'
@@ -159,10 +174,26 @@ ROWS = (
           "world map area $51: no RANDOM statement; each leg's fight is the "
           "leg's own"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x859D", "dc6e4e48", PROBABLE,
-          "ECL10 roll at $859D: IF> EXIT"),
+          "ECL10 roll at $859D: IF> EXIT", area="793f0cfc"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x89F6", "dc6e4e48", PROBABLE,
           "The Ruins (area $20, disk 2 ECL block 3) roll at $89F6, reached on an "
-          "ordinary square when the [$4C1B] wait is 0: IF> 5 EXIT"),
+          "ordinary square when the [$4C1B] wait is 0: IF> 5 EXIT",
+          area="0a16c6d8"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x834F", "dc6e4e48", PROBABLE,
+          "area 33 ($21) roll at $834F, reached from the step entry on an "
+          "ordinary square when the [$4C1B] wait is 0: IF> 5 EXIT, else one of "
+          "two monster sets and COMBAT", area="5bee2f53"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x83ED", "dc6e4e48", PROBABLE,
+          "area 65 ($41) roll at $83ED, reached from the step entry on an "
+          "ordinary square when [$4CD9] is not 0 and the [$4C1B] wait is 0: "
+          "IF> 3 EXIT, else COMBAT at $845A", area="6a55442a"),
+    _gate("secret-of-the-silver-blades", "*0x6956+0x9827", "dc6e4e48", PROBABLE,
+          "area 81 ($51) roll at $9827, reached from the step entry on an "
+          "ordinary square once step counter [$4C02] passes 10: COMPARE 15, "
+          "roll, IF<= GOTO $9ACA (EXIT), else the monster tables and the "
+          "encounter menu", area="bfb373ae"),
+    _none("secret-of-the-silver-blades", "*0x6956+0x8000", "9a483961", PROBABLE,
+          "area 48 ($30): no RANDOM statement"),
     _gate("pools-of-darkness", "*0x6EA6+0x82EA", "e43dac29", PROBABLE,
           "GLB block 17 roll at $82EA, reached from the step entry on an "
           "ordinary square: IF> 5 EXIT, else a fight; decoded with Pools of "
@@ -286,6 +317,13 @@ class EncounterSwitch:
                                          f"random-encounter roll: {row.source}"})
                 continue
             if row.kind == GATE:
+                elsewhere = self._other_area(row)
+                if elsewhere is not None:
+                    if address not in self.blocked:
+                        self.blocked.add(address)
+                        done.append({"row": row.spec, "grade": row.grade,
+                                     "stopped": elsewhere})
+                    continue
                 now = self.read(address, STATEMENT)
                 if address in self.patched and now == self.patched[address][1]:
                     continue
@@ -334,6 +372,19 @@ class EncounterSwitch:
                 result = self._checked_write(address, now, row.new)
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
+
+    def _other_area(self, row: Row) -> str | None:
+        """None when `row` names no area or its area's script is loaded, else
+        why the gate is stopped."""
+        if not row.area:
+            return None
+        head = self.resolve(script_spec(row))
+        seen = None if head is None else digest(self.read(head, ENTRY_TABLE))
+        if seen == row.area:
+            return None
+        return (f"the loaded script's {ENTRY_TABLE}-byte entry table does not "
+                f"match the row's area ({seen}, not {row.area}), so its area "
+                "is not loaded")
 
     def release(self) -> list[dict]:
         """Put every changed byte back, without turning the switch off.
@@ -602,8 +653,8 @@ class PipeMemory:
         #: Pointer offsets read in this pass.
         self.fresh: set[int] = set()
 
-    def _address(self, row: Row, pointers: dict[int, int]) -> int | None:
-        pointer, offset = parse_spec(row.spec)
+    def _address(self, spec: str, pointers: dict[int, int]) -> int | None:
+        pointer, offset = parse_spec(spec)
         if pointer is None:
             return self.target.data_base + offset
         value = pointers.get(pointer)
@@ -619,18 +670,20 @@ class PipeMemory:
         pointers = sorted({p for p, _ in (parse_spec(r.spec) for r in rows)
                            if p is not None})
         heads = [(self.target.data_base + p, 4) for p in pointers]
-        guesses = [(a, length(r)) for r in rows
-                   if (a := self._address(r, self.pointers)) is not None]
+        # Each row's bytes, and the entry table of a gate that names its area.
+        reads = [(r.spec, length(r)) for r in rows]
+        reads += [(script_spec(r), ENTRY_TABLE) for r in rows if r.area]
+        guesses = [(a, n) for spec, n in reads
+                   if (a := self._address(spec, self.pointers)) is not None]
         self.fetch(heads + guesses)
         before = dict(self.pointers)
         for p, head in zip(pointers, heads, strict=True):
             if head in self.blocks:
                 self.pointers[p] = int.from_bytes(self.blocks[head], "big")
                 self.fresh.add(p)
-        moved = [r for r in rows if self._address(r, self.pointers)
-                 != self._address(r, before)]
-        self.fetch([(a, length(r)) for r in moved
-                    if (a := self._address(r, self.pointers)) is not None])
+        self.fetch([(a, n) for spec, n in reads
+                    if (a := self._address(spec, self.pointers))
+                    != self._address(spec, before) and a is not None])
 
     def clear(self) -> None:
         self.blocks.clear()

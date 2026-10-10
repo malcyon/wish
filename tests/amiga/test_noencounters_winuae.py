@@ -23,6 +23,8 @@ REAL_ROWS = ne.ROWS
 
 #: A synthetic roll statement, opcode `RANDOM` first, standing in for each gate.
 STATEMENT = bytes([ne.RANDOM, 0x13, 0x00, 0x6E, 0x79, 0x00])
+#: A synthetic entry table, standing in for the area each area-checked gate names.
+ENTRIES = bytes(range(0x40, 0x40 + ne.ENTRY_TABLE))
 TITLES = sorted({row.title for row in ne.ROWS})
 DATA_BASE = 0x10000
 POOL_ANCHOR_BASE = 0x8000
@@ -80,9 +82,12 @@ class FakePipe:
 
 @pytest.fixture(autouse=True)
 def synthetic_digests(monkeypatch):
-    """Every gate is recognised by the synthetic statement's hash."""
+    """Every gate is recognised by the synthetic statement's hash, and a gate
+    that names its area by the synthetic entry table's."""
     monkeypatch.setattr(ne, "ROWS", tuple(
-        dataclasses.replace(r, digest=ne.digest(STATEMENT)) if r.kind == ne.GATE else r
+        dataclasses.replace(r, digest=ne.digest(STATEMENT),
+                            area=r.area and ne.digest(ENTRIES))
+        if r.kind == ne.GATE else r
         for r in ne.ROWS))
 
 
@@ -100,6 +105,10 @@ def build(pipe: FakePipe, title: str) -> dict[str, int]:
     for pointer, buffer in zip(pointers, BUFFERS, strict=False):
         pipe.put(DATA_BASE + pointer, buffer.to_bytes(4, "big"))
     gates = {}
+    for row in ne.rows_for(title):
+        if row.area:
+            pointer, offset = ne.parse_spec(ne.script_spec(row))
+            pipe.put(BUFFERS[pointers.index(pointer)] + offset, ENTRIES)
     for row in ne.rows_for(title):
         pointer, offset = ne.parse_spec(row.spec)
         address = BUFFERS[pointers.index(pointer)] + offset
@@ -663,3 +672,144 @@ def test_curse_on_names_the_world_map_script_and_writes_nothing_there(state, mon
         named = [r["none"] for r in result["rows"] if "none" in r]
         assert len(named) == 1 and f"area ${area:02X}" in named[0], area
         assert pipe.writes() == [], area
+
+
+# -- Secret of the Silver Blades, against the player's disks --------------------
+
+SILVER = "secret-of-the-silver-blades"
+COMBAT, SETUPMON, RETURN = 0x24, 0x0C, 0x13
+
+#: Each Silver Blades gate's script offset and the one area whose script holds
+#: its statement there; every one is `RANDOM 99` into the same variable.
+SILVER_GATES = {0x59D: 16, 0x9F6: 32, 0x34F: 33, 0x3ED: 65, 0x1827: 81}
+
+#: The area the `none` row names, whose script makes no `RANDOM` at all.
+SILVER_NONE = 48
+
+
+def silver_scripts() -> dict[int, bytes]:
+    from automap.amiga import glib_blocks
+    from tools.amiga import tripspace
+
+    library = _library(SILVER, "ECL.GLB")
+    blocks = glib_blocks(library)
+    return {s.area: blocks[s.block] for s in tripspace.spaces(SILVER, library)}
+
+
+def _reaches(model, body, at, ops, limit=40):
+    """Whether the straight path from `at`, taking every `GOTO`, meets one of
+    `ops` before an `EXIT` or `RETURN`."""
+    from tools.amiga import tripspace
+
+    for _ in range(limit):
+        statement = tripspace.decode(model, body, at)
+        if statement.op in ops:
+            return True
+        if statement.op in (EXIT, RETURN):
+            return False
+        at = (statement.address(0) - SCRIPT_BASE if statement.op == tripspace.GOTO
+              else statement.end)
+    return False
+
+
+def test_each_silver_gate_is_the_fight_roll_of_one_area_and_save_skips_the_fight():
+    from tools.amiga import amigasaves, tripspace
+
+    scripts = silver_scripts()
+    model, skip = tripspace.glib_model(SILVER, amigasaves.images())
+    gates = [r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.GATE]
+    assert {ne.parse_spec(r.spec)[1] - SCRIPT_BASE for r in gates} == set(SILVER_GATES)
+    for row in gates:
+        at = ne.parse_spec(row.spec)[1] - SCRIPT_BASE
+        area = SILVER_GATES[at]
+        hits = [a for a, body in scripts.items()
+                if ne.digest(body[at:at + ne.STATEMENT]) == row.digest]
+        assert hits == [area], row.spec
+        named = [a for a, body in scripts.items()
+                 if ne.digest(body[:ne.ENTRY_TABLE]) == row.area]
+        assert named == [area], row.spec
+        body = scripts[area]
+        roll = tripspace.decode(model, body, at)
+        assert roll.op == ne.RANDOM and roll.operands[0][0] == 0, row.spec
+        limit, variable = roll.operands[0][1], roll.operands[1]
+        compare = tripspace.decode(model, body, roll.end)
+        assert compare.op == COMPARE and variable in compare.operands, row.spec
+        condition = tripspace.decode(model, body, compare.end)
+        assert condition.op in CONDITIONS, row.spec
+        # A limit held in a variable is one of the constants the statements
+        # just before the roll save into it (area 16: 4, or 15 when [$4C2D] is 1).
+        found, _bad = tripspace.walk(SILVER, model, skip, body)
+        other = next(o for o in compare.operands if o != variable)
+        limits = ([other[1]] if other[0] == 0 else
+                  [s.operands[0][1] for i, s in found.items()
+                   if at - 0x20 <= i < at and s.op == ne.SAVE
+                   and s.operands[0][0] == 0 and s.operands[1] == other])
+        assert limits, row.spec
+        for value in limits:
+            a, b = ((limit, value) if compare.operands[0] == variable
+                    else (value, limit))
+            assert CONDITIONS[condition.op](a, b), f"SAVE {limit} misses the skip at {row.spec}"
+        taken = tripspace.decode(model, body, condition.end)
+        assert taken.op in (EXIT, tripspace.GOTO), row.spec
+        assert not _reaches(model, body, condition.end, {COMBAT, SETUPMON}), row.spec
+        assert _reaches(model, body, taken.end, {COMBAT, SETUPMON}), row.spec
+
+
+def test_the_silver_none_row_is_the_one_script_with_no_roll_it_names():
+    from tools.amiga import amigasaves, tripspace
+
+    scripts = silver_scripts()
+    model, skip = tripspace.glib_model(SILVER, amigasaves.images())
+    (row,) = [r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.NONE]
+    hits = [a for a, body in scripts.items()
+            if ne.digest(body[:ne.ENTRY_TABLE]) == row.digest]
+    assert hits == [SILVER_NONE]
+    found, bad = tripspace.walk(SILVER, model, skip, scripts[SILVER_NONE])
+    assert not bad and found
+    assert not any(s.op == ne.RANDOM for s in found.values())
+
+
+def test_silver_on_changes_only_the_loaded_area_s_roll_and_off_puts_the_script_back(
+        state, monkeypatch):
+    monkeypatch.setattr(ne, "ROWS", REAL_ROWS)
+    scripts = silver_scripts()
+    pipe = FakePipe()
+    build(pipe, SILVER)
+    gate = next(r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.GATE)
+    buffer = int.from_bytes(pipe.get(DATA_BASE + ne.parse_spec(gate.spec)[0], 4), "big")
+    for area, body in sorted(scripts.items()):
+        script = body.ljust(SCRIPT_BUFFER, b"\0")
+        pipe.put(buffer + SCRIPT_BASE, script)
+        result = switch(pipe, SILVER, state).on()
+        now = pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER)
+        changed_at = {i for i in range(SCRIPT_BUFFER) if now[i] != script[i]}
+        assert changed_at == {at for at, a in SILVER_GATES.items() if a == area}, area
+        assert all(now[at] == ne.SAVE for at in changed_at), area
+        named = [r for r in result["rows"] if "none" in r]
+        assert len(named) == (area == SILVER_NONE), area
+        off = switch(pipe, SILVER, state).off()
+        assert "error" not in off, area
+        assert pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER) == script, area
+
+
+def test_a_silver_roll_left_past_a_short_script_s_end_is_not_changed(state, monkeypatch):
+    """The Ruins lead to area 48, whose script is shorter than the Ruins' roll
+    offset; the game does not clear the buffer, so the roll is still there."""
+    monkeypatch.setattr(ne, "ROWS", REAL_ROWS)
+    scripts = silver_scripts()
+    pipe = FakePipe()
+    build(pipe, SILVER)
+    gate = next(r for r in REAL_ROWS if r.title == SILVER and r.kind == ne.GATE)
+    buffer = int.from_bytes(pipe.get(DATA_BASE + ne.parse_spec(gate.spec)[0], 4), "big")
+    ruins = next(at for at, a in SILVER_GATES.items() if a == 32)
+    assert len(scripts[SILVER_NONE]) < ruins
+    pipe.put(buffer + SCRIPT_BASE, scripts[32].ljust(SCRIPT_BUFFER, b"\0"))
+    pipe.put(buffer + SCRIPT_BASE, scripts[SILVER_NONE])
+    before = pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER)
+    result = switch(pipe, SILVER, state).on()
+    assert pipe.writes() == []
+    assert pipe.get(buffer + SCRIPT_BASE, SCRIPT_BUFFER) == before
+    stopped = [r for r in result["rows"] if r["row"] == f"*0x6956+{ruins + SCRIPT_BASE:#X}"
+               .replace("0X", "0x")]
+    assert len(stopped) == 1 and "entry table" in stopped[0]["stopped"]
+    assert len([r for r in result["rows"] if "none" in r]) == 1

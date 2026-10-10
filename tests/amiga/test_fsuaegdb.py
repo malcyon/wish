@@ -3673,9 +3673,9 @@ def test_silver_blades_the_ruins_roll_is_changed_where_the_towns_is_not_loaded(
     from tools.amiga import noencounters
     roll = bytes([0x08, 0x11, 0x22, 0x33, 0x44, 0x55])
     monkeypatch.setattr(noencounters, "ROWS", tuple(
-        dataclasses.replace(r, digest=noencounters.digest(roll))
-        if r.title == "secret-of-the-silver-blades" and r.kind == noencounters.GATE
-        else r for r in noencounters.ROWS))
+        dataclasses.replace(r, digest=noencounters.digest(roll), area="")
+        for r in noencounters.ROWS
+        if r.spec in ("*0x6956+0x859D", "*0x6956+0x89F6")))
     memory = Memory({0x89F6: roll, 0x859D: bytes([0x00, 1, 2, 3, 4, 5])})
     switch = noencounters.EncounterSwitch(
         "secret-of-the-silver-blades",
