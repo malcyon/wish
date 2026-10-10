@@ -34,7 +34,7 @@ configured model, not the same decision spelled two ways.
 | `docs-reviewer` | Sonnet | `gpt-6-sol` (high) | when documentation may have drifted from the code. Scope it to the files it owns |
 | `backlog-auditor` | Sonnet | `gpt-6-sol` (high) | before a refinement pass, or when the backlog has grown unwieldy; it reports audits and bounded briefs only |
 | `changelog-writer` | Sonnet | `gpt-6-sol` (high) | after a batch of work lands, and before cutting a release |
-| `test-runner` | **Haiku** | `gpt-6-luna` (medium) | a focused run on named tests, the CI result for an exact pushed SHA, or a whole-suite diagnostic when one is explicitly asked for, so that the run does not block the window Donald is asking questions in. It reports and fixes nothing |
+| `test-runner` | **Haiku** | `gpt-6-luna` (medium) | the one reusable runner for every local test request in a session: a focused run on named tests, the CI result for an exact pushed SHA, or a whole-suite diagnostic when one is explicitly asked for, so that the run does not block the window Donald is asking questions in. It reports and fixes nothing |
 
 **Cost is not the filter on `deep-research` and `architect`; fit is.** Fable is
 Claude Code's name for the tier behind both (Codex runs the same two agents on
@@ -128,19 +128,33 @@ acceptance.
 one, say so in a message to the agent, and prefer a targeted edit -- putting
 back the one hunk you changed -- to restoring the whole file you remember.
 
-**Tell the agent to run the tests its change affects, not the suite.**
-`pytest` on those, including any relevant tests that read game data, plus
-`ruff` and `genui.py --check`. CI runs the full suite on the pushed commit --
-`.claude/rules/commits.md`. Six agents each running the whole suite is six
-copies of Qt on one machine. Tell it to run in the
-**foreground with a timeout** as well: a backgrounded `pytest` here can come
-back `killed` rather than with a result, and an agent waiting on a run that
-never reports ends its turn with nothing.
+**Tell the agent to request the tests its change affects, not the suite, and
+not to run `pytest` itself.** On a managed host direct `pytest` stops before
+collection. The agent submits a request with `tools/suite/testrun.py submit`
+(listing the files its checks depend on), sends the ID and record path to the
+test-runner address the brief gives it, and leaves those files alone until the
+result arrives. The runner adds `ruff` and `genui.py --check`; the brief names
+any relevant tests that read game data. CI runs the full suite on the pushed
+commit -- `.claude/rules/commits.md`. Several copies of Qt running at once stall
+each other and can exhaust the machine's memory. If the request cannot be
+delivered, the agent keeps its ID and reports to the root; it never starts a
+runner.
 
 **`test-runner` takes a run off the main window**, because a run in here is
-time Donald cannot ask anything. It runs a whole-suite diagnostic only when
-somebody asks for one by name. Everything above still binds it: foreground,
-explicit timeout, never backgrounded. **Never start two.**
+time Donald cannot ask anything. **There is one per orchestrator session, it is
+reusable, and it runs one request at a time.** At startup the orchestrator
+spawns it and gives every executing subagent its address; existing agents get
+the address too. It runs a whole-suite diagnostic only when somebody asks for
+one by name. Each request runs in the foreground with an explicit Bash timeout
+of 600000 ms, never backgrounded, and one local test command at a time runs
+across every session and worktree. When idle it ends its turn, and a sibling's
+message resumes it. Only the orchestrator checks the request records
+(`testrun.py list`, `status`, `reconcile`), cancels a request
+(`testrun.py cancel ID`, which works while the runner is blocked) and resumes
+or replaces a runner and republishes its address; a runner Donald stopped stays
+stopped until he authorizes resuming it. CI monitoring is read-only and sits
+outside the test lock, but it should not occupy the sole runner while local
+requests wait. In Codex the same policy applies in that tool's own lifecycle.
 
 **Say in the brief what `AGENTS.md` cannot say for you, because it does not
 know this task.** Claude loads its eight unscoped rule files into each subagent

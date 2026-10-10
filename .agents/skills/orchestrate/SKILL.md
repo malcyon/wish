@@ -21,7 +21,7 @@ The definitions are .codex/agents/<name>.toml, each naming its own Codex model a
 - emulator-runner: a bounded emulator experiment where the harness, actions, captures and stop condition are specified. It preserves evidence and interprets nothing, runs a driver that already exists, and does not modify it. If the brief needs a driver written or extended first, that is building: junior-dev when the plan names the driver and the sequence, reverse-engineering when the sequence has to be worked out from the game's screens or bytes. Then the runner gets the finished driver. Its budget is two boots that end at the same step, or an hour, and the budget belongs to the investigation: a brief that relaunches the work says how many boots are already spent, and they count.
 - qt-ui-specialist: a Qt repair where the behaviour, wording, target widget and acceptance criteria are already approved.
 - code-reviewer: after every subagent that wrote code, on the local commit, scoped to its files, before the push.
-- test-runner: a focused run on named tests, or the CI result for an exact pushed SHA. A whole-suite run only as a diagnostic Donald asks for. Never two at once.
+- test-runner: runs every local test request in this session, one at a time: a focused run on named tests, or the CI result for an exact pushed SHA. A whole-suite run only as a diagnostic Donald asks for. Never two at once.
 - docs-reviewer: when documentation may have drifted from the code.
 - backlog-auditor, changelog-writer: audits and the changelog, on request.
 
@@ -88,6 +88,10 @@ results. Do not duplicate its GitHub queries or solicit progress while its
 monitor is within budget. A missing result or elapsed budget is incomplete,
 never permission to close that batch's issues or push on top of it. Follow
 commits.md's exact-SHA gate.
+
+## Test requests
+
+On a managed host, local tests run only through `tools/suite/testrun.py`, one top-level command at a time across every session and worktree. Executing agents submit a request and report its ID and record path to you; you assign it to one test-runner, one request at a time, with the full ID and path, and hand its result back to the requester. Agents never run `pytest` themselves there and never start a runner. You alone check the records (`testrun.py list`, `status`, `reconcile`) after a delivery failure, and you may run `testrun.py cancel ID` while the runner is blocked. A runner Donald stopped stays stopped until he authorizes resuming it. Immediate stop: no new commands, cancel the active request if instructed, pending requests cancelled or left pending; wind-down finishes already authorized checks. CI monitoring is read-only and sits outside the test lock; do not leave the sole runner on a long CI watch while local requests wait.
 
 ## Keeping the queue file current
 

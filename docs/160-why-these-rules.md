@@ -965,6 +965,25 @@ run. The hook's file was kept as an entry point that checks nothing until no
 running session predated its retirement, so a session with the old wiring
 cached would not fail on every command; it was then deleted.
 
+**Two test runs at once killed every agent on the VM.** On 2026-10-10 the
+kernel's OOM killer ended the orchestrator session on the agent VM (12 GiB, no
+swap) while two agents each ran a focused selection. Each run started twelve
+xdist workers (`-n auto` resolves to the machine's twelve threads), and one
+surviving run held eleven of them at 250 to 920 MB each. Worktree edits survived
+on disk; every in-flight run and agent context did not. Nothing limited how many
+runs started together across agents, and the earlier proposals (a smaller
+worker count, two file-lock slots, a lowered `oom_score_adj`) either left the
+total unbounded or protected one process instead of the machine. The rule now is
+one test command at a time across every session and worktree, each inside a
+systemd service with an 8 GiB memory cap and no swap, with parallelism inside
+the command unchanged so `--dist loadgroup` keeps its guarantee. Agents ask one
+reusable Haiku `test-runner` to run their checks instead of starting `pytest`
+themselves, so that requests queue in one place and a requester can keep
+working. Only the orchestrator recovers a lost runner, so a
+replacement cannot start a request twice. Elsewhere pytest is unchanged; the
+guard is for accidental direct runs on a managed host and does not stop an agent
+that deliberately changes system configuration.
+
 ### What the rule files said before they dropped their history
 
 The rule files state the rule and carry no history. These are the passages they held on this section's subject before that cut, verbatim.

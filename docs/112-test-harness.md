@@ -97,3 +97,34 @@ Two negative results to keep:
 * **Stop `_child` using `findChild`.** `findChild` was the messenger. Caching
   the lookups would have hidden the fault rather than fixed it, and with 55
   windows a run it is not hot enough to justify doing on its own merits.
+
+## Running the suite on the agent VM
+
+Two local runs at once start two full sets of Qt-loading workers, and on the
+agent VM (12 GiB, no swap) that was enough for the kernel to kill the
+orchestrator session and every agent under it. A third fault of this kind is
+not in the code under test; it is in how many test commands run together.
+
+On a managed host (`/etc/wish/test-runner.json` exists with `enabled: true`)
+`tests/conftest.py` stops a direct `pytest` before collection and prints the
+launcher command. Local tests run only through `.venv/bin/python
+tools/suite/testrun.py`:
+
+* **One top-level test command at a time**, across every session and worktree,
+  under one shared execution lock.
+* **Each command in `wish-tests-run.service`** under `wish-tests.slice`, which
+  caps test memory at 8 GiB with no swap. Agents, the runner and the launcher
+  stay outside the slice, so a test that exceeds the cap ends its own service
+  and nothing else.
+* **Parallelism inside one command is unchanged**: `-n auto --dist loadgroup`,
+  or the guest profile's `-n 12`.
+* **A request is a record** under `~/.local/state/wish/test-requests/`:
+  `submit` creates it, `run ID` runs it in the foreground (exit 0 only when
+  every requested check passed), and `status`, `list`, `cancel` and `reconcile`
+  read or settle it. It ends as passed, failed, timed_out, cancelled,
+  interrupted, stale or infrastructure_failure.
+* **Agents do not call the launcher's `run`.** The session's one `test-runner`
+  does, taking requests in arrival order; see
+  [Delegating](../.claude/rules/delegating.md).
+
+CI, Windows, macOS and an unmanaged Linux run `pytest` as before.

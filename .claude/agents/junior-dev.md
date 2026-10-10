@@ -95,9 +95,21 @@ tests skipped has told you nothing. Around thirty here need the player's own
 game disks and skip without them; that is correct behaviour, and the count
 still belongs in your report.
 
-**Run `pytest` on the tests your change affects, plus `ruff`, before you
-report**, including any relevant tests that read game data, which CI cannot
-run. Do not run the whole suite: CI runs it on the pushed commit.
+**Request the checks for the tests your change affects; do not run `pytest`
+yourself.** On a managed host direct `pytest` stops before collection. Submit
+the request, then send its ID and record path to the test-runner whose address
+your brief gives you, with SendMessage:
+
+```sh
+.venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
+```
+
+List every file the checks depend on with `--file`, and leave those files alone
+until the result arrives; you may continue independent work. The runner also
+runs `ruff` and `genui.py --check`. Name the relevant tests that read game
+data, which CI cannot run. Do not request the whole suite: CI runs it on the
+pushed commit. If the message cannot be delivered, keep the request ID and
+report it to the orchestrator; never start a runner yourself.
 `.claude/rules/commits.md` has the detail.
 
 **You do not commit.** Leave your work in the tree; the main window commits it

@@ -50,7 +50,7 @@ One row per write-up, saying what it establishes; a path beginning `cited/<name>
 | [109-icon-choices.md](109-icon-choices.md) | Which icon is used for each role, and where icons earn their place |
 | [110-combat-log.md](110-combat-log.md) | Capturing the game's combat messages before it paints over them |
 | [111-map-shading.md](111-map-shading.md) | Darker walls and Dyson-style hatching |
-| [112-test-harness.md](112-test-harness.md) | Two test-harness faults, both fixed: the suite opening real windows, and an intermittent findChild segfault |
+| [112-test-harness.md](112-test-harness.md) | Two test-harness faults, both fixed (the suite opening real windows, and an intermittent findChild segfault), and how local tests run on the agent VM through the memory-limited launcher |
 | [114-party-strength.md](114-party-strength.md) | What makes a random encounter bigger, term by term |
 | [113-world-map.md](113-world-map.md) | The overland travel map, which is the combat engine on other data |
 | [115-review-the-scripts.md](115-review-the-scripts.md) | The ECL script reading, closed undone: what the decode had reached, what a rebuilt decoder would have to match, and the one item on its list that needs no decoder |

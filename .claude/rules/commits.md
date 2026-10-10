@@ -55,8 +55,8 @@ corrected push, not with repeated local full-suite runs.
 
 ## Before every commit
 
-1. `pytest` on the affected tests, including any that read game data (all
-   selected tests pass)
+1. Affected tests, including any that read game data, requested from the
+   test-runner (all selected tests pass)
 2. `.venv/bin/ruff check .` (no unused imports or linting errors)
 3. `.venv/bin/python3 tools/generate/genui.py --check` (every `.ui` compiled and current)
 
@@ -73,8 +73,18 @@ skips there. When a change touches code those tests cover, run them locally
 as part of the focused check; they are a focused check, not a second full-suite
 run.
 
-**Use normal test parallelism.** `-n auto --dist loadgroup` lives in
-`pyproject.toml`'s `addopts`. Keep `--dist loadgroup`: it keeps
+**Local tests go through the launcher, one command at a time.** On a managed
+host (`/etc/wish/test-runner.json` exists with `enabled: true`), `pytest` run
+directly stops before collection and prints the launcher command. Local tests
+run only through `.venv/bin/python tools/suite/testrun.py`, one top-level test
+command at a time across every session and worktree, each inside
+`wish-tests-run.service` under `wish-tests.slice`, which caps test memory at
+8 GiB with no swap. Elsewhere (CI, Windows, macOS, unmanaged Linux) pytest is
+run as before.
+
+**Use normal test parallelism within that one command.** `-n auto --dist
+loadgroup` lives in `pyproject.toml`'s `addopts`, and the agent guest's profile
+sets its own worker count. Keep `--dist loadgroup`: it keeps
 `tests/registry/test_instance.py`, `tests/dos/test_dosbox.py`,
 `tests/dos/test_dosboxx.py` and `tests/c64/test_walkrun.py` -- which claim a
 synthetic emulator-pool slot by a fixed, shared display number -- in one
@@ -83,13 +93,16 @@ exactly the failure the pool itself exists to prevent between real agents.
 `pytest -q -n0` drops back to one process, for a single flaky-looking failure
 that needs to be seen in isolation.
 
-**A subagent runs only the tests its change affects.** Several agents each
-running the whole suite is several copies of Qt on one machine, and under that
-load a run stalls and produces nothing. A `test-runner` can take a focused run
-off the main window; `.claude/agents/test-runner.md` is the definition.
+**A subagent requests only the tests its change affects.** It submits the
+request with `testrun.py submit` and sends the ID to the orchestrator's one
+reusable `test-runner`, which runs requests one at a time and replies to the
+requester; the subagent freezes the files its checks depend on until the result
+arrives. `.claude/agents/test-runner.md` is the definition. Several copies of
+Qt running at once on one machine stall each other and can exhaust its memory.
 
 **`tools/suite/suiterun.py` is a diagnostic, run only when somebody asks for a
-whole-suite run on this machine.** It is not a step before a push, and the
+whole-suite run on this machine, and submitted with `testrun.py submit
+--suiterun`.** It is not a step before a push, and the
 record it writes is not required by anything.
 
 **`git add X && git commit` commits the whole index, not just `X`.** Several

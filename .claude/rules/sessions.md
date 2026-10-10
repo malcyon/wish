@@ -52,9 +52,10 @@ or it has to be checked for a real result rather than assumed to have passed.
 **Sending the run to `test-runner` is the better way to have both.** The run
 is in that agent's foreground with its own timeout, so it is a real result;
 this window is free meanwhile, and a working subagent is one of the three
-things that keeps the chain alive. What it is not is a way to background a
-`pytest` -- the rule above is about the run, not about where it is watched
-from.
+things that keeps the chain alive. A reusable runner that has finished its
+requests ends its turn and is not one of the three; the next request resumes
+it. What it is not is a way to background a `pytest` -- the rule above is about
+the run, not about where it is watched from.
 
 ## Ending a session, and starting the next one
 

@@ -142,7 +142,8 @@ unrelated uncommitted work in the same tree.
 
 ## Running Qt and emulators
 
-`tests/conftest.py` makes `pytest` run offscreen. A standalone Qt script sets
+`tests/conftest.py` makes `pytest` run offscreen (on a managed host, request it
+through the test-runner; see `commits.md`). A standalone Qt script sets
 the platform itself (`QWidget.grab()` works):
 
 ```sh
@@ -224,7 +225,10 @@ gets required code review, fixes or rejects its findings, then pushes and
 **checks CI for the exact pushed SHA before closing that batch's issues or
 pushing on top of it**. Independent tickets may start meanwhile. Do not run
 the whole suite locally to push; `tools/suite/suiterun.py` is an explicitly
-requested diagnostic. A `test-runner` can take focused tests or CI checking.
+requested diagnostic. On a managed host local tests run only through
+`.venv/bin/python tools/suite/testrun.py`, one command at a time across all
+sessions, requested from the session's `test-runner`; direct `pytest` stops
+before collection. The `test-runner` also takes CI checking.
 
 **Wind-down means finishing:** stop new work, validate, commit locally, review,
 push and check CI. Leave work uncommitted or unpushed only if Donald
