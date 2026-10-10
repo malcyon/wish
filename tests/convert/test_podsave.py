@@ -1438,13 +1438,19 @@ def test_dos_to_amiga_to_dos_is_the_source_outside_the_declared_mask(tmp_path):
         # A slot A written by Wish's own Save As holds the Amiga's all-zero
         # thief saves, which DOS rebuilds on load and so never shows; the
         # Amiga file now holds the DOS value, and the round trip returns it.
-        skipped = {"spells_castable"}
-        if any(n in label for n in ("pod-678-amiga-converted-walked-dos:A",
-                                    "wish2-l2r8-saveas-dos-strength-edit-"
-                                    "vault40-game-save-d:A")):
-            skipped |= {"save_paralysis", "save_petrification",
-                                    "save_wands", "save_breath", "save_spell"}
-        for a, b in zip(source_party, round_party):
+        # Only a character with thief levels is exempt from the save fields.
+        saves = {"save_paralysis", "save_petrification", "save_wands",
+                 "save_breath", "save_spell"}
+        wish_written = (letter == "A" and folder.name in (
+            "WISH-SPEC-pod-678-amiga-converted-walked-dos",
+            "WISH-SPEC-wish2-l2r8-saveas-dos-strength-edit-vault40-"
+            "game-save-d"))
+        for a, b, chars in zip(source_party, round_party, source_chars):
+            skipped = {"spells_castable"}
+            if wish_written and chars._data[
+                    dos_port.FIELDS_BY_NAME_FOR[POD.key][
+                        "class_levels"].offset + 6]:
+                skipped |= saves
             assert ({k: v.value for k, v in a.fields.items()
                      if k not in skipped}
                     == {k: v.value for k, v in b.fields.items()
