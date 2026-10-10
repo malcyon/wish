@@ -1273,10 +1273,12 @@ def _require_pool_save(disk: str) -> None:
     if found is not None and found is not c64_port.POOL_OF_RADIANCE:
         # acceptance imports this module, so it can only be imported here.
         from tools.c64.acceptance import TITLES
-        short = {full: key for key, full in TITLES.items()}[found.key]
-        raise SystemExit(f"{disk} holds a {found.key} save; savecheck boots "
-                         f"Pool of Radiance only. Use tools/c64/acceptance.py "
-                         f"--title {short}.")
+        short = {full: key for key, full in TITLES.items()}.get(found.key)
+        message = (f"{disk} holds a {found.key} save; savecheck boots "
+                   f"Pool of Radiance only.")
+        if short is not None:
+            message += f" Use tools/c64/acceptance.py --title {short}."
+        raise SystemExit(message)
 
 
 def main(argv=None) -> int:

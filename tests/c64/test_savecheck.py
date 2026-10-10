@@ -162,6 +162,14 @@ def test_a_curse_save_names_the_curse_acceptance_title(tmp_path, monkeypatch):
     assert message.endswith("Use tools/c64/acceptance.py --title curse.")
 
 
+def test_a_title_acceptance_does_not_list_stops_without_a_title_suggestion(
+        tmp_path, monkeypatch):
+    from goldbox.c64_save import CHAMPIONS_OF_KRYNN
+    message = _stop_message(tmp_path, monkeypatch, CHAMPIONS_OF_KRYNN)
+    assert "champions-of-krynn save" in message
+    assert "--title" not in message
+
+
 def test_a_pool_save_gets_past_the_title_check(tmp_path, monkeypatch):
     import pytest
 
