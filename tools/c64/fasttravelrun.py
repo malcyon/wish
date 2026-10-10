@@ -41,7 +41,9 @@ A "cannot act right now" answer from `legality` or `apply` is retried every
 message every `BAR_BUSY_SECONDS`, at most `BAR_BUSY_TRIES` times.
 `--then-save` makes camp and saves once every leg arrived, and keeps the disk
 as `saved.D64`. `--step-after` turns before it steps when the party stands where
-the forward key leaves the area.
+the forward key leaves the area. Both wait for the world bar first, answering a question the arrival
+drew (an `--answer` word on the bar, RETURN on a `PRESS` message), and fail without stepping or saving
+when it never comes back.
 
 `--through-bar` runs each leg through the Fast Travel row the window builds for
 the title (offscreen), picks the destination in its dropdown, presses its
@@ -103,7 +105,7 @@ SHOT_EVERY = 4
 RNG_FIRST, RNG_LAST = 0x03C2, 0x03C8
 MOVE_SUBBAR = "I,J,K,M"
 #: Bar words that mark a game question when `--answer` is given more than once.
-QUESTION_WORDS = frozenset({"YES", "NO", "LEAVE", "LARGE", "SMALL"})
+QUESTION_WORDS = frozenset({"YES", "NO", "LEAVE", "LARGE", "SMALL", "ATTACK", "TALK"})
 #: Consecutive looks at a question bar the next `--answer` word is not on before the leg is given up.
 UNANSWERED_LOOKS = 3
 #: Looks, a second apart, at the screen before a save while it is cleared back to the world bar.
@@ -524,6 +526,9 @@ class Driver:
         self.sleep(SETTLE_SECONDS)
         self.note_state(tag, "after")
         if self.step_after and summary["result"] == "arrived":
+            row = self._clear_to_world_bar(self.answer)
+            if row is not None:
+                raise DriverError(f"leg {tag}: the world bar never came back after arrival ({row})")
             self.step(tag, dest_id)
         self.log("areas-seen", tag=tag, areas_seen=summary["areas_seen"])
         self.shot(tag + "-final")
@@ -753,6 +758,21 @@ class Driver:
         self.finish()
         return self.results
 
+    def _clear_to_world_bar(self, answer) -> str | None:
+        """Answer whatever the arrival drew until the world bar is up; None when it is, else the last row 24.
+
+        An empty row 24 just after arrival is the moment before the game's question appears, so only
+        the bar itself ends the wait.
+        """
+        row = ""
+        for _ in range(SAVE_CLEAR_TRIES):
+            row = self.row24(self.sess.screen())
+            if "ENCAMP" in row or MOVE_SUBBAR in row:
+                return None
+            self.service(answer, 0)
+            self.sleep(1.0)
+        return row
+
     def save(self) -> str:
         """Save the game with ENCAMP > SAVE and keep the disk as `saved.D64`; call after `run` has put the gates back.
 
@@ -761,14 +781,7 @@ class Driver:
         world bar (prompts answered), because a leg ends on whatever the arrival drew.
         """
         from tools.c64 import session as S  # noqa: PLC0415
-        for _ in range(SAVE_CLEAR_TRIES):
-            screen = self.sess.screen()
-            row = self.row24(screen)
-            if "ENCAMP" in row or MOVE_SUBBAR in row:
-                break
-            self.service(None, 0)
-            self.sleep(1.0)
-        else:
+        if self._clear_to_world_bar(self.answer) is not None:
             raise DriverError("the world bar never came back, so nothing was saved")
         if not self.sess.save_game():
             raise DriverError("ENCAMP > SAVE did not complete")

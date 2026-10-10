@@ -224,7 +224,7 @@ class Party:
         self.members = [Member(n) for n in names]
 
 
-def build(screen_at=lambda t: Screen(), area_at=None, script_at=None, answer=None,
+def build(screen_at=lambda t: Screen("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"), area_at=None, script_at=None, answer=None,
           budget=60.0, connect=None, party_at=lambda t: None, game=None, peeks=None,
           stages=None, **ft_kw):
     clock = Clock()
@@ -1054,6 +1054,62 @@ def test_then_save_without_a_world_bar_saves_nothing():
     with pytest.raises(ftr.DriverError, match="nothing was saved"):
         drv.save()
     assert ("save_game", False) not in sess.calls
+
+
+GIANTS = "ATTACK TALK LEAVE"
+WORLD = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+
+
+def _giants_arrival(answer):
+    """Row 24 is empty until the arrival check is logged, then the giants' question, then the world bar."""
+    live = {}
+
+    def screen_at(t):
+        if not any(e["event"] == "arrival-check" for e in events(live["stream"])):
+            return Screen("")
+        if "LEAVE" in live["sess"].bars:
+            return Screen(WORLD)
+        return Screen(GIANTS)
+
+    drv, sess, ft, mem, clock, stream = build(screen_at=screen_at, answer=answer)
+    live.update(sess=sess, stream=stream)
+    return drv, sess, stream
+
+
+def test_step_after_answers_an_arrival_question_before_stepping():
+    drv, sess, stream = _giants_arrival("LEAVE")
+    drv.step_after = True
+    drv.run([18])
+    assert sess.bars == ["LEAVE"]
+    assert _step_events(stream)
+    assert sess.pressed[:1] == ("I",)
+
+
+def test_an_unanswered_arrival_question_stops_the_leg_before_any_step():
+    drv, sess, _stream = _giants_arrival(None)
+    drv.step_after = True
+    with pytest.raises(ftr.DriverError, match="world bar never came back") as caught:
+        drv.run([18])
+    assert "ATTACK TALK LEAVE" in str(caught.value) and "t0-to18" in str(caught.value)
+    assert sess.pressed == ()
+
+
+def test_then_save_answers_an_arrival_question_first(monkeypatch):
+    from tools.c64 import session as S
+    monkeypatch.setattr(S, "copy_closed_disk", lambda src, dest, **kw: None)
+    live = {}
+    drv, sess, *_ = build(answer="LEAVE", screen_at=lambda t: Screen(
+        WORLD if "LEAVE" in live["sess"].bars else GIANTS))
+    live["sess"] = sess
+    drv.save()
+    assert sess.bars == ["LEAVE"] and ("save_game", False) in sess.calls
+
+
+def test_a_question_bar_with_none_of_the_answers_fails_at_once():
+    drv, sess, _ = build(screen_at=lambda t: Screen(GIANTS), answer=["YES"])[:3]
+    with pytest.raises(ftr.DriverError, match="YES is not among ATTACK TALK LEAVE"):
+        drv.save()
+    assert sess.pressed == ()
 
 
 def test_main_saves_only_when_every_leg_arrived():
