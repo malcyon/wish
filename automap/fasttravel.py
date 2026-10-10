@@ -142,6 +142,14 @@ class FastTravelAddresses:
     #: route. No address may lie in `scratch`..`scratch + scratch_len`.
     arrival_writes: tuple[tuple[int, int, int], ...] = ()
 
+    #: `(destination, address, value)` triples applied, in order, straight
+    #: after the `wall_slot_pinned` zeroing and before the arrival writes.
+    #: They set wall slots to the reload value, then pin the slots the
+    #: restart after `NEWECL` would otherwise skip, for a destination whose
+    #: entry script loads no walls of its own. C64 only: the Amiga lists
+    #: are pinned equal to `arrival_writes` and have no such cache.
+    arrival_walls: tuple[tuple[int, int, int], ...] = ()
+
     #: Destinations a trip into cannot land correctly, because the arriving
     #: script places the party only for a named came-from area. `legality`
     #: answers `UNSUPPORTED` rather than hiding the row, so a Return out of
@@ -359,9 +367,14 @@ SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
                     (0x33, 0x4CFD, 50), (0x33, 0x4CFE, 50),
                     (0x33, 0x4C69, 0), (0x33, 0x4C6E, 1),
                     (0x33, 0x4C6A, 1), (0x33, 0x4C6F, 0)),
-    # A trip into 0x51 loads no walls, and nothing here can make the C64 load
-    # them yet.
-    held_trips=frozenset({0x51}),
+    # ECL51 loads no walls. `NEWECL`'s tail restarts the main loop indoors
+    # and reloads every wall slot whose cache byte has bit 7 set, so the
+    # village's WALLSET/WALLDEF pieces ($83) go in `$7F22`/`$7F25` and the
+    # other slots are left alone ($FF); `$4BE7`-`$4BE9` are then pinned to 1.
+    arrival_walls=((0x51, 0x7F22, 0x83), (0x51, 0x7F25, 0x83),
+                   (0x51, 0x7F23, 0xFF), (0x51, 0x7F24, 0xFF),
+                   (0x51, 0x7F26, 0xFF), (0x51, 0x7F27, 0xFF),
+                   (0x51, 0x4BE7, 1), (0x51, 0x4BE8, 1), (0x51, 0x4BE9, 1)),
     # Every Return into these four waits on where a Return should land.
     held_returns=frozenset({0x33, 0x34, 0x51, 0x52}),
     # ECL33's came-from-52 arm moves the party to x - 3, y 15 from whatever

@@ -1997,11 +1997,25 @@ def test_a_silver_blades_return_into_a_came_from_destination_is_held(held_id):
     assert verdict.reason == _unsupported(ft)
 
 
-def test_the_silver_blades_village_trip_is_held_for_want_of_walls():
-    ft, target, _addr = _silver_blades_machine(0x10)
-    verdict = ft.legality(target, area=_silver_blades_row(0x51))
-    assert not verdict
-    assert verdict.reason == _unsupported(ft)
+def test_the_silver_blades_village_trip_is_offered():
+    ft, target, addr = _silver_blades_machine(0x10)
+    assert 0x51 not in addr.held_trips
+    assert ft.legality(target, area=_silver_blades_row(0x51))
+
+
+def test_the_village_trip_writes_the_walls_after_the_pinned_zeroing():
+    addr = fasttravel.SECRET_OF_THE_SILVER_BLADES
+    writes = actions.newecl_writes(0x10, 0x51, arrival=(0, 8, 1),
+                                   addresses=addr)
+    zero = writes.index((addr.wall_slot_pinned,
+                         bytes(addr.wall_slot_pinned_len)))
+    expected = [(0x7F22, b"\x83"), (0x7F25, b"\x83"), (0x7F23, b"\xff"),
+                (0x7F24, b"\xff"), (0x7F26, b"\xff"), (0x7F27, b"\xff"),
+                (0x4BE7, b"\x01"), (0x4BE8, b"\x01"), (0x4BE9, b"\x01")]
+    assert writes[zero + 1:zero + 1 + len(expected)] == tuple(expected)
+    other = actions.newecl_writes(0x10, 0x52, arrival=(1, 11, 1),
+                                  addresses=addr)
+    assert not {a for a, _ in other} & {0x7F22, 0x4BE8}
 
 
 @pytest.mark.parametrize("open_id", [0x33, 0x34, 0x52])
