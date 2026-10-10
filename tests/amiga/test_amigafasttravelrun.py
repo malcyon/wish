@@ -416,6 +416,42 @@ def test_an_unsettled_leg_that_reached_another_area_names_arrival_answer(
     assert ("--arrival-answer" in err) is hinted
 
 
+def test_the_second_arrival_key_gets_its_own_full_window(world, monkeypatch):
+    _arriving(world, monkeypatch)
+    monkeypatch.setattr(amigatrip, "gate", lambda t, row: len(world.pressed) >= 2)
+    first, later = [], []
+
+    def shot(path):
+        if not world.pressed:
+            # The first key goes after ANSWER_SECONDS have passed since arrival.
+            world.clock.now += 13.0
+            if world.area == 26:
+                first.append(world.clock.now)
+            path.write_bytes(b"redrawing" if len(first) == 1 else world.screen)
+        else:
+            # The second screen redraws for three looks, so its key goes on the fourth.
+            later.append(world.clock.now)
+            path.write_bytes((b"a", b"b", b"c")[min(len(later), 3) - 1])
+
+    got = ftr.run_trip(_Arrives(polls=1), Target(), ROW, SimpleNamespace(id=5), world.out,
+                       shot, lambda key: world.pressed.append(key), world.log,
+                       sleep=world.clock.sleep, clock=world.clock,
+                       arrival_answer=("Return", "Return"))
+    world.stream.close()
+    assert first[-1] - 1000.0 >= ftr.ANSWER_SECONDS
+    assert world.pressed == ["Return", "Return"] and got["settled"]
+
+
+@pytest.mark.parametrize("keys, hinted", [([], True), (["Return"], False)])
+def test_the_arrival_answer_hint_is_not_printed_when_keys_were_pressed(
+        monkeypatch, tmp_path, capsys, keys, hinted):
+    _back_run(monkeypatch, tmp_path, [{"result": "idle", "settled": False,
+                                       "areas_seen": [16, 51], "arrival_keys": keys}])
+    err = capsys.readouterr().err
+    assert "never became ready" in err
+    assert ("--arrival-answer" in err) is hinted
+
+
 def test_an_unknown_arrival_answer_key_is_a_usage_error(tmp_path):
     with pytest.raises(SystemExit):
         ftr.main(["--holder", "h", "--disks", "D", "--to", "5", "--out", str(tmp_path),

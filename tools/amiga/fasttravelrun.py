@@ -208,21 +208,20 @@ def _peek(target, title, variables, why: str, log: Log) -> None:
 
 
 def _settle(target, row, log: Log, sleep, clock,
-            ask: Callable[[float], None] | None = None) -> bool:
+            ask: Callable[[], None] | None = None) -> bool:
     """Wait for the game to sit at its menu again, then `SETTLE_SECONDS`, before the last shot.
 
     The trip is idle when the area byte has changed, but the game is still
     drawing the arrival; a shot then matches the one before the second hop.
-    Returns whether the gate passed. `ask`, when given, is called with the
-    seconds waited on each poll of the shut gate, so a question in the
-    destination can be answered.
+    Returns whether the gate passed. `ask`, when given, is called on each poll of the
+    shut gate, so a question in the destination can be answered.
     """
     began = clock()
     log("settle_start", budget=SETTLE_BUDGET_SECONDS)
     while (not amigatrip.gate(target, row)
            and clock() - began < SETTLE_BUDGET_SECONDS):
         if ask is not None:
-            ask(clock() - began)
+            ask()
         sleep(POLL_SECONDS)
     passed = bool(amigatrip.gate(target, row))
     log("settle", gate=passed, waited=round(clock() - began, 3))
@@ -336,7 +335,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         held = looks = 0
         kept = baseline
 
-        def ask(waited: float) -> None:
+        def ask() -> None:
             nonlocal next_look, held, looks, window_began, kept
             if (len(summary["arrival_keys"]) == len(arrival_keys)
                     or (clock() - window_began >= ANSWER_SECONDS and looks >= ARRIVAL_MIN_POLLS)
@@ -532,7 +531,7 @@ def main(argv: list[str] | None = None) -> int:
             which = "the way back" if number > 1 else "the trip"
             print(f"Leg {number} ({which}) never became ready for Fast Travel.", file=sys.stderr)
             seen = result.get("areas_seen") or []
-            if len(seen) > 1 and seen[-1] != seen[0]:
+            if seen[-1:] != seen[:1] and not result.get("arrival_keys"):
                 print(f"The leg reached area {seen[-1]} and the game is still waiting on its screen; "
                       "give its keys with --arrival-answer (repeat it for several screens).",
                       file=sys.stderr)
