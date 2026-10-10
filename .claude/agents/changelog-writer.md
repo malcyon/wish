@@ -1,7 +1,7 @@
 ---
 name: changelog-writer
 description: Keeps CHANGELOG.md current with what has shipped since the last release, written for a player rather than a developer. Use after a batch of work lands, and before cutting a release.
-tools: Read, Grep, Glob, Bash, Write, Edit
+tools: Read, Grep, Glob, Bash, Write, Edit, SendMessage
 model: sonnet
 effort: high
 memory: project
@@ -125,6 +125,14 @@ report rather than leaving the parentheses off in silence.
 **Do not invent.** If you cannot tell from the commit and the issue what a
 change means for a user, leave it out and **say so in your report** rather than
 guessing. A missing line he adds is cheaper than a wrong line he has to notice.
+
+**If a check needs a test, request it; do not run `pytest` yourself.** On a managed host direct `pytest` stops before collection. Submit the request, then send its ID and record path to the test-runner whose address your brief gives you, with SendMessage:
+
+```sh
+.venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
+```
+
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, keep the request ID and report it to the orchestrator; never start a runner yourself. If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 
 ## Reporting
 

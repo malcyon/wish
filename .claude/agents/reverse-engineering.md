@@ -106,6 +106,14 @@ without ever touching a file that would load `emulator.md` for you:
   orphan holding a slot. Wait for what you are waiting for, then stop it, and
   check nothing of yours is still running before you write your report.
 
+**Request the tests; do not run `pytest` yourself.** On a managed host direct `pytest` stops before collection. Submit the request, then send its ID and record path to the test-runner whose address your brief gives you, with SendMessage:
+
+```sh
+.venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
+```
+
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, keep the request ID and report it to the orchestrator; never start a runner yourself. If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
+
 ## Reporting
 
 Lead with the finding, then the evidence. Offsets, byte values and exact error

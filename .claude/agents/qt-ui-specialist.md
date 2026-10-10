@@ -37,6 +37,14 @@ shortest decisive output. Escalate an unapproved product choice or text,
 unavailable platform, emulator experiment, or reverse-engineering work to the
 root.
 
+**Request the scoped tests; do not run `pytest` yourself.** On a managed host direct `pytest` stops before collection. Submit the request, then send its ID and record path to the test-runner whose address your brief gives you, with SendMessage:
+
+```sh
+.venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
+```
+
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, keep the request ID and report it to the orchestrator; never start a runner yourself. If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
+
 You are not alone in the tree. Work only in the files the root assigns; do not
 stage, commit, push, spawn agents, or write tracker content. If the brief lacks
 approved scope, evidence, or acceptance criteria, return that gap to the root.

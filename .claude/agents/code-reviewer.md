@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: Reviews code for best-practice violations, gaps in exception handling and logging, and likely bugs. Use proactively after writing or modifying code.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, SendMessage
 model: sonnet
 effort: medium
 memory: project
@@ -118,6 +118,14 @@ claim names the remaining conversion defect and a verified open issue owning
 it. If the residual work belongs to the original issue's scope, that original
 must stay open. The reviewer checks these claims and evidence; the root owns
 closure after push and exact-SHA CI.
+
+**Running tests is optional for a reviewer. If you need a result, request it; never run `pytest` yourself.** On a managed host direct `pytest` stops before collection. Submit the request, then send its ID and record path to the test-runner whose address your brief gives you, with SendMessage:
+
+```sh
+.venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
+```
+
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, keep the request ID and report it to the orchestrator; never start a runner yourself. If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 
 ## Reporting
 
