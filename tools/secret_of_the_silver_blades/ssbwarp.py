@@ -347,8 +347,11 @@ def return_via_actions(sess, addr, maps, ft, target, row, out: pathlib.Path,
         return {"back": made, "landed": False}
     idle, _pc = wait_idle(sess, addr, timeout)
     sess.settle(3)
-    after = measure(sess, addr, maps, row, out, tag)
-    expect_arrival(after, row, departure)
+    # A keyword only when there is one: callers patch `measure` with six
+    # positional parameters.
+    after = (measure(sess, addr, maps, row, out, tag, departure=departure)
+             if departure is not None
+             else measure(sess, addr, maps, row, out, tag))
     after["idle"] = idle
     reached = after.get("area") == origin
     after["reached_target"] = reached
@@ -382,7 +385,8 @@ def targets_of(spec: str) -> list[int]:
     return [int(v, 0) for v in spec.replace(" ", "").split(",") if v]
 
 
-def measure(sess, addr, maps, row, out: pathlib.Path, tag: str) -> dict:
+def measure(sess, addr, maps, row, out: pathlib.Path, tag: str,
+            departure: int | None = None) -> dict:
     """Everything a landing has to be judged on, in one place."""
     state = snapshot(sess, addr)
     state["resident"] = resident_geo(sess, maps)
@@ -393,8 +397,8 @@ def measure(sess, addr, maps, row, out: pathlib.Path, tag: str) -> dict:
                         geo_in_ram(sess, maps).items()}
     if row is not None:
         state["expected_geo"] = list(row.geos)
-        state["expected_arrival"] = (str(row.arrival) if row.arrival
-                                     else None)
+        state["expected_arrival"] = " or ".join(
+            str(a) for a in row.arrivals_for(departure)) or None
         state["expected_disk"] = row.disk
     s = sess.screen()
     text = s.text() if s is not None else None
@@ -419,14 +423,6 @@ def measure(sess, addr, maps, row, out: pathlib.Path, tag: str) -> dict:
 SPOIL_SQUARE = (1, 1, 2)
 
 
-def expect_arrival(state: dict, row, departure: int | None) -> None:
-    """Replace the table's square in a measured `state` with the departure's."""
-    if row is None:
-        return
-    want = row.arrival_for(departure)
-    state["expected_arrival"] = str(want) if want else None
-
-
 def verdict_of(state: dict, row, spoiled: bool = False,
                departure: int | None = None) -> dict:
     """Does this landing match the row the table predicted? Field by field.
@@ -439,7 +435,7 @@ def verdict_of(state: dict, row, spoiled: bool = False,
     got_geo = state.get("resident", {}).get("name")
     want = list(row.geos)
     square = state.get("square") or []
-    arrival = row.arrival_for(departure)
+    arrivals = row.arrivals_for(departure)
     out = {
         "area": state.get("area") == row.id,
         "area_seen": f"0x{state.get('area', 0):02X}",
@@ -447,10 +443,11 @@ def verdict_of(state: dict, row, spoiled: bool = False,
         "geo": (got_geo in want) if (want and got_geo) else None,
         "geo_seen": got_geo,
     }
-    if arrival is not None and len(square) == 3:
-        out["arrival"] = (square[0] == arrival.x and square[1] == arrival.y
-                          and (arrival.facing is None
-                               or square[2] == arrival.facing))
+    if arrivals and len(square) == 3:
+        out["arrival"] = any(
+            square[0] == a.x and square[1] == a.y
+            and (a.facing is None or square[2] == a.facing)
+            for a in arrivals)
         # Without this the arrival answer is a reading of our own write.
         out["arrival_is_the_scripts"] = spoiled
         out["arrival_seen"] = f"{square[0]},{square[1]} " \
@@ -584,8 +581,8 @@ def run(args) -> int:
 
             idle, pc = wait_idle(sess, addr, args.arrival_timeout)
             sess.settle(3)
-            after = measure(sess, addr, maps, row, out, tag)
-            expect_arrival(after, row, here["area"])
+            after = measure(sess, addr, maps, row, out, tag,
+                            departure=here["area"])
             after["idle"] = idle
             # **The landing test is the area byte, not the program counter.**
             # `ECL22` arrives on an encounter menu drawn in bitmap mode, whose

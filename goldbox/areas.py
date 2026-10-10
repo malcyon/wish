@@ -189,6 +189,9 @@ class Area:
     #: `arrival_elsewhere`. None where `arrival` holds from any departure.
     arrival_from: int | None = None
     arrival_elsewhere: Arrival | None = None
+    #: A second square some other departures land on, where the script has two
+    #: (area 96).
+    arrival_elsewhere_also: Arrival | None = None
     #: Where a fast travel puts the party on the travel grid, window-local
     #: (x, y), for areas 25-27 only -- written to `$49C3`/`$49C4`.
     #: `arrival` is the `GEO` square in `$C04B`, and stays None for these
@@ -325,6 +328,14 @@ class Area:
                 or departure == self.arrival_from):
             return self.arrival
         return self.arrival_elsewhere
+
+    def arrivals_for(self, departure: int | None) -> tuple[Arrival, ...]:
+        """Every square a party from `departure` can land on."""
+        if (self.arrival_from is None or departure is None
+                or departure == self.arrival_from):
+            return (self.arrival,) if self.arrival else ()
+        return tuple(a for a in (self.arrival_elsewhere,
+                                 self.arrival_elsewhere_also) if a)
 
     @property
     def label(self) -> str:
@@ -640,11 +651,11 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
        name="Frost giant village"),
     _s(0x52, 5, ("GEO52",), None, Confidence.CONFIRMED,
        name="The Crevasses, castle gates"),
-    # Every departure but 0x61 lands on 0,7 E, or 0,8 E when `$4BF1` is 12;
-    # only the first is recorded.
+    # Every departure but 0x61 lands on 0,7 E, or 0,8 E when `$4BF1` is 12.
     _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3), Confidence.CONFIRMED,
        name="Castle of the Twins, entry level", arrival_from=0x61,
-       arrival_elsewhere=Arrival(0, 7, 1)),
+       arrival_elsewhere=Arrival(0, 7, 1),
+       arrival_elsewhere_also=Arrival(0, 8, 1)),
     _s(0x61, 6, ("GEO61",), Arrival(15, 0, 3), Confidence.CONFIRMED,
        name="Castle of the Twins, second level", arrival_from=0x60,
        arrival_elsewhere=Arrival(0, 15, 1)),

@@ -55,7 +55,72 @@ def test_a_landing_at_the_table_square_from_another_departure_fails():
     assert got["arrival"] is False
 
 
-def test_the_recorded_expectation_is_the_departures_square():
-    state = {}
-    SSBWARP.expect_arrival(state, areas.area_in(0x10, GAME), 0x11)
-    assert state["expected_arrival"] == "3,0 W"
+VERDICTS = [
+    # area, departure, landing, passes
+    (0x42, 0x41, (0, 7, 3), True),
+    (0x42, 0x41, (12, 13, 0), False),
+    (0x42, 0x60, (12, 13, 0), True),
+    (0x60, 0x62, (0, 7, 1), True),
+    (0x60, 0x62, (0, 8, 1), True),
+    (0x60, 0x62, (15, 0, 3), False),
+    (0x60, 0x61, (15, 0, 3), True),
+    (0x61, 0x62, (0, 15, 1), True),
+    (0x61, 0x62, (15, 0, 3), False),
+    (0x61, 0x60, (15, 0, 3), True),
+]
+
+
+@pytest.mark.parametrize("area,departure,landing,passes", VERDICTS)
+def test_verdict_of_judges_areas_66_96_and_97_by_departure(
+        area, departure, landing, passes):
+    row = areas.area_in(area, GAME)
+    got = SSBWARP.verdict_of(_state(area, *landing), row, departure=departure)
+    assert got["arrival"] is passes
+
+
+class _Sess:
+    def settle(self, n):
+        pass
+
+
+def _return(monkeypatch, tmp_path, departure):
+    seen = []
+    monkeypatch.setattr(SSBWARP, "idle_in_key_window", lambda s, a: 1)
+    monkeypatch.setattr(SSBWARP, "wait_idle", lambda s, a, t=None: (True, 0))
+
+    def measure(sess, addr, maps, row, out, tag, departure=None):
+        seen.append(departure)
+        return {"square": [3, 0, 3], "area": 0x10,
+                "resident": {"name": "GEO10"}, "disk": 1}
+
+    monkeypatch.setattr(SSBWARP, "measure", measure)
+
+    class FT:
+        def apply_back(self, target):
+            return type("O", (), {"ok": True, "message": "m", "writes": []})()
+
+    row = areas.area_in(0x10, GAME)
+    out = SSBWARP.return_via_actions(_Sess(), None, {}, FT(), None, row,
+                                     tmp_path, "back1-11", 0x10,
+                                     departure=departure)
+    return seen, out
+
+
+def test_return_via_actions_judges_the_landing_by_its_departure(
+        monkeypatch, tmp_path):
+    seen, out = _return(monkeypatch, tmp_path, 0x11)
+    assert seen == [0x11]
+    assert out["verdict"]["arrival"] is True
+
+
+def test_return_via_actions_without_a_departure_judges_by_the_table_square(
+        monkeypatch, tmp_path):
+    seen, out = _return(monkeypatch, tmp_path, None)
+    assert seen == [None]
+    assert out["verdict"]["arrival"] is False
+
+
+def test_area_96_has_two_squares_for_a_departure_that_is_not_97():
+    row = areas.area_in(0x60, GAME)
+    assert [str(a) for a in row.arrivals_for(0x62)] == ["0,7 E", "0,8 E"]
+    assert [str(a) for a in row.arrivals_for(0x61)] == ["15,0 W"]
