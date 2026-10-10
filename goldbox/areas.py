@@ -196,6 +196,10 @@ class Area:
     #: it before placing it, so `arrival` (the landing) is not the square to
     #: write. None writes `arrival`.
     trip_square: Arrival | None = None
+    #: A Return into this area lands on `arrival` (or `trip_square`) and not on
+    #: the square the party left, because the arriving script places the party
+    #: only for the neighbours it names.
+    return_to_entrance: bool = False
     #: Where a fast travel puts the party on the travel grid, window-local
     #: (x, y), for areas 25-27 only -- written to `$49C3`/`$49C4`.
     #: `arrival` is the `GEO` square in `$C04B`, and stays None for these
@@ -574,7 +578,7 @@ def _s(id: int, disk: int, geos: tuple[str, ...],
 #:   one for them would be inventing it. `$33`, `$34`, `$51` and `$52` copy
 #:   the first walked route into them that stores constants without a compare
 #:   (the lowest departing id); `$34`'s `trip_square` is the square before the
-#:   game's +3.
+#:   game's +3. These four rows' squares are where a Return lands too.
 AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # Nothing in any script issues a `NEWECL 4`, and `ECL04` has no re-entry
     # guard (`COMPARE [$4BF2], own id / IF= / EXIT`) where twenty of the
@@ -638,9 +642,11 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     _s(0x32, 3, (), None, Confidence.CONFIRMED, dynamic_geo=True,
        fasttravelable=False, name="The mines, levels 5-8"),
     _s(0x33, 3, ("GEO31",), Arrival(3, 3, 1), Confidence.CONFIRMED,
-       name="The mines, temple and bottom levels"),
+       name="The mines, temple and bottom levels",
+       return_to_entrance=True),
     _s(0x34, 3, ("GEO32",), Arrival(7, 0, 2), Confidence.CONFIRMED,
-       name="Temple of Tyr", trip_square=Arrival(4, 0, 2)),
+       name="Temple of Tyr", trip_square=Arrival(4, 0, 2),
+       return_to_entrance=True),
     # `ECL44` writes 7,15 N before `NEWECL 64`; `ECL40`'s own entry 4 writes
     # 12,0 S. Two routes in, two squares, and nothing says which a fast
     # travel should imitate -- so neither.
@@ -656,9 +662,9 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     _s(0x50, 5, ("GEO50",), Arrival(1, 11, 1), Confidence.CONFIRMED,
        name="The Crevasses"),
     _s(0x51, 5, ("GEO51",), Arrival(0, 8, 1), Confidence.CONFIRMED,
-       name="Frost giant village"),
+       name="Frost giant village", return_to_entrance=True),
     _s(0x52, 5, ("GEO52",), Arrival(1, 11, 1), Confidence.CONFIRMED,
-       name="The Crevasses, castle gates"),
+       name="The Crevasses, castle gates", return_to_entrance=True),
     # Every departure but 0x61 lands on 0,7 E, or 0,8 E when `$4BF1` is 12.
     _s(0x60, 6, ("GEO60",), Arrival(15, 0, 3), Confidence.CONFIRMED,
        name="Castle of the Twins, entry level", arrival_from=0x61,

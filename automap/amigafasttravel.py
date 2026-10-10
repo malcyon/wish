@@ -409,7 +409,8 @@ class AmigaFastTravel(engine.FastTravel):
         if door is not None:
             return door
         arrival, overland = self._square_writes(
-            area or was, arrival=was.square, overland=was.overland)
+            area or was, arrival=self.return_square(area, was),
+            overland=was.overland)
         name = getattr(area, "name", None) or f"area {was.area}"
         failed = self._start(target, was.area, name, arrival, overland, was)
         if failed is not None:
@@ -432,7 +433,8 @@ class AmigaFastTravel(engine.FastTravel):
         dest = (dataclasses.replace(area, overland=was.overland)
                 if was.overland is not None and dataclasses.is_dataclass(area)
                 and hasattr(area, "overland") else area)
-        outcome = self.run(target, area=dest, arrival=was.square)
+        outcome = self.run(target, area=dest,
+                           arrival=self.return_square(area, was))
         if not outcome.ok:
             self.back = was
             return outcome

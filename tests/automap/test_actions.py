@@ -1989,12 +1989,20 @@ def _unsupported(ft):
     return actions.UNSUPPORTED.format(title=ft.game.title)
 
 
-@pytest.mark.parametrize("held_id", [0x33, 0x34, 0x51, 0x52])
-def test_a_silver_blades_return_into_a_came_from_destination_is_held(held_id):
+@pytest.mark.parametrize("to", [0x33, 0x34, 0x51, 0x52])
+def test_a_silver_blades_return_into_a_came_from_destination_is_offered(to):
     ft, target, _addr = _silver_blades_machine(0x10)
-    verdict = ft.legality(target, area=_silver_blades_row(held_id), back=True)
+    assert ft.legality(target, area=_silver_blades_row(to), back=True)
+
+
+@pytest.mark.parametrize("here, to", [(0x52, 0x51), (0x60, 0x52),
+                                      (0x40, 0x33), (0x21, 0x34)])
+def test_a_held_return_leg_is_unsupported_but_its_trip_is_offered(here, to):
+    ft, target, _addr = _silver_blades_machine(here)
+    verdict = ft.legality(target, area=_silver_blades_row(to), back=True)
     assert not verdict
     assert verdict.reason == _unsupported(ft)
+    assert ft.legality(target, area=_silver_blades_row(to))
 
 
 def test_the_silver_blades_village_trip_is_offered():
@@ -2038,7 +2046,7 @@ def test_no_other_title_holds_a_trip_a_return_or_a_leg():
     for key, addr in fasttravel.ADDRESSES.items():
         if key == "secret-of-the-silver-blades":
             continue
-        assert addr.held_trips == addr.held_returns == addr.held_legs \
+        assert addr.held_trips == addr.held_return_legs == addr.held_legs \
             == frozenset(), key
 
 
@@ -2086,6 +2094,23 @@ def test_fast_travel_back_into_a_frameless_area_writes_its_arrival_byte(to):
     target, outcome = _silver_blades_back(0x20, to, {0x4CFD: 0x00})
     assert (0x4CFD, b"\xff") in outcome.writes
     assert target.read(0x4CFD, 1) == b"\xff"
+
+
+@pytest.mark.parametrize("to, square", [(0x51, (0, 8, 1)), (0x52, (1, 11, 1)),
+                                        (0x33, (3, 3, 1)), (0x34, (4, 0, 2))])
+def test_a_return_into_a_came_from_area_writes_its_entrance(to, square):
+    target, outcome = _silver_blades_back(0x10, to)
+    live = _silver_blades_machine(to)[2].live_square
+    assert (live, bytes(square)) in outcome.writes
+    assert (live, b"\x05\x06\x01") not in outcome.writes
+    if to == 0x51:
+        assert (0x7F22, b"\x83") in outcome.writes
+
+
+def test_a_return_elsewhere_still_writes_the_square_left():
+    _target, outcome = _silver_blades_back(0x10, 0x41)
+    live = _silver_blades_machine(0x41)[2].live_square
+    assert (live, b"\x05\x06\x01") in outcome.writes
 
 
 def test_the_second_hop_into_the_well_writes_its_arrival_bytes():

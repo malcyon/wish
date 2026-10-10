@@ -246,6 +246,29 @@ def test_a_silver_blades_trip_into_the_temple_writes_the_square_it_is_given(
             + trips.save(2, 0xC04D)) in written
 
 
+@pytest.mark.parametrize("to, square", [(0x34, (4, 0, 2)), (0x51, (0, 8, 1))])
+def test_a_silver_blades_return_writes_the_entrance_square(
+        disks, monkeypatch, to, square):
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True,
+                                            differences=()))
+    t = aft.AmigaFastTravel(BLADES, object())
+    rows = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    t._row = lambda id: rows[id]
+    m = machine(BLADES, area=0x10)
+    t.back = engine.Waypoint(to, None, (5, 6, 1))
+    out = t.apply_back(m)
+    assert out.ok
+    written = statements_written(out)
+    assert (trips.save(square[0], 0xC04B) + trips.save(square[1], 0xC04C)
+            + trips.save(square[2], 0xC04D)) in written
+    assert trips.save(5, 0xC04B) not in written
+    if to == 0x51:
+        assert (trips.arrival_epilogue(BLADES, 0x51)
+                + trips.newecl(0x51)) in written
+
+
 def test_a_silver_blades_return_saves_the_departures_area_file(
         disks, monkeypatch):
     row = trips.ROWS[BLADES]

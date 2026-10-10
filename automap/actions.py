@@ -2056,7 +2056,8 @@ class FastTravel(Action):
             # sentence in front of it already says everything a player needs.
             return Verdict(False, "the party is already in that area")
         area_id = getattr(area, "id", None)
-        if (area_id in (addr.held_returns if back else addr.held_trips)
+        if ((back and (here, area_id) in addr.held_return_legs)
+                or (not back and area_id in addr.held_trips)
                 or (here, area_id) in addr.held_legs):
             _log.debug("fasttravel blocked: area %s is held for %s",
                        area_id, "Return" if back else "a trip")
@@ -2442,6 +2443,14 @@ class FastTravel(Action):
         return (got.x, got.y, got.facing)
 
     @classmethod
+    def return_square(cls, area, was):
+        """The square a Return writes: the area's entrance where its row says
+        the arriving script does not place the party, else the square left."""
+        if getattr(area, "return_to_entrance", False):
+            return cls.arrival_of(area)
+        return was.square
+
+    @classmethod
     def _square_writes(cls, area, arrival=None, overland=None):
         """Which of `$C04B` (`arrival`) or `$49C3` (`overland`) to write for
         a trip into `area`, and never both -- `newecl_writes` raises if they
@@ -2628,7 +2637,8 @@ class FastTravel(Action):
                 if was.disk is not None:
                     changes["disk"] = was.disk
                 dest = dataclasses.replace(area, **changes)
-                outcome = self.run(target, area=dest, arrival=was.square)
+                outcome = self.run(target, area=dest,
+                                   arrival=self.return_square(area, was))
                 # Return is not itself a place to return to.
                 self.back = None if outcome.ok else was
                 if not outcome.ok:
@@ -2645,7 +2655,8 @@ class FastTravel(Action):
         # its real position -- $C04B is not GDRIVE00's square outdoors
         # (#178) -- the same choice `run` makes for the outward trip.
         arrival, overland = self._square_writes(
-            area or was, arrival=was.square, overland=was.overland)
+            area or was, arrival=self.return_square(area, was),
+            overland=was.overland)
         writes = newecl_writes(here or 0, was.area, was.disk, arrival,
                                overland=overland, addresses=addr)
         _write_all(target, writes)

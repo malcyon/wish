@@ -240,8 +240,10 @@ class TripRow:
 #: places the party relative to the square the trip wrote.
 HELD_LEGS = frozenset({(0x34, 0x33)})
 
-#: Destinations a Return cannot place yet.
-RETURN_UNPLACED = frozenset({0x33, 0x34, 0x51, 0x52})
+#: Legs a Return cannot make: the arriving script places the party from a
+#: neighbour it names, and where that Return should land is not settled.
+RETURN_HELD_LEGS = frozenset({(0x52, 0x51), (0x60, 0x52), (0x40, 0x33),
+                              (0x21, 0x34), (0x34, 0x33)})
 
 
 def _return_landing() -> Difference:
@@ -507,9 +509,10 @@ ROWS: dict[str, TripRow] = {
                                 lambda here, to, back:
                                 not back and (here, to) in HELD_LEGS),
                      Difference("return_unplaced",
-                                "where a Return into this destination lands",
+                                "where a Return from a neighbour the "
+                                "arriving script names lands",
                                 lambda here, to, back:
-                                back and to in RETURN_UNPLACED)),
+                                back and (here, to) in RETURN_HELD_LEGS)),
         # The C64 row's six writes (`fasttravel.SECRET_OF_THE_SILVER_BLADES`):
         # the Well reads its landing table through `$4C62` and latches the
         # shaft event with `$4C2A`; the other four never store `$4CFD = $FF`.

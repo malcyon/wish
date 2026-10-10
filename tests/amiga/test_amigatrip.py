@@ -707,7 +707,10 @@ def test_what_each_difference_holds():
     assert "arrival_unplaced" not in held(SILVER, 0x34, 0x33, back=True)
     for to in (0x33, 0x34, 0x51, 0x52):
         assert held(SILVER, 0x10, to) == set()
-        assert "return_unplaced" in held(SILVER, 0x10, to, back=True)
+        assert "return_unplaced" not in held(SILVER, 0x10, to, back=True)
+    for here, to in trip.RETURN_HELD_LEGS:
+        assert "return_unplaced" in held(SILVER, here, to, back=True)
+    assert "return_unplaced" not in held(SILVER, 0x52, 0x51)
     assert "return_unplaced" not in held(SILVER, 0x10, 0x41, back=True)
 
 

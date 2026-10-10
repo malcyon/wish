@@ -558,6 +558,14 @@ def test_the_came_from_destinations_take_the_walked_arrival():
             if a.trip_square} == {0x34: Arrival(4, 0, 2)}
 
 
+def test_only_the_four_came_from_rows_return_to_their_entrance():
+    for table in (areas.AREAS, areas.AREAS_CURSE,
+                  areas.AREAS_POOLS_OF_DARKNESS):
+        assert not any(a.return_to_entrance for a in table)
+    assert {a.id for a in areas.AREAS_SILVER_BLADES
+            if a.return_to_entrance} == {0x33, 0x34, 0x51, 0x52}
+
+
 def test_area_forty_has_two_candidate_squares_so_it_gets_none(ssb_table):
     """`ECL44` writes 7,15 N before its `NEWECL 64`; `ECL40`'s own entry 4
     writes 12,0 S. Two routes in, two squares, and nothing says which a fast
