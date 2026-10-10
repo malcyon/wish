@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -42,6 +43,10 @@ class LaneGuest:
         if self.fail_stop:
             raise RouteError("no emulator")
         return "ok stopped"
+
+    def get(self, remote, local, timeout=None):
+        self.calls.append(("get", remote))
+        local.write_bytes(b"disk " + remote.encode())
 
     def release(self, holder, timeout=None):
         self.calls.append(("release", holder))
@@ -128,3 +133,64 @@ def test_the_boot_and_halt_commands_reach_the_lane(tmp_path, monkeypatch, capsys
     with pytest.raises(SystemExit):
         acceptance.main(["boot", "--title", "synthetic", "--manifest", str(path),
                          "--audio-proof", str(_audio_proof(tmp_path))])
+
+
+def _lane_lines(path):
+    return [json.loads(line) for line in (path.parent / "lanes.jsonl").read_text().splitlines()]
+
+
+def test_boot_records_its_command_and_remotes_in_the_run_folder(tmp_path, monkeypatch):
+    guest = LaneGuest()
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: guest)
+    path = manifest_for(tmp_path)
+    monkeypatch.setitem(acceptance.TITLES, "synthetic", make_title())
+    assert acceptance.main(["boot", "--title", "synthetic", "--manifest", str(path),
+                            "--audio-proof", str(_audio_proof(tmp_path)),
+                            "--holder", "wish679-boot"]) == 0
+    line = _lane_lines(path)[-1]
+    assert line["event"] == "boot" and line["holder"] == "wish679-boot"
+    assert "boot" in line["command"] and "--holder" in line["command"]
+    assert line["remotes"] == {k: guest.remote_path("679", "wish679-boot", k)
+                               for k in ("boot", "spare", "disk3")}
+
+
+def test_halt_with_the_manifest_fetches_every_booted_disk_between_the_stop_and_the_release(tmp_path):
+    guest = LaneGuest()
+    result = _boot(tmp_path, guest)
+    path = manifest_for(tmp_path)
+    guest.calls.clear()
+    acceptance.halt_lane(guest, "wish679-boot", manifest_path=path)
+    assert [c[0] for c in guest.calls] == ["stop", "get", "get", "get", "release"]
+    folder = path.parent / "halt-wish679-boot-1"
+    halt = _lane_lines(path)[-1]
+    assert halt["event"] == "halt"
+    for key, remote in result["remotes"].items():
+        fetched = folder / f"fetched-{key}.adf"
+        assert fetched.read_bytes() == b"disk " + remote.encode()
+        assert halt["fetched"][key]["sha256"] == hashlib.sha256(fetched.read_bytes()).hexdigest()
+
+
+def test_a_halt_whose_stop_fails_fetches_nothing_and_still_releases(tmp_path):
+    _boot(tmp_path, LaneGuest())
+    failing = LaneGuest(fail_stop=True)
+    # The earlier boot's line is in the folder; this guest only sees the halt.
+    with pytest.raises(RouteError, match="stop: no emulator"):
+        acceptance.halt_lane(failing, "wish679-boot", manifest_path=manifest_for(tmp_path))
+    assert [c[0] for c in failing.calls] == ["stop", "release"]
+
+
+def test_a_halt_with_no_boot_record_stops_releases_and_says_why(tmp_path):
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="no boot record"):
+        acceptance.halt_lane(guest, "wish679-boot", manifest_path=manifest_for(tmp_path))
+    assert [c[0] for c in guest.calls] == ["stop", "release"]
+
+
+def test_the_halt_command_takes_the_manifest(tmp_path, monkeypatch):
+    guest = LaneGuest()
+    monkeypatch.setattr(acceptance, "WinGuest", lambda: guest)
+    _boot(tmp_path, guest)
+    path = manifest_for(tmp_path)
+    guest.calls.clear()
+    assert acceptance.main(["halt", "--holder", "wish679-boot", "--manifest", str(path)]) == 0
+    assert [c[0] for c in guest.calls] == ["stop", "get", "get", "get", "release"]

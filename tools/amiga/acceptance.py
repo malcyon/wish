@@ -10,6 +10,11 @@ is blocked, before any run folder exists, for a value out of range (x and y 0 to
 and expects that square on load; the registered published image and the source
 pins still describe the unstaged Save As output, and `measure` and `accept`
 re-derive the staged DF0 from it, blocking any other difference.
+
+A Fast Travel run reloads a game-written slot with `halt --holder H --manifest prepare.json`,
+which fetches each booted disk to `halt-H-N/fetched-<key>.adf` (`disk3` on Pools of Darkness)
+before the release, then `prepare --substitute <that file> --substitute-letter <saved letter>`,
+`boot`, and a load by hand. `reload` stays the guarded route for parties that have identity maps.
 """
 
 from __future__ import annotations
@@ -4988,15 +4993,32 @@ NO_ENCOUNTERS_HELP = ("turn the title's random encounters off in memory for the 
                       "changed script")
 
 
+def _lane_log(folder: pathlib.Path, record: dict[str, Any]) -> None:
+    """Append one event to the run folder's `lanes.jsonl`."""
+    stamp = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    with (folder / "lanes.jsonl").open("a", encoding="utf-8") as log:
+        log.write(json.dumps({"time": stamp, **record}, sort_keys=True) + "\n")
+
+
+def _lane_events(folder: pathlib.Path, event: str, holder: str) -> list[dict[str, Any]]:
+    log = folder / "lanes.jsonl"
+    if not log.is_file():
+        return []
+    records = (json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line)
+    return [r for r in records if r.get("event") == event and r.get("holder") == holder]
+
+
 def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | None, *,
               guest: Any, holder: str, audio_proof: pathlib.Path | None,
-              wait_lane: float = 0.0, timeout: float = 120.0) -> dict[str, Any]:
+              wait_lane: float = 0.0, timeout: float = 120.0,
+              command: Sequence[str] | None = None) -> dict[str, Any]:
     """Claim a lane, put a prepared run's disks on it, start the title's WinUAE and return, leaving it running.
 
     The disks are the manifest's, each checked against its hash; no key is pressed and the
     encounter switch is left alone, so `noencounters.py` and `amigadrive.py` take it from here
     under `holder`. A failure after the claim stops WinUAE, if it was started, and releases the lane.
-    `halt_lane` is the matching end.
+    `halt_lane` is the matching end. Beside the manifest, `lanes.jsonl` gains a `boot` line with the
+    command line, the commit and the disks on the lane, so a later run can rebuild the specimen.
     """
     if not HOLDER.fullmatch(holder):
         raise RouteError("holder must use a simple lane-safe name")
@@ -5010,6 +5032,12 @@ def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | N
     remotes = {key: guest.remote_path(title.issue, holder, key) for key in title.disk_keys}
     result: dict[str, Any] = {"holder": holder, "input": str(manifest_path), "remotes": remotes}
     claimed = start_attempted = False
+
+    def record(**extra: Any) -> None:
+        sha = evidence.git_state(REPO)["sha"]
+        _lane_log(manifest_path.parent, {
+            "event": "boot", "command": None if command is None else list(command),
+            "head": None if sha == "unknown" else sha, **result, **extra})
     try:
         receipt = guest.claim(holder, timeout=30 if wait_lane > 0 else timeout,
                               **_wait_option(wait_lane))
@@ -5024,7 +5052,10 @@ def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | N
         result["start"] = guest.start(
             holder, *(None if key is None else remotes[key] for key in title.mounted),
             timeout=timeout, options=title.options)
+        record()
     except BaseException as exc:
+        if claimed:
+            record(error=f"{type(exc).__name__}: {exc}")
         problems: list[str] = []
         if claimed:
             for name, step, run in (("stop", guest.stop, start_attempted),
@@ -5042,15 +5073,46 @@ def boot_lane(manifest_path: pathlib.Path, manifest: dict, title: AmigaTitle | N
     return result
 
 
-def halt_lane(guest: Any, holder: str, timeout: float = 30.0) -> dict[str, str]:
-    """Stop `holder`'s WinUAE and release its lane; the release is tried even when the stop fails."""
-    result: dict[str, str] = {}
+def halt_lane(guest: Any, holder: str, timeout: float = 30.0, *,
+              manifest_path: pathlib.Path | None = None,
+              command: Sequence[str] | None = None) -> dict[str, Any]:
+    """Stop `holder`'s WinUAE and release its lane; the release is tried even when the stop fails.
+
+    With `manifest_path`, every disk the run folder's `boot` line put on the lane is first fetched to
+    `halt-<holder>-<n>/fetched-<key>.adf`, after a successful stop (a failed stop may leave a disk
+    mid-write, so nothing is fetched) and before the release. Without it the halt only cleans up.
+    """
+    result: dict[str, Any] = {}
     problems: list[str] = []
-    for name, step in (("stop", guest.stop), ("release", guest.release)):
-        try:
-            result[name] = step(holder, timeout=timeout)
-        except Exception as exc:  # noqa: BLE001 - say every step that failed, not only the first
-            problems.append(f"{name}: {exc}")
+    folder = None if manifest_path is None else manifest_path.parent
+    boots = [] if folder is None else _lane_events(folder, "boot", holder)
+    try:
+        result["stop"] = guest.stop(holder, timeout=timeout)
+        stopped = True
+    except Exception as exc:  # noqa: BLE001 - say every step that failed, not only the first
+        problems.append(f"stop: {exc}")
+        stopped = False
+    if folder is not None and stopped and boots:
+        out = folder / f"halt-{holder}-{len(_lane_events(folder, 'halt', holder)) + 1}"
+        out.mkdir(parents=True, exist_ok=True)
+        fetched: dict[str, Any] = {}
+        for key, remote in boots[-1]["remotes"].items():
+            local = out / f"fetched-{key}.adf"
+            try:
+                guest.get(remote, local, timeout=timeout)
+                fetched[key] = _entry(local)
+            except Exception as exc:  # noqa: BLE001
+                problems.append(f"fetch {key}: {exc}")
+        result["fetched"] = fetched
+    try:
+        result["release"] = guest.release(holder, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"release: {exc}")
+    if folder is not None:
+        if not boots:
+            problems.append(f"no boot record for {holder} in {folder}")
+        _lane_log(folder, {"event": "halt", "holder": holder, "command": None if command is None else list(command),
+                           **result, **({"errors": problems} if problems else {})})
     if problems:
         raise RouteError("; ".join(problems))
     return result
@@ -5180,6 +5242,8 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--timeout", type=float, default=120, help="seconds for each guest call")
     h = sub.add_parser("halt", help="stop the WinUAE a `boot` started and release its lane")
     h.add_argument("--holder", required=True)
+    h.add_argument("--manifest", type=pathlib.Path, default=None,
+                   help="the boot's prepare.json: fetch each disk back into its folder before the release")
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
     common(m)
     m.add_argument("--guards", type=pathlib.Path, default=None,
@@ -5241,10 +5305,12 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--boot-limit", type=float, default=300)
     args = parser.parse_args(argv)
     if args.command in ("boot", "halt"):
+        command = ["tools/amiga/acceptance.py", *(sys.argv[1:] if argv is None else argv)]
         try:
             with terminating():
                 if args.command == "halt":
-                    result = halt_lane(WinGuest(), args.holder)
+                    result = halt_lane(WinGuest(), args.holder, manifest_path=args.manifest,
+                                       command=command)
                 else:
                     if args.holder is None:
                         parser.error("boot needs --holder, the name every later command passes")
@@ -5255,7 +5321,8 @@ def main(argv: list[str] | None = None) -> int:
                         manifest = json.loads(args.manifest.read_text())
                     result = boot_lane(args.manifest, manifest, title, guest=WinGuest(),
                                        holder=args.holder, audio_proof=args.audio_proof,
-                                       wait_lane=args.wait_lane, timeout=args.timeout)
+                                       wait_lane=args.wait_lane, timeout=args.timeout,
+                                       command=command)
         except (RouteError, OSError, ValueError) as exc:
             print(f"acceptance: {exc}", file=sys.stderr)
             return 2
