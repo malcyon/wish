@@ -41,7 +41,10 @@ pytestmark = pytest.mark.usefixtures("no_registry")
 
 #: What the row's line says when a folder is set and holds no Pools of
 #: Darkness disk image, as the player reads it.
-NONE_FOUND = "None; no .adf disk images here"
+NO_DISKS_ROW = "No Pools of Darkness game disks found here."
+
+#: What the Titles line says in the same case.
+NO_DISKS_TITLES = "No game disks found here."
 
 
 @pytest.fixture(autouse=True)
@@ -367,16 +370,15 @@ def test_a_folder_with_no_pools_of_darkness_image_says_none(app, tmp_path,
     adf(folder, "pool.adf", "poolgame")             # Pool of Radiance's disk
     (folder / "notes.adf").write_bytes(b"not a disk")
     (folder / "POOL1.D64").write_bytes(b"")
-    assert title_folder_report(str(folder), POD) == "none; no .adf disk images here"
-    assert title_folder_report(str(tmp_path / "missing"), POD) == (
-        "none; no .adf disk images here")
+    assert title_folder_report(str(folder), POD) == NO_DISKS_ROW
+    assert title_folder_report(str(tmp_path / "missing"), POD) == NO_DISKS_ROW
 
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
         assert dialog.game_folder_reports[POD.key].isHidden()   # nothing typed
         dialog.set_game_folder(POD, str(folder))
-        assert dialog.game_folder_reports[POD.key].text() == NONE_FOUND
+        assert dialog.game_folder_reports[POD.key].text() == NO_DISKS_ROW
     finally:
         win.close()
 
@@ -634,7 +636,7 @@ def test_the_titles_line_of_a_pools_window_names_adf_images(
     empty = tmp_path / "empty"
     empty.mkdir()
     rows = dict(preferences.report(Settings(), flag=str(empty), game=POD))
-    assert rows["Titles"] == "none; no .adf disk images here"
+    assert rows["Titles"] == NO_DISKS_TITLES
     rows = dict(preferences.report(Settings(), game=POD))
     assert rows["Titles"] == "none; nowhere with .adf disk images in it was found"
 
@@ -662,7 +664,7 @@ def test_the_dialog_capitalises_the_composed_titles_line(
         win._title = POD.title
         dialog = PreferencesDialog(win)
         dialog.refresh()
-        assert dialog.report_rows["Titles"].text() == NONE_FOUND
+        assert dialog.report_rows["Titles"].text() == NO_DISKS_TITLES
     finally:
         win.close()
 
@@ -735,14 +737,12 @@ def test_the_report_for_each_kind_of_folder(tmp_path):
 
     neither = tmp_path / "neither"
     neither.mkdir()
-    assert title_folder_report(str(neither), POD) == (
-        "none; no .adf disk images here")
+    assert title_folder_report(str(neither), POD) == NO_DISKS_ROW
 
 
 def test_another_titles_dos_install_counts_as_neither(tmp_path):
     curse = dos_install(tmp_path / "curse", "START.EXE", "CURSE.CFG")
-    assert title_folder_report(str(curse), POD) == (
-        "none; no .adf disk images here")
+    assert title_folder_report(str(curse), POD) == NO_DISKS_ROW
     assert title_folder_report(str(curse), POOL) == (
         f"none; no {preferences._pretty(POOL.disk_glob)} here")
 
@@ -764,12 +764,13 @@ def test_the_titles_line_and_the_row_agree_on_a_dos_install(tmp_path,
     assert not preferences._is_dos_install(folder, POOL)
 
 
-def test_the_titles_line_of_an_empty_folder_is_unchanged(tmp_path, monkeypatch):
+def test_the_titles_line_of_an_empty_folder_says_no_game_disks(
+        tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     empty = tmp_path / "empty"
     empty.mkdir()
     rows = dict(preferences.report(Settings(), flag=str(empty), game=POD))
-    assert rows["Titles"] == "none; no .adf disk images here"
+    assert rows["Titles"] == NO_DISKS_TITLES
 
 
 def test_the_titles_line_of_an_amiga_folder_is_unchanged(tmp_path, monkeypatch,
@@ -865,8 +866,7 @@ def test_a_curse_dos_install_in_another_titles_row_does_not_claim_it(tmp_path):
     assert not preferences._is_dos_install(folder, POOL)
     assert title_folder_report(str(folder), POOL) == (
         f"none; no {preferences._pretty(POOL.disk_glob)} here")
-    assert title_folder_report(str(folder), POD) == (
-        "none; no .adf disk images here")
+    assert title_folder_report(str(folder), POD) == NO_DISKS_ROW
 
 
 def test_a_c64_disk_folder_keeps_its_disk_count(tmp_path, monkeypatch):

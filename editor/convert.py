@@ -146,7 +146,7 @@ from goldbox import (
     titles,
     world_state,
 )
-from goldbox.amiga_adf import AmigaDiskError
+from goldbox.amiga_adf import AmigaDiskError, AmigaDiskFull
 
 # By name rather than as a module: `amiga_port` and `amiga_por` differ by one
 # letter, and only one of them belongs in the line above.
@@ -1122,6 +1122,8 @@ class PodDosToAmiga(Direction):
                 vault, amiga_savegame.pod_party_nodes(savegame))
             disk = amiga_savegame.pod_slot_on_disk_three(
                 disk_three, letter, savegame, vault_bytes, replace=replace)
+        except AmigaDiskFull:
+            raise
         except (amiga_savegame.AmigaSaveError, AmigaDiskError) as e:
             raise ConvertError(str(e)) from e
         report = neutral.Report()
@@ -1739,9 +1741,8 @@ DISK_TITLE = "Choose Amiga game disk 2"
 #: like it.
 DISK_ONE_TITLE = "Choose Amiga game disk 1"
 
-#: The picker title for the player's Pools of Darkness disk 3. Empty until
-#: Donald words it.
-DISK_THREE_TITLE = ""
+#: The picker title for the Save As Amiga disk 3 row.
+DISK_THREE_TITLE = "Select location of Amiga game disk 3"
 FOLDER_TITLE = "Choose where to write"
 
 #: The save picker's filter: a `.d64` or the DOS save container itself, so

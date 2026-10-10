@@ -49,6 +49,7 @@ from goldbox import (
 from goldbox import c64_port as por_games
 from goldbox import item_names as port_item_names
 from goldbox import spell_names as port_spell_names
+from goldbox.amiga_adf import AmigaDiskFull
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
@@ -180,9 +181,9 @@ LOSS_NOT_CONVERTED = "The save could not be converted."
 #: the two names are the titles' own (`goldbox.titles.Title.title`).
 WRONG_DOS_FOLDER = ("This folder is for {folder}. "
                     "Choose the {save} DOS game folder.")
-#: Shown at the Pools of Darkness disk 3 row when the file chosen is not that
-#: title's disk 3. Empty until Donald words it; the label stays blank.
-WRONG_DISK_THREE = ""
+#: The `CANNOT_SAVE_TITLE` pop-up body for a file at the disk 3 row that is not
+#: that title's disk 3.
+WRONG_DISK_THREE = "This is not a Pools of Darkness Amiga game disk 3."
 #: C4.
 TARGET_NOT_EMPTY = "You must choose an empty folder or type a new folder name."
 #: C5.
@@ -218,6 +219,9 @@ RECOVERY_FAILED_NO_BACKUP = (
 #: ("no registered dos to amiga conversion for por") and never reaches a
 #: player.
 SAVE_AS_FAILED = "The save could not be written, and your saved game is unchanged."
+#: The `CANNOT_SAVE_TITLE` pop-up body when the copied disk 3 has too little
+#: room.
+DISK_FULL = "Disk is out of space."
 
 #: The word the Condition line shows for each neutral status name.
 #: `c64_codec.status_from_byte` and the DOS and Amiga readers name the states.
@@ -989,6 +993,12 @@ class EditorBinding(QObject):
         self._dos_folder_row_shown = False
         #: The same for the Pools of Darkness disk 3 row.
         self._disk_three_row_shown = False
+        #: Whether the file at the disk 3 row is not a disk 3, as the last
+        #: resolve found it.
+        self._disk_three_wrong = False
+        #: Set while the disk 3 pop-up is open, so the focus change it causes
+        #: cannot open a second one.
+        self._checking_disk_three = False
         #: What the player chose to leave behind for the Save As in progress,
         #: and the packs it was chosen against -- `(leave, packs)`, see
         #: `_packs_of`. Read only by a stale plan's re-preparation.
@@ -3075,8 +3085,8 @@ class EditorBinding(QObject):
                 box.setVisible(False)
         self._dos_folder_row_shown = False
         self._disk_three_row_shown = False
+        self._disk_three_wrong = False
         self._show_wrong_dos_folder(None)
-        self._show_wrong_disk_three(False)
 
     def _destination_manual_assets(self) -> dict[str, str]:
         """What the player has typed or browsed into the asset rows.
@@ -3152,14 +3162,23 @@ class EditorBinding(QObject):
         label.setText(WRONG_DOS_FOLDER.format(folder=folder, save=save))
         label.setVisible(True)
 
-    def _show_wrong_disk_three(self, wrong: bool) -> None:
-        """`WRONG_DISK_THREE` at the disk 3 row for a file that is not this
-        title's disk 3, or nothing when `wrong` is false."""
-        label = self._child("label_amiga_disk_three_wrong")
-        if label is None:
+    def _check_disk_three_row(self) -> None:
+        """Pop up `WRONG_DISK_THREE` and clear the disk 3 row when the file
+        named there is not a disk 3. Runs when editing the field finishes and
+        when Browse returns, never per keystroke."""
+        field = self._child("destination_amiga_disk_three")
+        if (self._save_as_port is None or field is None
+                or not field.text().strip() or self._checking_disk_three):
             return
-        label.setText(WRONG_DISK_THREE if wrong else "")
-        label.setVisible(wrong)
+        self._checking_disk_three = True
+        try:
+            self._resolve_destination_assets()
+            if self._disk_three_wrong:
+                QMessageBox.critical(self.root, CANNOT_SAVE_TITLE,
+                                     WRONG_DISK_THREE)
+                field.clear()
+        finally:
+            self._checking_disk_three = False
 
     def _show_asset_rows(self, missing, wrong=None,
                          wrong_disk_three: bool = False) -> None:
@@ -3168,7 +3187,7 @@ class EditorBinding(QObject):
         stays off while the folder is missing or another title's, and while
         the file at the disk 3 row is not a disk 3."""
         self._show_wrong_dos_folder(wrong)
-        self._show_wrong_disk_three(wrong_disk_three)
+        self._disk_three_wrong = wrong_disk_three
         if saveplan.DOS_GAME_FOLDER in missing or wrong is not None:
             self._dos_folder_row_shown = True
         if saveplan.AMIGA_DISK_THREE in missing or wrong_disk_three:
@@ -3221,6 +3240,9 @@ class EditorBinding(QObject):
             field = self._child(name)
             if field is not None:
                 field.textChanged.connect(self._destination_field_edited)
+        three = self._child("destination_amiga_disk_three")
+        if three is not None:
+            three.editingFinished.connect(self._check_disk_three_row)
         section = self._child("destination_section")
         if section is not None:
             from PyQt6.QtGui import QKeySequence, QShortcut
@@ -3302,6 +3324,8 @@ class EditorBinding(QObject):
             path = QFileDialog.getExistingDirectory(self.root, "", current)
         if path:
             field.setText(path)
+            if requirement == saveplan.AMIGA_DISK_THREE:
+                self._check_disk_three_row()
 
     def cancel_save_as(self) -> None:
         """Cancel, or Esc (decision 6): close the section and forget it."""
@@ -3315,6 +3339,7 @@ class EditorBinding(QObject):
         self._save_as_port = None
         self._dos_folder_row_shown = False
         self._disk_three_row_shown = False
+        self._disk_three_wrong = False
 
     def confirm_save_as(self) -> None:
         """The Save As button: check the name, block an alias, confirm a
@@ -3495,6 +3520,9 @@ class EditorBinding(QObject):
             # `DroppedFields` is, so it reads the same sentence.
             _log.debug("Save As to %s blocked: %s", path, exc)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, LOSS_NOT_CONVERTED)
+        except AmigaDiskFull:
+            _log.debug("Save As to %s: the copied disk 3 is full", path)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, DISK_FULL)
         except Exception:
             _log.exception("could not prepare a Save As to %s", path)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)

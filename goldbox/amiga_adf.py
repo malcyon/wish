@@ -211,6 +211,10 @@ class AmigaDiskError(ValueError):
     """A disk image this module will not read, or a write it will not make."""
 
 
+class AmigaDiskFull(AmigaDiskError):
+    """A write that needs more free blocks than the disk has."""
+
+
 class AmigaDiskTypeError(AmigaDiskError):
     """A disk whose DOS type this module does not read, or does not write.
 
@@ -724,7 +728,7 @@ class AmigaDisk:
                                   FIRST_DATA_BLOCK - 1, -1)
                  if self.is_free(b)][:count]
         if len(found) < count:
-            raise AmigaDiskError(
+            raise AmigaDiskFull(
                 f"{count} blocks wanted and {len(found)} free on "
                 f"{self.volume_name!r}; nothing was written")
         for block in found:

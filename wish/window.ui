@@ -1772,45 +1772,25 @@
            </item>
            <item>
             <widget class="QWidget" name="box_amiga_disk_three">
-             <layout class="QVBoxLayout" name="layout_amiga_disk_three">
+             <layout class="QHBoxLayout" name="row_amiga_disk_three">
               <property name="leftMargin"><number>0</number></property>
               <property name="topMargin"><number>0</number></property>
               <property name="rightMargin"><number>0</number></property>
               <property name="bottomMargin"><number>0</number></property>
               <item>
-               <layout class="QHBoxLayout" name="row_amiga_disk_three">
-                <item>
-                 <widget class="QLabel" name="label_amiga_disk_three_caption">
-                  <property name="text">
-                   <string/>
-                  </property>
-                 </widget>
-                </item>
-                <item>
-                 <widget class="QLineEdit" name="destination_amiga_disk_three"/>
-                </item>
-                <item>
-                 <widget class="QPushButton" name="button_amiga_disk_three_browse">
-                  <property name="text">
-                   <string>Browse…</string>
-                  </property>
-                 </widget>
-                </item>
-               </layout>
+               <widget class="QLabel" name="label_amiga_disk_three_caption">
+                <property name="text">
+                 <string>Amiga game disk 3</string>
+                </property>
+               </widget>
               </item>
               <item>
-               <widget class="QLabel" name="label_amiga_disk_three_wrong">
-                <property name="visible">
-                 <bool>false</bool>
-                </property>
+               <widget class="QLineEdit" name="destination_amiga_disk_three"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="button_amiga_disk_three_browse">
                 <property name="text">
-                 <string/>
-                </property>
-                <property name="textFormat">
-                 <enum>Qt::PlainText</enum>
-                </property>
-                <property name="wordWrap">
-                 <bool>true</bool>
+                 <string>Browse…</string>
                 </property>
                </widget>
               </item>

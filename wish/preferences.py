@@ -191,6 +191,11 @@ def pod_folder_row_wanted() -> bool:
     return backends.amiga_enabled() or convert.pod_convert_enabled()
 
 
+#: A title-with-no-C64-container's folder row, and the Titles line, when the
+#: folder is empty or holds no game disks of that title.
+NO_TITLE_DISKS_ROW = "No {title} game disks found here."
+NO_TITLE_DISKS_TITLES = "No game disks found here."
+
 #: The note a folder holding this title's DOS install gets. Empty until its
 #: wording is approved, and an empty note hides the line.
 DOS_INSTALL_NOTE = ""
@@ -288,7 +293,7 @@ def title_folder_report(folder: str,
             f"{n} disk{'' if n == 1 else 's'}", DOS_INSTALL_NOTE) if line)
     if not n:
         if isinstance(game, titles.Title):
-            return "none; no .adf disk images here"
+            return NO_TITLE_DISKS_ROW.format(title=game.title)
         return f"none; no {_pretty(game.disk_glob)} here"
     return f"{n} disk{'' if n == 1 else 's'}"
 
@@ -417,6 +422,8 @@ def report(settings, flag=None, beside=None,
               if all(g.key != t.key for g, _n in present)]
     if names:
         titles_line = " · ".join(names)
+    elif isinstance(game, titles.Title):
+        titles_line = NO_TITLE_DISKS_TITLES
     else:
         titles_line = f"none; no {patterns} here"
     return rows + [("Titles", titles_line)]

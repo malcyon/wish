@@ -233,6 +233,18 @@ def test_many_files_in_one_directory_thread_their_hash_chains():
         assert disk.read_file(name) == name.encode()
 
 
+def test_a_full_disk_raises_the_full_disk_error_which_is_a_disk_error():
+    from goldbox.amiga_adf import AmigaDiskFull
+
+    disk = AmigaDisk.blank()
+    free = disk.free_count()
+    with pytest.raises(AmigaDiskError) as caught:
+        disk._allocate(free + 1)
+    assert type(caught.value) is AmigaDiskFull
+    assert isinstance(caught.value, AmigaDiskError)
+    assert "nothing was written" in str(caught.value)
+
+
 def test_a_full_disk_is_blocked_and_leaves_the_disk_alone():
     disk = AmigaDisk.blank()
     disk.write_file("KEEP", b"keep me", when=WHEN)

@@ -33,7 +33,7 @@ from . import (
     neutral,
     world_state,
 )
-from .amiga_adf import AmigaDisk, AmigaDiskError
+from .amiga_adf import AmigaDisk, AmigaDiskError, AmigaDiskFull
 from .amiga_port import AmigaRecordError
 
 VM_BYTES = 5120
@@ -2455,7 +2455,8 @@ def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
     `disk_three` is not
     that title's disk 3, `AmigaSaveError` when either file is not one the
     game's own writer makes or the result does not verify, and never changes
-    `disk_three`.
+    `disk_three`.  Raises `AmigaDiskFull` when the copy has too little room;
+    the copy is discarded, so the player's disk 3 is unchanged.
     """
     letter = slot_letter(slot)
     pod_parse(savegame)
@@ -2496,6 +2497,8 @@ def pod_slot_on_disk_three(disk_three: AmigaDisk, slot: str,
     try:
         copy.write_file(pod_slot_path(letter), savegame)
         copy.write_file(pod_vault_path(letter), vault)
+    except AmigaDiskFull:
+        raise
     except AmigaDiskError as e:
         raise AmigaSaveError(
             f"the Pools of Darkness disk 3 has no room for slot {letter}: {e}"

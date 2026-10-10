@@ -3,8 +3,8 @@ behind `WISH_EXPERIMENTAL_POD_CONVERT`.
 
 The row appears only when Preferences cannot supply the disk, stays once
 shown, and holds Save As off while the file named at it is not a disk 3. Its
-three strings are empty until Donald words them, so these tests pin the
-behaviour and not any text. They read no game data.
+caption, picker title, wrong-file pop-up and full-disk pop-up carry the
+wording Donald approved. They read no game data.
 """
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from editor import convert
 
 ROW = "box_amiga_disk_three"
 FIELD = "destination_amiga_disk_three"
-WRONG = "label_amiga_disk_three_wrong"
 SAVE_AS = "button_destination_save_as"
 
 
@@ -40,6 +39,15 @@ def _save_as_amiga(monkeypatch, tmp_path, preferences=None):
     window.load(str(_dos_folder(tmp_path)))
     window.begin_save_as("amiga")
     return window
+
+
+def _recorded_boxes(monkeypatch) -> list:
+    """Every `QMessageBox.critical` call as `(title, text)`, in order."""
+    seen: list = []
+    monkeypatch.setattr(
+        ew.QMessageBox, "critical",
+        lambda _parent, title, text, *a, **k: seen.append((title, text)))
+    return seen
 
 
 def _preferences(tmp_path, *disks) -> pathlib.Path:
@@ -63,7 +71,6 @@ def test_no_disk_three_in_preferences_shows_the_row_and_holds_save_as(
     folder = _preferences(tmp_path, ("one.adf", _disk_one()))
     window = _save_as_amiga(monkeypatch, tmp_path, folder)
     assert not window._child(ROW).isHidden()
-    assert window._child(WRONG).isHidden()
     assert window._child(FIELD).text() == ""
     assert not window._child(SAVE_AS).isEnabled()
 
@@ -81,37 +88,79 @@ def test_a_disk_three_typed_at_the_row_frees_save_as_and_the_row_stays(
     window._child(FIELD).setText(str(_disk_file(tmp_path, _disk_three())))
     assert window._child(SAVE_AS).isEnabled()
     assert not window._child(ROW).isHidden()
-    assert window._child(WRONG).isHidden()
 
 
-def test_another_disk_at_the_row_holds_save_as_and_shows_the_wrong_line(
+def test_typing_another_disk_at_the_row_opens_no_pop_up_and_holds_save_as(
         app, monkeypatch, tmp_path):
     window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
     window._child(FIELD).setText(
         str(_disk_file(tmp_path, _disk_one(), "disk1.adf")))
+    assert boxes == []
     assert not window._child(SAVE_AS).isEnabled()
     assert not window._child(ROW).isHidden()
-    assert not window._child(WRONG).isHidden()
-    assert window._child(WRONG).text() == ew.WRONG_DISK_THREE
 
 
-def test_choosing_the_right_disk_after_the_wrong_one_clears_the_line(
+def test_finishing_the_edit_of_another_disk_pops_up_once_and_clears_the_row(
         app, monkeypatch, tmp_path):
     window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
     field = window._child(FIELD)
     field.setText(str(_disk_file(tmp_path, _disk_one(), "disk1.adf")))
+    field.editingFinished.emit()
+    assert boxes == [(ew.CANNOT_SAVE_TITLE, ew.WRONG_DISK_THREE)]
+    assert field.text() == ""
+    assert not window._child(ROW).isHidden()
+    assert not window._child(SAVE_AS).isEnabled()
+    field.editingFinished.emit()
+    assert len(boxes) == 1
+
+
+def test_choosing_the_right_disk_after_the_wrong_one_frees_save_as(
+        app, monkeypatch, tmp_path):
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
+    field = window._child(FIELD)
+    field.setText(str(_disk_file(tmp_path, _disk_one(), "disk1.adf")))
+    field.editingFinished.emit()
     field.setText(str(_disk_file(tmp_path, _disk_three())))
-    assert window._child(WRONG).isHidden()
+    field.editingFinished.emit()
+    assert len(boxes) == 1
     assert window._child(SAVE_AS).isEnabled()
 
 
-def test_a_file_that_is_no_disk_at_all_is_a_wrong_disk_three(
+def test_a_file_that_is_no_disk_at_all_pops_up_the_wrong_disk_three(
         app, monkeypatch, tmp_path):
     window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
     notes = tmp_path / "notes.adf"
     notes.write_bytes(b"not a disk")
-    window._child(FIELD).setText(str(notes))
-    assert not window._child(WRONG).isHidden()
+    field = window._child(FIELD)
+    field.setText(str(notes))
+    field.editingFinished.emit()
+    assert boxes == [(ew.CANNOT_SAVE_TITLE, ew.WRONG_DISK_THREE)]
+    assert field.text() == ""
+    assert not window._child(SAVE_AS).isEnabled()
+
+
+def test_finishing_the_edit_of_an_empty_row_opens_no_pop_up(
+        app, monkeypatch, tmp_path):
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
+    window._child(FIELD).editingFinished.emit()
+    assert boxes == []
+
+
+def test_browse_returning_another_disk_pops_up_and_clears_the_row(
+        app, monkeypatch, tmp_path):
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
+    disk = _disk_file(tmp_path, _disk_one(), "disk1.adf")
+    monkeypatch.setattr(ew.QFileDialog, "getOpenFileName",
+                        lambda *a: (str(disk), ""))
+    window._child("button_amiga_disk_three_browse").click()
+    assert boxes == [(ew.CANNOT_SAVE_TITLE, ew.WRONG_DISK_THREE)]
+    assert window._child(FIELD).text() == ""
     assert not window._child(SAVE_AS).isEnabled()
 
 
@@ -125,10 +174,12 @@ def test_the_browse_button_opens_the_disk_three_picker_and_fills_the_row(
         asked.append((args[1], args[3]))
         return str(disk), ""
     monkeypatch.setattr(ew.QFileDialog, "getOpenFileName", picked)
+    boxes = _recorded_boxes(monkeypatch)
     window._child("button_amiga_disk_three_browse").click()
     assert asked == [(convert.DISK_THREE_TITLE, convert.DISK_FILTER)]
     assert window._child(FIELD).text() == str(disk)
     assert window._child(SAVE_AS).isEnabled()
+    assert boxes == []
 
 
 def test_a_new_save_as_forgets_the_row_and_what_was_typed_at_it(
@@ -138,7 +189,6 @@ def test_a_new_save_as_forgets_the_row_and_what_was_typed_at_it(
         str(_disk_file(tmp_path, _disk_one(), "disk1.adf")))
     window.begin_save_as("amiga")
     assert window._child(FIELD).text() == ""
-    assert window._child(WRONG).isHidden()
     assert not window._child(ROW).isHidden()
     window.begin_save_as("dos")
     assert window._child(ROW).isHidden()
@@ -160,12 +210,36 @@ def test_the_row_stays_off_every_other_titles_save_as(app, tmp_path):
         assert window._child(ROW).isHidden()
 
 
-def test_the_three_strings_stay_empty_until_donald_words_them(
+def test_the_four_approved_strings_are_exactly_these(
         app, monkeypatch, tmp_path):
     window = _save_as_amiga(monkeypatch, tmp_path)
-    assert window._child("label_amiga_disk_three_caption").text() == ""
-    assert convert.DISK_THREE_TITLE == ""
-    assert ew.WRONG_DISK_THREE == ""
+    assert (window._child("label_amiga_disk_three_caption").text()
+            == "Amiga game disk 3")
+    assert convert.DISK_THREE_TITLE == "Select location of Amiga game disk 3"
+    assert ew.WRONG_DISK_THREE == (
+        "This is not a Pools of Darkness Amiga game disk 3.")
+    assert ew.DISK_FULL == "Disk is out of space."
+
+
+def test_the_row_has_no_inline_wrong_disk_line(app, monkeypatch, tmp_path):
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    assert window._child("label_amiga_disk_three_wrong") is None
+
+
+def test_a_full_disk_three_pops_up_the_disk_is_full_line_and_writes_nothing(
+        app, monkeypatch, tmp_path):
+    full = _disk_three()
+    full._allocate(full.free_count() - 2)
+    full._fix_bitmap()
+    window = _save_as_amiga(monkeypatch, tmp_path)
+    boxes = _recorded_boxes(monkeypatch)
+    field = window._child(FIELD)
+    field.setText(str(_disk_file(tmp_path, full)))
+    target = tmp_path / "out.adf"
+    window._child("destination_path").setText(str(target))
+    window._child(SAVE_AS).click()
+    assert boxes == [(ew.CANNOT_SAVE_TITLE, ew.DISK_FULL)]
+    assert not target.exists()
 
 
 # ---------------------------------------------------------------------------

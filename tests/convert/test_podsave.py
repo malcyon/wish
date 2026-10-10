@@ -334,6 +334,32 @@ def test_pod_slot_on_disk_three_stops_a_vault_the_pool_cannot_hold():
             _synthetic_disk_three("A"), "B", party, bigger)
 
 
+def test_pod_slot_on_disk_three_names_a_disk_with_too_little_room():
+    from goldbox.amiga_adf import AmigaDiskFull
+
+    disk = _synthetic_disk_three("A")
+    disk._allocate(disk.free_count() - 2)
+    disk._fix_bitmap()
+    before = disk.to_bytes()
+    with pytest.raises(AmigaDiskFull):
+        amiga_savegame.pod_slot_on_disk_three(
+            disk, "B", _bundled_party(), _a_vault())
+    assert disk.to_bytes() == before
+
+
+def test_an_oversized_vault_is_not_a_full_disk():
+    from goldbox.amiga_adf import AmigaDiskFull
+
+    party = _bundled_party()
+    vault = amiga_savegame.pod_vault_to_amiga(_items(436), 9)
+    bigger = vault + _amiga_node(type_index=1, quantity=1)
+    bigger = bigger[:12] + struct.pack(">HH", 0xFFFF, 437) + bigger[16:]
+    with pytest.raises(amiga_savegame.AmigaSaveError) as caught:
+        amiga_savegame.pod_slot_on_disk_three(
+            _synthetic_disk_three("A"), "B", party, bigger)
+    assert not isinstance(caught.value, AmigaDiskFull)
+
+
 def test_pod_vault_to_amiga_blocks_a_dos_type_105_record():
     v = dos_codec.PodVault(0, 0, 0, (_dos_item_record(105),))
     with pytest.raises(amiga_savegame.AmigaSaveError, match="105"):
@@ -1359,6 +1385,19 @@ def test_pod_dos_to_amiga_turns_an_oversized_vault_into_a_convert_error(tmp_path
             _dos_source(tmp_path, held), held, None,
             disk_three=_synthetic_disk_three("A"),
             replace=True)
+
+
+def test_pod_dos_to_amiga_lets_a_full_disk_three_through_unwrapped():
+    from goldbox.amiga_adf import AmigaDiskFull
+
+    folder = _pod_specimen("dos-pod-foundation-walked")
+    held = next(p.stem[-1] for p in sorted(folder.glob("SAVGAM?.PTY")))
+    disk = _synthetic_disk_three("A" if held != "A" else "B")
+    disk._allocate(disk.free_count() - 2)
+    disk._fix_bitmap()
+    with pytest.raises(AmigaDiskFull):
+        convert.PodDosToAmiga().rehearse(
+            _dos_source(folder, held), held, None, disk_three=disk)
 
 
 def test_pod_dos_to_amiga_needs_the_players_disk_three():
