@@ -2828,6 +2828,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         stops the run.
         """
         step_key, turn_key, most = key
+        opened.pop(n, None)
         walk = result["encounter_walk"] = {"state": state, "steps": 0, "turns": 0,
                                            "met": False, "blocked_at": []}
         wanted = (state, "world", *((then,) if then not in (None, state, "world") else ()))
