@@ -2120,12 +2120,12 @@ def test_a_bad_step_order_is_blocked_before_a_slot_is_claimed(monkeypatch, tmp_p
 # -- a walk that did not happen never passes -----------------------------------
 
 
-def _walk_run(monkeypatch, tmp_path, read):
+def _walk_run(monkeypatch, tmp_path, read, walked=None):
     """`_fake_run`'s driver made to take every step of a walk run, and
     `read_step` to return `read` (None: the read step is not in the list)."""
     log = _fake_run(monkeypatch, tmp_path)
     for name, fn in (("load", lambda self: {}), ("camp", lambda self: {}),
-                     ("walk", lambda self, key: {"route": key}),
+                     ("walk", lambda self, key: dict(walked or {"route": key})),
                      ("save", lambda self, letter: {})):
         monkeypatch.setattr(da.Driver, name, fn, raising=False)
     monkeypatch.setattr(da, "read_step", lambda *a, **k: read)
@@ -2189,6 +2189,32 @@ def test_a_walk_that_moved_the_party_passes(monkeypatch, tmp_path):
     _walk_run(monkeypatch, tmp_path, _read(changed=True))
     assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 0
     assert _summary(tmp_path)["completed"] is True
+
+
+_OVERLAND = {"route": "1", "map_kind": "overland",
+             "square_before": "22,5", "square_after": "22,4"}
+
+
+def test_an_overland_walk_that_moved_the_ring_passes_with_the_saved_square_unchanged(
+        monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read(changed=False), _OVERLAND)
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 0
+    assert _summary(tmp_path)["completed"] is True
+
+
+def test_an_overland_walk_whose_ring_did_not_move_still_fails_the_run(monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read(changed=False),
+              {**_OVERLAND, "square_after": "22,5"})
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "did not move" in _summary(tmp_path)["lost"]
+
+
+def test_a_dungeon_walk_with_an_unchanged_saved_square_still_fails_the_run(
+        monkeypatch, tmp_path):
+    _walk_run(monkeypatch, tmp_path, _read(changed=False),
+              {**_OVERLAND, "map_kind": "dungeon"})
+    assert da.run(_run_args(tmp_path, _WALK_STEPS)) == 1
+    assert "did not move" in _summary(tmp_path)["lost"]
 
 
 def test_a_run_with_no_walk_is_not_failed_for_an_unchanged_place(monkeypatch, tmp_path):

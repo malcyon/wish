@@ -8324,7 +8324,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 note(event="done", step=step.text,
                      **{k: v for k, v in r.items() if k != "slots"})
             summary["results"] = results
-            unproved = (walk_verdict(steps, summary.get("read"))
+            unproved = (walk_verdict(steps, summary.get("read"), results)
                        or share_verdict(summary.get("read"))
                        or expect_verdict(summary.get("read"))
                        or stored_verdict(results, summary.get("read")))
@@ -8818,13 +8818,29 @@ def stored_verdict(results: list[dict], read: dict | None) -> str | None:
     return vault_verdict(results, None) or deposit_verdict(results, read)
 
 
-def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
+def overland_walks_moved(results: list[dict] | None) -> bool:
+    """Whether every `walk` result is an overland one whose ring cell changed.
+
+    An overland step moves the ring on the world map and leaves the saved
+    dungeon square alone, so the saved place cannot judge it."""
+    walks = [r for r in results or []
+             if str(r.get("step", "")).split()[:1] == ["walk"]]
+    return bool(walks) and all(
+        r.get("map_kind") == "overland" and r.get("square_before")
+        and r.get("square_after") and r["square_before"] != r["square_after"]
+        for r in walks)
+
+
+def walk_verdict(steps: list[Step], read: dict | None,
+                 results: list[dict] | None = None) -> str | None:
     """Why a run that asked for a walk or a turn has not shown it, or None.
 
     The proof is the place decoded from the game-written save, the same in
     every title: after a walk the last save the run made must not be at the
     square the installed one was; after `turn` steps alone, the control, it
-    must be.  A place that was not computed proves nothing.
+    must be.  A place that was not computed proves nothing.  A walk that ran
+    only on the Pools of Darkness overland is judged by the ring cells it
+    logged (`overland_walks_moved`), since the saved square does not change.
     """
     walked = any(s.kind == "walk" for s in steps)
     if not walked and not any(s.kind == "turn" for s in steps):
@@ -8843,7 +8859,7 @@ def walk_verdict(steps: list[Step], read: dict | None) -> str | None:
     if "place_changed" not in slot or "x" not in (slot.get("place") or {}):
         return (f"{asked} was asked and slot {last}'s place was not computed "
                 f"({(slot.get('place') or {}).get('error', 'no place read')})")
-    if walked and not slot["place_changed"]:
+    if walked and not slot["place_changed"] and not overland_walks_moved(results):
         return (f"the walk did not move the party: the game-written slot {last} "
                 "is at the square the installed slot was")
     if not walked and slot["place_changed"]:
