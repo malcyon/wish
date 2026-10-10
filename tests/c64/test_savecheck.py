@@ -141,15 +141,25 @@ def _main_on_disk(tmp_path, monkeypatch, container):
                                    "--out", str(tmp_path / "log.jsonl")])
 
 
-def test_another_titles_save_stops_before_a_slot_is_claimed(tmp_path, monkeypatch):
+def _stop_message(tmp_path, monkeypatch, container):
     import pytest
-
-    from goldbox.c64_save import SECRET_OF_THE_SILVER_BLADES
-    call = _main_on_disk(tmp_path, monkeypatch, SECRET_OF_THE_SILVER_BLADES)
+    call = _main_on_disk(tmp_path, monkeypatch, container)
     with pytest.raises(SystemExit) as stop:
         call()
-    assert "secret-of-the-silver-blades" in str(stop.value)
-    assert "acceptance.py --title" in str(stop.value)
+    return str(stop.value)
+
+
+def test_another_titles_save_stops_before_a_slot_is_claimed(tmp_path, monkeypatch):
+    from goldbox.c64_save import SECRET_OF_THE_SILVER_BLADES
+    message = _stop_message(tmp_path, monkeypatch, SECRET_OF_THE_SILVER_BLADES)
+    assert message.endswith("Use tools/c64/acceptance.py --title ssb.")
+    assert "secret-of-the-silver-blades save" in message
+
+
+def test_a_curse_save_names_the_curse_acceptance_title(tmp_path, monkeypatch):
+    from goldbox.c64_save import CURSE_OF_THE_AZURE_BONDS
+    message = _stop_message(tmp_path, monkeypatch, CURSE_OF_THE_AZURE_BONDS)
+    assert message.endswith("Use tools/c64/acceptance.py --title curse.")
 
 
 def test_a_pool_save_gets_past_the_title_check(tmp_path, monkeypatch):
