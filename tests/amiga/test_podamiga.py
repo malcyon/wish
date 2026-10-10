@@ -1510,15 +1510,20 @@ def _mage_slots(pc):
     return tuple(pc[base + 18:base + 27])
 
 
-def test_a_dos_rings_extra_fifth_level_slots_are_not_written_to_the_amiga():
-    """DOS doubles level 5 for a readied power-0x81 ring and the Amiga's ring
-    test compares 0x41, so the Amiga game would give 6 and never rebuilds on
-    load. All ten memorised spells stay."""
+def test_a_dos_rings_extra_fifth_level_slots_are_written_to_the_amiga():
+    """Readying a power-0x81 ring doubles level 5 on both ports, and the Amiga
+    never rebuilds on load, so the array holds 12. All ten memorised spells
+    stay."""
     pc, _ = amiga_pod.to_pc(_dos_mage(power=0x81))
-    assert _mage_slots(pc) == (6,) * 9
+    assert _mage_slots(pc) == (6, 6, 6, 6, 12, 6, 6, 6, 6)
     kept = [b for b in pc[amiga_pod.SPELLS_MEMORISED:
                           amiga_pod.SPELLS_MEMORISED + 141] if b]
     assert sorted(kept) == [91] * 6 + [92, 94, 94, 119]
+
+
+def test_a_dos_ring_that_is_not_readied_gives_the_base_slots():
+    pc, _ = amiga_pod.to_pc(_dos_mage(power=0x81, readied=0))
+    assert _mage_slots(pc) == (6,) * 9
 
 
 def test_a_dos_mage_without_a_ring_is_unchanged():
@@ -1526,7 +1531,7 @@ def test_a_dos_mage_without_a_ring_is_unchanged():
     assert _mage_slots(pc) == (6,) * 9
 
 
-def test_the_amigas_own_ring_power_doubles_level_five_once_per_readied_item():
+def test_a_readied_power_0x81_item_doubles_level_five_once_per_item():
     def ring(power, readied):
         raw = bytearray(amiga_pod.ITEM_FILE_SIZE)
         raw[amiga_pod.ITEM_FIELD_AT["power"]] = power
@@ -1535,16 +1540,16 @@ def test_the_amigas_own_ring_power_doubles_level_five_once_per_readied_item():
 
     levels = (0, 0, 0, 0, 0, 28, 0)
     abilities = (10, 18, 18, 10, 10, 10)
-    on = ring(0x41, 1)
-    off = ring(0x41, 0)
-    dos_power = ring(0x81, 1)
+    on = ring(0x81, 1)
+    off = ring(0x81, 0)
+    other_power = ring(0x41, 1)
     assert amiga_pod.engine_spell_slots(levels, abilities, [on])[
         "magic-user"][4] == 12
     assert amiga_pod.engine_spell_slots(levels, abilities, [on, on])[
         "magic-user"][4] == 24
     assert amiga_pod.engine_spell_slots(levels, abilities, [off])[
         "magic-user"][4] == 6
-    assert amiga_pod.engine_spell_slots(levels, abilities, [dos_power])[
+    assert amiga_pod.engine_spell_slots(levels, abilities, [other_power])[
         "magic-user"][4] == 6
 
 

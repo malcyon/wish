@@ -591,17 +591,12 @@ def _amiga_destination(tmp_path):
     return saveplan.Destination("amiga", tmp_path / "out.adf", "A", None, True)
 
 
-def test_the_slot_arrays_are_skipped_only_on_a_dos_to_amiga_save_as(
+def test_the_slot_arrays_are_compared_on_every_save_as(
         monkeypatch, tmp_path):
     want, changed = _castable_pair(monkeypatch, tmp_path)
-    assert set(saveplan.POD_NOT_COMPARED_TO_AMIGA) == {
-        "spells_castable_cleric", "spells_castable_druid",
-        "spells_castable_magic_user"}
     amiga = _amiga_destination(tmp_path)
-    assert saveplan.compare([want], [changed], amiga,
-                            source_port="dos") == []
     for destination, source_port in (
-            (amiga, "amiga"), (None, "dos"),
+            (amiga, "dos"), (amiga, "amiga"), (None, "dos"),
             (saveplan.Destination("dos", tmp_path, "A", None, False), "amiga")):
         lines = saveplan.compare([want], [changed], destination,
                                  source_port=source_port)
@@ -609,7 +604,7 @@ def test_the_slot_arrays_are_skipped_only_on_a_dos_to_amiga_save_as(
             "spells_castable_magic_user"]
 
 
-def test_a_dos_mage_whose_stored_slots_differ_crosses_to_the_amiga_whole(
+def test_a_dos_mage_whose_stored_slots_differ_crosses_the_rebuilt_value_whole(
         monkeypatch, tmp_path):
     _flag(monkeypatch, "1")
     folder = _dos_folder(tmp_path)
@@ -621,6 +616,8 @@ def test_a_dos_mage_whose_stored_slots_differ_crosses_to_the_amiga_whole(
     record.set("level_magic_user", 28)
     record.set("intelligence", 18)
     record.set("wisdom", 18)
+    # No ring is readied, so DOS rebuilds 6 on load and never shows this 12;
+    # the Amiga, which does not rebuild, must hold the 6.
     record.set_raw("spells_castable_magic_user", bytes((6, 6, 6, 6, 12) + (6,) * 4))
     path.write_bytes(record.to_bytes())
     party = Party(convert.Source.detect(folder, slot="A"))

@@ -1861,30 +1861,43 @@ POD_VALUE_CHANGES: dict[str, tuple[Any, str]] = {
 }
 
 
-#: The three spell-slot arrays are not compared on a DOS to Amiga Save As: the
-#: writer rebuilds them from class levels, intelligence, wisdom and readied
-#: items, all of which are compared, because the Amiga must not hold DOS's
-#: figure (its ring rule differs and it never rebuilds on load).
-POD_NOT_COMPARED_TO_AMIGA: dict[str, str] = {
-    name: "rebuilt from class levels, intelligence, wisdom and readied items"
-    for name in ("spells_castable_cleric", "spells_castable_druid",
-                 "spells_castable_magic_user")}
+def _dos_rebuilt_slots(record: PodSheetRecord) -> dict[str, bytes]:
+    """The three spell-slot arrays DOS shows for `record` after its own load,
+    which rebuilds them from class levels, intelligence, wisdom and readied
+    items whatever the file stores."""
+    from goldbox.items import Item
+
+    levels = [0] * amiga_pod.CLASS_LEVEL_COUNT
+    for index, name in ((0, "level_cleric"), (3, "level_paladin"),
+                        (4, "level_ranger"), (5, "level_magic_user")):
+        levels[index] = int(record.get(name))
+    abilities = [int(record.get(key)) for key in
+                 ("strength", "intelligence", "wisdom")]
+    built = amiga_pod.dos_rebuilt_spell_slots(
+        levels, abilities,
+        [Item(block) for block in getattr(record, "items", ())])
+    return {"spells_castable_cleric": bytes(built["cleric"]),
+            "spells_castable_druid": bytes(built["druid"]),
+            "spells_castable_magic_user": bytes(built["magic-user"])}
 
 
 def _pod_signature(record: PodSheetRecord, name: "str | None",
-                   skipped: "dict[str, str] | None" = None
+                   rebuilt: bool = False
                    ) -> tuple[tuple[str, str], ...]:
     """Every compared field of one Pools of Darkness character, with its
     items, as `(field, value)` pairs."""
     from .podsheet import TABLE
 
     raw = record.to_bytes()
+    slots = _dos_rebuilt_slots(record) if rebuilt else {}
     out: list[tuple[str, str]] = [
         ("name", repr(record.get("name") if name is None else name))]
     for field, spec in TABLE.items():
-        if field in POD_NOT_COMPARED or field in (skipped or ()):
+        if field in POD_NOT_COMPARED:
             continue
         value = raw[spec.offset:spec.offset + spec.size]
+        if field in slots:
+            value = slots[field]
         if field in POD_VALUE_CHANGES:
             value = POD_VALUE_CHANGES[field][0](value)
         out.append((field, repr(bytes(value))))
@@ -1904,14 +1917,15 @@ def _compare_pod(expected: "list[PodSheetRecord]",
     The items compared are the held blocks only: empty blocks are dropped on
     purpose, so the slot position of an empty block is not compared.
     """
-    skipped = (POD_NOT_COMPARED_TO_AMIGA
-               if source_port == "dos" and destination is not None
-               and destination.port == "amiga" else None)
+    # A DOS record's stored slot arrays are never shown: DOS rebuilds them on
+    # load, and the Amiga does not, so the writer stores the rebuilt figure.
+    rebuilt = (source_port == "dos" and destination is not None
+               and destination.port == "amiga")
     want = sorted(_pod_signature(record, expected_names[i]
-                                 if expected_names else None, skipped)
+                                 if expected_names else None, rebuilt)
                   for i, record in enumerate(expected))
     got = sorted(_pod_signature(record, written_names[i]
-                                if written_names else None, skipped)
+                                if written_names else None)
                  for i, record in enumerate(written))
     out: list[str] = []
     for mine, theirs in zip(want, got):

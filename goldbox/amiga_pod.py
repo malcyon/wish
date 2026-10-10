@@ -44,6 +44,7 @@ from __future__ import annotations
 import struct
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from . import amiga_port, dos_port, neutral, spells, titles
 from .amiga_shared import ABILITY_KEYS, SAVE_KEYS, THIEF_KEYS, _name, u16, u32
@@ -537,30 +538,54 @@ def engine_default_icon(race: int, sex: int, size: int,
 
 
 #: Source ports whose spell-slot arrays are rebuilt by :func:`engine_spell_slots`
-#: rather than copied. The Amiga never rebuilds on load, and DOS stores its own
-#: ring rule, so a DOS array would otherwise show slots the Amiga would not give.
+#: rather than copied. The Amiga never rebuilds on load, so the array must hold
+#: the figure DOS shows after its own load: the base rows with magic-user level
+#: 5 doubled once per readied power-0x81 item.
 _SPELL_SLOT_RECOMPUTE_FROM_PORTS = ("DOS",)
 
 
 def engine_spell_slots(class_levels: Sequence[int], abilities: Sequence[int],
                        items: Sequence[bytes]) -> dict[str, tuple[int, ...]]:
-    """The three spell-slot arrays the Amiga's own builder (`0x03BE7C`) gives.
+    """The three spell-slot arrays a character holds once its rings are readied.
 
     `class_levels` are the seven slot levels in :data:`CLASS_LEVEL_SLOTS`
     order, `abilities` the six in-force scores in `ABILITY_KEYS` order and
-    `items` the twenty-byte nodes. The ring rule at `0x03C214`,
-    `cmpi.b #$41, $41(a3)`, adds magic-user level 5 to itself once for each
-    readied node whose power byte is `0x41`; DOS tests `0x81` instead.
+    `items` the twenty-byte nodes. The base rows are the Amiga builder's
+    (`0x03BE7C`), whose own ring test compares `0x41` and never fires. Readying
+    a power-`0x81` item runs the item-power routine (`0x21FDE`, case 1, ready
+    at `0x2226E`; DOS `0x24F06`), which doubles magic-user level 5 once per
+    such readied node, and DOS's builder repeats that on every load
+    (`GAME.OVR:0x38333`).
     """
+    rings = sum(1 for node in items
+                if PodItem.from_bytes(node).get("power") == RING_POWER
+                and PodItem.from_bytes(node).readied)
+    return _slots_with_rings(class_levels, abilities, rings)
+
+
+def dos_rebuilt_spell_slots(class_levels: Sequence[int],
+                            abilities: Sequence[int],
+                            items: Sequence[Any]) -> dict[str, tuple[int, ...]]:
+    """What DOS shows after its load: :func:`engine_spell_slots` over the
+    shared sixteen-byte `goldbox.items.Item` records rather than Amiga nodes."""
+    rings = sum(1 for item in items
+                if item.power == RING_POWER and item.readied)
+    return _slots_with_rings(class_levels, abilities, rings)
+
+
+#: The power byte of a Ring of Wizardry: bit 7 for "applied when readied" and
+#: handler 1.
+RING_POWER = 0x81
+
+
+def _slots_with_rings(class_levels: Sequence[int], abilities: Sequence[int],
+                      rings: int) -> dict[str, tuple[int, ...]]:
     by_name = {"cleric": 0, "paladin": 3, "ranger": 4, "magic-user": 5}
     levels = {name: int(class_levels[i]) for name, i in by_name.items()
               if i < len(class_levels)}
     out = spells.pod_slot_arrays(levels, int(abilities[1]), int(abilities[2]))
     mage = list(out["magic-user"])
-    for node in items:
-        item = PodItem.from_bytes(node)
-        if item.get("power") == 0x41 and item.readied:
-            mage[4] *= 2
+    mage[4] *= 2 ** rings
     out["magic-user"] = tuple(mage)
     return out
 
@@ -2118,7 +2143,8 @@ POD_WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "source keeping fewer spell levels fills the low "
                         "ones and the rest stay zero; a DOS source's arrays "
                         "are rebuilt by engine_spell_slots, since the Amiga "
-                        "never rebuilds on load and its ring rule differs"),
+                        "never rebuilds on load and a readied power-0x81 "
+                        "ring doubles level 5 only when readied"),
     ("spells_memorised", "the neutral highest-first list reversed into the "
                          "141 bytes at 0x0CC, ascending from the front, "
                          "which is the end this port's own MEMORIZE screen "

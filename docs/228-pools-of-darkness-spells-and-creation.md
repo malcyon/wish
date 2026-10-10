@@ -16,7 +16,11 @@ three spell levels and ids 1-55 for a record with nine slots a class and a
 | what | DOS | Amiga |
 |---|---|---|
 | slot builder | `GAME.OVR:0x03808A` | `0x03BE7C` |
-| ring of wizardry test (doubles magic-user level 5) | `GAME.OVR:0x38333`, power `0x81` | `0x03C214`, `cmpi.b #$41, $41(a3)` |
+| ring of wizardry test in the builder (doubles magic-user level 5) | `GAME.OVR:0x38333`, power `0x81` | `0x03C214`, `cmpi.b #$41, $41(a3)`, which never fires |
+| ready toggle | `GAME.OVR:0x250D6`, tests power above `0x7F` | `0x22152`, reached from the items screen at `0x21BBC` |
+| item-power routine, called on ready and unready when power bit 7 is set | `GAME.OVR:0x24F06`, switch on `+0x3E & 0x7F` | `0x21FDE`, switch on node `+0x41 & 0x7F` |
+| item-power case 1, ready: doubles magic-user level 5 | `GAME.OVR:0x24F66`-`0x24F78` | `0x2202E`-`0x22036` |
+| item-power case 1, unready: resets level 5 to the base row, then zeroes memorised fifth-level spells past the count | `GAME.OVR:0x24F80`-`0x25049` | `0x2203E`-`0x220F6` |
 | cleric helper: rows, wisdom bonus, wisdom ceiling | `GAME.OVR:0x03860C` | `0x03C494` |
 | intelligence ceiling | `GAME.OVR:0x03874F` | `0x03BE3E` |
 | cleric rows | `DS:71D4` | `0x04EE43` |
