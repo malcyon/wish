@@ -280,6 +280,10 @@ def _elminster_title(added: tuple, plain_keys: tuple, strict: frozenset,
     )
 
 
+#: A party saved in Limbo: REST from Elminster's menu into camp.
+DARKNESS_LIMBO = _elminster_title((), (("E", "loaded_menu"),), frozenset(), {})
+
+
 def vault_title(items: int = VAULT_DEFAULT_ITEMS, coins: bool = True) -> AmigaTitle:
     """`DARKNESS` loading a party saved in area 18: the vault, then the camp loop, a save and the exit.
 

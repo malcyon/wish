@@ -26,6 +26,7 @@ from tests.amiga.test_amigaacceptance_title import (
 )
 from tools.amiga import acceptance, route_camp, route_darkness, route_pool
 from tools.amiga.winuaesession import RouteError
+from tools.registry import scratch
 
 clock = measure_clock  # the fixture that replaces the driver's time and sleep
 
@@ -170,3 +171,37 @@ def test_a_measure_run_sends_no_list_key_until_the_magic_menu_is_recognised(tmp_
     assert result["success"] is False and "camp_magic screen was not recognized" in result["error"]
     # The camp highlight's own M opens the menu; the list's M would follow only a recognised menu.
     assert keys.count("M") == 1 and keys[-1] == "M"
+
+
+# A party saved in Limbo opens on Elminster's menu, so its camp route rests from there.
+
+def test_the_limbo_title_rests_from_elminsters_menu_into_camp_with_no_walk():
+    keys = [(key, state) for key, state, _ in route_darkness.DARKNESS_LIMBO.route]
+    at = keys.index(("RET", "elminster_menu"))
+    assert keys[at + 1] == ("R", "camp") and keys[at + 2] == ("S", "camp_save_picker")
+    assert "move" not in [kind for _, _, kind in route_darkness.DARKNESS_LIMBO.route]
+
+
+def test_prepare_takes_camp_steps_for_the_limbo_title_and_writes_them_in_the_manifest(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+
+    def fake(run, specimen, **kw):
+        scratch.ensure(run)
+        return {"title": "darkness", "names_a": list(NAMES) + ["FIVE"]}
+
+    monkeypatch.setattr(acceptance, "_PREPARE", {"darkness-limbo": fake})
+    assert acceptance.main(["prepare", "--title", "darkness-limbo", "--run-id", "r",
+                            "--camp", "memorize 5"]) == 0
+    manifest = json.loads(next(tmp_path.glob("**/prepare.json")).read_text())
+    assert manifest["camp"] == ["memorize 5"] and manifest["title"] == "darkness"
+
+
+def test_the_limbo_accept_route_puts_the_camp_steps_between_rest_and_the_camp_save():
+    manifest = {"title": "darkness", "camp": ["memorize 5"], "names_a": [*NAMES, "FIVE", "SIX"]}
+    title = acceptance.accept_title(route_darkness.DARKNESS_LIMBO, manifest)
+    added = route_camp.steps_for(("memorize 5",), "darkness", 6)
+    for route in (title.route, title.measure_route):
+        at = route.index(("R", "camp", "key"))
+        assert route[at + 1:at + 1 + len(added)] == added
+        assert route[at + 1 + len(added)][1] == "camp_save_picker"

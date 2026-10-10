@@ -74,6 +74,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_DISK1_SHA256,
     DARKNESS_DISK2_SHA256,
     DARKNESS_DISK3_SHA256,
+    DARKNESS_LIMBO,
     DARKNESS_RELOAD,
     DARKNESS_RELOAD_LOADED,
     DARKNESS_UNSTARTED,
@@ -404,6 +405,7 @@ ENCOUNTER_TITLES = {
     "pool": "pool-of-radiance", "darkness": "pools-of-darkness",
     "darkness-reload": "pools-of-darkness", "darkness-unstarted": "pools-of-darkness",
     "darkness-vault": "pools-of-darkness", "darkness-train": "pools-of-darkness",
+    "darkness-limbo": "pools-of-darkness",
 }
 
 #: The snapshot a walk retry restores; a `--camp` step may not use the name.
@@ -3681,14 +3683,16 @@ TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE, "darkness": DARKN
                                  "darkness-reload": DARKNESS_RELOAD,
                                  "darkness-unstarted": DARKNESS_UNSTARTED,
                                  "darkness-vault": DARKNESS_VAULT,
-                                 "darkness-train": DARKNESS_TRAIN}
+                                 "darkness-train": DARKNESS_TRAIN,
+                                 "darkness-limbo": DARKNESS_LIMBO}
 
 _PREPARE = {"pool": _prepare_pool, "curse": _prepare_curse, "darkness": _prepare_darkness,
             "darkness-reload": _prepare_darkness_reload,
             "darkness-unstarted": functools.partial(
                 _prepare_darkness, loaded=DARKNESS_UNSTARTED_LOADED),
             "darkness-vault": functools.partial(_prepare_darkness, vault=True),
-            "darkness-train": _prepare_darkness}
+            "darkness-train": _prepare_darkness,
+            "darkness-limbo": _prepare_darkness}
 
 
 def _name(title: AmigaTitle) -> str:
@@ -3700,13 +3704,14 @@ def _name(title: AmigaTitle) -> str:
 
 #: Titles with a slot importer for their own save format.
 _SUBSTITUTABLE = frozenset(
-    {"darkness", "darkness-vault", "darkness-train",
+    {"darkness", "darkness-vault", "darkness-train", "darkness-limbo",
      *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
        if source.import_slot is not None)})
 
 
-#: The titles whose own accept route (not a published one) takes camp steps from its manifest.
-CAMP_TITLES = frozenset({"darkness", "pool"})
+#: The titles whose own accept route (not a published one) takes camp steps from its manifest, each
+#: with the title name its camp steps are written and validated for.
+CAMP_TITLES = {"darkness": "darkness", "pool": "pool", "darkness-limbo": "darkness"}
 
 #: The titles `prepare --spare-disk` stages a second save disk for.
 SPARE_TITLES = frozenset({"darkness", "darkness-vault", "darkness-reload"})
@@ -3779,7 +3784,7 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         raise RouteError("the issue is a number or WISH-N")
     if camp:
         camp = route_camp.normalise(tuple(camp))
-        route_camp.validate_steps(camp, name=name)
+        route_camp.validate_steps(camp, name=CAMP_TITLES[name])
     staging = _pool_options(name, temple=temple, encounter=encounter, camp=camp,
                             stage_record=stage_record)
     run = scratch.cache_dir("acceptance", issue or ISSUE, run_id)
@@ -3801,7 +3806,7 @@ def prepare(title: AmigaTitle, run_id: str, *, specimen: pathlib.Path | None = N
         manifest = _PREPARE[name](run, specimen)
     if camp:
         try:
-            _camp_title(name, pool_title_for(manifest) if title is POOL else title,
+            _camp_title(CAMP_TITLES[name], pool_title_for(manifest) if title is POOL else title,
                         list(camp), manifest["names_a"])
         except RouteError:
             # The party is read only once the disks are copied, so a rejection takes the folder
@@ -5354,7 +5359,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "prepare":
         try:
-            args.camp = _camp_steps(args.camp, args.title) if args.camp else ()
+            args.camp = (_camp_steps(args.camp, CAMP_TITLES.get(args.title, args.title))
+                         if args.camp else ())
         except RouteError as exc:
             parser.error(f"argument --camp: {exc}")
     else:

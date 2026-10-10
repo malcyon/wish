@@ -1177,3 +1177,12 @@ def test_the_pool_surprised_guard_matches_the_kept_surprise_page_and_not_the_enc
     assert not guard('encounter', surprised) and not guard('world', surprised)
     assert not guard('surprised', menu) and guard('encounter', menu)
     assert guard('continue', tour_page) and not guard('surprised', tour_page)
+
+
+def test_the_darkness_map_guards_every_strict_state_of_a_member_five_item_row_walk():
+    from tools.amiga import route_camp
+    from tools.amiga.route_darkness import DARKNESS
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    route = route_camp.camp_title(DARKNESS, ('row 5 7',), 6, name='darkness')
+    assert route.strict <= spec['guards'].keys()
