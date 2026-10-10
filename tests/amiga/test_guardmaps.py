@@ -1197,4 +1197,3 @@ def test_the_darkness_map_guards_every_strict_state_of_a_memorize_cast_and_row_w
         DARKNESS, ('memorize 5 8', 'cast 5 3', 'row 5 7'), 6, name='darkness')
     assert route_camp.MAGIC_MENU in route.strict
     assert route.strict <= spec['guards'].keys()
-
