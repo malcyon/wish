@@ -232,7 +232,7 @@ Each defaults to straight until its check settles it.
 
 | case | what is known | what would settle it |
 |---|---|---|
-| Return out of a wilderness cave | `FastTravel.apply_back` and the Amiga `_back_by_door` consult `automap/departures.py`, so a Return out of the Kobold Caves with Princess Fatima walks her exit; the earlier row here said the C64 skipped it, which stopped being true once both ports looked the departure up | a live Return out of a wilderness cave |
+| Return out of the Kobold Caves | `FastTravel.apply_back` and the Amiga `_back_by_door` consult `automap/departures.py`, so a Return out of the Kobold Caves with Princess Fatima walks her exit | a live Return out of a wilderness cave |
 | L1, C64 direct trips | not run under the current code | `tools/c64/fasttravelrun.py` from `WISH-SPEC-por-c64-party-l1-intown`: 0 to 18, 18 to 9, 9 to 18, 18 to 7, 7 to 0, 0 to 1, 1 to 25, 0 to 28, 28 to 25, 0 to 26; every leg `areas_seen` [here, to], no fight, 0 to 26 on the grid with no dock text |
 | Pool castle alarm, Stojanow Gate south exit | the exit clears `$4A64`; the alarm may lapse on its own | stage NEWSAVE1 at alarm 1 in area 9, trip to 18, rest 1, 6 and 24 hours, trip back, read `$4A64` after one step; 0 within a day means not needed |
 | Pool, camp interrupted in a window-25 cave | can leave for area 1 with `$4A9E` still 255 (SPECULATIVE, game behaviour) | the breakpoint run in 58caa381 |
