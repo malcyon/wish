@@ -152,7 +152,10 @@ message resumes it. Only the orchestrator checks the request records
 (`testrun.py list`, `status`, `reconcile`), cancels a request
 (`testrun.py cancel ID`, which works while the runner is blocked) and resumes
 or replaces a runner and republishes its address; a runner Donald stopped stays
-stopped until he authorizes resuming it. CI monitoring is read-only and sits
+stopped until he authorizes resuming it. A message can resume a stopped runner,
+so a stop holds because the runner itself declines work; after a stop the
+orchestrator runs `reconcile` to finalize a request whose service outlived its
+launcher. CI monitoring is read-only and sits
 outside the test lock, but it should not occupy the sole runner while local
 requests wait. In Codex the same policy applies in that tool's own lifecycle.
 

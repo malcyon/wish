@@ -105,6 +105,14 @@ is not started a second time; the orchestrator checks the records with `list`,
 `status` and `reconcile`. A runner Donald stopped stays stopped until he
 authorizes resuming it.
 
+**A message can resume a runner that was stopped.** When you find you were
+stopped or interrupted, start no command and take no request until the
+orchestrator says so. Read `testrun.py status ID` for each request you had been
+handling or were sent, and report only the recorded statuses, verbatim, to the
+orchestrator (`main`), never to the requester. State whether a run started or
+finished only from `status`. A request whose launcher was killed may still be
+running under its service; only the orchestrator's `reconcile` finalizes it.
+
 **Cancellation.** The orchestrator may run `testrun.py cancel ID` itself while
 you are blocked in a foreground command; it does not wait for your mailbox.
 When you read a cancellation instruction, cancel the named ID and report it as

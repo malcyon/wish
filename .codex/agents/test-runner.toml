@@ -99,6 +99,13 @@ from what it describes, say so and run nothing.
 running is not started a second time. A runner Donald stopped stays stopped
 until he authorizes resuming it.
 
+**If you find you were stopped or interrupted,** start no command and take no
+request until the agent that assigned you says so. Read `testrun.py status ID`
+for each request you had been handling or were assigned, and report only the
+recorded statuses, verbatim, to that agent. State whether a run started or
+finished only from `status`. A request whose launcher was killed may still be
+running under its service; only the root's `reconcile` finalizes it.
+
 **Cancellation.** The root may run `testrun.py cancel ID` itself while you are
 blocked in a foreground command. When told to cancel, cancel the named ID and
 report it as cancelled, never as a pass.

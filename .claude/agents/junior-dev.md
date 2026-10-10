@@ -108,7 +108,7 @@ List every file the checks depend on with `--file`, and leave those files alone
 until the result arrives; you may continue independent work. The runner also
 runs `ruff` and `genui.py --check`. Name the relevant tests that read game
 data, which CI cannot run. Do not request the whole suite: CI runs it on the
-pushed commit. If the message cannot be delivered, keep the request ID and
+pushed commit. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, that is a delivery failure: keep the request ID and
 report it to the orchestrator; never start a runner yourself.
 `.claude/rules/commits.md` has the detail.
 
