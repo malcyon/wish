@@ -144,8 +144,10 @@ def test_the_mode_flag_still_disables_the_button(app):
     bar = row(app, machine(mode=COMBAT))
     somewhere_else(bar)
     assert not bar.button.isEnabled()
-    assert "not available during a fight" in bar.button.toolTip()
-    assert "$6E11" not in bar.button.toolTip()
+    assert bar.button.toolTip() == ""
+    reason = bar.fasttravel.legality(bar.target, bar.area()).reason
+    assert "not available during a fight" in reason
+    assert "$6E11" not in reason
 
 
 def test_the_mode_flag_is_read_once_per_refresh(app):
@@ -331,12 +333,13 @@ def test_the_idle_poll_and_the_wait_use_the_titles_own_windows(app, game, here, 
     assert not actionbar.in_key_wait(fasttravel.POOL_OF_RADIANCE.key_wait[0], addr)
 
 
-def test_the_silver_blades_mine_level_has_its_own_return_tooltip(app):
+def test_the_silver_blades_mine_level_has_its_own_return_reason(app):
     target = title_machine(SILVER, 0x31)
     bar = row(app, target, title=SILVER.title, game=SILVER)
     bar.fasttravel.back = actions.Waypoint(0x31, 3, (3, 3, 1), None)
     bar.refresh()
-    assert bar.back_button.toolTip() == actions.FastTravel.MINE_LEVEL_BACK
+    assert bar.fasttravel.back_verdict(target).reason == actions.FastTravel.MINE_LEVEL_BACK
+    assert bar.back_button.toolTip() == ""
 
 
 def test_a_fast_travel_without_addresses_does_not_fail_the_wait(app):

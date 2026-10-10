@@ -42,6 +42,12 @@ def sentence(key):
     return amigaactions.unsupported(trips.ROWS[key].title)
 
 
+def why(bar):
+    """The button's verdict reason: a greyed control shows no tooltip, so the
+    reason is read from the verdict the bar asked."""
+    return bar._asked(bar.fasttravel.legality, bar._idle_poll(), bar.area()).reason
+
+
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -170,7 +176,8 @@ def test_the_combo_and_button_enable_only_for_an_offered_trip(lengths):
     # so another area can be picked.
     pick(window, GUILD)
     assert not bar.button.isEnabled()
-    assert bar.button.toolTip() == "The party is already in that area"
+    assert bar.button.toolTip() == ""
+    assert why(bar) == "the party is already in that area"
     assert bar.combo.isEnabled()
 
 
@@ -183,7 +190,7 @@ def test_with_nothing_offered_the_dropdown_closes_too(lengths, monkeypatch):
     window, _ = attached(CURSE, GUILD, ticked=(TILVERTON,))
     bar = window.fasttravel_bar
     assert not bar.combo.isEnabled() and not bar.button.isEnabled()
-    assert bar.combo.toolTip() == bar.button.toolTip() == sentence(CURSE)
+    assert bar.combo.toolTip() == bar.button.toolTip() == ""
 
 
 def test_a_game_that_is_not_at_its_world_menu_offers_nothing(lengths):
@@ -193,20 +200,23 @@ def test_a_game_that_is_not_at_its_world_menu_offers_nothing(lengths):
     window._refresh_roster()
     bar = window.fasttravel_bar
     assert not bar.combo.isEnabled() and not bar.button.isEnabled()
-    assert bar.button.toolTip() == engine.FASTTRAVEL_BUSY
+    assert bar.button.toolTip() == ""
+    assert why(bar) == engine.FASTTRAVEL_BUSY
 
 
 def test_a_target_that_cannot_write_offers_nothing(lengths):
     window, _ = attached(CURSE, GUILD, ticked=(SEWERS,), can_write=False)
     bar = window.fasttravel_bar
     assert not bar.combo.isEnabled() and not bar.button.isEnabled()
-    assert bar.button.toolTip() == sentence(CURSE)
+    assert bar.button.toolTip() == ""
+    assert why(bar)
 
 
 def test_without_the_players_disks_no_trip_is_offered(lengths):
     window, _ = attached(CURSE, GUILD, ticked=(SEWERS,), disks=None)
     assert not window.fasttravel_bar.button.isEnabled()
-    assert window.fasttravel_bar.button.toolTip() == sentence(CURSE)
+    assert window.fasttravel_bar.button.toolTip() == ""
+    assert why(window.fasttravel_bar)
     assert lengths == []
 
 
@@ -231,7 +241,7 @@ def test_pool_of_radiance_offers_every_trip_from_an_area_with_doors(lengths):
     for row in bar.rows:
         pick(window, row.id)
         assert bar.button.isEnabled()
-        assert bar.button.toolTip() != sentence(POOL)
+        assert bar.button.toolTip() == actionbar.DANGER
     assert bar.combo.isEnabled()
 
 
@@ -248,7 +258,8 @@ def test_an_unconfirmed_title_greys_the_whole_row_with_the_sentence(lengths):
     window, _ = attached(BLADES, 33, ticked=(3, 16))
     bar = window.fasttravel_bar
     for widget in (bar.combo, bar.button, bar.back_button):
-        assert not widget.isEnabled() and widget.toolTip() == sentence(BLADES)
+        assert not widget.isEnabled() and widget.toolTip() == ""
+    assert bar.unsupported == sentence(BLADES)
     assert bar.target is None
 
 
@@ -321,7 +332,8 @@ def test_a_read_that_fails_is_the_machine_not_being_readable(lengths):
     window.fasttravel_bar.refresh()                    # does not raise
     bar = window.fasttravel_bar
     assert not bar.button.isEnabled()
-    assert bar.button.toolTip() == "The machine is not readable right now"
+    assert bar.button.toolTip() == ""
+    assert why(bar) == "the machine is not readable right now"
 
 
 # -- a trip that fires, and one that does not -----------------------------------
@@ -335,7 +347,8 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     assert bar.fasttravel.trip is not None
     # Armed: the key is waiting, so the row is busy and cannot arm a second.
     assert not bar.button.isEnabled()
-    assert bar.button.toolTip() == engine.FASTTRAVEL_BUSY
+    assert bar.button.toolTip() == ""
+    assert why(bar) == engine.FASTTRAVEL_BUSY
     assert not bar.combo.isEnabled()
 
     tick_away(target, CURSE, SEWERS)
@@ -346,7 +359,8 @@ def test_a_trip_that_fires_updates_the_window(lengths):
     pick(window, FIRE_KNIFE)
     assert bar.button.isEnabled()
     pick(window, SEWERS)                               # now where the party is
-    assert bar.button.toolTip() == "The party is already in that area"
+    assert bar.button.toolTip() == ""
+    assert why(bar) == "the party is already in that area"
     # Curse's Return is no longer a held trip.
     assert bar.back_button.isEnabled()
     # Only the arming line was said; a trip that happened adds none.
@@ -549,22 +563,30 @@ def test_a_c64_back_watches_for_the_attached_titles_area(title):
 
 
 def test_the_back_tooltip_opens_with_a_capital(lengths):
-    window, _ = attached(CURSE, GUILD, ticked=(TILVERTON, GUILD))
-    tip = window.fasttravel_bar.back_button.toolTip()
-    assert tip and tip[0].isupper()
+    window, target = attached(CURSE, GUILD, ticked=(SEWERS, GUILD))
+    bar = window.fasttravel_bar
+    assert not bar.back_button.isEnabled() and bar.back_button.toolTip() == ""
+    pick(window, SEWERS)
+    bar.button.click()
+    tick_away(target, CURSE, SEWERS)
+    window._refresh_roster()
+    tip = bar.back_button.toolTip()
+    assert bar.back_button.isEnabled() and tip and tip[0].isupper()
 
 
-def test_the_combo_and_go_button_tooltips_open_with_a_capital(lengths):
+def test_the_go_button_tooltip_opens_with_a_capital_and_a_greyed_row_has_none(lengths):
     window, _ = attached(CURSE, GUILD, ticked=(TILVERTON, GUILD))
     bar = window.fasttravel_bar
-    pick(window, GUILD)
-    assert bar.button.toolTip()[0].isupper()
+    pick(window, TILVERTON)
+    assert bar.button.isEnabled() and bar.button.toolTip()[0].isupper()
     bar.attach_unsupported("not this game")
-    assert bar.combo.toolTip()[0].isupper()
+    for widget in (bar.combo, bar.button, bar.back_button):
+        assert not widget.isEnabled() and widget.toolTip() == ""
 
 
-def test_the_combo_gate_tooltip_opens_with_a_capital(lengths):
+def test_the_combo_gate_failing_greys_it_with_no_tooltip(lengths):
     window, target = attached(CURSE, GUILD, ticked=(SEWERS,))
     target.fail_at.add(BASE + trips.ROWS[CURSE].mode)
     window.fasttravel_bar.refresh()
-    assert window.fasttravel_bar.combo.toolTip()[0].isupper()
+    assert not window.fasttravel_bar.combo.isEnabled()
+    assert window.fasttravel_bar.combo.toolTip() == ""

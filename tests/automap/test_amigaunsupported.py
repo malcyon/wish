@@ -74,9 +74,10 @@ def every_button(window):
 def test_level_up_names_its_own_title_on_every_card(key, title):
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     sentence = f"ERROR: Action unsupported on {title} (Amiga)."
+    assert window.actions_bar.unsupported == sentence
     assert len(window.roster.cards) == 8
     for card in window.roster.cards:
-        assert card.level_up.toolTip() == sentence
+        assert card.level_up.toolTip() == ""
         assert not card.level_up.isEnabled() and not card.level_up.isVisible()
 
 
@@ -84,8 +85,9 @@ def test_a_title_whose_trip_is_not_confirmed_greys_all_of_fast_travel():
     key, title = "secret-of-the-silver-blades", TITLES["secret-of-the-silver-blades"]
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     ft = window.fasttravel_bar
+    assert ft.unsupported == f"ERROR: Action unsupported on {title} (Amiga)."
     for control in (ft.combo, ft.button, ft.back_button):
-        assert control.toolTip() == f"ERROR: Action unsupported on {title} (Amiga)."
+        assert control.toolTip() == ""
         assert not control.isEnabled()
     assert ft.target is None
 
@@ -101,8 +103,10 @@ def test_a_title_with_nothing_confirmed_greys_every_action_with_its_sentence(
         **{**vars(row), "confirmed": frozenset()}))
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     assert len(window.actions_bar.buttons) == 5
+    assert window.actions_bar.unsupported == (
+        f"ERROR: Action unsupported on {title} (Amiga).")
     for button in window.actions_bar.buttons.values():
-        assert button.toolTip() == f"ERROR: Action unsupported on {title} (Amiga)."
+        assert button.toolTip() == ""
         assert not button.isEnabled()
 
 
@@ -110,8 +114,10 @@ def test_no_emulator_attached_still_says_so():
     window = window_on(None)
     window.actions_bar.attach(None)
     window.fasttravel_bar.attach(None)
-    for button in window.actions_bar.buttons.values():
-        assert button.toolTip() == "No emulator attached"
+    for action in window.actions_bar.actions:
+        button = window.actions_bar.buttons[action.name]
+        assert button.toolTip() == ""
+        assert action.legality(None).reason == "no emulator attached"
         assert not button.isEnabled()
     ft = window.fasttravel_bar
     assert "Amiga" not in ft.button.toolTip()
@@ -166,8 +172,9 @@ def test_leaving_the_amiga_gives_all_three_controls_back_their_own_text(leave):
         assert card.level_up.isEnabled()
         assert card.level_up.toolTip() == card.level_up_default_tip
     if leave == "wrong-game":
-        for button in window.actions_bar.buttons.values():
-            assert button.toolTip() == "No emulator attached"
+        for action in window.actions_bar.actions:
+            assert window.actions_bar.buttons[action.name].toolTip() == ""
+            assert action.legality(None).reason == "no emulator attached"
     # And attaching again greys them once more.
     window.mapper.target = FakeAmiga(memory(), amiga.MACHINES[key])
     window._refresh_roster()
@@ -214,14 +221,16 @@ def test_the_wrong_game_path_on_a_c64_is_unchanged():
     assert window.actions_bar.unsupported is None
     assert window.fasttravel_bar.unsupported is None
     assert not window.roster.unsupported
-    for button in window.actions_bar.buttons.values():
-        assert button.toolTip() == "No emulator attached"
+    for action in window.actions_bar.actions:
+        assert window.actions_bar.buttons[action.name].toolTip() == ""
+        assert action.legality(None).reason == "no emulator attached"
 
 
-def test_level_up_tooltip_opens_with_a_capital_for_a_lowercase_reason():
+def test_a_greyed_level_up_has_no_tooltip():
     from support.automapwindow import make_root
 
     from automap.panel import RosterPanel
     roster = RosterPanel(make_root())
-    roster.set_unsupported("action unsupported here")
-    assert roster.cards[0].level_up.toolTip() == "Action unsupported here"
+    roster.set_unsupported()
+    assert roster.cards[0].level_up.toolTip() == ""
+    assert not roster.cards[0].level_up.isEnabled()

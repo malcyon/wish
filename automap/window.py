@@ -1514,15 +1514,15 @@ class AutomapBinding(QObject):
         """The Amiga's half of `_refresh_roster`.
 
         An Action button is enabled by `amigaactions` and nothing else, so the
-        gate is the one in that module. Fast Travel stays greyed with the
-        approved sentence unless the title's trip is confirmed. A card's Level
+        gate is the one in that module. Fast Travel stays greyed
+        unless the title's trip is confirmed. A card's Level
         up button is greyed the same way, then given back to each member the
         title's trainer would train, on a title whose row confirms `level-up`
         (`_show_amiga_party`). The cards come from `amigaparty.read_party`;
         the C64's readers are never called.
         """
         reason = amigaactions.unsupported(title)
-        self.roster.set_unsupported(reason)
+        self.roster.set_unsupported()
         self.roster.set_levelling(False)
         key = amiga_key(target.layout)
         if key is None or self.mapper.title_check is NOT_OURS:
@@ -1541,8 +1541,7 @@ class AutomapBinding(QObject):
         trip = amigatrip.ROWS.get(key)
         if (trip is None or not trip.confirmed
                 or not amigafasttravel.enabled()):
-            # Nobody has measured this title's trip, or its flag is off: same
-            # sentence as ever.
+            # Nobody has measured this title's trip, or its flag is off: still greyed.
             self.fasttravel_bar.attach_unsupported(reason)
         else:
             self._enter_travel(key)

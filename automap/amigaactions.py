@@ -50,8 +50,8 @@ def enabled() -> bool:
 
 
 def unsupported(title: str) -> str:
-    """What a greyed Action button reads while an Amiga title is attached: the
-    approved `actions.UNSUPPORTED` sentence with the platform added."""
+    """The line a stale click on an Action button reports while an Amiga title
+    is attached: `actions.UNSUPPORTED` with the platform added."""
     return engine.UNSUPPORTED.format(title=f"{title} (Amiga)")
 
 

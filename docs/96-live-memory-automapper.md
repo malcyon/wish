@@ -721,8 +721,8 @@ So with a writable emulator and no fight, a player would see Heal enabled on
 Pools of Darkness only, Save spells, Restore spells and Identify on Pool of
 Radiance, Silver Blades and Pools of Darkness, Quickfight off on none, and
 nothing on Curse until a Curse fight is read. A button that is not enabled
-shows the approved "Action unsupported" sentence with the title and "(Amiga)"
-added (`amigaactions.unsupported`), and a title or backend that cannot write
+is greyed and shows no tooltip; a stale click reports the "Action unsupported"
+sentence with the title and "(Amiga)" added (`amigaactions.unsupported`), and a title or backend that cannot write
 (`AmigaTarget.can_write` false) enables Save spells only. Level up is off on
 every Amiga title (`roster.set_levelling(False)`), and Heal needs `hp_max`
 measured. `docs/212-the-live-tab-per-title.md` has the per-title result.
@@ -881,8 +881,7 @@ and 28). A trip goes straight to the destination unless a row of
 Travel leaves an area"): a row that writes adds its guarded `SAVE`s ahead of
 the trip's statements, and the one door row, Princess Fatima at the Kobold
 Caves, walks out of a door in `DOORS_PROVEN`. A trip that behaves differently
-from the C64's stays held (`Difference.offered` False) and the button reads the
-approved unsupported sentence. Held today: Return on Pool of Radiance, Silver
+from the C64's stays held (`Difference.offered` False) and the button is greyed. Held today: Return on Pool of Radiance, Silver
 Blades and Pools of Darkness (`return_landing`), and a trip whose departing
 script has no room. Silver Blades' row is not confirmed, so it offers nothing.
 Pools of Darkness offers the rows of its own table, `AREAS_POOLS_OF_DARKNESS` in

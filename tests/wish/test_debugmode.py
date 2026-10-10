@@ -646,7 +646,7 @@ def test_nothing_ticked_says_so_rather_than_looking_broken(app):
     assert not row.combo.isEnabled()
     assert row.combo.itemText(0) == actionbar.NOTHING_TICKED
     assert not row.button.isEnabled()
-    assert "Fast travel" in row.button.toolTip()
+    assert row.button.toolTip() == ""
     assert row.run() is None
 
 
@@ -673,7 +673,7 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     assert row.combo.itemText(0) == ("No areas are known for Champions of "
                                      "Krynn.")
     assert not row.button.isEnabled()
-    assert "Champions of Krynn" in row.button.toolTip()
+    assert row.button.toolTip() == ""
     assert row.run() is None
     # And the ticks are not Pool of Radiance's either: nothing is ticked for a
     # title with no table to tick.
@@ -734,23 +734,63 @@ def test_a_title_change_cancels_a_pending_hop_and_an_amiga_round_trip_rebinds(ap
     assert row.fasttravel.game is c64_port.SECRET_OF_THE_SILVER_BLADES
 
 
-def test_the_button_carries_its_rejection_in_its_tooltip(app):
-    """`#306`: `$6E11` used to be in this tooltip. It carries the simple
-    reason now and the address moved to `_log.debug`, beside the check in
-    `Action.legality` -- `test_fasttravel_legality_rejections_carry_no_
-    developer_detail` is the sweep over every branch."""
-    row = bar(app, machine(mode=COMBAT))
+def test_the_greyed_button_carries_no_tooltip_and_the_verdict_keeps_its_reason(app):
+    """The rejection is the verdict's reason, which a stale click reports; the
+    greyed button itself shows no tooltip. `test_fasttravel_legality_rejections_
+    carry_no_developer_detail` is the sweep over every branch."""
+    target = machine(mode=COMBAT)
+    row = bar(app, target)
     assert not row.button.isEnabled()
-    assert "not available during a fight" in row.button.toolTip()
-    assert "$6E11" not in row.button.toolTip()
+    assert row.button.toolTip() == ""
+    reason = row.fasttravel.legality(target, row.area()).reason
+    assert "not available during a fight" in reason
+    assert "$6E11" not in reason
     assert not row.back_button.isEnabled()
-    assert "Nothing to go back to" in row.back_button.toolTip()
+    assert row.back_button.toolTip() == ""
+    assert "nothing to go back to" in row.fasttravel.back_verdict(target).reason
 
 
 def test_with_nothing_attached_the_row_is_disabled_rather_than_inert(app):
     row = bar(app)
     assert not row.button.isEnabled()
-    assert "No emulator attached" in row.button.toolTip()
+    assert row.button.toolTip() == ""
+
+
+def _greyed_row(app, case):
+    from automap.config import Settings
+    if case == "kobold-caves":
+        return bar(app, machine(area=13))
+    if case == "fight":
+        return bar(app, machine(mode=COMBAT))
+    if case == "nothing-attached":
+        return bar(app)
+    if case == "nothing-ticked":
+        return bar(app, machine(area=13), settings=Settings(
+            fast_travel_targets={"pool-of-radiance": []}))
+    if case == "other-title":
+        return bar(app, machine(area=13), settings=Settings(),
+                   title=c64_port.CHAMPIONS_OF_KRYNN.title,
+                   game=c64_port.CHAMPIONS_OF_KRYNN)
+    row = bar(app, machine(area=2))     # nothing to return to yet
+    return row
+
+
+@pytest.mark.parametrize("case", ["kobold-caves", "fight", "nothing-attached",
+                                  "nothing-ticked", "other-title",
+                                  "nothing-to-return-to"])
+def test_every_greyed_fast_travel_control_has_no_tooltip(app, case):
+    row = _greyed_row(app, case)
+    greyed = [w for w in (row.combo, row.button, row.back_button)
+              if not w.isEnabled()]
+    assert greyed
+    for widget in greyed:
+        assert widget.toolTip() == ""
+
+
+def test_an_enabled_fast_travel_button_keeps_the_warning(app):
+    row = bar(app, machine(area=2))
+    assert row.button.isEnabled()
+    assert row.button.toolTip() == actionbar.DANGER
 
 
 def test_no_disk_is_named_anywhere_in_the_row(app):

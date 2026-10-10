@@ -327,7 +327,7 @@ class ActionBar:
         for action, name in zip(self.actions, self.BUTTON_NAMES):
             button = root.findChild(ElidingButton, name)
             button.setText(action.label)
-            button.setToolTip(action.description)
+            button.setToolTip("")      # a greyed button shows no tooltip
             button.clicked.connect(...)
             self.buttons[action.name] = button
         self.watch_box = root.findChild(ElidingCheckBox, "watch_box")

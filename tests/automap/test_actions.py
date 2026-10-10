@@ -963,7 +963,9 @@ def test_the_heal_button_is_disabled_in_combat_and_not_just_the_gate():
     bar = ActionBar(make_root())
     bar.attach(machine(COMBAT))
     assert not bar.buttons["heal"].isEnabled()
-    assert "fight" in bar.buttons["heal"].toolTip()
+    assert bar.buttons["heal"].toolTip() == ""
+    heal = next(a for a in bar.actions if a.name == "heal")
+    assert "fight" in heal.legality(machine(COMBAT)).reason
     bar.attach(machine(WORLD))
     assert bar.buttons["heal"].isEnabled()
 
@@ -978,7 +980,8 @@ def test_the_fast_travel_dropdown_is_disabled_in_combat():
     assert row.rows                     # every fasttravelable area, no settings
     row.attach(MemoryTarget({0x6E11: bytes([COMBAT])}))
     assert not row.combo.isEnabled()
-    assert "fight" in row.combo.toolTip()
+    assert row.combo.toolTip() == ""
+    assert "fight" in row.combat_verdict(MemoryTarget({0x6E11: bytes([COMBAT])})).reason
     row.attach(MemoryTarget({0x6E11: bytes([WORLD])}))
     assert row.combo.isEnabled()
 

@@ -168,6 +168,15 @@ def states(window):
             for name, b in window.actions_bar.buttons.items()}
 
 
+def reasons(window):
+    """Each action's verdict reason: a greyed button shows no tooltip, so the
+    reason is read from the verdict the bar asked."""
+    from automap import actionbar
+    bar = window.actions_bar
+    once = actionbar._AmigaPoll(bar.target) if bar.target is not None else None
+    return {a.name: a.legality(once).reason for a in bar.actions}
+
+
 def enabled(window):
     return {name for name, (on, _) in states(window).items() if on}
 
@@ -195,21 +204,25 @@ def test_each_failing_condition_greys_the_button_with_its_reason(measured):
     window, _ = attached(POOL, can_write=False)
     assert enabled(window) == {"store-spells"}              # Save spells only reads
     for name in healed:
-        assert states(window)[name] == (False, sentence(POOL))
+        assert states(window)[name] == (False, "")
+        assert reasons(window)[name] == sentence(POOL)
 
     window, _ = attached(POOL, mode=amigaparty.ROWS[POOL].combat_value)
     assert enabled(window) == set()
-    assert states(window)["heal"] == (False, "Heal party is not available during a fight")
+    assert states(window)["heal"] == (False, "")
+    assert reasons(window)["heal"] == "Heal party is not available during a fight"
 
     window, target = attached(POOL)
     target.fail_at.add(BASE + amigaparty.ROWS[POOL].mode)
     window._refresh_roster()
     assert enabled(window) == set()
-    assert states(window)["heal"] == (False, "The machine is not readable right now")
+    assert states(window)["heal"] == (False, "")
+    assert reasons(window)["heal"] == "the machine is not readable right now"
 
     # An action the title's row does not confirm.
     window, _ = attached(POOLS_OF_DARKNESS)
-    assert states(window)["clear-quickfight"] == (False, sentence(POOLS_OF_DARKNESS))
+    assert states(window)["clear-quickfight"] == (False, "")
+    assert reasons(window)["clear-quickfight"] == sentence(POOLS_OF_DARKNESS)
 
 
 def test_an_action_marked_combat_legal_stays_enabled_in_a_fight(measured, monkeypatch):
@@ -249,7 +262,8 @@ def test_with_the_rows_as_committed_heal_needs_a_measured_maximum():
         window, _ = attached(key)
         assert enabled(window) == want, key
         for name, (on, tip) in states(window).items():
-            assert on or tip == sentence(key), (key, name)
+            assert on or (tip == "" and reasons(window)[name] == sentence(key)), (
+                key, name)
 
 
 def test_curse_needs_its_fight_value_measured_even_with_hp_max(monkeypatch):
@@ -288,7 +302,8 @@ def test_a_machine_that_is_not_running_this_title_gets_no_actions(measured):
     window.mapper.title_check = NOT_OURS
     window._refresh_roster()
     assert enabled(window) == set()
-    assert all(tip == sentence(POOL) for _, tip in states(window).values())
+    assert all(tip == "" for _, tip in states(window).values())
+    assert window.actions_bar.unsupported == sentence(POOL)
     assert window.actions_bar.target is None
     window.mapper.title_check = "unknown"
     window._refresh_roster()
@@ -382,7 +397,7 @@ def test_level_up_stays_hidden_and_blocked_on_the_amiga(measured, monkeypatch, k
     assert not window.roster.levelling
     card = window.roster.cards[0]
     widget = card.level_up
-    assert not widget.isEnabled() and widget.toolTip() == sentence(key)
+    assert not widget.isEnabled() and widget.toolTip() == ""
     # Even a card that would offer it (a C64 record's) cannot show it here.
     card.show_character(ready_character())
     assert not widget.isVisibleTo(window.root) and not widget.isEnabled()

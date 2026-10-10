@@ -1,7 +1,7 @@
 """The live actions, as a row of buttons under the map.
 
 `automap/actions.py` is the engine and has no Qt in it; this is the row. Each
-button carries one action, is **disabled with the reason in its tooltip** when
+button carries one action, is **greyed with no tooltip** when
 the mode flag says the action is illegal, and asks first where the action
 carries a `confirm` -- there is no in-game undo for anything that does.
 
@@ -170,6 +170,12 @@ def _capital(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
+def _usable(widget, ok: bool, tip: str) -> None:
+    """Enable `widget` with `tip`, or grey it with no tooltip at all."""
+    widget.setEnabled(ok)
+    widget.setToolTip(tip if ok else "")
+
+
 class ActionBar(QObject):
     """One button per action, and the watcher's checkbox."""
 
@@ -202,8 +208,9 @@ class ActionBar(QObject):
         self.last: engine.Outcome | None = None
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
-        #: The tooltip for every button while an Amiga title is attached and
-        #: these C64 actions have nothing to act on. None the rest of the time.
+        #: The reason a stale click reports while an Amiga title is attached and
+        #: these C64 actions have nothing to act on, which also greys every
+        #: button. None the rest of the time.
         self.unsupported: str | None = None
 
         self.buttons: dict[str, ElidingButton] = {}
@@ -211,7 +218,7 @@ class ActionBar(QObject):
             button = root.findChild(ElidingButton, name)
             if button is not None:
                 button.setText(action.label)
-                button.setToolTip(_capital(action.description))
+                button.setToolTip("")
                 button.setEnabled(False)          # nothing attached yet
                 button.clicked.connect(
                     lambda _checked=False, a=action: self.run(a))
@@ -286,7 +293,7 @@ class ActionBar(QObject):
         if self.unsupported is not None:
             for button in self.buttons.values():
                 button.setEnabled(False)
-                button.setToolTip(_capital(self.unsupported))
+                button.setToolTip("")
             return
         once = None
         if target is not None:
@@ -298,8 +305,7 @@ class ActionBar(QObject):
             verdict = action.legality(once)
             button = self.buttons.get(action.name)
             if button is not None:
-                button.setEnabled(verdict.ok)
-                button.setToolTip(_capital(verdict.reason or action.description))
+                _usable(button, verdict.ok, _capital(action.description))
 
     def watch(self, target) -> engine.Outcome | None:
         """One tick of the quickfight watcher. Fires on the 2-to-not-2 edge."""
@@ -931,7 +937,7 @@ class FastTravelBar(QObject):
             for widget in (self.combo, self.button, self.back_button):
                 if widget is not None:
                     widget.setEnabled(False)
-                    widget.setToolTip(_capital(self.unsupported))
+                    widget.setToolTip("")
             return
         once = self._idle_poll()
         area = self.area()
@@ -940,35 +946,23 @@ class FastTravelBar(QObject):
                 gate = (self._any_offered(once, area) if self._amiga
                         else self.combat_verdict(once))
                 self.combo.setEnabled(gate.ok)
-                self.combo.setToolTip(_capital(gate.reason))
+                self.combo.setToolTip("")
             else:
                 self.combo.setEnabled(False)
                 self.combo.setToolTip("")
         if self.button is not None:
             if area is None and not self.rows:
-                # Nothing ticked, or nothing to tick. Say that rather than the
-                # emulator's verdict: there is nothing to be legal or illegal
-                # about.
                 self.button.setEnabled(False)
-                self.button.setToolTip(
-                    "No areas are ticked in Preferences ▸ Fast travel, so there "
-                    "is nowhere to travel to." if self.has_areas else
-                    f"{no_areas(self.title)} Its areas have not been tabulated, "
-                    f"and Pool of Radiance's disk numbers and area ids would be "
-                    f"the wrong thing to write here.")
+                self.button.setToolTip("")
             else:
                 verdict = self._asked(self.fasttravel.legality, once, area)
-                self.button.setEnabled(verdict.ok)
-                # `DANGER` when it is enabled, the rejection when it is not: the
-                # warning is about making a trip, and a disabled button is not
-                # about to make one.
-                self.button.setToolTip(_capital(verdict.reason or DANGER))
+                # `DANGER` only while enabled: the warning is about making a
+                # trip, and a greyed button is not about to make one.
+                _usable(self.button, verdict.ok, DANGER)
         if self.back_button is not None:
             back = self._asked(self.fasttravel.back_verdict, once)
-            self.back_button.setEnabled(back.ok)
-            self.back_button.setToolTip(
-                _capital(back.reason)
-                or "Return to the area the last trip started in")
+            _usable(self.back_button, back.ok,
+                    "Return to the area the last trip started in")
 
     # -- running one -------------------------------------------------------
 

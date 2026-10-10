@@ -290,15 +290,14 @@ argument that put the actions there: it acts on what is drawn above it.
   argues about it is worse than one that does not list it. `FastTravel.legality`
   blocks it as well, which is what protects a caller that did not come through
   the dropdown.
-* **`Fast Travel` button**, disabled with the reason in its tooltip, exactly as
+* **`Fast Travel` button**, greyed with no tooltip, exactly as
   `ActionBar` does it: no emulator, not `ViceTarget`, `$6E11 != 1`, or the
   selected area is the current one.
 * **`Travel Back`**, which restores the id and square captured before the last
   trip. One button, and it turns a trip from a one-way journey into a probe.
 * **The warning is the Fast Travel button's own tooltip** — *"Fast travel to
   areas you haven't been to is dangerous and can break the game."*, Donald's
-  wording, shown while the button is usable and replaced by the reason it is disabled while
-  it is not. There was a `circle-info` help button at the end of the row with
+  wording, shown while the button is usable; a greyed button shows no tooltip. There was a `circle-info` help button at the end of the row with
   `FastTravel.HELP` under it; Donald had it out in 2026-08 — *"Remove the info icon
   with the tooltip altogether"* — so the row is four widgets and a message
   line. The same sentence is a framed amber box in Preferences ▸ Fast travel,
@@ -339,7 +338,7 @@ exactly what is ticked. Four rules:
 | | |
 |---|---|
 | a fresh config gets three | New Phlan, The Slums and Sokol Keep — ids 0, 20 and 21. `fast_travel_targets` is `null` until somebody ticks something (`fasttravel_areas` in a file written before 2026-08, read by `config.RENAMED`), which is what tells a fresh config from a player who unticked everything |
-| an empty choice is kept | unticking everything leaves the dropdown empty, and it says `No areas ticked — Preferences ▸ Fast travel` with the button disabled and the same reason in its tooltip. The player asked for that; a control that quietly refilled itself would be lying |
+| an empty choice is kept | unticking everything leaves the dropdown empty, and it says `No areas ticked — Preferences ▸ Fast travel` with the button disabled and no tooltip. The player asked for that; a control that quietly refilled itself would be lying |
 | area 30 is not in the table | ticked or unticked. `Area.fasttravelable` is what says so, asked rather than the id written down a second time |
 | it narrows what is offered, never what is legal | `FastTravel.legality` and the arrival-square logic are untouched |
 

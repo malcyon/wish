@@ -7,7 +7,7 @@ window wires buttons to these; the tests drive them against `MemoryTarget`.
 
 **Everything is gated on the mode flag** the loader dispatches on, and never on
 the screen: `2` is COMBAT. An action that is illegal in combat blocks at
-`apply` time and not only in its tooltip, because a button's enabled state is
+`apply` time and not only by greying its button, because a button's enabled state is
 one poll interval stale and a fight can start inside that interval.
 
 **Every address here is per title, and comes from `goldbox.c64_save.C64Container`** -- the
@@ -163,8 +163,8 @@ def in_combat(target, game: c64_port.C64Container | None = None) -> bool:
 class Verdict:
     """Whether an action may run now, and the reason when it may not.
 
-    `reason` is written to be shown as-is: it goes in a disabled button's
-    tooltip and in the rejection the action returns if it is called anyway.
+    `reason` is written to be shown as-is: it is the rejection the action
+    returns if it is called anyway; a greyed button shows no tooltip.
     """
 
     ok: bool
@@ -1172,7 +1172,7 @@ def actions(store: SpellStore | None = None,
     """Every action, in the order the bar lays them out.
 
     The window iterates this: one button per action, `label` on it,
-    `description` and the reason from `legality` in its tooltip, and
+    `description` as its tooltip while enabled, and
     `confirm` asked first where it is non-empty.
 
     **This tuple is the reading order**, and `actionbar.COLUMNS` breaks it into

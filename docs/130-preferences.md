@@ -760,7 +760,7 @@ this dialog, one per title.
 * **Nothing ticked says so once, not three times.** The note under each table is
   a count — *0 areas in the Fast Travel list.* — and the dropdown itself shows
   `No areas ticked — Preferences ▸ Fast travel` with the button disabled and
-  the same reason in its tooltip. The dropdown offers only the open title's
+  no tooltip. The dropdown offers only the open title's
   ticks, so another title's tab changes its own list and leaves the dropdown
   with the same rows. The note used to explain that an empty list
   was the setting doing what was asked; Donald had that out: *"The user will

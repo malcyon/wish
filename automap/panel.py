@@ -47,11 +47,6 @@ from ui.iconpaint import draw_icon, icon_pixmap
 
 from .state import OUTDOORS_WHERE
 
-
-def _capital(text: str) -> str:
-    """`text` with its first letter capitalised, for a tooltip a person reads."""
-    return text[:1].upper() + text[1:]
-
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and the level swallows them when it is off -- without
 #: `automap` importing `wish`.
@@ -889,14 +884,14 @@ class RosterPanel(QObject):
             if not allowed and card.level_up is not None:
                 card.level_up.hide()
 
-    def set_unsupported(self, reason: str) -> None:
-        """No card's Level up can act: hide it, grey it, and say why."""
+    def set_unsupported(self) -> None:
+        """No card's Level up can act: hide it and grey it, with no tooltip."""
         self.unsupported = True
         for card in self.cards:
             if card.level_up is not None:
                 card.level_up.hide()
                 card.level_up.setEnabled(False)
-                card.level_up.setToolTip(_capital(reason))
+                card.level_up.setToolTip("")
 
     def clear_unsupported(self) -> None:
         """Undo `set_unsupported`; a card shows its button again on its next snapshot."""

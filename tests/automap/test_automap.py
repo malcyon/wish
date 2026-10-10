@@ -2867,7 +2867,9 @@ def test_with_nothing_attached_the_buttons_are_disabled_not_inert(app):
     bar = ActionBar(make_root())
     bar.attach(None)
     assert not any(b.isEnabled() for b in bar.buttons.values())
-    assert bar.buttons["heal"].toolTip() == "No emulator attached"
+    assert bar.buttons["heal"].toolTip() == ""
+    heal = next(a for a in bar.actions if a.name == "heal")
+    assert heal.legality(None).reason == "no emulator attached"
 
 
 def _test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):
@@ -2904,20 +2906,19 @@ def test_a_fight_disables_what_a_fight_forbids(app):
     bar.attach(MemoryTarget({0x6E11: b"\x02"}))
     # Heal used to be legal mid-fight and no longer is: healing during a
     # fight writes the roster byte the engine is itself using (#146).
-    # **The tooltip said `$6E11 is 2` until 2026-09-07**, which is the address
-    # the mode flag lives at and means nothing to a player hovering a greyed
-    # button.  `#306 (The Fast Travel button's own disabled tooltip carries a
-    # memory address)` took it out of the shared rejection every action uses, so
-    # what a person now reads is the situation they are in.  The address went
-    # to `_log.debug`, where whoever is debugging can still get it.
+    # A greyed button shows no tooltip; the rejection a stale click gets back
+    # is the verdict's reason, and it names no memory address.
+    target = MemoryTarget({0x6E11: b"\x02"})
+    by_name = {a.name: a for a in bar.actions}
     assert not bar.buttons["heal"].isEnabled()
-    assert bar.buttons["heal"].toolTip() == "Heal party is not available during a fight"
+    assert (by_name["heal"].legality(target).reason
+            == "Heal party is not available during a fight")
     assert not bar.buttons["identify"].isEnabled()
-    assert (bar.buttons["identify"].toolTip()
+    assert (by_name["identify"].legality(target).reason
             == "Identify is not available during a fight")
-    # And the thing that must stay true of every one of them.
     for name in ("heal", "identify"):
-        assert "$" not in bar.buttons[name].toolTip()
+        assert bar.buttons[name].toolTip() == ""
+        assert "$" not in by_name[name].legality(target).reason
 
 
 def test_the_whole_row_costs_one_read_of_the_mode_flag(app):
@@ -3407,8 +3408,8 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
 
 def test_a_title_whose_loader_has_never_been_read_blocks_every_button(app):
     """Champions of Krynn has no measured mode flag, so there is no way to tell
-    a fight from the map and no button may write. The reason is in the tooltip
-    rather than the button being silently inert."""
+    a fight from the map and no button may write. The reason is the verdict's,
+    and the greyed button shows no tooltip."""
     from automap import actions
     from automap.actionbar import ActionBar
 
@@ -3420,7 +3421,9 @@ def test_a_title_whose_loader_has_never_been_read_blocks_every_button(app):
     bar.attach(MemoryTarget({krynn.save_load_address: save0 + roster}))
     for name, button in bar.buttons.items():
         assert not button.isEnabled(), name
-        assert button.toolTip() == actions.UNSUPPORTED.format(
+        assert button.toolTip() == "", name
+        action = next(a for a in bar.actions if a.name == name)
+        assert action.legality(MemoryTarget({krynn.save_load_address: save0 + roster})).reason == actions.UNSUPPORTED.format(
             title=krynn.title), name
 
 

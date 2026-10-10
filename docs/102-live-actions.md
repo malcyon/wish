@@ -39,8 +39,8 @@ It is `automap.c64.C64Machine.mode_flag` — CONFIRMED for Pool of Radiance, Cur
 Blades, None for the three Krynn-era titles, whose loaders have not been read.
 Silver Blades has been watched through a real fight: `1` `DUNGEON` → `4`
 `COM.PREP` → `2` `COMBAT`, with the three combat-illegal actions blocking on
-the `2`. An action whose title has None **blocks**, with the reason in its
-tooltip and in the `Outcome`: reading Pool of Radiance's byte on a Curse
+the `2`. An action whose title has None **blocks**, with the reason in the
+`Outcome` and a greyed button: reading Pool of Radiance's byte on a Curse
 machine would answer "not combat" whatever the game was doing, which is a gate
 that is open rather than a gate that is missing.
 
@@ -224,7 +224,7 @@ calls `attach(target)` on each live poll, which is
 ```python
 verdict = action.legality(target)
 button.setEnabled(verdict.ok)
-button.setToolTip(verdict.reason or action.description)
+button.setToolTip(action.description if verdict.ok else "")
 ```
 
 `run` asks `action.confirm` first where it is non-empty — identify and level-up
@@ -303,9 +303,9 @@ of these hold, and otherwise the verdict holds one reason:
 | the mode byte reads | `amigaparty.mode`, one byte per title; it is 5 in a fight (Curse's value is from the code only) |
 | the mode is not a fight, unless the row lists the action in `combat_legal` | no row lists any |
 
-A button that fails any of these is greyed with `ERROR: Action unsupported on
-<title> (Amiga).`; with no emulator attached it reads the C64's no-emulator
-sentence. Today **Heal is enabled on Pools of Darkness only; Save spells,
+A button that fails any of these is greyed and shows no tooltip; a click that
+reaches it anyway reports `ERROR: Action unsupported on <title> (Amiga).`, or
+the C64's no-emulator sentence with no emulator attached. Today **Heal is enabled on Pools of Darkness only; Save spells,
 Restore spells and Identify on Pool of Radiance, Silver Blades and Pools of
 Darkness; Quickfight off on no title** (its field is not `confirmed` anywhere);
 and every button on Curse is off. Level up is off on every Amiga title, because
