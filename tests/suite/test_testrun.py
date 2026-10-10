@@ -833,9 +833,11 @@ def test_a_start_that_failed_with_no_unit_is_an_infrastructure_failure(policy, r
 
 def test_the_worst_case_of_one_run_call_including_every_lock_wait_stays_under_one_tool_call():
     assert testrun.DEFAULT_TIMEOUT <= testrun.MAX_TIMEOUT
+    assert testrun.STOP_CALL == testrun.STOP_SETTLE + 5
     for timeout in (testrun.DEFAULT_TIMEOUT, testrun.MAX_TIMEOUT):
         worst = (testrun.DEFAULT_ADMISSION + testrun.START_LOCK_WAIT + timeout + testrun.GRACE
-                 + testrun.STOP_LOCK_WAIT + testrun.STOP_SETTLE + testrun.FINISH_LOCK_WAIT
+                 + testrun.STOP_LOCK_WAIT + testrun.STOP_CALL + testrun.STOP_SETTLE
+                 + testrun.FINISH_LOCK_WAIT
                  + testrun.CLEANUP_TIMEOUT)
         assert worst == testrun.worst_case_seconds(timeout) < testrun.TOOL_CALL_LIMIT
     # Every control-lock wait inside a run is capped below the general limit.
@@ -1074,10 +1076,11 @@ def test_a_cancelled_run_records_what_the_unit_and_cgroup_held_before_the_stop(
     outcome = testrun.cancel_request(ctx, "r1")
     result = outcome["record"]["result"]
     assert outcome["status"] == "cancelled"
-    assert result["exit"] == {"Result": "success", "ExecMainCode": "0", "ExecMainStatus": "0"}
-    assert result["exit_and_memory_taken_before_stop"] is True
+    assert result["exit"] == {"Result": None, "ExecMainCode": None, "ExecMainStatus": None}
+    assert result["before_stop"]["unit"]["Result"] == "success"
+    assert result["before_stop"]["unit"]["MainPID"] == "77"
+    assert result["memory_taken_before_stop"] is True
     assert result["memory_peak_bytes"] == 5000 and result["pytest_processes"] == 2
-    assert result["observed_before_stop"]["unit"]["MainPID"] == "77"
 
 
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
@@ -1162,3 +1165,136 @@ def test_a_timed_out_run_reports_the_last_forty_log_lines_as_its_failure_output(
     lines = view["result"]["failure_output"].splitlines()
     assert view["status"] == "timed_out" and len(lines) == 40
     assert lines[0] == "line 11" and lines[-1] == "line 50"
+
+
+# --- third review round --------------------------------------------------------------------------
+
+def _hold_control_lock_between(clock, policy, start, end):
+    """Hold the control lock while the fake clock is within [start, end)."""
+    fcntl = pytest.importorskip("fcntl")
+    state = {"fd": None}
+
+    def react():
+        inside = start <= clock.now < end
+        if inside and state["fd"] is None:
+            state["fd"] = os.open(policy.control_lock, os.O_RDWR)
+            fcntl.flock(state["fd"], fcntl.LOCK_EX)
+        elif not inside and state["fd"] is not None:
+            os.close(state["fd"])
+            state["fd"] = None
+    clock.on_sleep = react
+    return state
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_a_hard_stop_that_cannot_get_the_lock_is_retried_until_it_does(
+        ctx, repo, backend, clock, policy):
+    register(ctx, repo)
+    hard_stop = clock.now + testrun.DEFAULT_TIMEOUT + testrun.GRACE
+    state = _hold_control_lock_between(clock, policy, hard_stop - 1, hard_stop + 5)
+    view = testrun.run_request(ctx, "r1")
+    if state["fd"] is not None:
+        os.close(state["fd"])
+    assert backend.stopped == ["inv1"] and view["status"] == "timed_out"
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_a_hard_stop_that_never_gets_the_lock_leaves_the_record_running_for_reconcile(
+        ctx, repo, backend, clock, policy):
+    register(ctx, repo)
+    hard_stop = clock.now + testrun.DEFAULT_TIMEOUT + testrun.GRACE
+    state = _hold_control_lock_between(clock, policy, hard_stop - 1, hard_stop + 1000)
+    view = testrun.run_request(ctx, "r1")
+    os.close(state["fd"])
+    assert view["status"] == "infrastructure_failure" and "hard stop" in view["note"]
+    assert backend.stopped == []
+    assert testrun.read_record(policy, "r1")["status"] == "running"
+    assert clock.now <= hard_stop + testrun.STOP_LOCK_WAIT + testrun.STOP_ATTEMPT_WAIT + 2
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock and uids are Linux/macOS")
+def test_a_service_that_outlives_its_hard_stop_ends_the_wait_and_stays_for_reconcile(
+        ctx, repo, backend, clock, policy):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    backend.stop = lambda unit: backend.stopped.append("inv1")  # the unit stays
+    began = clock.now
+    view = testrun.run_request(ctx, "r1")
+    assert view["status"] == "infrastructure_failure" and "after the hard stop" in view["note"]
+    assert testrun.read_record(policy, "r1")["status"] == "running"
+    assert clock.now - began <= (testrun.DEFAULT_TIMEOUT + testrun.GRACE + testrun.STOP_SETTLE + 3)
+
+
+def test_the_budget_counts_the_stop_call_and_the_wait_after_it_and_says_what_it_assumes():
+    assert "no other launcher is reconciling" in testrun.worst_case_seconds.__doc__
+    for name in (".claude/agents/test-runner.md", ".codex/agents/test-runner.toml"):
+        text = (REPO / name).read_text(encoding="utf-8")
+        assert f"execution is up to {testrun.DEFAULT_TIMEOUT}" in text
+        assert "no other launcher is reconciling" in text.replace("\n", " ")
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_a_cancel_whose_before_stop_sample_read_nothing_does_not_mark_run_values_observed(
+        ctx, repo, backend):
+    pytest.importorskip("fcntl")
+    register(ctx, repo)
+    mark(ctx, "r1", "running", "invOLD")
+    backend.run_elsewhere("r1", "invOLD")
+    backend.sample = lambda cgroup: {"procs": [], "peak": None, "oom_group": None, "events": {}}
+    result = testrun.cancel_request(ctx, "r1")["record"]["result"]
+    assert result["run_values_observed"] is False and result["memory_peak_bytes"] is None
+
+
+@pytest.mark.parametrize("parent_request, parent_invocation", [
+    (None, "invP"), ("parent", None), ("", "invP"), ("parent", "")])
+def test_a_nested_record_without_both_parent_fields_is_never_taken_to_have_a_live_parent(
+        parent_request, parent_invocation):
+    record = {"nested": True, "parent_request": parent_request,
+              "parent_invocation": parent_invocation}
+    live = {"LoadState": "loaded", "ActiveState": "active", "SubState": "running",
+            "Description": "wish-tests parent", "InvocationID": "invP", "Job": ""}
+    assert testrun._nested_parent_alive(record, live) is False
+    complete = dict(record, parent_request="parent", parent_invocation="invP")
+    assert testrun._nested_parent_alive(complete, live) is True
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="flock is Linux/macOS")
+def test_cancelling_a_nested_record_names_the_parent_request_and_stops_nothing(
+        ctx, repo, backend):
+    pytest.importorskip("fcntl")
+    _nested_running(ctx, repo, backend)
+    outcome = testrun.cancel_request(ctx, "r1")
+    assert "running request parent" in outcome["note"] and "nothing was stopped" in outcome["note"]
+    assert outcome["stopped"] is False and backend.stopped == []
+
+
+def test_output_without_a_final_newline_reaches_the_log_while_the_check_still_runs(
+        tmp_path, repo):
+    import threading
+    import time
+    flag, log = tmp_path / "flag", tmp_path / "out.log"
+    script = ("import os, sys, time\n"
+              "sys.stdout.write('partial'); sys.stdout.flush()\n"
+              f"while not os.path.exists({str(flag)!r}): time.sleep(0.05)\n")
+    record = {"request": {"workdir": str(repo), "checks": [
+        {"name": "pytest", "argv": [sys.executable, "-c", script]}]}}
+    done = {}
+    thread = threading.Thread(target=lambda: done.update(
+        testrun._checks_in_process(record, None, str(log))))
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not (log.exists() and "partial" in log.read_text()):
+            time.sleep(0.05)
+        seen = log.exists() and "partial" in log.read_text()
+    finally:
+        flag.write_text("")
+        thread.join(10)
+    assert seen and done["pytest"]["returncode"] == 0
+
+
+@pytest.mark.parametrize("fields", [{}, {"parent_request": None, "parent_invocation": None},
+                                    {"parent_request": "", "parent_invocation": ""}])
+def test_two_empty_parent_fields_are_not_a_match_for_a_service_that_reports_none(fields):
+    anonymous = {"LoadState": "loaded", "ActiveState": "active", "SubState": "running", "Job": ""}
+    assert testrun._nested_parent_alive({"nested": True, **fields}, anonymous) is False

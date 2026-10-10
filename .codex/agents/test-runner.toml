@@ -39,8 +39,9 @@ Linux) pytest is run as it always was.
 ```
 
 `run` is a foreground command. It exits 0 only when every requested check
-passed. Its admission wait is about 60 seconds, execution is up to 430 and
-cleanup 30, so one request fits under a 600-second Bash limit. A request ends
+passed. Its admission wait is about 60 seconds, execution is up to 420 and
+cleanup 30, so one request fits under a 600-second Bash limit (the figure
+assumes no other launcher is reconciling at the same moment). A request ends
 as passed, failed, timed_out, cancelled, interrupted, stale or
 infrastructure_failure. Records live in `~/.local/state/wish/test-requests/`.
 

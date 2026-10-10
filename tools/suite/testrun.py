@@ -18,7 +18,7 @@ limit. Nothing here falls back to running a test outside the service.
 from __future__ import annotations
 
 import argparse
-import collections
+import codecs
 import contextlib
 import dataclasses
 import datetime
@@ -58,21 +58,28 @@ SYSTEMD_RUN_TIMEOUT = 30
 #: Seconds the launcher waits beyond systemd's own runtime limit before stopping.
 GRACE = 20
 STOP_LOCK_WAIT = 10
-#: `TimeoutStopSec` of the service: after it systemd sends SIGKILL.
+#: One try at the control lock for a hard stop; tries repeat until `STOP_LOCK_WAIT`.
+STOP_ATTEMPT_WAIT = 2
+#: `TimeoutStopSec` of the service: after it systemd sends SIGKILL. It is also how
+#: long the launcher keeps polling for the unit to go once it has issued a hard stop.
 STOP_SETTLE = 15
+#: The `systemctl stop` call itself is given the settle time and five seconds more.
+STOP_CALL = STOP_SETTLE + 5
 FINISH_LOCK_WAIT = 10
 CLEANUP_TIMEOUT = 30
-MAX_TIMEOUT = 430
+MAX_TIMEOUT = 420
 DEFAULT_TIMEOUT = MAX_TIMEOUT
 
 
 def worst_case_seconds(timeout: float = DEFAULT_TIMEOUT,
                        admission: float = DEFAULT_ADMISSION) -> float:
     """The longest one `run` call can take for a request of `timeout` seconds,
-    lock waits included. It leaves out the exit time of git and systemctl themselves,
-    which a hung user manager could stretch."""
+    lock waits included: the hard-stop call and the wait for the unit to go after it
+    are counted at their limits. The figure assumes no other launcher is reconciling
+    at the same moment, and it leaves out the exit time of git and systemctl
+    themselves, which a hung user manager could stretch."""
     return (admission + START_LOCK_WAIT + timeout + GRACE + STOP_LOCK_WAIT
-            + STOP_SETTLE + FINISH_LOCK_WAIT + CLEANUP_TIMEOUT)
+            + STOP_CALL + STOP_SETTLE + FINISH_LOCK_WAIT + CLEANUP_TIMEOUT)
 
 
 #: A whole-suite diagnostic runs longer than one tool call; `run` waits in stages.
@@ -334,7 +341,7 @@ class SystemBackend:
         return state["InvocationID"]
 
     def stop(self, unit: str) -> None:
-        self._systemctl("stop", unit, timeout=STOP_SETTLE + 5)
+        self._systemctl("stop", unit, timeout=STOP_CALL)
 
     def reset_failed(self, unit: str) -> None:
         self._systemctl("reset-failed", unit)
@@ -747,7 +754,9 @@ def _unload(ctx: Context, run_cgroup: str, state: dict) -> tuple[bool, str]:
 def _nested_parent_alive(record: dict, live: dict) -> bool:
     """Whether `record` is a nested run whose parent invocation is still active, which
     makes the parent's service the only thing that can say the child has ended."""
-    return bool(record.get("nested") and live.get("LoadState") != "not-found"
+    return bool(record.get("nested") and record.get("parent_request")
+                and record.get("parent_invocation")
+                and live.get("LoadState") != "not-found"
                 and unit_request(live) == record.get("parent_request")
                 and live.get("InvocationID") == record.get("parent_invocation")
                 and not unit_finished(live))
@@ -796,15 +805,15 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
     run_cg = samples.get("run_cgroup") or record.get("run_cgroup") or ""
     exit_info = {k: state.get(k) for k in ("Result", "ExecMainCode", "ExecMainStatus")}
     before_stop = record.get("observed_before_stop") or {}
-    # A stopped unit is unloaded before it can be read again; the values read just
-    # before the stop are then the only ones there are.
+    # A stopped unit is unloaded before it can be read again; the memory read just
+    # before the stop is then the only memory there is. The unit's own exit fields
+    # stay null: what it held before the stop was not an exit.
     from_before_stop = not state and bool(before_stop)
     if from_before_stop:
-        exit_info = {k: (before_stop.get("unit") or {}).get(k) for k in exit_info}
         samples = {**samples, "peak": before_stop.get("memory_peak"),
                    "events": before_stop.get("events") or {},
                    "max_processes": before_stop.get("pytest_processes"),
-                   "sampled": True}
+                   "sampled": bool(before_stop.get("sampled"))}
     if not run_cg:
         cleanup_ok, detail = True, "no cgroup path"
     elif unload and (mine or live.get("LoadState") == "not-found"):
@@ -841,8 +850,8 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
         "elapsed_seconds": round(now - record["started_epoch"], 1)
         if record.get("started_epoch") else None,
         "run_values_observed": observed,
-        "exit_and_memory_taken_before_stop": from_before_stop,
-        "observed_before_stop": before_stop or None,
+        "memory_taken_before_stop": from_before_stop,
+        "before_stop": before_stop or None,
         "pytest_processes": samples.get("max_processes") if observed else None,
         "memory_peak_bytes": max(filter(None, [samples.get("peak"), mem.get("peak")]),
                                  default=None) if observed else None,
@@ -951,9 +960,12 @@ def cancel_request(ctx: Context, request_id: str) -> dict:
                 and record.get("invocation_id") in (None, state.get("InvocationID")))
         if not mine:
             record = _finish_locked(ctx, record)
+            note = "the service is not running this request; nothing was stopped"
+            if record["status"] in ACTIVE and record.get("nested"):
+                note = (f"{request_id} runs inside the running request "
+                        f"{record.get('parent_request')}; nothing was stopped")
             return {"id": request_id, "status": record["status"], "stopped": False,
-                    "record": record,
-                    "note": "the service is not running this request; nothing was stopped"}
+                    "record": record, "note": note}
         # The unit is unloaded as soon as it stops, so read what it holds first.
         observed = {"unit": {k: state.get(k) for k in (
             "ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus", "MainPID")}}
@@ -961,7 +973,8 @@ def cancel_request(ctx: Context, request_id: str) -> dict:
             got = ctx.backend.sample(record["run_cgroup"])
             python = [p for p in got["procs"] if p[1].startswith("python")]
             observed.update(memory_peak=got["peak"], events=got["events"],
-                            pytest_processes=max(len(python) - 1, 0))
+                            pytest_processes=max(len(python) - 1, 0),
+                            sampled=bool(got["procs"] or got["peak"] or got["events"]))
         record["cancel_requested"] = True
         record["observed_before_stop"] = observed
         write_record(policy, record)
@@ -1089,7 +1102,9 @@ def _wait(ctx: Context, record: dict, slice_info: dict, budget_end: float | None
     samples: dict = {"run_cgroup": record["run_cgroup"], "max_processes": 0,
                      "peak": None, "events": {}}
     hard_stop = record["deadline_epoch"] + GRACE
+    give_up_stopping = hard_stop + STOP_LOCK_WAIT
     stopped = False
+    stop_end = None
     while True:
         state = ctx.backend.unit_state(policy.service)
         if state.get("LoadState") == "not-found" or unit_request(state) != record["id"]:
@@ -1108,16 +1123,28 @@ def _wait(ctx: Context, record: dict, slice_info: dict, budget_end: float | None
             got["procs"] or got["peak"] or got["events"])
         now = ctx.clock()
         if now >= hard_stop and not stopped:
-            stopped = True
-            with control_lock(ctx, now + STOP_LOCK_WAIT):
-                current = read_record(policy, record["id"])
-                if current and current["status"] == "running":
-                    current["timeout_enforced"] = True
-                    write_record(policy, current)
-                    live = ctx.backend.unit_state(policy.service)
-                    if live.get("InvocationID") == current.get("invocation_id"):
-                        ctx.backend.stop(policy.service)
+            try:
+                with control_lock(ctx, min(now + STOP_ATTEMPT_WAIT, give_up_stopping)):
+                    current = read_record(policy, record["id"])
+                    if current and current["status"] == "running":
+                        current["timeout_enforced"] = True
+                        write_record(policy, current)
+                        live = ctx.backend.unit_state(policy.service)
+                        if live.get("InvocationID") == current.get("invocation_id"):
+                            ctx.backend.stop(policy.service)
+                stopped = True
+                stop_end = ctx.clock() + STOP_SETTLE
+            except LaunchError as err:
+                # The stop was not issued: try again on the next poll, until the
+                # lock-wait budget is spent. The record stays running for reconcile.
+                if ctx.clock() >= give_up_stopping:
+                    samples["stop_failed"] = f"the hard stop could not be issued: {err}"
+                    return samples, False
             continue
+        if stop_end is not None and now >= stop_end:
+            samples["stop_failed"] = ("the service was still there "
+                                      f"{STOP_SETTLE} s after the hard stop")
+            return samples, False
         if budget_end is not None and now >= budget_end:
             return samples, False
         started = record.get("started_epoch") or now
@@ -1140,11 +1167,9 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
                 done[check["name"]] = {"returncode": 124, "elapsed": 0.0,
                                        "tail": "the request's deadline had passed"}
                 continue
-            tail = collections.deque(maxlen=60)
             try:
                 proc = subprocess.Popen(check["argv"], cwd=request["workdir"],
-                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        text=True, errors="replace")
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             except OSError as err:
                 done[check["name"]] = {"returncode": 127, "elapsed": 0.0, "tail": str(err)}
                 continue
@@ -1153,18 +1178,27 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
                 import threading
                 timer = threading.Timer(remaining, proc.kill)
                 timer.start()
-            for line in proc.stdout:
-                tail.append(line)
-                if out:
-                    out.write(line)
-                    out.flush()
-                else:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
+            # Chunks, not lines: output that has not reached a newline when the
+            # check is killed must still reach the log.
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            kept = ""
+            while True:
+                chunk = proc.stdout.read1(65536)
+                text = decoder.decode(chunk, final=not chunk)
+                if text:
+                    kept = (kept + text)[-20000:]
+                    if out:
+                        out.write(text)
+                        out.flush()
+                    else:
+                        sys.stdout.write(text)
+                        sys.stdout.flush()
+                if not chunk:
+                    break
             code = proc.wait()
             if timer:
                 timer.cancel()
-            text = "".join(tail)
+            text = "".join(kept.splitlines(keepends=True)[-60:])
             done[check["name"]] = {"returncode": code,
                                    "elapsed": round(time.monotonic() - started, 1),
                                    "counts": parse_counts(text) if check["name"] == "pytest" else {},
@@ -1305,6 +1339,10 @@ def _attach(ctx: Context, record: dict, info: dict, budget: float | None) -> dic
         budget = DEFAULT_BUDGET if budget is None else budget
     budget_end = None if budget is None else ctx.clock() + budget
     samples, finished = _wait(ctx, record, info, budget_end)
+    if samples.get("stop_failed"):
+        # Left running for `reconcile`; never reported as a result of the checks.
+        return _result_view(read_record(ctx.policy, record["id"]),
+                            status="infrastructure_failure", note=samples["stop_failed"])
     if not finished:
         current = read_record(ctx.policy, record["id"])
         return _result_view(current, note="still running; call `run ID` again to keep waiting")
