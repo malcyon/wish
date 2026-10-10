@@ -4199,6 +4199,36 @@ def test_train_goes_with_the_train_title_only(tmp_path, monkeypatch):
         foundation.prepare(foundation.DARKNESS, "run", train="train 1")
 
 
+def test_train_with_camp_steps_is_blocked(tmp_path, monkeypatch):
+    _train_prepare_with(monkeypatch, tmp_path)
+    with pytest.raises(winuaesession.RouteError, match="darkness-train takes (camp steps only on a published prepare|no camp steps)"):
+        foundation.prepare(foundation.TITLES["darkness-train"], "run", train="train 1",
+                           camp=("view",))
+    assert not (tmp_path / "acceptance" / foundation.ISSUE / "run").exists()
+
+
+def test_the_cli_blocks_train_on_a_published_disk(capsys):
+    assert foundation.main(["prepare", "--title", "ssb", "--run-id", "x",
+                            "--published-disk-one", "--train", "train 1"]) == 2
+    assert "--train is not for a published disk" in capsys.readouterr().err
+
+
+def test_train_with_a_substitute_records_the_substituted_partys_size(tmp_path, monkeypatch):
+    monkeypatch.setattr(scratch, "cache_dir", lambda *parts: tmp_path.joinpath(*parts))
+    seen = {}
+
+    def fake(run, specimen, *, substitute=None, **kw):
+        seen["substitute"] = substitute
+        scratch.ensure(run)
+        return {"title": "darkness", "names_a": [*NAMES, "EXTRA"] if substitute else NAMES}
+
+    monkeypatch.setattr(foundation, "_PREPARE", {"darkness-train": fake})
+    path = foundation.prepare(foundation.TITLES["darkness-train"], "run", train="train 1",
+                              substitute=tmp_path / "other.adf")
+    assert seen["substitute"] == tmp_path / "other.adf"
+    assert json.loads(path.read_text())["train"] == {"line": 1, "party_size": len(NAMES) + 1}
+
+
 def test_the_cli_passes_train_to_prepare(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(foundation, "prepare",

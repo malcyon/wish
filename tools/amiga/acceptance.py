@@ -3656,8 +3656,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     return result
 
 
-#: Stands for `darkness-train` in `TITLES`; the route accept and measure run is `_train_title_for`
-#: the line and party size the manifest recorded.
+#: The `darkness-train` title in `TITLES`; accept and measure build its route with `_train_title_for`
+#: from the line and party size that prepare recorded in the manifest.
 DARKNESS_TRAIN = train_title(1, 2)
 
 TITLES: dict[str, AmigaTitle] = {"pool": POOL, "curse": CURSE, "darkness": DARKNESS,
@@ -3683,8 +3683,9 @@ def _name(title: AmigaTitle) -> str:
 
 #: Titles with a slot importer for their own save format.
 _SUBSTITUTABLE = frozenset(
-    {"darkness", "darkness-vault", "darkness-train", *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
-                   if source.import_slot is not None)})
+    {"darkness", "darkness-vault", "darkness-train",
+     *(source.name for source in (POOL_SOURCES, CURSE_SOURCES)
+       if source.import_slot is not None)})
 
 
 #: The titles whose own accept route (not a published one) takes camp steps from its manifest.
