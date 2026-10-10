@@ -43,7 +43,7 @@ root.
 .venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
 ```
 
-List every file the checks depend on with `--file`, and leave those files alone until the result arrives. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, keep the request ID and report it to the orchestrator; never start a runner yourself. If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. `YOUR_ADDRESS` is your own address, which the orchestrator messages to you right after spawning you. If the message cannot be delivered, or you receive a notice that the runner was stopped, that is a delivery failure: keep the request ID and report it to the orchestrator; never start a runner yourself. The runner does not message you about a cancelled request; if the orchestrator or a notice tells you one was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 
 You are not alone in the tree. Work only in the files the root assigns; do not
 stage, commit, push, spawn agents, or write tracker content. If the brief lacks

@@ -131,14 +131,19 @@ back the one hunk you changed -- to restoring the whole file you remember.
 **Tell the agent to request the tests its change affects, not the suite, and
 not to run `pytest` itself.** On a managed host direct `pytest` stops before
 collection. The agent submits a request with `tools/suite/testrun.py submit`
-(listing the files its checks depend on), sends the ID and record path to the
-test-runner address the brief gives it, and leaves those files alone until the
+(`--requester YOUR_ADDRESS --workdir DIR --file PATH ...`), sends the ID and
+record path to the test-runner address the brief gives it, and leaves those files alone until the
 result arrives. The runner adds `ruff` and `genui.py --check`; the brief names
 any relevant tests that read game data. CI runs the full suite on the pushed
 commit -- `.claude/rules/commits.md`. Several copies of Qt running at once stall
 each other and can exhaust the machine's memory. If the request cannot be
-delivered, the agent keeps its ID and reports to the root; it never starts a
-runner.
+delivered, or a notice says the runner was stopped, the agent keeps its ID and
+reports to the root; it never starts a runner. The agent learns its own
+`YOUR_ADDRESS` from a message the orchestrator sends right after spawning it
+and cannot have it earlier; a Codex agent also needs `--session SESSION`, which
+the brief gives. A requester hears of a cancellation only from the
+orchestrator, who tells it only when it should stop, take no further work and
+report.
 
 **`test-runner` takes a run off the main window**, because a run in here is
 time Donald cannot ask anything. **There is one per orchestrator session, it is

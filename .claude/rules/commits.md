@@ -94,11 +94,16 @@ exactly the failure the pool itself exists to prevent between real agents.
 that needs to be seen in isolation.
 
 **A subagent requests only the tests its change affects.** It submits the
-request with `testrun.py submit` and sends the ID to the orchestrator's one
-reusable `test-runner`, which runs requests one at a time and replies to the
-requester; the subagent freezes the files its checks depend on until the result
+request with `testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file
+PATH ...` and sends the ID and record path to the orchestrator's one reusable
+`test-runner`, which runs requests one at a time and replies to the requester;
+the subagent freezes the files its checks depend on until the result
 arrives. `.claude/agents/test-runner.md` is the definition. Several copies of
 Qt running at once on one machine stall each other and can exhaust its memory.
+A message that cannot be delivered, or a notice that the runner was stopped, is
+a delivery failure: the subagent keeps the ID and reports to the orchestrator.
+The runner never messages the requester of a cancelled request, so the
+orchestrator tells a requester only when it wants it to stop and report.
 
 **`tools/suite/suiterun.py` is a diagnostic, run only when somebody asks for a
 whole-suite run on this machine, and submitted with `testrun.py submit

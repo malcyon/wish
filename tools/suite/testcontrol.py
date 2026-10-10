@@ -23,14 +23,16 @@ CGROUP_ROOT = "/sys/fs/cgroup"
 PROC_CGROUP = "/proc/self/cgroup"
 
 #: What a stopped pytest tells the caller to run instead.
-LAUNCHER_COMMAND = (".venv/bin/python tools/suite/testrun.py submit "
-                    "--requester ADDRESS --workdir DIR -- PYTEST_ARGS, then "
-                    "`.venv/bin/python tools/suite/testrun.py run ID`")
+LAUNCHER_COMMAND = ("submit it with `.venv/bin/python tools/suite/testrun.py "
+                    "submit --requester ADDRESS --workdir DIR --file PATH ... "
+                    "-- PYTEST_ARGS`, then give the request ID and record path "
+                    "to the session's test-runner, which runs it")
 
 #: What the whole-suite diagnostic tells an uncontained caller to run instead.
-SUITERUN_COMMAND = (".venv/bin/python tools/suite/testrun.py submit --suiterun "
-                    "[suiterun arguments], then `.venv/bin/python "
-                    "tools/suite/testrun.py run ID`")
+SUITERUN_COMMAND = ("submit it with `.venv/bin/python tools/suite/testrun.py "
+                    "submit --suiterun [suiterun arguments]`, then give the "
+                    "request ID and record path to the session's test-runner, "
+                    "which runs it")
 
 
 class PolicyError(Exception):

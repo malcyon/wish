@@ -123,6 +123,14 @@ tools/suite/testrun.py`:
   every requested check passed), and `status`, `list`, `cancel` and `reconcile`
   read or settle it. It ends as passed, failed, timed_out, cancelled,
   interrupted, stale or infrastructure_failure.
+* **An agent submits and hands over the record.** `submit --requester
+  YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS` prints a JSON
+  object whose `record` field is the record path; the agent sends that and the
+  ID to the test-runner (a Codex agent adds `--session SESSION`). A message that
+  cannot be delivered, or a notice that the runner was stopped, is a delivery
+  failure: the agent keeps the ID and reports to the orchestrator. The runner
+  never messages the requester of a cancelled request, so a requester hears of
+  a cancellation only from the orchestrator.
 * **Agents do not call the launcher's `run`.** The session's one `test-runner`
   does, taking requests in arrival order; see
   [Delegating](../.claude/rules/delegating.md).

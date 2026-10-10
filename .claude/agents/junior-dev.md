@@ -108,9 +108,7 @@ List every file the checks depend on with `--file`, and leave those files alone
 until the result arrives; you may continue independent work. The runner also
 runs `ruff` and `genui.py --check`. Name the relevant tests that read game
 data, which CI cannot run. Do not request the whole suite: CI runs it on the
-pushed commit. If the message cannot be delivered, or the runner replies that it is stopped or will not run the request, that is a delivery failure: keep the request ID and
-report it to the orchestrator; never start a runner yourself.
-If a reply says the request was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
+pushed commit. `YOUR_ADDRESS` is your own address, which the orchestrator messages to you right after spawning you. If the message cannot be delivered, or you receive a notice that the runner was stopped, that is a delivery failure: keep the request ID and report it to the orchestrator; never start a runner yourself. The runner does not message you about a cancelled request; if the orchestrator or a notice tells you one was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 `.claude/rules/commits.md` has the detail.
 
 **You do not commit.** Leave your work in the tree; the main window commits it

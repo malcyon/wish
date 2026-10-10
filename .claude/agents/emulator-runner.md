@@ -1,7 +1,7 @@
 ---
 name: emulator-runner
 description: Executes approved, bounded emulator experiments through the instance pool and preserves their evidence. Use when the harness, actions, captures, and termination conditions are specified.
-tools: Read, Write, Edit, Bash, Grep, Glob
+tools: Read, Write, Edit, Bash, Grep, Glob, SendMessage
 model: sonnet
 effort: medium
 memory: project
@@ -44,9 +44,17 @@ including `emulator.md`, `testing.md`, and `scratch.md`.
 ## Keep the work bounded
 
 Do not reread a file already in front of you, do not search for a
-file the root's brief has already named, run a test once to see it red and
+file the root's brief has already named, request a test once to see it red and
 once to see it green rather than after every edit, and report once the
 deliverable named in the brief exists rather than sweeping for anything else. Reread a file when it has changed since you read it, and rerun the affected check after the last relevant edit: what is redundant is the read of an unchanged file and the run before the last edit, not verification the change needs.
+
+**Request the scoped tests; do not run `pytest` yourself.** On a managed host direct `pytest` stops before collection. Submit the request, then send its ID and record path to the test-runner whose address your brief gives you, with SendMessage:
+
+```sh
+.venv/bin/python tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH ... -- PYTEST_ARGS
+```
+
+List every file the checks depend on with `--file`, and leave those files alone until the result arrives. `YOUR_ADDRESS` is your own address, which the orchestrator messages to you right after spawning you. If the message cannot be delivered, or you receive a notice that the runner was stopped, that is a delivery failure: keep the request ID and report it to the orchestrator; never start a runner yourself. The runner does not message you about a cancelled request; if the orchestrator or a notice tells you one was cancelled, submit nothing new, take no further work, report to the orchestrator and wait.
 
 **Never drive a game one keystroke per turn, and never write the driver
 yourself.** The brief hands you a driver under `tools/` that runs the whole

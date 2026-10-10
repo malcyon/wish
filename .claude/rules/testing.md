@@ -21,8 +21,9 @@ fixed is a guess until you have seen it fail.
 **On a managed host, a test runs through the launcher.** `pytest` run directly
 stops before collection (`/etc/wish/test-runner.json` exists with
 `enabled: true`). Request the run with `.venv/bin/python
-tools/suite/testrun.py submit ... -- PYTEST_ARGS` and let the session's
-`test-runner` run it: one test command at a time across every session and
+tools/suite/testrun.py submit --requester YOUR_ADDRESS --workdir DIR --file PATH
+... -- PYTEST_ARGS`, give the request ID and record path to the session's
+`test-runner`, and let it run it: one test command at a time across every session and
 worktree, inside a memory-capped service. That includes the run that shows a
 regression test red without its fix. A test that starts another `pytest`
 process inherits the service it runs in, and keeps its own arguments such as
