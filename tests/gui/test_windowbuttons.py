@@ -73,7 +73,8 @@ def test_rows_lists_every_kind_of_button(window):
     heal = named(rows, "action_heal")
     assert (heal["text"], heal["enabled"], heal["visible"]) == ("Plain", True, True)
     off = named(rows, "action_restore")
-    assert off["enabled"] is False and off["tooltip"] == "Not now"
+    assert off["enabled"] is False and off["tooltip"] == ""
+    assert heal["tooltip"] == "D"
     assert named(rows, "card_0_level_up")["visible"] is False
 
 
