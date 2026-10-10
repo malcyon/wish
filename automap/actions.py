@@ -2066,8 +2066,8 @@ class FastTravel(Action):
         area_id = getattr(area, "id", None)
         if not back and (area_id in addr.held_trips
                          or here in addr.held_starts):
-            _log.debug("fasttravel blocked: area %s is held for %s",
-                       area_id, "Return" if back else "a trip")
+            _log.debug("fasttravel blocked: area %s is held for a trip",
+                       area_id)
             return Verdict(False, UNSUPPORTED.format(title=self.game.title))
         indoors = self.current_indoors(target, addr)
         if indoors == 0 and not getattr(area, "outdoors", False):
