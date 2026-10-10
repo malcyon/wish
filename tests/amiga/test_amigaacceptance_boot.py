@@ -251,3 +251,13 @@ def test_a_plain_halt_creates_no_lane_log_and_no_halt_folder(tmp_path):
     acceptance.halt_lane(LaneGuest(), "wish679-boot")
     assert not (path.parent / "lanes.jsonl").exists()
     assert not list(path.parent.glob("halt-*"))
+
+
+def test_a_boot_line_without_remotes_still_stops_and_releases_and_reports_it(tmp_path):
+    path = manifest_for(tmp_path)
+    line = json.dumps({"event": "boot", "holder": "wish679-boot"})
+    (path.parent / "lanes.jsonl").write_text(line + "\n", encoding="utf-8")
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="boot record has no remotes"):
+        acceptance.halt_lane(guest, "wish679-boot", manifest_path=path)
+    assert [c[0] for c in guest.calls] == ["stop", "release"]

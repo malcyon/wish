@@ -5113,7 +5113,11 @@ def halt_lane(guest: Any, holder: str, timeout: float = 30.0, *,
             problems.append(f"fetch folder: {exc}")
         else:
             fetched: dict[str, Any] = {}
-            for key, remote in boots[-1]["remotes"].items():
+            remotes = boots[-1].get("remotes")
+            if not isinstance(remotes, dict):
+                problems.append("boot record has no remotes")
+                remotes = {}
+            for key, remote in remotes.items():
                 local = out / f"fetched-{key}.adf"
                 try:
                     guest.get(remote, local, timeout=timeout)
