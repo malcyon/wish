@@ -2049,6 +2049,12 @@ class FastTravel(Action):
             # the developer's citation of why nothing would happen; the
             # sentence in front of it already says everything a player needs.
             return Verdict(False, "the party is already in that area")
+        area_id = getattr(area, "id", None)
+        if (area_id in (addr.held_returns if back else addr.held_trips)
+                or (here, area_id) in addr.held_legs):
+            _log.debug("fasttravel blocked: area %s is held for %s",
+                       area_id, "Return" if back else "a trip")
+            return Verdict(False, UNSUPPORTED.format(title=self.game.title))
         indoors = self.current_indoors(target, addr)
         if indoors == 0 and not getattr(area, "outdoors", False):
             _log.debug("fasttravel blocked: $%04X is 0 (outdoors)",

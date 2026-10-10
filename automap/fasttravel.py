@@ -142,6 +142,16 @@ class FastTravelAddresses:
     #: route. No address may lie in `scratch`..`scratch + scratch_len`.
     arrival_writes: tuple[tuple[int, int, int], ...] = ()
 
+    #: Destinations a trip into cannot land correctly, because the arriving
+    #: script places the party only for a named came-from area. `legality`
+    #: answers `UNSUPPORTED` rather than hiding the row, so a Return out of
+    #: one still reads as an unsupported action and not as an attract trap.
+    held_trips: frozenset[int] = frozenset()
+    #: The same destinations, when reached by Return.
+    held_returns: frozenset[int] = frozenset()
+    #: `(departure, destination)` legs held although both ends are offered.
+    held_legs: frozenset[tuple[int, int]] = frozenset()
+
     #: The live x/y/facing triple, which no title relocated.
     live_square: int = LIVE_SQUARE
     scratch_len: int = SCRATCH_LEN
@@ -331,6 +341,10 @@ SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
     arrival_writes=((0x21, 0x4C62, 1), (0x21, 0x4C2A, 1),
                     (0x41, 0x4CFD, 0xFF), (0x44, 0x4CFD, 0xFF),
                     (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF)),
+    # The Frost giant village, the Crevasses, the mines and the Temple of Tyr
+    # place the party only for a named came-from area, and 81 loads no walls.
+    held_trips=frozenset({0x33, 0x34, 0x51, 0x52}),
+    held_returns=frozenset({0x33, 0x34, 0x51, 0x52}),
 )
 
 #: Every title whose overlays have been read, by `C64Container.key`. Champions of

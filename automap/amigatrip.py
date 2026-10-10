@@ -230,6 +230,11 @@ class TripRow:
     arrival_writes: tuple[tuple[int, int, int], ...] = ()
 
 
+#: Destinations whose arriving script places the party only for a named
+#: came-from area, so no arrival is written for them yet.
+ARRIVAL_UNPLACED = frozenset({0x33, 0x34, 0x51, 0x52})
+
+
 def _return_landing() -> Difference:
     return Difference(
         "return_landing",
@@ -478,7 +483,11 @@ ROWS: dict[str, TripRow] = {
         key_buffer=0x4F6C, area_file=0x7F12,
         script_file="/DISK2/ECL.GLB",
         confirmed=False,
-        differences=(_return_landing(),),
+        differences=(_return_landing(),
+                     Difference("arrival_unplaced",
+                                "arrival writes for this destination",
+                                lambda here, to, back:
+                                to in ARRIVAL_UNPLACED)),
         # The C64 row's six writes (`fasttravel.SECRET_OF_THE_SILVER_BLADES`):
         # the Well reads its landing table through `$4C62` and latches the
         # shaft event with `$4C2A`; the other four never store `$4CFD = $FF`.

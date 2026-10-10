@@ -1985,6 +1985,24 @@ def _silver_blades_row(area_id: int):
                 if a.id == area_id)
 
 
+@pytest.mark.parametrize("held_id", [0x33, 0x34, 0x51, 0x52])
+@pytest.mark.parametrize("back", [False, True])
+def test_a_silver_blades_trip_into_a_came_from_destination_is_held(
+        held_id, back):
+    ft, target, _addr = _silver_blades_machine(0x10)
+    verdict = ft.legality(target, area=_silver_blades_row(held_id), back=back)
+    assert not verdict
+    assert verdict.reason == actions.UNSUPPORTED.format(
+        title=ft.game.title)
+
+
+@pytest.mark.parametrize("open_id", [0x41, 0x50])
+@pytest.mark.parametrize("back", [False, True])
+def test_other_silver_blades_destinations_stay_offered(open_id, back):
+    ft, target, _addr = _silver_blades_machine(0x10)
+    assert ft.legality(target, area=_silver_blades_row(open_id), back=back)
+
+
 def _silver_blades_back(away: int, back_to: int, memory=None):
     """A trip from `back_to` to `away`, then Fast Travel Back."""
     ft, target, addr = _silver_blades_machine(back_to, memory)

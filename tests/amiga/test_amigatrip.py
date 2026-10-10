@@ -703,6 +703,10 @@ def test_what_each_difference_holds():
                                 trip.ROWS["pool-of-radiance"].differences}
     assert "onto_grid" not in held("pool-of-radiance", 26, 0)
     assert "onto_grid" not in held("pool-of-radiance", 0, 26)
+    for to in (0x33, 0x34, 0x51, 0x52):
+        assert "arrival_unplaced" in held(SILVER, 0x10, to)
+        assert "arrival_unplaced" in held(SILVER, 0x10, to, back=True)
+    assert "arrival_unplaced" not in held(SILVER, 0x10, 0x41)
 
 
 # -- the player's own disks ----------------------------------------------------
