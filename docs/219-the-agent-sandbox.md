@@ -193,7 +193,7 @@ Sizing: **12 vCPU, 12 GB, 100 GB disk.** The domain XML caps `memory` at 12 GB a
 
 The suite was run with `suite-timing`, which the guest role installs: 5950 passed and 1809 skipped, the skips being the tests that need game disks, so the emulators were not part of it. The guest pins pytest to 12 workers (below) and the suite was measured at 6, so no 12-worker peak has been read. After the runs QEMU held 3.8 GB of the host's memory, the guest's page cache included.
 
-**Test memory is capped inside the guest.** Twelve workers each loading Qt held roughly 250 to 920 MB apiece, about 5 GB for one run, so two runs at once with the agents and emulators exceeded 12 GB and there is no swap to absorb it. Local test commands run one at a time through `tools/suite/testrun.py`, each in a systemd user service under `wish-tests.slice` with `MemoryMax=8G` and `MemorySwapMax=0`, while the agents stay outside the slice. The 8 GiB ceiling is an initial figure to check against normal agent and emulator load, not a measured need. `docs/112-test-harness.md` describes the launcher.
+**Test memory is capped inside the guest.** Twelve workers each loading Qt held roughly 250 to 920 MB apiece, about 5 GB for one run, so two runs at once with the agents and emulators exceeded 12 GB and there is no swap to absorb it. Local test commands run one at a time through `tools/suite/testrun.py`, each in a systemd user service under `wish-tests.slice` with `MemoryMax=7G` and `MemorySwapMax=0`, while the agents stay outside the slice. The 7 GiB ceiling is set by the host policy. `docs/112-test-harness.md` describes the launcher.
 
 ### CPU
 

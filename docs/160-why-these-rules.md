@@ -975,7 +975,7 @@ runs started together across agents, and the earlier proposals (a smaller
 worker count, two file-lock slots, a lowered `oom_score_adj`) either left the
 total unbounded or protected one process instead of the machine. The rule now is
 one test command at a time across every session and worktree, each inside a
-systemd service with an 8 GiB memory cap and no swap, with parallelism inside
+systemd service with a memory cap and no swap (planned at 8 GiB, set to 7 GiB after measuring headroom under representative load), with parallelism inside
 the command unchanged so `--dist loadgroup` keeps its guarantee. Agents ask one
 reusable Haiku `test-runner` to run their checks instead of starting `pytest`
 themselves, so that requests queue in one place and a requester can keep

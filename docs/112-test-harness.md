@@ -113,7 +113,7 @@ tools/suite/testrun.py`:
 * **One top-level test command at a time**, across every session and worktree,
   under one shared execution lock.
 * **Each command in `wish-tests-run.service`** under `wish-tests.slice`, which
-  caps test memory at 8 GiB with no swap. Agents, the runner and the launcher
+  caps test memory at the host policy's ceiling, 7 GiB, with no swap. Agents, the runner and the launcher
   stay outside the slice, so a test that exceeds the cap ends its own service
   and nothing else.
 * **Parallelism inside one command is unchanged**: `-n auto --dist loadgroup`,

@@ -32,7 +32,7 @@ On a managed host (`/etc/wish/test-runner.json` exists with `enabled: true`),
 Local tests run only through the launcher, one top-level test command at a time
 across every session and worktree, each inside the systemd service
 `wish-tests-run.service` under `wish-tests.slice`, which caps test memory at
-8 GiB with no swap. You, the other agents and the launcher stay outside the
+the host policy's ceiling, 7 GiB, with no swap. You, the other agents and the launcher stay outside the
 slice. Parallelism within one command is unchanged: `-n auto --dist loadgroup`,
 or the host profile's worker count. Elsewhere (CI, Windows, macOS, an unmanaged
 Linux) pytest is run as it always was.

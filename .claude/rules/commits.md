@@ -79,7 +79,7 @@ directly stops before collection and prints the launcher command. Local tests
 run only through `.venv/bin/python tools/suite/testrun.py`, one top-level test
 command at a time across every session and worktree, each inside
 `wish-tests-run.service` under `wish-tests.slice`, which caps test memory at
-8 GiB with no swap. Elsewhere (CI, Windows, macOS, unmanaged Linux) pytest is
+the host policy's ceiling, 7 GiB, with no swap. Elsewhere (CI, Windows, macOS, unmanaged Linux) pytest is
 run as before.
 
 **Use normal test parallelism within that one command.** `-n auto --dist
