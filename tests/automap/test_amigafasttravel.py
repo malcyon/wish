@@ -217,6 +217,23 @@ def test_a_silver_blades_trip_across_groups_saves_the_area_file_before_newecl(
     assert b"\x7f\x12" not in statements_written(out)
 
 
+def test_a_silver_blades_return_saves_the_departures_area_file(
+        disks, monkeypatch):
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True,
+                                                    differences=()))
+    t = aft.AmigaFastTravel(BLADES, object())
+    t._row = lambda id: area(id, "Somewhere")
+    m = machine(BLADES, area=0x10)
+    assert t.apply(m, area(0x30, arrival=(3, 3, 1))).ok
+    finish(t, m, BLADES, 0x30)
+    out = t.apply_back(m)
+    assert out.ok
+    assert (trips.save(1, 0x7F12) + trips.newecl(0x10)
+            in statements_written(out))
+
+
 def test_an_unconfirmed_row_no_disks_or_no_write_is_unsupported(disks, monkeypatch):
     m = machine(CURSE)
     assert travel(disks_=None).legality(m, area(7)).reason == UNSUPPORTED

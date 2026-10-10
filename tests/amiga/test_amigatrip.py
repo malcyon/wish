@@ -1797,6 +1797,30 @@ def test_area_file_for_names_the_destination_group_only_across_groups():
     assert trip.area_file_for("pools-of-darkness", 1, 2) is None
 
 
+def test_the_area_file_save_holds_no_curse_leg_on_the_players_disks(
+        monkeypatch):
+    """Every Curse leg is held or offered as it was before the area-file
+    `SAVE` was counted."""
+    curse = trip.ROWS["curse-of-the-azure-bonds"]
+    for image in _images():
+        lengths = trip.script_lengths(curse.key, [image])
+        if not lengths:
+            continue
+        init = trip.init_rooms(curse, [image])
+        for here in lengths:
+            for to in lengths:
+                for back in (False, True):
+                    with_save = trip.leg_held(curse, here, to, back, lengths,
+                                              None, init)
+                    with monkeypatch.context() as m:
+                        m.setattr(trip, "area_file_for", lambda *a: None)
+                        without = trip.leg_held(curse, here, to, back,
+                                                lengths, None, init)
+                    assert with_save == without, (here, to, back)
+        return
+    pytest.skip("needs the player's Amiga Curse disks")
+
+
 def test_leg_held_counts_the_area_file_save():
     row = trip.ROWS[SILVER]
     assert not trip.leg_held(row, 0x20, 0x22, False, _room_lengths(21))
