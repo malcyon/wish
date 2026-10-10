@@ -2036,6 +2036,17 @@
         ],
         "example": "amiga-grab-crops/wish2-hilde__camp_items_5.png",
         "sha256": "bbe57f0cfe0436b0931a8f2e1c9ccec69c2dba1c3e707962b3952da29bbc7b94"
+      },
+      {
+        "also": [],
+        "box": [
+          150,
+          104,
+          676,
+          142
+        ],
+        "example": "WISH-2/guards-measure3/1/shots/42-camp_items_5.png",
+        "sha256": "340d49b1f4cb98528fefaed332be0b48b75e8d2b48f209163dd5a0bacf1d008e"
       }
     ],
     "camp_items_6": {
@@ -2307,6 +2318,17 @@
         ],
         "example": "WISH-2/r9-l4-gcamp/b1/shots/17-camp_sheet_5.png",
         "sha256": "c061ed96c96aeb448462bb462d323b5d9efef2e37146f7fb1e164b470a668bf2"
+      },
+      {
+        "also": [],
+        "box": [
+          74,
+          46,
+          330,
+          62
+        ],
+        "example": "WISH-2/guards-measure3/1/shots/41-camp_sheet_items_5.png",
+        "sha256": "a552671604c5f515bd253d96a2689dd5e13c9c42fc0b76e9887a39ce2e384a0f"
       }
     ],
     "camp_sheet_items_6": {
