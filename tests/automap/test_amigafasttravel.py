@@ -217,6 +217,34 @@ def test_a_silver_blades_trip_across_groups_saves_the_area_file_before_newecl(
     assert b"\x7f\x12" not in statements_written(out)
 
 
+def test_a_silver_blades_trip_into_the_village_loads_its_walls_last(
+        disks, monkeypatch):
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True))
+    t = aft.AmigaFastTravel(BLADES, object())
+    t._row = lambda id: area(id, "Somewhere")
+    out = t.apply(machine(BLADES, area=0x10), area(0x51, arrival=(0, 8, 1)))
+    assert out.ok
+    assert (trips.save(5, 0x7F12) + trips.arrival_epilogue(BLADES, 0x51)
+            + trips.newecl(0x51)) in statements_written(out)
+    assert trips.loadpieces(3, 127, 127) in statements_written(out)
+
+
+def test_a_silver_blades_trip_into_the_temple_writes_the_square_it_is_given(
+        disks, monkeypatch):
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True))
+    t = aft.AmigaFastTravel(BLADES, object())
+    t._row = lambda id: area(id, "Somewhere")
+    out = t.apply(machine(BLADES, area=0x10), area(0x34, arrival=(4, 0, 2)))
+    assert out.ok
+    written = statements_written(out)
+    assert (trips.save(4, 0xC04B) + trips.save(0, 0xC04C)
+            + trips.save(2, 0xC04D)) in written
+
+
 def test_a_silver_blades_return_saves_the_departures_area_file(
         disks, monkeypatch):
     row = trips.ROWS[BLADES]

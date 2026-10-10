@@ -524,12 +524,23 @@ def test_five_silver_blades_areas_do_not_load_the_map_of_their_own_id(
                    0x34: "GEO32", 0x63: "GEO62"}
 
 
+#: The four rows whose own entry script places the party only for a named
+#: came-from area, so their square is copied from the first walked route in
+#: that stores constants: the village (from the Crevasses), the castle gates
+#: (from the village), the mines' lower levels (from the wheel lift) and the
+#: Temple of Tyr (from the mines' door).
+WALKED_ARRIVALS = {0x51: Arrival(0, 8, 1), 0x52: Arrival(1, 11, 1),
+                   0x33: Arrival(3, 3, 1), 0x34: Arrival(7, 0, 2)}
+
+
 def test_silver_blades_arrival_squares_come_from_the_scripts(ssb_table):
     """Twelve of the twenty-two, and every one of them is the area's own
     entry 4 rather than a departing script's write -- the opposite of Pool of
-    Radiance, where most were harvested from the departing side."""
+    Radiance, where most were harvested from the departing side. The four
+    `WALKED_ARRIVALS` rows are the exception, and are pinned below."""
     _, scripts, _ = ssb_table
-    known = {a.id: a.arrival for a in areas.AREAS_SILVER_BLADES if a.arrival}
+    known = {a.id: a.arrival for a in areas.AREAS_SILVER_BLADES
+             if a.arrival and a.id not in WALKED_ARRIVALS}
     assert len(known) == 12
     for area_id, arrival in known.items():
         x, y, facing = scripts[f"ECL{area_id:02X}"].arrival()
@@ -537,6 +548,14 @@ def test_silver_blades_arrival_squares_come_from_the_scripts(ssb_table):
             f"ECL{area_id:02X}"
     assert known[0x22] == Arrival(14, 14, 0)
     assert str(known[0x63]) == "0,0 S"
+
+
+def test_the_came_from_destinations_take_the_walked_arrival():
+    rows = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    for area_id, square in WALKED_ARRIVALS.items():
+        assert rows[area_id].arrival == square, hex(area_id)
+    assert {a.id: a.trip_square for a in areas.AREAS_SILVER_BLADES
+            if a.trip_square} == {0x34: Arrival(4, 0, 2)}
 
 
 def test_area_forty_has_two_candidate_squares_so_it_gets_none(ssb_table):
@@ -918,7 +937,7 @@ def test_silver_blades_and_pool_of_radiance_tables_are_untouched():
     assert len(areas.AREAS) == 30
     silver_arrivals = sum(1 for a in areas.AREAS_SILVER_BLADES
                            if a.arrival is not None)
-    assert silver_arrivals == 12
+    assert silver_arrivals == 12 + len(WALKED_ARRIVALS)
 
 
 def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():

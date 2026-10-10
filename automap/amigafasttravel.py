@@ -252,8 +252,9 @@ class AmigaFastTravel(engine.FastTravel):
                                                    self._outdoors(to), read)
                         + trips.arrival_prologue(row, to))
             file = trips.area_file_for(row, here, to)
+            epilogue = trips.arrival_epilogue(row, to)
             trip = trips.plan(to, arrival, overland, area_file=file,
-                              prologue=prologue)
+                              prologue=prologue, epilogue=epilogue)
             init = self.init_areas(row)
             tier = trips.free_tail(row, here, lengths, trip, init)
             if tier == 1:
@@ -266,7 +267,8 @@ class AmigaFastTravel(engine.FastTravel):
         if tier not in (1, 2):
             return engine.Outcome(False, self.not_built)
         plan = trips.plan(to, arrival, overland, tier, area_file=file,
-                          prologue=prologue, placement=placement)
+                          prologue=prologue, epilogue=epilogue,
+                          placement=placement)
         try:
             self._repair(target)
             armed = trips.arm(target, row, plan, self.token)

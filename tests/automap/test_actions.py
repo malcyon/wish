@@ -1985,15 +1985,47 @@ def _silver_blades_row(area_id: int):
                 if a.id == area_id)
 
 
+def _unsupported(ft):
+    return actions.UNSUPPORTED.format(title=ft.game.title)
+
+
 @pytest.mark.parametrize("held_id", [0x33, 0x34, 0x51, 0x52])
-@pytest.mark.parametrize("back", [False, True])
-def test_a_silver_blades_trip_into_a_came_from_destination_is_held(
-        held_id, back):
+def test_a_silver_blades_return_into_a_came_from_destination_is_held(held_id):
     ft, target, _addr = _silver_blades_machine(0x10)
-    verdict = ft.legality(target, area=_silver_blades_row(held_id), back=back)
+    verdict = ft.legality(target, area=_silver_blades_row(held_id), back=True)
     assert not verdict
-    assert verdict.reason == actions.UNSUPPORTED.format(
-        title=ft.game.title)
+    assert verdict.reason == _unsupported(ft)
+
+
+def test_the_silver_blades_village_trip_is_held_for_want_of_walls():
+    ft, target, _addr = _silver_blades_machine(0x10)
+    verdict = ft.legality(target, area=_silver_blades_row(0x51))
+    assert not verdict
+    assert verdict.reason == _unsupported(ft)
+
+
+@pytest.mark.parametrize("open_id", [0x33, 0x34, 0x52])
+def test_the_other_came_from_trips_are_offered_from_new_verdigris(open_id):
+    ft, target, _addr = _silver_blades_machine(0x10)
+    assert ft.legality(target, area=_silver_blades_row(open_id))
+
+
+def test_a_held_leg_is_unsupported_although_both_ends_are_offered():
+    ft, target, addr = _silver_blades_machine(0x34)
+    assert (0x34, 0x33) in addr.held_legs
+    verdict = ft.legality(target, area=_silver_blades_row(0x33))
+    assert not verdict
+    assert verdict.reason == _unsupported(ft)
+    # The same departure to a destination that is not a held leg is offered.
+    assert ft.legality(target, area=_silver_blades_row(0x52))
+
+
+def test_no_other_title_holds_a_trip_a_return_or_a_leg():
+    for key, addr in fasttravel.ADDRESSES.items():
+        if key == "secret-of-the-silver-blades":
+            continue
+        assert addr.held_trips == addr.held_returns == addr.held_legs \
+            == frozenset(), key
 
 
 @pytest.mark.parametrize("open_id", [0x41, 0x50])
@@ -2074,6 +2106,48 @@ def test_the_arrival_bytes_are_written_before_the_wipe_and_never_wiped(to, at):
     assert not any(a <= at < a + len(b) for a, b in writes[index + 1:])
     target, outcome = _silver_blades_trip(0x20, to, {at: 0})
     assert target.read(at, 1) == bytes([0xFF if at == 0x4CFD else 1])
+
+
+#: Per destination: the square a trip writes at the live square, and the
+#: variables of the walked route it copies.
+_WALKED_ARRIVALS = {
+    0x51: ((0, 8, 1), {0x4BF0: 0, 0x4BF1: 8, 0x4CFD: 49, 0x4CFE: 87,
+                       0x4C6C: 49, 0x4C6D: 87}),
+    0x52: ((1, 11, 1), {0x4CFD: 65, 0x4CFE: 85, 0x4C6C: 65, 0x4C6D: 85}),
+    0x33: ((3, 3, 1), {0x4CFD: 50, 0x4CFE: 50, 0x4C69: 0, 0x4C6E: 1,
+                       0x4C6A: 1, 0x4C6F: 0}),
+    0x34: ((4, 0, 2), {}),
+}
+
+
+@pytest.mark.parametrize("to", [0x51, 0x52, 0x33, 0x34])
+def test_a_trip_into_a_came_from_destination_writes_the_walked_arrival(to):
+    square, variables = _WALKED_ARRIVALS[to]
+    addr = fasttravel.SECRET_OF_THE_SILVER_BLADES
+    writes = actions.newecl_writes(0x10, to, arrival=square, addresses=addr)
+    assert (addr.live_square, bytes(square)) in writes
+    for at, value in variables.items():
+        assert (at, bytes([value])) in writes
+        assert not addr.scratch <= at < addr.scratch + addr.scratch_len
+
+
+def test_the_temple_of_tyr_trip_writes_the_square_before_the_games_plus_three():
+    ft = actions.FastTravel(c64_port.SECRET_OF_THE_SILVER_BLADES)
+    row = _silver_blades_row(0x34)
+    assert ft.arrival_of(row) == (4, 0, 2)
+    assert (row.arrival.x, row.arrival.y, row.arrival.facing) == (7, 0, 2)
+    assert row.arrival.x == row.trip_square.x + 3
+    assert ft.arrival_of(_silver_blades_row(0x52)) == (1, 11, 1)
+
+
+@pytest.mark.parametrize("to", [0x52, 0x33, 0x34])
+def test_a_driven_silver_blades_trip_lands_on_the_walked_square(to):
+    square, variables = _WALKED_ARRIVALS[to]
+    target, outcome = _silver_blades_trip(0x10, to)
+    addr = fasttravel.SECRET_OF_THE_SILVER_BLADES
+    assert target.read(addr.live_square, 3) == bytes(square)
+    for at, value in variables.items():
+        assert target.read(at, 1) == bytes([value])
 
 
 @pytest.mark.parametrize("here", [0x50, 0x51, 0x52])

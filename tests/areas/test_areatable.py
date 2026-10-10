@@ -85,14 +85,19 @@ def test_silver_blades_twenty_two_rows_are_what_the_disks_say(silver):
 
     Silver Blades' table is the one that carries derived arrival squares, and
     twelve of the rows have one. All twelve come back the same, which is what
-    makes this the stronger of the two later-title checks.
+    makes this the stronger of the two later-title checks. Four more rows copy
+    a walked route's square, which the disks' own entry scripts do not hold,
+    so those are compared as having none.
     """
     table = _table(c64_port.SECRET_OF_THE_SILVER_BLADES)
     assert set(silver) == set(table)
     assert len(table) == 22
+    walked = {0x33, 0x34, 0x51, 0x52}
     assert {id: (r.side, r.maps, r.square) for id, r in silver.items()} == \
-        {id: (a.disk, tuple(a.geos), _square(a)) for id, a in table.items()}
-    assert sum(1 for a in table.values() if a.arrival is not None) == 12
+        {id: (a.disk, tuple(a.geos), None if id in walked else _square(a))
+         for id, a in table.items()}
+    assert sum(1 for a in table.values()
+               if a.arrival is not None and a.id not in walked) == 12
 
 
 # -- Pool of Radiance, the control -------------------------------------------

@@ -2422,8 +2422,11 @@ class FastTravel(Action):
 
     @staticmethod
     def arrival_of(area):
-        """The area's own arrival square as `(x, y[, facing])`, or None."""
-        got = getattr(area, "arrival", None)
+        """The square a trip into the area writes as `(x, y[, facing])`, or
+        None: the row's `trip_square` where the arriving script moves the party
+        from it, otherwise its `arrival`."""
+        got = (getattr(area, "trip_square", None)
+               or getattr(area, "arrival", None))
         if got is None:
             return None
         if isinstance(got, tuple):

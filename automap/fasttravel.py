@@ -340,11 +340,33 @@ SECRET_OF_THE_SILVER_BLADES = FastTravelAddresses(
     # branch on where the party came from.
     arrival_writes=((0x21, 0x4C62, 1), (0x21, 0x4C2A, 1),
                     (0x41, 0x4CFD, 0xFF), (0x44, 0x4CFD, 0xFF),
-                    (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF)),
-    # The Frost giant village, the Crevasses, the mines and the Temple of Tyr
-    # place the party only for a named came-from area, and 81 loads no walls.
-    held_trips=frozenset({0x33, 0x34, 0x51, 0x52}),
+                    (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF),
+                    # The Frost giant village, copied from ECL50's walk in
+                    # from the Crevasses ($84AF): the square's x/y and the
+                    # variables ECL51's 80 arm reads.
+                    (0x51, 0x4BF0, 0), (0x51, 0x4BF1, 8),
+                    (0x51, 0x4CFD, 49), (0x51, 0x4CFE, 87),
+                    (0x51, 0x4C6C, 49), (0x51, 0x4C6D, 87),
+                    # The Crevasses, castle gates, copied from ECL51's walk
+                    # in from the village ($81BB). No $4C62: its Well arm
+                    # clears it and agrees with the square.
+                    (0x52, 0x4CFD, 65), (0x52, 0x4CFE, 85),
+                    (0x52, 0x4C6C, 65), (0x52, 0x4C6D, 85),
+                    # The mines, temple and bottom levels, copied from the
+                    # wheel lift's first visit (ECL30 $803F-$8075, $8249):
+                    # $4C6F is 0 on a first visit, and 1 would EXIT before
+                    # the text.
+                    (0x33, 0x4CFD, 50), (0x33, 0x4CFE, 50),
+                    (0x33, 0x4C69, 0), (0x33, 0x4C6E, 1),
+                    (0x33, 0x4C6A, 1), (0x33, 0x4C6F, 0)),
+    # A trip into 0x51 loads no walls, and nothing here can make the C64 load
+    # them yet.
+    held_trips=frozenset({0x51}),
+    # Every Return into these four waits on where a Return should land.
     held_returns=frozenset({0x33, 0x34, 0x51, 0x52}),
+    # ECL33's came-from-52 arm moves the party to x - 3, y 15 from whatever
+    # square the trip wrote, which is a wall from the lift cage's 3,3.
+    held_legs=frozenset({(0x34, 0x33)}),
 )
 
 #: Every title whose overlays have been read, by `C64Container.key`. Champions of

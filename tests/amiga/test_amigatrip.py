@@ -703,10 +703,12 @@ def test_what_each_difference_holds():
                                 trip.ROWS["pool-of-radiance"].differences}
     assert "onto_grid" not in held("pool-of-radiance", 26, 0)
     assert "onto_grid" not in held("pool-of-radiance", 0, 26)
+    assert "arrival_unplaced" in held(SILVER, 0x34, 0x33)
+    assert "arrival_unplaced" not in held(SILVER, 0x34, 0x33, back=True)
     for to in (0x33, 0x34, 0x51, 0x52):
-        assert "arrival_unplaced" in held(SILVER, 0x10, to)
-        assert "arrival_unplaced" in held(SILVER, 0x10, to, back=True)
-    assert "arrival_unplaced" not in held(SILVER, 0x10, 0x41)
+        assert held(SILVER, 0x10, to) == set()
+        assert "return_unplaced" in held(SILVER, 0x10, to, back=True)
+    assert "return_unplaced" not in held(SILVER, 0x10, 0x41, back=True)
 
 
 # -- the player's own disks ----------------------------------------------------
@@ -1759,6 +1761,11 @@ _SILVER_ARRIVALS = {
     0x21: [(0x4C62, 1), (0x4C2A, 1)],
     0x41: [(0x4CFD, 0xFF)], 0x44: [(0x4CFD, 0xFF)],
     0x61: [(0x4CFD, 0xFF)], 0x62: [(0x4CFD, 0xFF)],
+    0x51: [(0x4BF0, 0), (0x4BF1, 8), (0x4CFD, 49), (0x4CFE, 87),
+           (0x4C6C, 49), (0x4C6D, 87)],
+    0x52: [(0x4CFD, 65), (0x4CFE, 85), (0x4C6C, 65), (0x4C6D, 85)],
+    0x33: [(0x4CFD, 50), (0x4CFE, 50), (0x4C69, 0), (0x4C6E, 1),
+           (0x4C6A, 1), (0x4C6F, 0)],
 }
 
 
@@ -1779,7 +1786,34 @@ def test_the_silver_blades_arrival_writes_are_the_c64_rows():
 def test_a_silver_blades_trip_stores_its_arrival_writes(to, writes):
     expected = b"".join(trip.save(v, a) for a, v in writes)
     assert trip.arrival_prologue(SILVER, to) == expected
-    assert len(expected) == (12 if to == 0x21 else 6)
+    assert len(expected) == 6 * len(writes)
+
+
+def test_loadpieces_is_seven_bytes():
+    assert trip.loadpieces(3, 127, 127) == bytes((0x37, 0, 3, 0, 127, 0, 127))
+
+
+def test_the_village_walls_load_after_the_area_file_save():
+    row = trip.ROWS[SILVER]
+    p = trip.plan(0x51, (0, 8, 1), area_file=5,
+                  epilogue=trip.arrival_epilogue(SILVER, 0x51))
+    assert trip._statements(row, p).endswith(
+        trip.save(5, 0x7F12) + trip.save(1, 0x4BE7) + trip.save(1, 0x4BE8)
+        + trip.save(1, 0x4BE9) + trip.loadpieces(3, 127, 127)
+        + trip.newecl(0x51))
+
+
+@pytest.mark.parametrize("to", [0x22, 0x33, 0x34, 0x52, 0x41])
+def test_only_the_village_has_an_arrival_epilogue(to):
+    assert trip.arrival_epilogue(SILVER, to) == b""
+    assert len(trip.arrival_epilogue(SILVER, 0x51)) == 25
+
+
+def test_leg_held_counts_the_arrival_epilogue():
+    assert not trip.leg_held(trip.ROWS[SILVER], 0x20, 0x51, False,
+                             _room_lengths(88))
+    assert trip.leg_held(trip.ROWS[SILVER], 0x20, 0x51, False,
+                         _room_lengths(87))
 
 
 @pytest.mark.parametrize("to", [0x22, 0x30, 0x40])

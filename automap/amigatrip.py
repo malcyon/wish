@@ -84,6 +84,8 @@ NEWECL = 0x20
 PICTURE = 0x0E
 CLEAR_BOX = 0x3D
 LOADFILES = 0x21
+#: `LOADPIECES a, b, c`, encoded like `LOADFILES`.
+LOADPIECES = 0x37
 
 #: Operand forms: a one-byte immediate, and a little-endian two-byte address.
 IMMEDIATE = 0x00
@@ -228,11 +230,18 @@ class TripRow:
     #: route makes before its `NEWECL`, which the destination's script reads.
     #: Written ahead of the trip for the destination only.
     arrival_writes: tuple[tuple[int, int, int], ...] = ()
+    #: `(destination area, statements)`: what a destination needs run after
+    #: the trip's area-file `SAVE` and ahead of its `NEWECL`, which are not
+    #: stores of a value (a wall load reads the side byte the `SAVE` sets).
+    arrival_statements: tuple[tuple[int, bytes], ...] = ()
 
 
-#: Destinations whose arriving script places the party only for a named
-#: came-from area, so no arrival is written for them yet.
-ARRIVAL_UNPLACED = frozenset({0x33, 0x34, 0x51, 0x52})
+#: Legs a trip cannot make: the Temple of Tyr's came-from arm in the mines
+#: places the party relative to the square the trip wrote.
+HELD_LEGS = frozenset({(0x34, 0x33)})
+
+#: Destinations a Return cannot place yet.
+RETURN_UNPLACED = frozenset({0x33, 0x34, 0x51, 0x52})
 
 
 def _return_landing() -> Difference:
@@ -374,6 +383,14 @@ def arrival_prologue(row, to: int) -> bytes:
                     if area == to)
 
 
+def arrival_epilogue(row, to: int) -> bytes:
+    """The row's `arrival_statements` for the destination `to`, which run
+    after the area-file `SAVE` and directly before `NEWECL`."""
+    row = row_for(row)
+    return b"".join(data for area, data in row.arrival_statements
+                    if area == to)
+
+
 def area_file_for(row, here: int | None, to: int) -> int | None:
     """The disk-side byte a trip into `to` writes ahead of its `NEWECL`, as a
     walked exit does. None when the title has no such byte, when either disk
@@ -414,7 +431,7 @@ def leg_held(row: TripRow, here: int | None, to: int, back: bool,
     except ValueError:
         return True
     smallest = plan(to, (0, 0, 0), area_file=area_file_for(row, here, to),
-                    prologue=prologue)
+                    prologue=prologue, epilogue=arrival_epilogue(row, to))
     return free_tail(row, here, lengths, smallest, init_areas) not in (1, 2)
 
 
@@ -485,15 +502,30 @@ ROWS: dict[str, TripRow] = {
         confirmed=False,
         differences=(_return_landing(),
                      Difference("arrival_unplaced",
-                                "arrival writes for this destination",
+                                "an arrival that places the party for this "
+                                "leg",
                                 lambda here, to, back:
-                                to in ARRIVAL_UNPLACED)),
+                                not back and (here, to) in HELD_LEGS),
+                     Difference("return_unplaced",
+                                "where a Return into this destination lands",
+                                lambda here, to, back:
+                                back and to in RETURN_UNPLACED)),
         # The C64 row's six writes (`fasttravel.SECRET_OF_THE_SILVER_BLADES`):
         # the Well reads its landing table through `$4C62` and latches the
         # shaft event with `$4C2A`; the other four never store `$4CFD = $FF`.
         arrival_writes=((0x21, 0x4C62, 1), (0x21, 0x4C2A, 1),
                         (0x41, 0x4CFD, 0xFF), (0x44, 0x4CFD, 0xFF),
-                        (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF))),
+                        (0x61, 0x4CFD, 0xFF), (0x62, 0x4CFD, 0xFF),
+                        # The village, the Crevasses' castle gates and the
+                        # mines' lower levels, as the C64 row writes them.
+                        (0x51, 0x4BF0, 0), (0x51, 0x4BF1, 8),
+                        (0x51, 0x4CFD, 49), (0x51, 0x4CFE, 87),
+                        (0x51, 0x4C6C, 49), (0x51, 0x4C6D, 87),
+                        (0x52, 0x4CFD, 65), (0x52, 0x4CFE, 85),
+                        (0x52, 0x4C6C, 65), (0x52, 0x4C6D, 85),
+                        (0x33, 0x4CFD, 50), (0x33, 0x4CFE, 50),
+                        (0x33, 0x4C69, 0), (0x33, 0x4C6E, 1),
+                        (0x33, 0x4C6A, 1), (0x33, 0x4C6F, 0))),
     # CONFIRMED: code and 3 trips.
     "pools-of-darkness": TripRow(
         key="pools-of-darkness", title="Pools of Darkness",
@@ -569,10 +601,27 @@ def boat_exit_groups() -> tuple[bytes, ...]:
             loadfiles(127, 127, 127))
 
 
+def loadpieces(first: int, second: int, third: int) -> bytes:
+    """`LOADPIECES first, second, third`: seven bytes."""
+    out = bytes((LOADPIECES,))
+    for value, what in ((first, "first"), (second, "second"), (third, "third")):
+        out += bytes((IMMEDIATE, _byte(value, what)))
+    return out
+
+
+# ECL50's own wall load ($8038-$8051), which the village's script never does:
+# the side-5 wall-piece slots, then the pieces. It follows the area-file
+# `SAVE` because the wall path is built from that byte.
+ROWS["secret-of-the-silver-blades"] = dataclasses.replace(
+    ROWS["secret-of-the-silver-blades"],
+    arrival_statements=((0x51, save(1, 0x4BE7) + save(1, 0x4BE8)
+                         + save(1, 0x4BE9) + loadpieces(3, 127, 127)),))
+
+
 def encode(row, square, area: int, area_file: int | None = None,
-           grid=None) -> bytes:
+           grid=None, epilogue: bytes = b"") -> bytes:
     """The tier-1 statements: the square, the grid square, the area file,
-    then `NEWECL`.
+    the row's epilogue, then `NEWECL`.
 
     `square` is `(x, y)` or `(x, y, facing)` with facing 0-3, or None; `grid`
     is `(x, y)` or None. A field the row has no target for raises.
@@ -591,7 +640,7 @@ def encode(row, square, area: int, area_file: int | None = None,
         if row.area_file is None:
             raise ValueError(f"{row.title} has no area-file byte")
         out += save(area_file, row.area_file)
-    return out + newecl(area)
+    return out + epilogue + newecl(area)
 
 
 def rawkey_message(port: int, window: int) -> bytes:
@@ -641,6 +690,8 @@ class Plan:
     tier: int = 1
     area_file: int | None = None
     prologue: bytes = b""
+    #: Statements run after the area-file `SAVE`, directly before `NEWECL`.
+    epilogue: bytes = b""
     #: Where `place` put the statements and message; None writes them at
     #: `layout`'s offsets.
     placement: Placement | None = None
@@ -648,10 +699,11 @@ class Plan:
 
 def plan(area: int, square=None, overland=None, tier: int = 1,
          area_file: int | None = None, prologue: bytes = b"",
-         placement: Placement | None = None) -> Plan:
+         placement: Placement | None = None,
+         epilogue: bytes = b"") -> Plan:
     return Plan(area, None if square is None else tuple(square),
                 None if overland is None else tuple(overland), tier,
-                area_file, prologue, placement)
+                area_file, prologue, epilogue, placement)
 
 
 def leave_grid_prologue(row, here: int | None, to: int) -> bytes:
@@ -674,8 +726,8 @@ _SMALLEST = Plan(0, (0, 0, 0), None)
 def _statements(row: TripRow, p: Plan) -> bytes:
     if p.tier == 1:
         return p.prologue + encode(row, p.square, p.area, p.area_file,
-                                   p.overland)
-    return p.prologue + newecl(p.area)
+                                   p.overland, p.epilogue)
+    return p.prologue + p.epilogue + newecl(p.area)
 
 
 def layout(row, size: int) -> tuple[int, int | None]:
@@ -759,7 +811,8 @@ def free_tail(row, area: int | None, lengths: Mapping[int, int],
     if place(row, area, lengths, trip, init_areas) is not None:
         return 1
     if (row.direct_confirmed and _direct_spots(row, trip) is not None
-            and _lowest(row, len(trip.prologue + newecl(trip.area))) >= length):
+            and _lowest(row, len(trip.prologue + trip.epilogue
+                                    + newecl(trip.area))) >= length):
         return 2
     return 3
 
