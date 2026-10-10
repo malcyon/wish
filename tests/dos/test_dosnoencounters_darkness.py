@@ -21,6 +21,11 @@ from tools.dos import dosnoencounters as N  # noqa: E402
 ROWS = N.SCRIPT_GATES[N.DARKNESS]
 
 
+def constant_rows():
+    """The rows `scan` lists: `RANDOM n` compared with a constant."""
+    return [r for r in ROWS if r.form == N.CONSTANT]
+
+
 @pytest.fixture(scope="module")
 def scripts() -> dict[int, bytes]:
     try:
@@ -31,17 +36,20 @@ def scripts() -> dict[int, bytes]:
 
 # -- the rows against the scripts on the player's disks -----------------------
 
-#: Operand counts of the three statements a row starts with, from the script
-#: format: `RANDOM`, `SAVE` and `COMPARE` take two operands, `IF` and `EXIT` none.
+#: Operand counts of the statements a row's roll runs through, from the script
+#: format: `RANDOM`, `SAVE` and `COMPARE` take two operands, `ADD` three,
+#: `GOTO` one, `IF` and `EXIT` none.
 MODEL = [(0, False)] * 0x100
 MODEL[N.RANDOM] = MODEL[N.SAVE] = MODEL[0x03] = (2, False)
+MODEL[0x04] = (3, False)
+MODEL[0x01] = (1, False)
 
 
 def test_each_row_is_one_area_s_roll_and_its_change_takes_the_exit(scripts):
     from tools.amiga import tripspace as ts
 
     assert len(scripts) == 56
-    for row in ROWS:
+    for row in constant_rows():
         at = row.address - N.SCRIPT_BASE
         hits = sorted(area for area, body in scripts.items()
                       if N.digest(body[at:at + N.GUARD_BYTES]) == row.guard)
@@ -64,8 +72,123 @@ def test_the_rows_are_every_step_entry_roll_with_a_fight_behind_it(scripts):
     except N.SwitchError as e:
         pytest.skip(f"needs the player's Amiga Pools of Darkness executable: {e}")
     fights = {(f["area"], f["address"], f["guard"]) for f in found if f["combat"]}
-    assert fights == {(r.area, r.address, r.guard) for r in ROWS}
+    assert fights == {(r.area, r.address, r.guard) for r in constant_rows()}
     assert all(f["save"] is not None for f in found if f["combat"])
+
+
+def test_every_area_has_a_row_or_makes_no_roll(scripts):
+    rowed = {r.area for r in ROWS}
+    assert not rowed & N.DARKNESS_NO_ROLL
+    assert set(scripts) == rowed | N.DARKNESS_NO_ROLL
+    for row in ROWS:
+        at = row.address - N.SCRIPT_BASE
+        hits = sorted(area for area, body in scripts.items()
+                      if N.digest(body[at:at + N.GUARD_BYTES]) == row.guard)
+        assert hits == [row.area], f"${row.address:04X}"
+
+
+def test_the_rows_are_the_amiga_switch_s_rows_for_the_same_scripts():
+    """The Amiga `becddc5926af` library's rows, area for area, with the same
+    change; area 33's DOS roll sits eight bytes on and was found live."""
+    from tools.amiga import noencounters as A
+
+    amiga = {(area, at): changes for at, _s, _e, changes, area, library, _w
+             in A._DARKNESS_GATES if library in ("becddc", "both") and area != 33}
+    dos = {(r.area, r.address): r.changes for r in ROWS if r.area != 33}
+    assert dos == amiga
+    assert N.DARKNESS_NO_ROLL == {area for _e, area, _l, _b in A._DARKNESS_NONE}
+
+
+def _value(operand, env):
+    kind, value = operand
+    return env.get(value, 0) if kind in (0x01, 0x03) else value
+
+
+def _run(body: bytes, at: int, env: dict, roll: int) -> str:
+    """Run a roll from `at`: `RANDOM` stores `roll`, `SAVE` its constant, `ADD`
+    its sum, each into a byte; an `IF` that fails skips the next statement.
+    `"exit"` where an `EXIT` or `$23` ends it, else the opcode it went on to."""
+    i, a, b = at, 0, 0
+    for _ in range(12):
+        s = ts_decode(body, i)
+        if s.op == N.RANDOM:
+            env[s.operands[1][1]] = roll & 0xFF
+        elif s.op == N.SAVE:
+            env[s.operands[1][1]] = _value(s.operands[0], env) & 0xFF
+        elif s.op == 0x03:
+            a, b = (_value(o, env) for o in s.operands)
+        elif s.op == 0x04:
+            env[s.operands[2][1]] = (_value(s.operands[0], env)
+                                     + _value(s.operands[1], env)) & 0xFF
+        elif s.op in N.CONDITIONS:
+            if not N.CONDITIONS[s.op](a, b):
+                i = ts_decode(body, s.end).end
+                continue
+        elif s.op in (0x00, 0x23):
+            return "exit"
+        else:
+            return f"${s.op:02X}"
+        i = s.end
+    raise AssertionError(f"no end within twelve statements of ${at:04X}")
+
+
+def ts_decode(body: bytes, i: int):
+    from tools.amiga import tripspace as ts
+
+    s = ts.decode(MODEL, body, i)
+    assert s is not None, f"nothing decodes at ${N.SCRIPT_BASE + i:04X}"
+    return s
+
+
+#: What the variable a roll is compared with holds when the roll runs, from
+#: the statements before it: `{variable: values}`.
+COMPARED = {
+    (53, 0x9313): {192: (5, 10)},
+    (69, 0x9CE3): {193: (7, 13)},
+    (70, 0x853F): {194: (1,)},
+    (67, 0x8559): {163: tuple(range(255))},
+}
+
+
+def test_each_variable_roll_s_change_keeps_its_length_and_takes_the_exit(scripts):
+    """Each row that is not a constant roll: changed, every value the compared
+    variable can hold takes the `EXIT`; unchanged, some roll does not."""
+    others = [r for r in ROWS if r.form != N.CONSTANT]
+    assert {r.form for r in others} == set(N.FORMS) - {N.CONSTANT}
+    for row in others:
+        body = scripts[row.area]
+        at = row.address - N.SCRIPT_BASE
+        changed = bytearray(body)
+        for r in ROWS:
+            if r.area == row.area:
+                for offset, value in r.changes:
+                    changed[r.address - N.SCRIPT_BASE + offset] = value
+        changed = bytes(changed)
+        assert ts_decode(changed, at).end == ts_decode(body, at).end
+        where = f"area {row.area} ${row.address:04X}"
+        if row.form == N.CHASE_COUNTER:
+            add = ts_decode(changed, at)
+            assert add.op == 0x04 and add.operands[1] == add.operands[2], where
+            counter = add.operands[2][1]
+            chase = next(r for r in ROWS if r.area == row.area and r.form == N.CHASE)
+            for start in range(255):
+                env = {counter: start}
+                _run(changed, chase.address - N.SCRIPT_BASE, env, 0)
+                assert env[counter] == start, where
+                env = {counter: start}
+                _run(body, chase.address - N.SCRIPT_BASE, env, 0)
+                assert env[counter] == start + 1, where
+            continue
+        saved = ts_decode(changed, at)
+        assert saved.op == N.SAVE and saved.operands[0][0] in (0x00, 0x02), where
+        compared = COMPARED.get((row.area, row.address), {0: (0,)})
+        (variable, values), = compared.items()
+        rolls = range(256) if row.form == N.VARIABLE_LIMIT else \
+            range(ts_decode(body, at).operands[0][1] + 1)
+        for value in values:
+            assert _run(changed, at, {variable: value}, 0) == "exit", (where, value)
+            assert any(_run(body, at, {variable: value}, r) != "exit"
+                       for r in rolls), f"{where} never fights"
 
 
 class Script:
@@ -185,6 +308,25 @@ def test_off_leaves_a_script_the_game_has_since_replaced():
     writes = len(buf.writes)
     assert [r["action"] for r in sw.off()] == ["another script is loaded"]
     assert len(buf.writes) == writes
+
+
+#: A roll whose limit is a variable: `RANDOM [351], [195]`, `COMPARE [195],
+#: 1`, `IF>=`, `EXIT`.
+WORD_ROLL = bytes.fromhex("08 01 5f 01 01 c3 00 03 01 c3 00 00 01 1b 00".replace(" ", ""))
+
+
+def test_a_variable_limit_becomes_an_immediate_word_and_off_puts_four_bytes_back(monkeypatch):
+    row = N.ScriptGate(1, ADDRESS, N.digest(WORD_ROLL[:N.GUARD_BYTES]),
+                       N._TO_SAVE_WORD, N.PROBABLE, "test", N.VARIABLE_LIMIT)
+    monkeypatch.setitem(N.SCRIPT_GATES, N.DARKNESS, (row,))
+    buf = Script(script_with(ADDRESS, WORD_ROLL))
+    sw = script_switch(buf, area=lambda: 1)
+    sw.on()
+    assert sw.apply() == [{"area": 1, "address": "$8100", "was": "08015f01",
+                           "wrote": "09026300"}]
+    assert buf.read(ADDRESS, 7) == bytes.fromhex("09026300 01c300".replace(" ", ""))
+    assert [r["action"] for r in sw.off()] == ["restored"]
+    assert buf.read(ADDRESS, len(WORD_ROLL)) == WORD_ROLL
 
 
 @pytest.mark.usefixtures("made_up")

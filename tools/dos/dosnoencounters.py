@@ -34,7 +34,9 @@ them; nothing is journalled.  Never use it for conversion proof.
 counts steps and then rolls with `RANDOM`, so the switch changes the loaded
 script instead, as the Amiga switch does (`tools/amiga/noencounters.py`).  Each
 covered `RANDOM` becomes `SAVE`, which stores the constant (or 0, where the
-fight is on the high side) and takes the statement's `EXIT`.  A row is written
+fight is on the high side) and takes the statement's `EXIT`.  A roll whose
+limit is a variable becomes `SAVE 99` as an immediate word; area 67's chase
+roll stores 255 and its counter's `ADD 1` becomes `ADD 0`.  A row is written
 only where the bytes at its address hash to its guard, so a reloaded script is
 changed again and another area's script is left alone.  `off` puts back each
 statement still holding the switch's bytes.  The variables `SAVE` leaves (the
@@ -231,8 +233,9 @@ POD_CLOCK_RADIX = dos_savegame.POD_CLOCK_RADIX
 @dataclasses.dataclass(frozen=True)
 class ScriptGate:
     """One encounter roll: the area whose script holds it, the ECL address of
-    its `RANDOM`, the short hash of the `GUARD_BYTES` it starts, and the
-    `(offset, value)` bytes written over it."""
+    its `RANDOM`, the short hash of the `GUARD_BYTES` it starts, the
+    `(offset, value)` bytes written over it, and which of the `FORMS` of roll
+    it is."""
 
     area: int
     address: int
@@ -240,19 +243,49 @@ class ScriptGate:
     changes: tuple[tuple[int, int], ...]
     grade: str
     source: str
+    form: str = "constant"
+
+
+#: The kinds of encounter roll a row changes: `RANDOM n` compared with a
+#: constant (what `scan` lists), compared with a variable the script set just
+#: before, `RANDOM [v]` whose limit is a variable, area 67's chase roll compared
+#: with its counter, and the `ADD` that counts the chase.
+CONSTANT, VARIABLE_CHANCE, VARIABLE_LIMIT, CHASE, CHASE_COUNTER = (
+    "constant", "variable chance", "variable limit", "chase", "chase counter")
+FORMS = (CONSTANT, VARIABLE_CHANCE, VARIABLE_LIMIT, CHASE, CHASE_COUNTER)
 
 
 #: `RANDOM` becomes `SAVE`, which stores the roll's limit.
 _TO_SAVE = ((0, SAVE),)
 #: `SAVE 0`, where the limit would land on the fight side.
 _TO_ZERO = ((0, SAVE), (2, 0))
+#: `SAVE 255`: a byte constant above any byte counter it is compared with.
+_TO_SAVE_255 = ((0, SAVE), (2, 255))
+#: A roll whose limit is a variable, `RANDOM [v], [w]`, is seven bytes; it
+#: becomes `SAVE 99, [w]` with the first operand's kind changed from `$01`
+#: (byte variable) to `$02` (immediate word), so its length stays the same.
+#: The engine's `SAVE` (`GAME.OVR` 0x44D) stores with the destination's kind,
+#: so `[w]` takes one byte, 99, and its neighbour is untouched.
+_TO_SAVE_WORD = ((0, SAVE), (1, 0x02), (2, 99), (3, 0))
+#: `ADD 1, [v], [v]` becomes `ADD 0`.
+_ADD_NOTHING = ((2, 0),)
+
+#: Bytes the switch writes and puts back at a row's address: the first three,
+#: or as far as its last change reaches.
+WRITE_BYTES = 3
+
+
+def span(row: ScriptGate) -> int:
+    """How many bytes the switch writes at a row's address."""
+    return max(WRITE_BYTES, *(offset + 1 for offset, _ in row.changes))
 
 
 def _row(area: int, address: int, guard: str, source: str,
          changes: tuple[tuple[int, int], ...] = _TO_SAVE,
-         grade: str = PROBABLE) -> ScriptGate:
+         grade: str = PROBABLE, where: str = ", after its step counter",
+         form: str = CONSTANT) -> ScriptGate:
     return ScriptGate(area, address, guard, changes, grade,
-                      f"area {area} step entry, after its step counter: {source}")
+                      f"area {area} step entry{where}: {source}", form)
 
 
 #: Every `RANDOM`/`COMPARE`/`IF`/`EXIT` roll the step entry (entry 1) of a
@@ -260,8 +293,13 @@ def _row(area: int, address: int, guard: str, source: str,
 #: (`dosnoencounters.py scan`), keyed by title.  Rolls of that kind whose
 #: other side is only text or a `NEWECL` are left alone: area 16 `$8E8C`,
 #: `$8EC8`; 22 `$8567`; 24 `$8AF0`, `$956F`, `$95AB`; 39 `$8B5C`, `$909C`;
-#: 53 `$9903`; 54 `$8868`.  Rolls compared with a variable rather than a
-#: constant (53 `$9313`, 69 `$9CE3`) are not covered.  PROBABLE: read from the
+#: 53 `$9903`; 54 `$8868`.  After them come the rolls `scan` does not list:
+#: those compared with a variable (53, 69), those whose limit is a variable
+#: (35, 36, 48, 65, 70, 74) and area 67's chase, each at the address of the
+#: Amiga `becddc5926af` library's row and read from the DOS script itself.
+#: Every other area's step entry makes no such roll (`DARKNESS_NO_ROLL`).
+#: Rolls inside a fixed event are left alone:
+#: 19 `$8D9B`, 36 `$89A3`, 64 `$8D51`, 81 `$8751`.  PROBABLE: read from the
 #: script; area 33's is CONFIRMED live.
 SCRIPT_GATES: dict[str, tuple[ScriptGate, ...]] = {DARKNESS: (
     _row(16, 0x89A3, "0074b0e9", "RANDOM 99 [191]; COMPARE [191], 10; IF> EXIT: 11 of 100 fight, COMBAT at $8A15"),
@@ -298,7 +336,40 @@ SCRIPT_GATES: dict[str, tuple[ScriptGate, ...]] = {DARKNESS: (
     _row(80, 0x82C0, "ab3e8354", "RANDOM 99 [191]; COMPARE 20, [191]; IF<= EXIT: 20 of 100 fight, COMBAT at $8552"),
     _row(81, 0x9B9D, "22d64801", "RANDOM 99 [191]; COMPARE 5, [191]; IF< $23: 6 of 100 fight, COMBAT at $9C1B"),
     _row(82, 0x9BD3, "ac1a1459", "RANDOM 99 [192]; COMPARE 5, [192]; IF<= EXIT: 5 of 100 fight, COMBAT at $9CA4"),
+    _row(53, 0x9313, "aa6134e8", "RANDOM 99 [191]; COMPARE [192], [191], [192] set to 5 or 10 just before; "
+         "IF< EXIT, else the event table", where="", form=VARIABLE_CHANCE),
+    _row(69, 0x9CE3, "b5781125", "RANDOM 99 [191]; COMPARE [193], [191], [193] set to 7 or 13 just before; "
+         "IF< EXIT, else SETUPMON and COMBAT", where="", form=VARIABLE_CHANCE),
+    _row(35, 0x887C, "30727f9b", "RANDOM [351] [191]; COMPARE [191], 1; IF>= $23, else the monster tables "
+         "and COMBAT", _TO_SAVE_WORD, form=VARIABLE_LIMIT),
+    _row(36, 0x8472, "7f09c5b6", "RANDOM [417] [191]; COMPARE [191], 1; IF>= EXIT, else the monster tables "
+         "and COMBAT", _TO_SAVE_WORD, form=VARIABLE_LIMIT),
+    _row(48, 0x856A, "30727f9b", "RANDOM [351] [191]; COMPARE [191], 1; IF>= EXIT, else the monster tables "
+         "and COMBAT", _TO_SAVE_WORD, form=VARIABLE_LIMIT),
+    _row(48, 0x9030, "bbbebce6", "RANDOM [362] [193], [362] counting moves since the last fight square; "
+         "COMPARE [193], 0; IF!= EXIT, else SETUPMON and COMBAT", _TO_SAVE_WORD, where="",
+         form=VARIABLE_LIMIT),
+    _row(65, 0x8B56, "b8e8ddf6", "RANDOM [156] [191]; COMPARE [191], 1; IF>= EXIT, else the monster tables "
+         "and COMBAT", _TO_SAVE_WORD, form=VARIABLE_LIMIT),
+    _row(70, 0x853F, "de756a97", "RANDOM [368] [191]; COMPARE [191], [194], [194] set to 1 just before; "
+         "IF> EXIT, else the monster tables and COMBAT", _TO_SAVE_WORD,
+         form=VARIABLE_LIMIT),
+    _row(74, 0x87A8, "d7dd0cf7", "RANDOM [156] [191]; COMPARE [191], 2; IF< another event, IF> EXIT, else "
+         "the monster tables and COMBAT", _TO_SAVE_WORD,
+         form=VARIABLE_LIMIT),
+    _row(67, 0x8559, "beb81bec", "the chase: RANDOM 20 [191]; COMPARE [191], [163]; ADD 1 [163]; IF> EXIT, "
+         "else [163] guards and COMBAT", _TO_SAVE_255, where="", form=CHASE),
+    _row(67, 0x8566, "408c0e48", "the chase counter: ADD 1 [163] after the roll; ADD 0 keeps the counter "
+         "the roll is compared with, which also sets how many guards the fight brings", _ADD_NOTHING,
+         where="", form=CHASE_COUNTER),
 )}
+
+#: The Pools of Darkness areas whose step entry makes no roll that decides
+#: whether a step starts a fight, so `SCRIPT_GATES` has no row for them: the
+#: Amiga switch's list of such areas, and every `ECL1.DAX` area is either here
+#: or has a row.
+DARKNESS_NO_ROLL = frozenset({1, 2, 3, 4, 18, 20, 23, 24, 27, 38, 41, 42, 49, 55,
+                              72, 73, 75, 76, 77, 83, 84, 85, 86})
 
 
 def digest(span: bytes) -> str:
@@ -567,6 +638,12 @@ class ScriptSwitch:
         self.active = False
         #: address -> (bytes before the change, bytes written)
         self.held: dict[int, tuple[bytes, bytes]] = {}
+        #: address -> how many of those bytes the switch writes: the widest
+        #: `span` of the rows there; a byte past a row's own changes is
+        #: written back as it was read.
+        self.spans: dict[int, int] = {}
+        for r in self.rows:
+            self.spans[r.address] = max(self.spans.get(r.address, 0), span(r))
         #: Never filled: the switch writes the script, which the game never
         #: changes, so nothing yields.  `NoEncounters` reads it.
         self.yielded: set[int] = set()
@@ -626,10 +703,11 @@ class ScriptSwitch:
             for offset, value in row.changes:
                 new[offset] = value
             new = bytes(new)
-            self._put(row.address, new[:3], now)
+            width = self.spans[row.address]
+            self._put(row.address, new[:width], now)
             self.held[row.address] = (now, new)
             done.append({"area": row.area, "address": f"${row.address:04X}",
-                         "was": now[:3].hex(), "wrote": new[:3].hex()})
+                         "was": now[:width].hex(), "wrote": new[:width].hex()})
         if not loaded:
             self.unsuppressed_moves += 1
             if area not in self._unsuppressed:
@@ -645,10 +723,11 @@ class ScriptSwitch:
         done = []
         for address, (original, written) in list(self.held.items()):
             now = self.read(address, GUARD_BYTES)
-            row = {"address": f"${address:04X}", "original": original[:3].hex(),
-                   "written": written[:3].hex(), "now": now[:3].hex()}
+            width = self.spans[address]
+            row = {"address": f"${address:04X}", "original": original[:width].hex(),
+                   "written": written[:width].hex(), "now": now[:width].hex()}
             if now == written:
-                self._put(address, original[:3], written)
+                self._put(address, original[:width], written)
                 row["action"] = "restored"
             elif now == original:
                 row["action"] = "already original"
