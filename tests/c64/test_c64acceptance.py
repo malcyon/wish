@@ -3914,8 +3914,7 @@ class _BoxThenMagicFake(_CurseFake):
 
 
 def test_pool_cast_waits_out_the_result_box_when_the_last_spell_is_spent(tmp_path):
-    """Run a1bf0999c9-adsilver: ROLAND's only spell, ANIMATE DEAD, is cast;
-    the pick prompt stays on row 24 under `BRUTUS IS ANIMATED`, then the game
+    """ROLAND's only spell, ANIMATE DEAD, is cast; the pick prompt stays on row 24 under `BRUTUS IS ANIMATED`, then the game
     goes back to the MAGIC bar with no key.  The step must not read the
     boxed prompt as settled and look for an `EXIT` row that is gone."""
     listed = {1: "ROLAND'S MEMORIZED SPELLS", 3: "3RD LEVEL", 4: "  ANIMATE DEAD"}
@@ -3946,6 +3945,43 @@ def test_pool_cast_waits_out_the_result_box_when_the_last_spell_is_spent(tmp_pat
     assert sess.state == "camp"
     assert sess.sent == [("party", 1), ("bar", "MAGIC"), ("bar", "CAST"),
                          ("bar", "CAST"), ("key", "Return"), ("bar", "EXIT")]
+
+
+class _PromptThenBoxFake(_CurseFake):
+    """Reads served in order: the plain pick prompt once, then the prompt under
+    a result box twice, then the MAGIC bar."""
+
+    ORDER = ["picking", "animated", "animated", "magic"]
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.reads = 0
+
+    def screen(self):
+        self.state = self.ORDER[min(self.reads, len(self.ORDER) - 1)]
+        self.reads += 1
+        return super().screen()
+
+
+def test_leaving_the_pick_prompt_sends_no_exit_when_a_box_follows_the_first_read(
+        tmp_path):
+    """The first read is the plain pick prompt with its EXIT row and the second
+    has a result box drawn under a shortened list; EXIT must not be pressed."""
+    listed = {1: "ROLAND'S MEMORIZED SPELLS", 3: "3RD LEVEL", 4: "  ANIMATE DEAD"}
+    animated = _window({**listed, 5: "  EXIT"}, A.PICK_SPELL)
+    animated[16] = "@" + "[" * 38 + "@"
+    animated[18] = "$" + "BRUTUS".ljust(38) + "$"
+    animated[19] = "$" + "IS ANIMATED".ljust(38) + "$"
+    screens = {**CAST_SCREENS,
+               "picking": _window({**listed, 5: "  EXIT"}, A.PICK_SPELL),
+               "animated": animated, "magic": _window({}, MAGIC)}
+    sess = _PromptThenBoxFake(screens, {}, "picking")
+    run, log = _pool_run(tmp_path, sess)
+    try:
+        run._leave_cast_pick()
+    finally:
+        log.close()
+    assert sess.sent == []
 
 
 def test_pool_dispel_picks_the_named_target_and_keeps_raw_row_checkpoints(tmp_path):

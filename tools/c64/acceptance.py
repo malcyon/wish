@@ -4048,8 +4048,18 @@ class PoolRun:
     def _leave_cast_pick(self) -> None:
         """The pick prompt's `EXIT` row, back to the spell list's bar.  The
         prompt is first waited for with no result box under it; a game that
-        has left it for the list's bar or the MAGIC bar needs no key."""
-        rows = self.wait_rows(lambda r: self._cast_settled(r), CAST_REDRAW_SECONDS,
+        has left it for the list's bar or the MAGIC bar needs no key.  Two
+        reads in a row must agree, as in `_cast_settle`: a result box can be
+        drawn a moment after the plain prompt."""
+        last: list[list[str]] = []
+
+        def twice(rows: list[str]) -> bool:
+            settled = self._cast_settled(rows)
+            agreed = settled and bool(last) and last[0] == rows
+            last[:] = [rows] if settled else []
+            return agreed
+
+        rows = self.wait_rows(twice, CAST_REDRAW_SECONDS,
                               "the pick prompt without a message")
         if rows is None:
             raise self.fail("cast-exit-row", "a message stayed over the pick prompt")
