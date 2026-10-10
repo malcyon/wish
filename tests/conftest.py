@@ -31,6 +31,32 @@ import pytest
 import yaml
 
 
+def _load_testcontrol():
+    """`tools/suite/testcontrol.py` by file path, so the guard needs neither Qt nor
+    `tools/` on `sys.path`."""
+    path = pathlib.Path(__file__).resolve().parent.parent / "tools" / "suite" / "testcontrol.py"
+    name = "wish_testcontrol"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module  # dataclasses looks its module up by name
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+_testcontrol = _load_testcontrol()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    """On a host whose test policy is enabled, stop before collection and before any
+    worker starts unless this pytest runs inside the launcher's memory-limited service.
+    Without the policy file (CI, Windows, macOS, an unmanaged machine) it does nothing."""
+    message = _testcontrol.guard_message(tx=getattr(config.option, "tx", None))
+    if message:
+        pytest.exit(message, returncode=4)
+
+
 def pytest_addoption(parser):
     group = parser.getgroup("wish-repair")
     group.addoption("--wish-prior-failures",

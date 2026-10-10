@@ -52,6 +52,11 @@ What it does, in order, and all of it against the same checkout:
 
 Exit status is 0 when the marker was written and 1 otherwise; the decisive
 lines of whichever check failed are the last thing printed.
+
+On a host whose test policy (`/etc/wish/test-runner.json`) is enabled, a run
+outside the launcher's memory-limited service stops before anything starts and
+names the command to use instead: `tools/suite/testrun.py submit --suiterun`
+and then `run ID`. Inside the service its pytest runs inherit the limit.
 """
 
 from __future__ import annotations
@@ -74,6 +79,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from tools.registry import scratch  # noqa: E402
+from tools.suite import testcontrol  # noqa: E402
 
 PYTHON = REPO / ".venv" / "bin" / "python"
 RUFF = REPO / ".venv" / "bin" / "ruff"
@@ -417,6 +423,10 @@ def main(argv=None) -> int:
                         help="do not fetch or rebase onto origin/main first")
     args = parser.parse_args(argv)
 
+    # On a host with the test policy enabled, only the launcher's service runs this.
+    blocked = testcontrol.guard_message(command=testcontrol.SUITERUN_COMMAND)
+    if blocked:
+        raise SystemExit(blocked)
     if not RUFF.is_file():
         raise SystemExit(f"{RUFF} is missing, so nothing was tested: "
                          'run pip install -e ".[dev,gui]" in the virtual environment')

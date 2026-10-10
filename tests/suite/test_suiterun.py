@@ -658,6 +658,34 @@ def test_a_missing_ruff_stops_the_run_before_git_or_pytest_starts(tmp_path, monk
     assert not (tmp_path / "testrun").exists()
 
 
+def test_an_uncontained_run_on_a_managed_host_stops_and_names_the_launcher(monkeypatch):
+    asked = {}
+
+    def managed_and_outside(**kwargs):
+        asked.update(kwargs)
+        return "Run it through the launcher: " + kwargs["command"]
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("something was started outside the service")
+
+    monkeypatch.setattr(suiterun.testcontrol, "guard_message", managed_and_outside)
+    monkeypatch.setattr(suiterun, "_run", forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(suiterun.tempfile, "mkdtemp", forbidden)
+    with pytest.raises(SystemExit) as stopped:
+        suiterun.main(["HEAD"])
+    assert "testrun.py submit --suiterun" in str(stopped.value)
+    assert asked["command"] == suiterun.testcontrol.SUITERUN_COMMAND
+
+
+def test_a_contained_run_goes_on_to_its_own_checks(tmp_path, monkeypatch):
+    monkeypatch.setattr(suiterun.testcontrol, "guard_message", lambda **kwargs: None)
+    monkeypatch.setattr(suiterun, "RUFF", tmp_path / "bin" / "ruff")
+    with pytest.raises(SystemExit) as stopped:
+        suiterun.main(["HEAD"])
+    assert "ruff" in str(stopped.value)
+
+
 def _worktrees(repo):
     return [line for line in _git(repo, "worktree", "list", "--porcelain").splitlines()
             if line.startswith("worktree ")]
