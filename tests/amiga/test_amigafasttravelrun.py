@@ -317,6 +317,26 @@ def test_the_arrival_press_logs_the_gate_and_the_unchanged_polls(world, monkeypa
     assert event["gate"] is False and event["unchanged_polls"] >= 1
 
 
+def test_slow_screenshots_do_not_close_the_arrival_window_before_the_key_goes(
+        world, monkeypatch):
+    _arriving(world, monkeypatch)
+    shots = []
+
+    def slow_shot(path):
+        # The screen is still redrawing under the first arrival screenshot, so the
+        # unchanged one that lets the key go is the third, past ANSWER_SECONDS.
+        world.clock.now += 13.0
+        if world.area == 26:
+            shots.append(world.clock.now)
+        path.write_bytes(b"redrawing" if len(shots) == 1 else world.screen)
+
+    got = ftr.run_trip(_Arrives(polls=1), Target(), ROW, SimpleNamespace(id=5), world.out,
+                       slow_shot, lambda key: world.pressed.append(key), world.log,
+                       sleep=world.clock.sleep, clock=world.clock, arrival_answer="y")
+    world.stream.close()
+    assert world.pressed == ["y"] and got["arrival_answered"]
+
+
 def test_without_an_arrival_answer_the_leg_stays_unsettled(world, monkeypatch):
     _arriving(world, monkeypatch)
     got = world.drive(_Arrives(polls=1))
@@ -700,6 +720,41 @@ def test_legality_lists_each_area_with_its_verdict_and_makes_no_trip(monkeypatch
     assert ftr.main(["--holder", "h", "--disks", "D", "--legality"]) == 0
     assert asked == [1, 2]
     assert capsys.readouterr().out.splitlines() == ["1\tAlpha\toffered", "2\tBeta\twithheld\theld"]
+
+
+def test_legality_with_measure_row_reports_what_the_measured_row_allows(monkeypatch, capsys):
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    key = "secret-of-the-silver-blades"
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    class F:
+        def __init__(self, title, disks):
+            pass
+
+        def legality(self, target, area=None, back=False):
+            confirmed = amigatrip.ROWS[key].confirmed
+            return engine.Verdict(confirmed, "" if confirmed else "unconfirmed")
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", F)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr, "candidate_areas", lambda title: [SimpleNamespace(id=1, name="A")])
+    before = amigatrip.ROWS[key]
+    args = ["--holder", "h", "--disks", "D", "--title", key, "--legality"]
+    assert ftr.main(args + ["--measure-row"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["1\tA\toffered"]
+    assert amigatrip.ROWS[key] is before
+    assert ftr.main(args) == 0
+    assert capsys.readouterr().out.splitlines() == ["1\tA\twithheld\tunconfirmed"]
 
 
 def test_without_legality_to_and_out_are_required():

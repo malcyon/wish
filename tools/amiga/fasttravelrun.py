@@ -19,7 +19,8 @@ screen differs from the one before the trip (the game is asking something).
 when the area byte has left the starting area, the game's menu gate is still shut
 once the trip is idle and the screen differs from the one before the trip (a
 question in the destination, such as a boat or a leave prompt); it is looked for
-for `ANSWER_SECONDS` and applies to the way back too. The key goes only after the
+for `ANSWER_SECONDS` or `ARRIVAL_MIN_POLLS` screenshots, whichever lasts longer, and
+applies to the way back too. The key goes only after the
 screen has held unchanged for a full screenshot poll with the gate shut, so a
 slow arrival that keeps redrawing is not answered; the `arrival_answer` event
 records the gate and the count of unchanged polls. A leg whose last area equals
@@ -91,6 +92,9 @@ BUDGET_SECONDS = 150.0
 SHOT_SECONDS = 2.0
 #: How long an unanswered `--answer` waits for the screen once nothing else is pending.
 ANSWER_SECONDS = 20.0
+#: Screenshots the arrival answer always gets: the changed screen, the unchanged one
+#: that lets the key go, and one more, however long a screenshot takes.
+ARRIVAL_MIN_POLLS = 3
 #: The longest the wait for the menu gate after each leg lasts.
 SETTLE_BUDGET_SECONDS = 180.0
 #: Seconds the game takes to act on a key, after it is pressed.
@@ -322,15 +326,17 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         log("timeout", budget=budget)
     if summary["result"] == "idle":
         next_look = clock()
-        held = 0
+        held = looks = 0
 
         def ask(waited: float) -> None:
-            nonlocal next_look, held
+            nonlocal next_look, held, looks
             if (arrival_answer is None or summary["arrival_answered"]
-                    or waited >= ANSWER_SECONDS or clock() < next_look
+                    or (waited >= ANSWER_SECONDS and looks >= ARRIVAL_MIN_POLLS)
+                    or clock() < next_look
                     or summary["areas_seen"][-1] == before["area"]):
                 return
             next_look = clock() + SHOT_SECONDS
+            looks += 1
             held = 0 if screen.take("arrival") else held + 1
             why = tripprobe._unanswered(
                 {"key_taken": True, "area_changed": False}, baseline, screen.last)
@@ -435,7 +441,10 @@ def main(argv: list[str] | None = None) -> int:
         except (DriverError, amiga.GuestError) as exc:
             raise SystemExit(str(exc)) from exc
         fasttravel = amigafasttravel.AmigaFastTravel(args.title, args.disks)
-        print("\n".join(legality_report(fasttravel, target, candidate_areas(machine.title))))
+        with (measuring_row(args.title, lambda *_, **__: None) if args.measure_row
+              else contextlib.nullcontext()):
+            report = legality_report(fasttravel, target, candidate_areas(machine.title))
+        print("\n".join(report))
         return 0
     # area_by_id is empty for a title the C64 fast travel does not support, which
     # Pools of Darkness is; the Amiga legality check decides what is offered.
