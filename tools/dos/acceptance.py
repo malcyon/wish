@@ -1003,17 +1003,17 @@ MOVE_KEYS = {"darkness": (POD_MOVE, POD_MOVE_EXIT), "ssb": ("m", "e")}
 #: status line: the map picture fills both places, and the party is a white
 #: ring in one cell of an 8-pixel grid starting at (8, 8), 38 cells by 15.
 #: The ring's lit pixels, as (column, row) offsets in its cell, were read off
-#: WISH-2's two boots of `pod-650-savgama-join-weight-dos`, where it sat in
-#: cell (22, 5), inside the camp roster's rectangle, so a dungeon walk's
-#: roster check read it as a highlighted line.
+#: `pod-650-savgama-join-weight-dos`, where it sat in cell (22, 5), inside the
+#: camp roster's rectangle, so a dungeon walk's roster check reads it as a
+#: highlighted line.
 POD_OVERLAND_GRID = (8, 8, 38, 15)
 POD_OVERLAND_RING = frozenset(
     (x, y) for y, xs in ((1, (3, 4)), (2, (2, 3, 4, 5)), (3, (1, 2, 5, 6)),
                          (4, (1, 2, 5, 6)), (5, (2, 3, 4, 5)), (6, (3, 4)))
     for x in xs)
 #: The arrows an overland walk tries in move mode, one at a time, until one
-#: moves the ring.  `Up` moved it one cell north in both WISH-2 boots; the
-#: other three are untried there and are judged by the ring alike.
+#: moves the ring.  `Up` moves it one cell north on that save; the other three
+#: are judged by the ring alike.
 POD_OVERLAND_STEPS = ("Up", "Right", "Down", "Left")
 #: Curse's party-menu `bar_signature`, the loaded menu and the empty one alike:
 #: CONFIRMED on 12 shots of 4 boots.  It does not tell a loaded menu from an
@@ -1331,6 +1331,13 @@ def pod_overland_cell(screen: dosbox.Screen) -> tuple[int, int] | None:
             if lit == POD_OVERLAND_RING:
                 found.append((column, row))
     return found[0] if len(found) == 1 else None
+
+
+def pod_overland_map_changed(before: dosbox.Screen, after: dosbox.Screen) -> bool:
+    """Whether the overland map area (`POD_OVERLAND_GRID`) differs between frames."""
+    x0, y0, columns, rows = POD_OVERLAND_GRID
+    area = (x0, y0, CELL * columns, CELL * rows)
+    return before.rows(area) != after.rows(area)
 
 
 def roster_text(screen: dosbox.Screen, line: int, font: dict[bytes, str]) -> str:
@@ -5177,7 +5184,7 @@ class Driver:
             if origin != start:
                 raise self.fail("walk-status", "the party marker moved or was "
                                 f"lost on entering move mode ({start} to {origin})")
-            cell, used = origin, None
+            cell, used, previous = origin, None, settled
             for n, key in enumerate(POD_OVERLAND_STEPS, 1):
                 label = f"walk-step-{n}"
                 if not self.game.move(key):
@@ -5194,6 +5201,14 @@ class Driver:
                 if cell is None:
                     raise self.fail("walk-status", f"the party marker was lost "
                                     f"after {key}")
+                if cell == origin and pod_overland_map_changed(previous, screen):
+                    # A map that scrolls with the party leaves the ring in its
+                    # screen cell after a real move; another arrow would move
+                    # the party a second square.
+                    raise self.fail(label, f"the map changed after {key} but "
+                                    f"the party marker stayed at {origin}: the "
+                                    "party may have moved with the ring in place")
+                previous = screen
                 if cell != origin:
                     if max(abs(cell[0] - origin[0]), abs(cell[1] - origin[1])) != 1:
                         raise self.fail(label, f"the party marker moved from "

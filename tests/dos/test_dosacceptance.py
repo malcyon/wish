@@ -5799,7 +5799,7 @@ def test_an_up_that_moves_the_roster_stops_the_walk(tmp_path):
     assert game.keys == ["m", "Up"]
 
 
-#: The overland party marker as WISH-2's two DOS boots drew it: a white ring
+#: The overland party marker as the DOS game draws it: a white ring
 #: in an 8-pixel cell, (column, row) offsets of its lit pixels.
 _POD_RING = tuple((x, y) for y, xs in ((1, (3, 4)), (2, (2, 3, 4, 5)),
                                        (3, (1, 2, 5, 6)), (4, (1, 2, 5, 6)),
@@ -5807,7 +5807,7 @@ _POD_RING = tuple((x, y) for y, xs in ((1, (3, 4)), (2, (2, 3, 4, 5)),
 
 
 class FakeOverland(FakeDungeon):
-    """Pools of Darkness' overland as WISH-2's boots drew it: no roster and no
+    """Pools of Darkness' overland as the game draws it: no roster and no
     status line, the map picture under both, a white ring for the party at
     cell (22, 5) of the 8-pixel grid from (8, 8) (inside the camp roster's
     rectangle, so the ring reads as a highlighted roster line), a static white
@@ -5860,12 +5860,40 @@ def _overland_driver(tmp_path, monkeypatch, **kw):
 
 def test_the_overland_ring_reads_as_a_roster_line_to_the_dungeon_check(tmp_path,
                                                                      monkeypatch):
-    """The live failure: the ring at row 5 lies in the camp roster's rectangle."""
+    """The ring at row 5 lies in the camp roster's rectangle, so the dungeon
+    check reads it as a highlighted line, and a moved ring as another."""
     game, _ = _overland_driver(tmp_path, monkeypatch)
     before = screens.roster_line(game.capture(), "camp", game.size)
     game.cell[1] -= 1
     assert before is not None
     assert screens.roster_line(game.capture(), "camp", game.size) != before
+
+
+def test_an_overland_map_that_scrolls_under_a_fixed_ring_stops_the_walk(tmp_path,
+                                                                       monkeypatch):
+    game, d = _overland_driver(tmp_path, monkeypatch)
+    real_key, real_capture = game.key, game.capture
+    scrolled = []
+
+    def key(k, gap=0.0):
+        real_key(k, gap)
+        if k == "Up":
+            game.cell = [22, 5]            # the ring stays; the map moves
+            scrolled.append(True)
+
+    def capture():
+        screen = real_capture()
+        if not scrolled:
+            return screen
+        px = bytearray(screen.px)
+        at = (60 * W + 100) * 3            # a map pixel away from the ring
+        px[at:at + 3] = _WHITE
+        return dosbox.Screen(W, H, bytes(px))
+
+    game.key, game.capture = key, capture
+    with pytest.raises(da.StepFailed, match="map changed"):
+        d.walk("1")
+    assert game.keys == ["m", "Up"]
 
 
 def test_pools_of_darkness_walks_one_square_on_the_overland(tmp_path, monkeypatch):
