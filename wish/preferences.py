@@ -963,12 +963,12 @@ class PreferencesDialog(QDialog):
         walks wherever it likes while the map window is shut -- so this is an
         explicit list of ticks and there is no second, cleverer rule behind it.
 
-        **In Pool of Radiance, area 30 is not in the table**, ticked or
-        unticked: `ECL1E` is the attract-mode demo and entering it ends the
-        session. `Area.fasttravelable` says so, and it is asked rather than the
-        id being written down here. Curse of the Azure Bonds' area 30 is
-        fast-travellable and has no name, so it is in that table as `Area 30`,
-        as are Silver Blades' unnamed ids 4 and 17 in its own.
+        **Area 30 is not in the table in Pool of Radiance or Curse of the
+        Azure Bonds**, ticked or unticked: `ECL1E` is the attract-mode demo
+        and entering it ends the session. Its `Area.fasttravelable` is False,
+        and the table asks that rather than listing the id here. The `Area N`
+        fallback for a row with no name is reached only by Silver Blades'
+        unnamed ids 4 and 17.
 
         **One tab per title that has an area table** (`travel_titles()`; the
         Amiga-only title's tab exists only while an Amiga backend flag is on), each
@@ -1035,10 +1035,10 @@ class PreferencesDialog(QDialog):
         #: The table's rows: by name, then the unnamed ones by area number.
         #: The sort is stable and named rows compare on name alone, so a name
         #: two areas share keeps the table's own order. A row with no approved
-        #: name reads `Area N` rather than its script name. Only in Pool of
-        #: Radiance is the one unnamed area also unfasttravelable, so
-        #: `fasttravelable` alone excludes it there; Curse's and Silver Blades'
-        #: unnamed areas are in their tables.
+        #: name reads `Area N` rather than its script name. The unnamed demo
+        #: areas of Pool of Radiance and Curse are unfasttravelable, so
+        #: `fasttravelable` alone excludes them; Silver Blades' unnamed areas
+        #: are in its table.
         rows = sorted(
             (a for a in area_table.areas_for_title(game.title)
              if a.fasttravelable),

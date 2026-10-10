@@ -733,7 +733,7 @@ this dialog, one per title.
   without the title. A row with no approved name has no tooltip, because its
   label opens with the developer script name.
 * **A row with no approved name reads `Area N`**, the area's number in
-  decimal — Curse's area 30 is `Area 30` — and not its script name (`ECL1E`),
+  decimal — Silver Blades' area 4 is `Area 4` — and not its script name,
   which is developer text. The row is ticked and unticked like any other.
   Unnamed rows sort after the named ones, in area-number order.
 * **New Phlan, The Slums and Sokol Keep are ticked on a fresh Pool of Radiance

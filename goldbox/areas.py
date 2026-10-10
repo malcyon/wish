@@ -645,6 +645,8 @@ def _c(id: int, disk: int, geos: tuple[str, ...],
 
     `name` is `None` for one row -- `$1E`, which no forum table entry covers
     at all (`#15 (Fast Travel for more than one Gold Box title)`).
+    `fasttravelable` is False for a row a party must not be sent to; `$1E`
+    is the one such row.
     `confidence` grades the name and only the name, the same convention
     `AREAS`' own rows use: CONFIRMED where the emulator-runner's validation
     pass saw the screen name the place outright, or where a later bytecode
@@ -753,6 +755,8 @@ AREAS_CURSE: tuple[Area, ...] = (
        name="Pit of Moander, second level", confidence=P),
     _c(0x15, 3, ("GEO15",), Arrival(8, 12, 1),
        name="shared blocks: Voonlar, Phlan dungeons", confidence=P),
+    # The title-screen demo script: entering it ends the session, so it is
+    # not offered as a destination.
     _c(0x1E, 1, (), fasttravelable=False),
     _c(0x20, 4, ("GEO20",), Arrival(14, 1, 0),
        name="Zhentil Keep streets", confidence=C),
