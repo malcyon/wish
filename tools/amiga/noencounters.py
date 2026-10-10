@@ -20,8 +20,8 @@ A row applies only while its area's script is loaded, so `on` reports every
 row of an area that is not loaded as stopped and writes nothing for it; `keys`
 applies the rows again before each key press and changes the row once its
 area loads.  A `none` row names a script that makes no random-encounter roll,
-recognised by its entry table, so that while it is loaded the reply says so
-beside the stopped rows instead of leaving them to read as a failure.
+recognised by its entry table, so that while it is loaded the reply names the script
+as having no random roll, beside the stopped rows instead of leaving them to read as a failure.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given

@@ -539,8 +539,7 @@ CURSE_WORLD_MAP_ROLLS = {0x50: {0x84DE, 0x84F8, 0x8508, 0x9A1A}, 0x51: set()}
 #: script holds its statement there.
 POOL_GATES = {0x7B3: 25, 0x7E7: 26, 0x5A7: 27, 0x23A: 20, 0x10E: 0, 0xB40: 0}
 
-#: What the four Pool rows that predate area 0's read in area 0's script: the
-#: hashes the WISH-360 run reported, which place that run in area 0.
+#: What the four older Pool statements hash to in area 0's script.
 POOL_AREA_0_STOPPED = {0x7B3: "2927c493", 0x7E7: "5ed2b7d5", 0x5A7: "580dd5ab",
                        0x23A: "fa2ae5f7"}
 
