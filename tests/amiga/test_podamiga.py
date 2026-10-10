@@ -1679,3 +1679,46 @@ def test_a_dos_thief_gets_the_saves_the_dos_load_shows():
 def test_an_amiga_thief_keeps_the_saves_it_was_stored_with():
     pc, _ = amiga_pod.to_pc(_dos_thief("Amiga"))
     assert tuple(pc[0x083:0x088]) == (0, 0, 0, 0, 0)
+
+
+# --- the item type table (WISH-2) --------------------------------------------
+
+def _rows() -> bytes:
+    return b"".join(bytes([i]) * 16 for i in range(128))
+
+
+def _disk(*, program: bool, rows: bytes):
+    from goldbox.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank("Disk")
+    if program:
+        disk.write_file("/Pools of Darkness", b"program")
+    disk.make_dir("/DISK1")
+    disk.write_file("/DISK1/ITEMS.DAT", rows)
+    return disk
+
+
+def test_the_type_table_is_renumbered_into_dos_order():
+    table = amiga_pod.item_type_table([_disk(program=True, rows=_rows())])
+    assert len(table) == 2048
+    for i in range(128):
+        want = amiga_pod.ITEM_TYPE_SWAP.get(i, i)
+        assert table[i * 16:(i + 1) * 16] == bytes([want]) * 16, i
+    assert table[0x49 * 16] == 0x69 and table[0x69 * 16] == 0x49
+
+
+def test_a_disk_without_the_program_gives_no_table():
+    assert amiga_pod.item_type_table(
+        [_disk(program=False, rows=_rows())]) is None
+
+
+def test_the_file_comes_from_the_disk_that_carries_the_program():
+    other = _disk(program=False, rows=bytes(2048))
+    mine = _disk(program=True, rows=_rows())
+    table = amiga_pod.item_type_table([other, mine])
+    assert table[5 * 16] == 5
+
+
+def test_a_file_of_the_wrong_length_gives_no_table():
+    assert amiga_pod.item_type_table(
+        [_disk(program=True, rows=_rows() + b"\0\0")]) is None

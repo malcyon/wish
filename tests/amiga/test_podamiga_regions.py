@@ -565,3 +565,24 @@ def test_each_amiga_items_row_is_its_mapped_dos_row_but_the_halberd_and_the_case
             continue
         j = amiga_pod.ITEM_TYPE_SWAP.get(i, i)
         assert amiga_rows[i * 16:(i + 1) * 16] == dos_rows[j * 16:(j + 1) * 16], i
+
+
+def test_the_editor_s_amiga_type_table_is_the_dos_one_but_for_the_port_rows():
+    from tools.amiga import amigasaves
+    from tools.dos import dospodtables
+
+    try:
+        game = dospodtables.find_game()
+    except FileNotFoundError:
+        pytest.skip("no DOS Pools of Darkness game folder")
+    dos = dos_codec.pod_item_type_table(game)
+    assert dos is not None
+    filled = [i for i in range(128) if any(dos[i * 16:(i + 1) * 16])]
+    assert len(filled) == 102
+    disks = [data for _label, data in amigasaves.images()]
+    amiga = amiga_pod.item_type_table(disks)
+    if amiga is None:
+        pytest.skip("no Amiga Pools of Darkness disk 1")
+    differ = {i for i in range(128)
+              if amiga[i * 16:(i + 1) * 16] != dos[i * 16:(i + 1) * 16]}
+    assert differ == set(amiga_pod.ITEM_TYPE_PORT_ROWS)

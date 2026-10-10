@@ -4567,6 +4567,26 @@ def item_type_table(game: str | pathlib.Path | None) -> bytes | None:
     return data[2:]
 
 
+def pod_item_type_table(game: str | pathlib.Path | None) -> bytes | None:
+    """Pools of Darkness's `ITEMS` whole: 128 types of 16 bytes, no header.
+
+    Looked for in `game`, then in its parent (a `SAVE` folder). `None` when
+    neither holds a file of exactly that length; the 2050-byte form with a
+    header belongs to :func:`item_type_table`.
+    """
+    if game is None:
+        return None
+    folder = pathlib.Path(game)
+    for where in (folder, folder.parent):
+        try:
+            data = (where / "ITEMS").read_bytes()
+        except OSError:
+            continue
+        if len(data) == ITEM_TYPE_COUNT * ITEM_TYPE_SIZE:
+            return data
+    return None
+
+
 def _dos_strength_index(strength: int, percentile: int) -> int:
     """`GAME.OVR:0x38924`: strength up to 17 is its own index, 18 splits by
     the percentile into 18-23, and 19-25 become 24-30. The routine leaves

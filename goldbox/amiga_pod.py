@@ -46,7 +46,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import amiga_port, dos_port, neutral, spells, titles
+from . import amiga_port, dos_port, neutral, spell_names, spells, titles
 from .amiga_shared import ABILITY_KEYS, SAVE_KEYS, THIEF_KEYS, _name, u16, u32
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
@@ -93,6 +93,11 @@ SCROLL_TYPE_INDEX = 0x49
 #: halberd) is left alone: it is one item on both ports and each game applies
 #: its own row to that number.
 ITEM_TYPE_SWAP = {0x69: 0x49, 0x49: 0x69}
+#: The DOS-numbered item type rows whose content differs between the ports
+#: after :data:`ITEM_TYPE_SWAP`: the halberd (71), and 105, which the Amiga
+#: fills with its scroll case and DOS leaves empty. A table read from the
+#: other port must not supply them.
+ITEM_TYPE_PORT_ROWS = frozenset({0x47, 0x69})
 #: One effect node, the same ten bytes all three Amiga titles keep: the id at
 #: 0, one byte nobody has named at 1, the duration as a big-endian word at 2,
 #: DOS's two remaining payload bytes at 4 and 5, and the four-byte `next` at
@@ -3728,3 +3733,32 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
         path.write_bytes(record)
         out.append((path, rep))
     return out
+
+
+def item_type_table(where) -> bytes | None:
+    """The Amiga game's item type table in DOS numbering, or `None`.
+
+    `where` is what `spell_names.amiga_program` takes. `ITEMS.DAT` is read
+    only from a disk that carries the Pools of Darkness program, because
+    Curse and Silver Blades disks carry files of the same name. The file is
+    128 rows of 16 bytes with no header; row `i` of the result is the
+    Amiga's row `ITEM_TYPE_SWAP.get(i, i)`.
+    """
+    program = spell_names.AMIGA_PROGRAMS[titles.POOLS_OF_DARKNESS.key].lower()
+    for disk in spell_names._amiga_disks(where):
+        try:
+            entries = list(disk.walk())
+        except Exception:
+            continue
+        if not any(p.strip("/").lower() == program for p, _e in entries):
+            continue
+        for path, _entry in entries:
+            if path.rsplit("/", 1)[-1].lower() != "items.dat":
+                continue
+            data = bytes(disk.read_file(path))
+            if len(data) != 2048:
+                return None
+            rows = [data[ITEM_TYPE_SWAP.get(i, i) * 16:][:16]
+                    for i in range(128)]
+            return b"".join(rows)
+    return None

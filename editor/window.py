@@ -2713,6 +2713,37 @@ class EditorBinding(QObject):
                     setattr(self, attr, names)
                     break
 
+    def _load_pod_types(self) -> dict:
+        """Item types off the DOS game folder or Amiga disks, the open save's
+        port first. A table taken from the other port lacks the rows whose
+        content differs between the games."""
+        def skip(where, game):
+            return {}
+
+        def types(table):
+            if table is None:
+                raise FileNotFoundError("no item type table")
+            return item_types_from_payload(table)
+
+        def read_dos(where, game):
+            return types(dos_codec.pod_item_type_table(where))
+
+        def read_amiga(where, game):
+            return types(amiga_pod.item_type_table(where))
+
+        own = self.party.port
+        order = ("amiga", "dos") if own == "amiga" else ("dos", "amiga")
+        for port in order:
+            found = self._port_names(read_dos if port == "dos" else skip,
+                                     read_amiga if port == "amiga" else skip,
+                                     self.party.game)
+            if found:
+                if port != own:
+                    for row in amiga_pod.ITEM_TYPE_PORT_ROWS:
+                        found.pop(row, None)
+                return found
+        return {}
+
     def _load_game_disk(self) -> None:
         self._load_movement_items()
         self.charset, self.item_names, self.templates = b"", {}, {}
@@ -2725,7 +2756,9 @@ class EditorBinding(QObject):
             self.icon_parts_disk = None
             self.game_disk_found = None
             self._load_pod_names()
-            self.traits.set_tables({}, self.spell_names, self._spell_table())
+            self.item_types = self._load_pod_types()
+            self.traits.set_tables(self.item_types, self.spell_names,
+                                   self._spell_table())
             self.items.set_spells(self._spell_table())
             for member in self.party.members:
                 if member.inventory is not None:

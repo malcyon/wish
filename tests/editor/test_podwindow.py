@@ -387,6 +387,58 @@ def _check_window(label, window) -> int:
     return len(window.party)
 
 
+def _assert_types_resolve(window):
+    for member in window.party.members:
+        for n in range(len(member.inventory)):
+            item = member.inventory.item(n)
+            if not item.is_empty:
+                assert item.type_index in window.item_types, (
+                    member.name, item.type_index)
+
+
+def _rows_of(window, raw_type):
+    raw = bytearray(16)
+    raw[0] = raw_type
+    window.traits.set_item(Item(bytes(raw)))
+    return dict(window.traits.rows)
+
+
+def _check_known_items(window):
+    sword = _rows_of(window, 73)
+    assert sword["Type"] == "73 — weapon"
+    assert sword["Damage vs medium"] == "1d8"
+    assert sword["Damage vs large"] == "1d12"
+    assert sword["Protection"] == "—"
+    assert sword["Hands"] == "1"
+    assert sword["Range"] == "—"
+    assert sword["Usable by"] == "fighter"
+    armour = _rows_of(window, 31)
+    assert armour["Protection"] == "AC 8"
+    assert armour["Usable by"] == "cleric, thief, fighter"
+
+
+def test_a_dos_slot_shows_the_games_own_type_for_a_known_item(
+        app, monkeypatch):
+    import editor.window as ew
+    _flag(monkeypatch, "1")
+    _no_box(monkeypatch)
+    window = _window(_dos_game_folder())
+    source = _dos_sources()[0]
+    window._adopt(ew.Party(source), str(source.path))
+    _check_known_items(window)
+
+
+def test_an_amiga_slot_shows_the_games_own_type_for_a_known_item(
+        app, monkeypatch, tmp_path):
+    import editor.window as ew
+    _flag(monkeypatch, "1")
+    _no_box(monkeypatch)
+    window = _window(_amiga_disk_one(tmp_path))
+    source = _amiga_sources(tmp_path)[0][1]
+    window._adopt(ew.Party(source), str(source.path))
+    _check_known_items(window)
+
+
 def test_every_dos_slot_opens_with_named_items_and_flushes_clean(
         app, monkeypatch):
     import editor.window as ew
@@ -402,6 +454,7 @@ def test_every_dos_slot_opens_with_named_items_and_flushes_clean(
         assert window.spell_names == spell_names.load_dos_spell_names(
             folder, POD)
         assert not window._widgets["icon"].isEnabled()
+        _assert_types_resolve(window)
         checked += _check_window(str(source.path), window)
     assert checked
 
@@ -420,6 +473,7 @@ def test_every_amiga_slot_opens_with_named_items_and_flushes_clean(
         assert window.item_names == expected
         assert window.spell_names == spell_names.load_amiga_spell_names(
             disk_one, POD)
+        _assert_types_resolve(window)
         checked += _check_window(label, window)
     assert checked
 
@@ -515,3 +569,58 @@ def test_an_amiga_character_s_items_and_levels_are_editable_like_dos(
     assert window.add_item("anything") != "items are read-only here"
     first = window.items.index(0, inventory_columns.QTY)
     assert window.items.flags(first) & Qt.ItemFlag.ItemIsEditable
+
+
+# --- the type table's port order and the rows the ports do not share ----------
+
+@pytest.fixture
+def fake_types(monkeypatch):
+    """Stand in for the two type table readers; the list collects the port of
+    every call. Each table has a filled row 1, 39, 71, 73 and 105."""
+    from goldbox import amiga_pod
+
+    calls = []
+    table = bytearray(2048)
+    for row in (1, 39, 71, 73, 105):
+        table[row * 16] = 1               # a location, so the row is filled
+
+    def dos(where):
+        calls.append("dos")
+        return bytes(table)
+
+    def amiga(where):
+        calls.append("amiga")
+        return bytes(table)
+
+    monkeypatch.setattr(dos_codec, "pod_item_type_table", dos)
+    monkeypatch.setattr(amiga_pod, "item_type_table", amiga)
+    return calls
+
+
+def test_the_type_table_is_tried_in_the_open_saves_port_first(
+        app, monkeypatch, tmp_path, fake_names, fake_types):
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    assert fake_types[0] == "dos"
+    assert {1, 39, 71, 73, 105} <= set(window.item_types)
+
+
+def test_a_table_from_the_other_port_lacks_the_rows_the_ports_differ_on(
+        app, monkeypatch, tmp_path, fake_names, fake_types):
+    from goldbox import amiga_pod
+
+    monkeypatch.setattr(dos_codec, "pod_item_type_table", lambda where: None)
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    assert fake_types[-1] == "amiga"
+    assert set(window.item_types) == {1, 39, 73}
+    assert amiga_pod.ITEM_TYPE_PORT_ROWS == {71, 105}
+
+
+def test_a_pools_of_darkness_scroll_shows_its_spells_not_charges(
+        app, monkeypatch, tmp_path, fake_names, fake_types):
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    raw = bytearray(16)
+    raw[0] = 39
+    raw[13:16] = bytes([9, 10, 9])
+    window.traits.set_item(Item(bytes(raw)))
+    labels = [label for label, _value in window.traits.rows]
+    assert "Spells" in labels and "Charges" not in labels

@@ -26,7 +26,8 @@ from PyQt6.QtWidgets import (
     QDialog,
 )
 
-from goldbox.dos_codec import C64_SCROLL_TYPES
+from goldbox import titles
+from goldbox.dos_codec import C64_SCROLL_TYPES, SCROLL_TYPES
 from goldbox.items import (
     ITEM_AREA_BASE,
     ITEM_BLOCK_STRIDE,
@@ -276,6 +277,13 @@ class Inventory:
         payload[self.base:self.base + ITEM_BLOCK_STRIDE] = b"".join(self.raws)
 
 
+def _scroll_types(key: str) -> tuple[int, ...]:
+    """The item types that carry spell ids in +13-+15 for the title `key`."""
+    if key == titles.POOLS_OF_DARKNESS.key:
+        return SCROLL_TYPES
+    return C64_SCROLL_TYPES.get(key, ())
+
+
 def describe(item: Item, names: dict[int, str] | None,
              type_zero_is_an_item: bool = False) -> str:
     """What to print in the name column.
@@ -434,7 +442,7 @@ class InventoryModel(QAbstractTableModel):
             lines.append("Cursed: the game will not let you un-ready it")
         if item.saving_throw_bonus:
             lines.append(f"Saving throws {item.saving_throw_bonus:+d}")
-        if item.type_index in C64_SCROLL_TYPES.get(self.spells.key, ()):
+        if item.type_index in _scroll_types(self.spells.key):
             # +13-+15 are spell ids on a scroll, not charges, effect or power.
             return "\n".join(lines)
         if item.charges:
@@ -731,7 +739,7 @@ class ItemTraitsModel(QAbstractTableModel):
         """
         charges, effect, power = item.effects
         if (kind is not None
-                and item.type_index in C64_SCROLL_TYPES.get(self.spells.key, ())):
+                and item.type_index in _scroll_types(self.spells.key)):
             spells = [self._scroll_spell(s) for s in (charges, effect, power) if s]
             return [("Spells", ", ".join(spells) if spells else EMPTY_TEXT)]
         rows = [("Charges", str(charges) if charges else EMPTY_TEXT)]

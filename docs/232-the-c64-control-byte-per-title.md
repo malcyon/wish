@@ -221,8 +221,12 @@ CONFIRMED, and the Pool of Radiance one was also watched in DOSBox. **Pools of
 Darkness has no site at all** for `0x148` in `GAME.OVR` or `GAME.EXE` (0 of 2
 images). The 4 of its 12 records reading 1 hold a value it inherited. Amiga
 Pool of Radiance keeps the share at `0x086`: PROBABLE that KEEP writes it
-there too, from the six game-written records that read `01`. UNKNOWN for the
-other Amiga titles: no store site has been read.
+there too, from the six game-written records that read `01`. Amiga Pools of
+Darkness has a MODIFY CHARACTER screen, but its KEEP (`0x02A054`) writes no
+share byte: the one access to `0x094` in the program is the Silver Blades
+importer's `move.b $9b(a3), $94(a2)` at `0x02628C`, so a 1 there came in with
+an import. UNKNOWN for Curse and Silver Blades on the Amiga: no store site
+has been read.
 
 ## Changing control, and what happens to the low bits
 
@@ -263,8 +267,9 @@ to be exactly `0x00`.
 | Curse, Silver Blades, Gateway, Champions, Death Knights, C64 | yes | yes, 0-100 step 2; the engine caps anything above at 100 | **no**: nothing writes or reads it; a set bit 0 is not the game's |
 | Pool of Radiance, Curse, Silver Blades, DOS | yes: control byte (`docs/195`) | yes, same encoding (`docs/195`) | yes, but it is the share byte and means "left MODIFY by KEEP" |
 | Pools of Darkness, DOS | yes | yes | **no**: the engine has no writer |
+| Pools of Darkness, Amiga | yes | yes | **no**: KEEP writes no mark; only the Silver Blades importer copies 0x09B into 0x094 |
 | Pool of Radiance, Amiga | yes | yes | PROBABLE only |
-| other Amiga titles | yes | yes | UNKNOWN |
+| Curse, Silver Blades, Amiga | yes | yes | UNKNOWN |
 
 The morale and ability-altered fields never apply to the same record. A
 companion's low bits are morale, a player character's bit 0 is the flag,
@@ -286,4 +291,4 @@ of Radiance. Showing the decoded value unclamped, read-only when it is above
 * Death Knights' unhalved producer on an uncracked image: PROBABLE.
 * The consequence of failing the morale check: not read here. `docs/195`
   already grades the *name* morale PROBABLE for the same reason.
-* The Amiga ports' modify flag, beyond Pool of Radiance's six records.
+* The Curse and Silver Blades Amiga ports' modify flag.
