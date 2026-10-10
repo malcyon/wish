@@ -107,11 +107,12 @@ authorizes resuming it.
 
 **A message can resume a runner that was stopped.** When you find you were
 stopped or interrupted, start no command and take no request until the
-orchestrator says so. Read `testrun.py status ID` for each request you had been
-handling or were sent, and report only the recorded statuses, verbatim, to the
-orchestrator (`main`), never to the requester. State whether a run started or
-finished only from `status`. A request whose launcher was killed may still be
-running under its service; only the orchestrator's `reconcile` finalizes it.
+orchestrator says so, and send nothing to any requester. Send the
+orchestrator (`main`) one message naming only the request IDs you had been
+handling or were sent, with no statement about whether any of them started,
+finished or is pending: an interrupted or rejected command may already have
+started a run, and the orchestrator reads the records itself. Then wait until
+the orchestrator says otherwise.
 
 **Cancellation.** The orchestrator may run `testrun.py cancel ID` itself while
 you are blocked in a foreground command; it does not wait for your mailbox.
