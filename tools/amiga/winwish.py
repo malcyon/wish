@@ -26,7 +26,7 @@ run uses.
     winwish.py down   --holder H
 
 Wish runs with `WISH_EXPERIMENTAL_AMIGA_WINUAE=1` (`--no-flag` leaves it unset, for
-the control) and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
+the control; `--map-only` sets it but leaves the action and Fast Travel flags unset) and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
 `fast_travel_targets`, because the tab cannot pick a destination from the drop-down.
 Its `APPDATA` and `LOCALAPPDATA` point at a private folder per holder, seeded with `diagnostics: true` because `WISH_DEBUG`
 alone does not open the log file.  Every guest call goes through `winvm`, which
@@ -164,13 +164,18 @@ def settings_json(game: str | None = None, folder: str | None = None,
     return json.dumps(values, indent=1) + "\n"
 
 
-def environment(flag: bool, holder: str) -> dict[str, str]:
-    """What `wish.exe` is started with; the flag is left unset for the control."""
+def environment(flag: bool, holder: str, features: bool = True) -> dict[str, str]:
+    """What `wish.exe` is started with; the flag is left unset for the control.
+
+    With `features` false the backend flag is set but the action and Fast Travel
+    flags are not, so the map attaches with those controls greyed.
+    """
     env = {"APPDATA": rf"{run_dir(holder)}\appdata",
            "LOCALAPPDATA": rf"{run_dir(holder)}\local",
            "WISH_DEBUG": "1"}
     if flag:
         env[FLAG] = "1"
+    if flag and features:
         env[ACTIONS_FLAG] = "1"
         env[FAST_TRAVEL_FLAG] = "1"
     return env
@@ -1566,10 +1571,11 @@ def probe_close_script(holder: str) -> str:
 def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, ...] = (),
                game: str | None = None, reseed: bool = False,
                open_path: str | None = None,
-               travel_targets: dict[str, list[int]] | None = None) -> str:
+               travel_targets: dict[str, list[int]] | None = None,
+               features: bool = True) -> str:
     guest.holds_lane(holder)
     try:
-        return guest.ps(start_script(holder, environment(flag, holder), disks=disks,
+        return guest.ps(start_script(holder, environment(flag, holder, features), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
                         timeout=START_SECONDS + 30)
@@ -1598,10 +1604,11 @@ def stop_wish(guest: Guest, holder: str) -> str:
 
 def restart_wish(guest: Guest, holder: str, flag: bool = True, open_path: str | None = None,
                  reseed: bool = False,
-                 travel_targets: dict[str, list[int]] | None = None) -> str:
+                 travel_targets: dict[str, list[int]] | None = None,
+                 features: bool = True) -> str:
     stop_wish(guest, holder)
     return start_wish(guest, holder, flag, reseed=reseed, open_path=open_path,
-                      travel_targets=travel_targets)
+                      travel_targets=travel_targets, features=features)
 
 
 def shot(guest: Guest, holder: str, window: str, out: pathlib.Path) -> int:
@@ -1720,7 +1727,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder, not args.no_flag,
                                         tuple(drives[:GAME_DISKS]), args.game, reseed=True,
-                                        travel_targets=targets)
+                                        travel_targets=targets, features=not args.map_only)
             if drives and not args.keep_lanes and re.search(r"\bpipe=WinUAE(?![\w])", result["winuae"]):
                 result["lanes"] = _give_back_lanes(lane, args.holder)
             done = True
@@ -1835,8 +1842,12 @@ def _parser() -> argparse.ArgumentParser:
                    help="the Fast Travel destinations Wish's settings offer for a title, such as "
                    "pool-of-radiance=20; repeatable. The tab cannot pick from the drop-down")
     p.add_argument("--zip", help="use this zip rather than fetching")
-    p.add_argument("--no-flag", action="store_true",
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")
+    g.add_argument("--map-only", action="store_true",
+                   help="set the backend flag but not the action and Fast Travel flags, "
+                   "so the map attaches with those controls greyed")
     p.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
                    help="reserve every lane and wait up to this long for the other holders "
                    "to release theirs (default: claim once and fail)")
@@ -1857,8 +1868,12 @@ def _parser() -> argparse.ArgumentParser:
                        help="a save on the guest (from stage-save) to open on the editor tab")
         p.add_argument("--reseed", action="store_true",
                        help="write fresh settings, so a window size saved at another scale is not kept")
-        p.add_argument("--no-flag", action="store_true",
+        g = p.add_mutually_exclusive_group()
+        g.add_argument("--no-flag", action="store_true",
                        help=f"leave {FLAG} unset (the control)")
+        g.add_argument("--map-only", action="store_true",
+                       help="set the backend flag but not the action and Fast Travel flags, "
+                       "so the map attaches with those controls greyed")
         p.add_argument("--travel-targets", action="append", default=[], metavar="KEY=ID[,ID]",
                        help="with --reseed, the Fast Travel destinations the fresh settings hold, "
                        "as for `up`; repeatable")
@@ -1946,10 +1961,12 @@ def main(argv: list[str] | None = None,
         elif args.cmd == "start":
             print(start_wish(guest, args.holder, not args.no_flag, reseed=args.reseed,
                              open_path=args.open,
-                             travel_targets=parse_travel_targets(args.travel_targets)))
+                             travel_targets=parse_travel_targets(args.travel_targets),
+                             features=not args.map_only))
         elif args.cmd == "restart":
             print(restart_wish(guest, args.holder, not args.no_flag, args.open, args.reseed,
-                               parse_travel_targets(args.travel_targets)))
+                               parse_travel_targets(args.travel_targets),
+                               features=not args.map_only))
         elif args.cmd == "stage-save":
             path, digest = stage_save(guest, args.holder, pathlib.Path(args.save), args.folder)
             print(f"{path} sha256={digest}")

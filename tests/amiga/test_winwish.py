@@ -192,6 +192,18 @@ def test_the_amiga_feature_flags_follow_the_backend_flag():
         assert f"$env:{name}" not in control
 
 
+def test_map_only_sets_the_backend_flag_and_neither_feature_flag():
+    env = winwish.environment(True, "h", features=False)
+    assert env[winwish.FLAG] == "1"
+    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
+        assert name not in env
+    body = _task_text(winwish.start_script("h", env))
+    assert f"$env:{winwish.FLAG} = '1'" in body
+    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
+        assert f"Remove-Item Env:{name}" in body
+        assert f"$env:{name}" not in body
+
+
 def test_the_control_start_script_has_no_flag():
     script = winwish.start_script("h", winwish.environment(False, "h"))
     body = _task_text(script)
@@ -699,6 +711,23 @@ def test_main_start_passes_no_flag_through(capsys):
     script = run.calls[-1][2]
     body = _task_text(script)
     assert f"$env:{winwish.FLAG}" not in body
+
+
+def test_main_restart_passes_map_only_through():
+    run = FakeRun()
+    assert winwish.main(["restart", "--holder", "h", "--map-only"],
+                        guest=winwish.Guest(run)) == 0
+    body = _task_text(run.calls[-1][2])
+    assert f"$env:{winwish.FLAG} = '1'" in body
+    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
+        assert f"$env:{name}" not in body
+
+
+def test_map_only_and_no_flag_exclude_each_other(capsys):
+    with pytest.raises(SystemExit):
+        winwish.main(["start", "--holder", "h", "--map-only", "--no-flag"],
+                     guest=winwish.Guest(FakeRun()))
+    assert "not allowed with" in capsys.readouterr().err
 
 
 # `os.kill(pid, SIGTERM)` on Windows is `TerminateProcess`: no handler runs, so
