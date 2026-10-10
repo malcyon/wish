@@ -2367,6 +2367,11 @@ wrote 1234 into that encumbrance word and read 233 off the sheet, so there is
 a run in the running game behind everything this routine does. Twenty-seven
 call sites reach it in all.
 
+**`0x07F` has five known write sites**, not one: an earlier version of this section named only `0x03C238`, because a later bytecode search found the others. They are, all CONFIRMED to write it through a record pointer: the recompute `0x03C238`, creation's `0x00EF82` and `0x00EFDC` (routine `0x00EF36`, which also clears `0x0B7`), `0x00FD34` (stores 40) and `0x02604C` (copies source byte `0x6A`; PROBABLE the inter-title import). What calls `0x00EF36` and `0x00FD34` is SPECULATIVE.
+The settle is the caller of the table at `0x00FB36`, or a WinUAE breakpoint on `0x00EF36` and `0x00FD34` during training, a level drain and an NPC join.
+
+**The stored `0x186` is never shown or used.** Training (`0x03D7CE`) rewrites `0x07F` through `0x03C238` and leaves `0x186` stale; the game rebuilds it from `0x07F` through `0x019428` on load (`0x026A6C`), when the sheet opens (`0x021016`) and at the start of each battle (`0x00652E` calling `0x005894`), before its only two readers, `0x012E78` (to-hit) and `0x021140` (the sheet). All CONFIRMED from bytecode; no live run yet separates the load rebuild from the sheet's own.
+
 #### `roster_tail` `0x188`-`0x190`: every one of the nine
 
 | byte | what it is | who writes it |
@@ -3266,14 +3271,14 @@ to 1234 and the sheet drew `233`, which is its 200 platinum plus 11 gems plus
 22 jewelry. It set the second movement byte to 99 and the sheet drew `12`, the
 base. P3 wrote base armour class 10 with a dexterity of 15 and the sheet drew
 `ARMOR CLASS 9`; it wrote damage `1d6+2` with a strength of 18 and the sheet
-drew `1D6+4`. THAC0 reached the sheet through `0x186`, copied from `0x07F`, which only the
-recompute at `0x03C238` writes. The
+drew `1D6+4`. THAC0 reached the sheet through `0x186`, copied from `0x07F`, which has more writers than the recompute
+at `0x03C238` (below). The
 character-sheet routine reads all of these from `0x186`–`0x192`, and the loader
 fills that block itself:
 
 | sheet field | drawn from | filled from |
 |---|---|---|
-| THAC0 | `0x186`, as `60 − value` | the base `0x07F`, copied at `0x0195D0` and adjusted at `0x0195F4`-`0x0195FA`; only the recompute at `0x03C238` writes `0x07F` |
+| THAC0 | `0x186`, as `60 − value` | the base `0x07F`, copied at `0x0195D0` and adjusted at `0x0195F4`-`0x0195FA`; writers of `0x07F`: `0x03C238`, `0x00EF82`/`0x00EFDC`, `0x00FD34`, `0x02604C` (below) |
 | armour class | `0x187`, as `60 − value` | base `0x0B3` adjusted for dexterity |
 | damage | `0x18B`/`0x18D`/`0x18F` | base `0x0AD`/`0x0AF`/`0x0B1` plus the strength bonus |
 | encumbrance | `0x056`, u16 | the coins |
@@ -3437,7 +3442,7 @@ that is mostly empty, and filling it is the project.
 | abilities ×6 | `0x014` singles — CONFIRMED | `0x010` singles — CONFIRMED | `0x010` singles — CONFIRMED | `0x070`, **base/current pairs** — CONFIRMED |
 | exceptional strength | `0x01A` — CONFIRMED | `0x016` — CONFIRMED | `0x016` — CONFIRMED | `0x07C`, pair — CONFIRMED |
 | second ability block | `0x065`, 7 — CONFIRMED | — | — | folded into the pairs — PROBABLE |
-| 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | `0x186`, copied from `0x07F` at `0x0195D0`; only the recompute at `0x03C238` writes `0x07F` (§2.4) |
+| 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | `0x186`, copied from `0x07F` at `0x0195D0`; `0x07F` has several writers, not only `0x03C238` (§2.4) |
 | race | `0x072` — CONFIRMED | `0x02E` — CONFIRMED | `0x02E` — CONFIRMED | `0x058` — CONFIRMED (`HALF-ELF`, `DWARF`). `ELF` 0, `HALF-ELF` 1, `DWARF` 2, `GNOME` 3, `HALFLING` 4, `HUMAN` 5 — a **different table again** from the C64's (`goldbox/c64_port.py`) |
 | class | `0x073` — CONFIRMED | `0x02F` — CONFIRMED | `0x02F` — CONFIRMED | `0x059` — CONFIRMED (`THIEF`, `FIGHTER`); 0-based, 17 entries, singles first (§2.4) |
 | age | `0x074` u16 LE — CONFIRMED | `0x030` u16 LE — CONFIRMED | `0x030` u16 **BE** — CONFIRMED | `0x052` u16 **BE** — CONFIRMED (`21075 YEARS`) |
