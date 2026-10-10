@@ -24,7 +24,7 @@ from tests.amiga.test_amigaacceptance_title import (
     _read_slot,
     _slot,
 )
-from tools.amiga import acceptance, route_camp, route_pool
+from tools.amiga import acceptance, route_camp, route_darkness, route_pool
 from tools.amiga.winuaesession import RouteError
 
 clock = measure_clock  # the fixture that replaces the driver's time and sleep
@@ -107,3 +107,24 @@ def test_measure_drives_the_camp_steps_and_names_a_crop_for_each_state(tmp_path,
 def test_accept_still_stops_before_launch_for_an_item_row_without_a_rule(tmp_path, clock):
     with pytest.raises(RouteError, match=r"screen guard map lacks \['camp_items_row2'\]"):
         _run(tmp_path, clock, ("row 1 2",), RowlessGuard, accept=True)
+
+
+def test_the_loose_states_are_those_of_navigation_steps_only():
+    title = route_camp.camp_title(route_darkness.DARKNESS, ("items 1", "heal", "rest 5m"), 6,
+                                  name="darkness")
+    assert {"camp_items", "camp_sheet_items"} <= title.measure_loose
+    assert not {"rest_menu", "heal_whom", "camp_sheet_heal"} & title.measure_loose
+    assert route_camp.measure_blockers(("view", "rest 5m", "snapshot a")) == ["rest 5m"]
+
+
+@pytest.mark.parametrize("step", ["join 1 1", "ready 1 1", "use 1 1 S", "heal", "rest 5m"])
+def test_a_measure_run_stops_before_launch_for_a_step_that_changes_the_game(
+        tmp_path, clock, step):
+    with pytest.raises(RouteError, match="drives no camp step that changes the game"):
+        _run(tmp_path, clock, (step,), NeverMatchingList, accept=False)
+
+
+def test_a_title_whose_measure_route_ends_before_the_camp_save_keeps_none_of_the_steps():
+    bare = dataclasses.replace(route_pool.POOL, measure_route=route_pool.POOL.measure_route[:2])
+    title = route_camp.camp_title(bare, ("items 1",), 4, name="pool")
+    assert title.measure_route == bare.measure_route

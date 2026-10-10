@@ -912,6 +912,17 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
     return tuple(steps)
 
 
+#: The steps whose keys only move a highlight or open and leave a screen, so a measure run may
+#: press them on a screen no rule recognises.
+NAVIGATION_VERBS = frozenset({"view", "items", "row", "memorize", "cast", "display"})
+
+
+def measure_blockers(tokens: tuple[str, ...]) -> list[str]:
+    """The game steps among `tokens` that change game state, which a measure run cannot drive."""
+    game, _ = split_machine_steps(normalise(tokens))
+    return [t for t in game if t.split()[0] not in NAVIGATION_VERBS]
+
+
 def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PARTY_MAX, *,
                name: str) -> AmigaTitle:
     """`title`, the published route of title `name`, with the camp steps before its camp save.
@@ -921,7 +932,9 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     save's own strict picker still stops the run before any write. The states of
     an `items`, `join`, `ready` or `use` step are strict instead, the camp bar and each list JOIN
     redraws included, so every key of those steps goes out on a screen its guard
-    recognised. A kept slot letter the rest menu uses as a key (`A`, for a source
+    recognised. A measure run settles on a screen no rule matches only in the states of the
+    steps in `NAVIGATION_VERBS`, which press keys that change no game state; `measure_blockers`
+    names the steps a measure run cannot drive, and the route's measure copy still holds them. A kept slot letter the rest menu uses as a key (`A`, for a source
     loaded from slot D) becomes a simple key on the rest menu only.
     """
     validate_steps(tokens, party_size, name=name)
@@ -936,9 +949,13 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     added = steps_for(tokens, name, party_size)
     route[at:at] = added
     measured = list(title.measure_route)
+    # A measure run drives the same camp steps, so its crops of those screens can be cut. A
+    # measure copy that ends before the camp save keeps no camp steps; `run_recon` blocks a
+    # measure run that was asked for them.
     if CAMP_SAVE_STEP in measured:
-        # A measure run drives the same camp steps, so its crops of those screens can be cut.
         measured[measured.index(CAMP_SAVE_STEP):measured.index(CAMP_SAVE_STEP)] = added
+    loose_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in NAVIGATION_VERBS)
+    loose = {state for _, state, _ in steps_for(loose_tokens, name, party_size)}
     simple = tuple(dict.fromkeys(
         (*title.plain_keys,
          *((key, state) for key, state, _ in added if key in title.kept_letters))))
@@ -954,7 +971,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     return dataclasses.replace(
         title, route=tuple(route), measure_route=tuple(measured), plain_keys=simple,
         strict=frozenset(strict),
-        measure_loose=title.measure_loose | {state for _, state, _ in added},
+        measure_loose=title.measure_loose | loose,
         min_waits={**title.min_waits, **MIN_WAITS, **waits}, wait_limits=limits)
 
 

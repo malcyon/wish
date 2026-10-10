@@ -1954,6 +1954,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         raise RouteError("the Windows VM audio mute has not been verified")
     manifest_path = pathlib.Path(manifest_path)
     manifest = json.loads(manifest_path.read_text())
+    if measure and manifest.get("camp"):
+        blocked = route_camp.measure_blockers(tuple(manifest["camp"]))
+        if blocked:
+            raise RouteError(f"a measure run presses keys on unrecognised screens, so it drives "
+                             f"no camp step that changes the game: {', '.join(blocked)}")
     if published_disk_one:
         if published_name is None:
             raise RouteError("published disk-one mode needs its CLI title")
@@ -1990,6 +1995,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                              "published accept, or a Pools of Darkness or Pool of Radiance "
                              "accept, only")
         title = accept_title(title, manifest)
+    if measure and manifest.get("camp") and (
+            title is None or route_camp.CAMP_SAVE_STEP not in title.measure_route):
+        raise RouteError("this title's measure route ends before the camp save, so it "
+                         "cannot drive camp steps")
     if camp_in_place:
         # After the manifest checks above, which compare the title with the published route.
         if cli_title not in ("darkness", "darkness-reload") or title is None:
