@@ -7,7 +7,6 @@ name at column 4 with a star at column 3 for a member already in the party,
 from __future__ import annotations
 
 import json
-import pathlib
 
 import pytest
 
@@ -110,6 +109,50 @@ def test_an_add_the_game_does_not_star_fails_the_step(tmp_path, monkeypatch):
     log.close()
 
 
+def _add_run(tmp_path, monkeypatch, panel, after, selectable=True):
+    """An add of BRUTUS whose list star works and whose party menu afterwards
+    shows AFTER."""
+    screens = {"menu": _menu(panel), "list": _add_screen(_NAMES, _NAMES[:5]),
+               "taken": _add_screen(_NAMES, _NAMES), "back": _menu(after)}
+    moves = {("menu", ("row", A.ADD_ROW)): "list",
+             ("list", ("row", "BRUTUS")): "taken",
+             ("taken", ("row", "EXIT")): "back"}
+    sess = _RemoveSession(screens, moves, "menu", _fixture_disk(tmp_path))
+    if not selectable:
+        go = sess.select_row
+        sess.select_row = lambda label, timeout=0, column=None: (
+            False if label == "EXIT" else go(label, timeout, column))
+    run, log = _remove_run(tmp_path, monkeypatch, sess)
+    return run, log
+
+
+def test_an_add_the_panel_does_not_show_fails_the_step(tmp_path, monkeypatch):
+    run, log = _add_run(tmp_path, monkeypatch, _LEFT, _LEFT)
+    with pytest.raises(A.StepFailed, match="BRUTUS"):
+        run.add("BRUTUS")
+    log.close()
+    kept = [json.loads(line) for line in (tmp_path / "run.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    got = next(e for e in kept if e["kind"] == "add-not-taken")
+    assert got["starred"] and got["panel"] == _LEFT
+
+
+def test_a_same_named_member_already_listed_does_not_pass_for_the_add(
+        tmp_path, monkeypatch):
+    run, log = _add_run(tmp_path, monkeypatch, _LEFT + [_BRUTUS], _LEFT + [_BRUTUS])
+    with pytest.raises(A.StepFailed, match="once more"):
+        run.add("BRUTUS")
+    log.close()
+
+
+def test_add_fails_when_exit_cannot_be_chosen(tmp_path, monkeypatch):
+    run, log = _add_run(tmp_path, monkeypatch, _LEFT, _LEFT + [_BRUTUS],
+                        selectable=False)
+    with pytest.raises(A.StepFailed, match="EXIT could not be chosen"):
+        run.add("BRUTUS")
+    log.close()
+
+
 def test_a_run_with_remove_then_add_stays_on_the_menu_until_the_next_step(
         tmp_path, monkeypatch):
     calls = []
@@ -148,8 +191,8 @@ def test_a_run_with_remove_then_add_stays_on_the_menu_until_the_next_step(
                      "view BRUTUS"]
 
 
-def test_the_add_step_is_pool_only(tmp_path, monkeypatch):
+def test_the_add_step_is_pool_only(tmp_path, monkeypatch, capsys):
     _stopped_before_a_slot(tmp_path, monkeypatch, [
         "--title", "curse", "--save", str(_fixture_disk(tmp_path)),
-        "--disks", str(tmp_path), "--steps", "load", "remove 1", "add X"])
-    assert pathlib.Path(tmp_path).is_dir()
+        "--disks", str(tmp_path), "--steps", "load", "add X"])
+    assert "add" in capsys.readouterr().err

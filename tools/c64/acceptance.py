@@ -2757,6 +2757,8 @@ class PoolRun:
         """`ADD CHARACTER TO PARTY`, WHO, the star, `EXIT`, then the panel."""
         if not self.at_menu:
             raise self.fail("add", "add runs on the party menu, straight after load")
+        # A same-named member already in the panel must not pass for the add.
+        before = menu_panel(self.rows() or [""] * 25)
         if not self.sess.select_row(ADD_ROW, timeout=self.budget(30, ADD_ROW)):
             raise self.fail("add", f"{ADD_ROW} could not be chosen")
         rows = self.wait_rows(lambda r: add_list(r) is not None,
@@ -2791,9 +2793,13 @@ class PoolRun:
         panel = menu_panel(rows)
         got = {"who": who, "name": name, "listed": [list(e) for e in listed],
                "starred": starred, "panel": panel}
-        if not any(listed_name(row).upper() in wanted for row in panel):
+        def held(rows):
+            return sum(listed_name(row).upper() in wanted for row in rows)
+
+        if held(panel) != held(before) + 1:
             self.log.emit("add-not-taken", **got)
-            raise self.fail("add", f"the party panel does not list {name}: {panel}")
+            raise self.fail("add", f"the party panel does not list {name} once more "
+                                   f"than before: {panel}")
         return got
 
     # -- `--read-at`: stop at a PC, read memory, resume --------------------------
