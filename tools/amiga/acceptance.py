@@ -1970,8 +1970,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if title != expected_title:
             raise RouteError("the selected title route differs from the published disk 3 manifest")
         if "camp" in manifest:
-            if not accept:
-                raise RouteError("camp steps are driven on an accept run only")
+            if not (accept or measure):
+                raise RouteError("camp steps are driven on an accept or measure run only")
             title = accept_title(title, manifest)
     elif manifest.get("mode") == SUBSTITUTE_TITLE_MODE:
         expected_title = route_silver_blades.title_for_substitute(manifest)
@@ -1981,13 +1981,14 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 title.save_disk != expected_title.save_disk):
             raise RouteError("a substitute prepared as a title run needs its own title's route")
         if "camp" in manifest:
-            if not accept:
-                raise RouteError("camp steps are driven on an accept run only")
+            if not (accept or measure):
+                raise RouteError("camp steps are driven on an accept or measure run only")
             title = accept_title(title, manifest)
     elif "camp" in manifest:
-        if title is None or not accept or manifest.get("title") not in CAMP_TITLES:
-            raise RouteError("camp steps are driven on a published accept, or a Pools of "
-                             "Darkness or Pool of Radiance accept, only")
+        if title is None or not (accept or measure) or manifest.get("title") not in CAMP_TITLES:
+            raise RouteError("camp steps are driven on a measure of those titles, or on a "
+                             "published accept, or a Pools of Darkness or Pool of Radiance "
+                             "accept, only")
         title = accept_title(title, manifest)
     if camp_in_place:
         # After the manifest checks above, which compare the title with the published route.
@@ -3265,7 +3266,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 guarded = True
                 if title is not None:
                     try:
-                        digest = reach(state, name, min_waits.get(state, 0), strict=True)
+                        digest = reach(state, name, min_waits.get(state, 0),
+                                       strict=state not in title.measure_loose)
                     except GuardMissed as miss:
                         miss.resume_step, miss.resume_name = n, name
                         raise
@@ -3279,8 +3281,9 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 read_after(n, state, guarded)
                 if digest == previous:
                     result["events"].append({"unchanged": key, "step": n})
-                    changed = False
-                    break
+                    if title is None or state not in title.measure_loose:
+                        changed = False
+                        break
                 previous = digest
             result["route_changed"] = changed
             if changed:

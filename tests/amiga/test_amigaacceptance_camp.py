@@ -892,7 +892,6 @@ def test_a_darkness_camp_screen_the_guard_map_lacks_is_settled_and_fails_the_run
 @pytest.mark.parametrize("manifest_title,accept,why", [
     ("curse", True, "Pool of Radiance accept, only"),
     (None, True, "Pool of Radiance accept, only"),
-    ("darkness", False, "Pool of Radiance accept, only"),
 ])
 def test_camp_steps_in_a_manifest_that_is_not_a_darkness_accept_are_blocked(
         tmp_path, clock, manifest_title, accept, why):

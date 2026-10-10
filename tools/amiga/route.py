@@ -110,6 +110,8 @@ class AmigaTitle:
     state its own limit in seconds for a guarded wait, where the default is too short for the
     pages the game shows before that state. `edge_exits` maps `(area, walk facing)` to the area
     a step off that area's 16x16 map enters, for an exit that keeps the party's wrapped square and facing.
+    `measure_loose` names states a measure run settles on when their guard does not match, as it
+    would an unguarded one, though `strict` may name them for an accept run.
     `wilderness_grid` is the (columns, rows) of an overland map on which a slot that reads
     `in_dungeon` false steps in absolute directions and stops at the edge; None for a title with none.
     """
@@ -140,6 +142,7 @@ class AmigaTitle:
     wait_limits: Mapping[str, float] = dataclasses.field(default_factory=dict)
     edge_exits: Mapping[tuple[int, int], int] = dataclasses.field(default_factory=dict)
     wilderness_grid: tuple[int, int] | None = None
+    measure_loose: frozenset[str] = frozenset()
 
     @property
     def disk_keys(self) -> tuple[str, ...]:
