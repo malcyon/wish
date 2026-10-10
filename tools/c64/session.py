@@ -161,18 +161,26 @@ class EncounterGate(NamedTuple):
 
     `grade` is CONFIRMED (seen live against a control) or PROBABLE (read from
     the area script's bytecode only); `source` says where the gate was read.
-    Without a `guard`, `pokes` are save-page bytes, so a game save written
-    afterwards keeps them.  With one, they are bytes of the area script in
-    memory, which no save holds: `guard` is `(address, bytes)`, the script's
-    own bytes there, and the pokes are written only while memory matches them
-    (a poked byte may already hold its poke), so another script loaded at the
-    same address is never written.
+    Without `guards`, `pokes` are save-page bytes, so a game save written
+    afterwards keeps them.  With them, they are bytes of the area script in
+    memory, which no save holds: each guard is `(address, bytes)`, the
+    script's own bytes there, every poke lies inside one of them, and the
+    pokes are written only while memory matches every guard (a poked byte may
+    already hold its poke), so another script loaded at the same address is
+    never written.
     """
 
     grade: str
     source: str
     pokes: tuple[tuple[int, int], ...]
-    guard: tuple[int, bytes] | None = None
+    guards: tuple[tuple[int, bytes], ...] = ()
+
+    def guard_at(self, addr: int) -> tuple[int, bytes]:
+        """The guard holding ADDR; a poke outside every guard is a table error."""
+        for at, want in self.guards:
+            if at <= addr < at + len(want):
+                return at, want
+        raise ValueError(f"${addr:04X} lies outside every guard of this gate")
 
 
 class GateRestoreError(RuntimeError):
@@ -221,6 +229,23 @@ SILVER_BLADES_ROLLS = {
     0x41: (0x83ED, "08006301797f0301797f000319"),
     0x62: (0x82A3, "08006301797f0301797f000819"),
 }
+#: The Crevasses' castle gates (`ECL52`) roll in three places on an ordinary
+#: square, each 13 bytes from its `RANDOM #99` and patched the same way:
+#:
+#: * `$84B3`, `RANDOM #99, =[$4C06]`, `COMPARE [$4C06], #50`, `IF>`: the
+#:   treasure fight the step entry's head offers while `$4CBE` = 255 and
+#:   `$7ECA` = 1, until `$4CBD` passes 10.  With 99 its `GOTO` skips to the
+#:   square dispatch.
+#: * `$85B0`, `RANDOM #99, =[$7F79]`, `COMPARE [$4CBE], #0`, `IF=`: arm 0's
+#:   roll while the cooldown `$4C07` is 0.  Its later compares of `$7F79`
+#:   with 50, 10 or 20 all leave through `$8943` with 99.
+#: * `$86D5`, arm 0's 5% roll for the ten random events (two of them fights)
+#:   while `$4C07` counts down; with 99 its `IF>` leaves through `$8938`.
+SILVER_BLADES_CASTLE_GATE_ROLLS = (
+    (0x84B3, "08006301064c0301064c003219"),
+    (0x85B0, "08006301797f0301be4c000016"),
+    (0x86D5, "08006301797f0301797f000519"),
+)
 #: `SAVE`'s opcode, written over the roll's `RANDOM`.
 ECL_SAVE = 0x09
 
@@ -290,8 +315,23 @@ ENCOUNTER_GATES: dict[tuple[str, int], EncounterGate] = {
         "PROBABLE",
         f"ECL{area:02X}: the step entry's wandering roll at ${at:04X} becomes "
         "SAVE #99, which the following IF sends past the fight; bytecode only",
-        ((at, ECL_SAVE),), (at, bytes.fromhex(roll)))
+        ((at, ECL_SAVE),), ((at, bytes.fromhex(roll)),))
        for area, (at, roll) in SILVER_BLADES_ROLLS.items()},
+    (G.SECRET_OF_THE_SILVER_BLADES.key, 0x52): EncounterGate(
+        "PROBABLE",
+        "the Crevasses' castle gates ECL52: the three rolls in "
+        "SILVER_BLADES_CASTLE_GATE_ROLLS become SAVE #99, which sends each "
+        "past its fight; the fights on square kinds 50 and 51 ($8ECA) have "
+        "no roll and are not covered, and entry 3's rest fight is the rest "
+        "byte's; bytecode only",
+        tuple((at, ECL_SAVE) for at, _roll in SILVER_BLADES_CASTLE_GATE_ROLLS),
+        tuple((at, bytes.fromhex(roll))
+              for at, roll in SILVER_BLADES_CASTLE_GATE_ROLLS)),
+    (G.SECRET_OF_THE_SILVER_BLADES.key, 0x34): EncounterGate(
+        "PROBABLE", "the Temple of Tyr ECL34 has no RANDOM statement; its "
+        "ordinary squares (step arm 0, $9C5A) only EXIT and its four COMBATs "
+        "are fixed fights on other square kinds behind story variables; "
+        "bytecode only", ()),
     (G.SECRET_OF_THE_SILVER_BLADES.key, 0x44): EncounterGate(
         "PROBABLE", "ECL44 has no RANDOM statement; its arrival question is "
         "a once-only story event behind bit 0 of $4C9E; bytecode only", ()),
@@ -315,7 +355,7 @@ ENCOUNTER_GATES: dict[tuple[str, int], EncounterGate] = {
         + ("Live: a roll of 0, which started an encounter from the same "
            "generator state every time unpoked, walked on"
            if area == 0x1A else "Bytecode only"),
-        ((roll + POOL_TRAVEL_ROLL_ZERO, 0xFF),), (roll, POOL_TRAVEL_ROLL))
+        ((roll + POOL_TRAVEL_ROLL_ZERO, 0xFF),), ((roll, POOL_TRAVEL_ROLL),))
        for area, roll in POOL_TRAVEL_ROLLS.items()},
 }
 
@@ -2995,21 +3035,21 @@ class Session:
                 pokes: list[tuple[int, int, str | None, int | None]] = []
                 if self.no_encounters:
                     gate = ENCOUNTER_GATES.get((key, area))
-                    guard = None
-                    if gate is not None and gate.guard is not None:
-                        at, want = gate.guard
+                    for at, want in gate.guards if gate is not None else ():
                         found = bytes(mon.read(at, len(want)))
-                        if guard_holds(found, gate.guard, gate.pokes):
-                            guard = f"{at:04X}:{want.hex()}"
-                        else:
+                        if not guard_holds(found, (at, want), gate.pokes):
                             self.log(f"  encounters are not suppressed in area "
                                      f"${area:02X}: its script is not at "
                                      f"${at:04X} ({found.hex(' ')})")
                             gate = None
-                    pokes += ([(a, v, guard,
-                                None if guard is None
-                                else gate.guard[1][a - gate.guard[0]])
-                               for a, v in gate.pokes] if gate else [])
+                            break
+                    for a, v in gate.pokes if gate is not None else ():
+                        if gate.guards:
+                            at, want = gate.guard_at(a)
+                            pokes.append((a, v, f"{at:04X}:{want.hex()}",
+                                          want[a - at]))
+                        else:
+                            pokes.append((a, v, None, None))
                 if self.skip_world_map_ambushes and area == WORLD_MAP_AREA \
                         and key == G.CURSE_OF_THE_AZURE_BONDS.key:
                     pokes += [(a, v, None, None) for a, v in WORLD_MAP_AMBUSH_SKIPS]
@@ -3082,11 +3122,11 @@ class Session:
         whole and a byte equal to the poke belongs to the loaded script."""
         area = mon.read(self._title_entry(AREA_BYTE, "area byte").addr, 1)[0]
         gate = ENCOUNTER_GATES.get((self.game.key, area))
-        if area == gated_area or gate is None or gate.guard is None:
+        if area == gated_area or gate is None or not gate.guards:
             return False
-        at, want = gate.guard
-        return guard_holds(bytes(mon.read(at, len(want))), gate.guard,
-                           gate.pokes)
+        return all(guard_holds(bytes(mon.read(at, len(want))), (at, want),
+                               gate.pokes)
+                   for at, want in gate.guards)
 
     def restore_encounter_gates(self) -> list[dict]:
         """Turn `no_encounters` and `skip_world_map_ambushes` off, put back

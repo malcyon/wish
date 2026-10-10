@@ -482,7 +482,7 @@ def test_an_unidentified_script_holding_the_poked_byte_still_raises():
         s.restore_encounter_gates()
 
 
-@pytest.mark.parametrize("area", (0x44, 0x61))
+@pytest.mark.parametrize("area", (0x34, 0x44, 0x61))
 def test_silver_blades_areas_without_a_roll_are_known_and_write_nothing(area):
     s, _ = _silver(0x20)
     s.mem[S.AREA_BYTE[G.SECRET_OF_THE_SILVER_BLADES.key].addr] = area
@@ -542,3 +542,142 @@ def test_silver_blades_rollless_areas_have_no_wandering_roll():
     assert arm.op == ecllist.ONGOTO
     first = arm.operands[2][1]
     assert decode(machine, bodies["ECL61"], first - base).op == ecllist.EXIT
+
+
+def test_every_script_gate_poke_lies_inside_one_of_its_guards():
+    for key, gate in S.ENCOUNTER_GATES.items():
+        for addr, _value in gate.pokes if gate.guards else ():
+            at, want = gate.guard_at(addr)
+            assert at <= addr < at + len(want), key
+
+
+def _castle_gates(skip=None):
+    class T(Fake):
+        game = G.SECRET_OF_THE_SILVER_BLADES
+    s = T(0x52)
+    for n, (at, roll) in enumerate(S.SILVER_BLADES_CASTLE_GATE_ROLLS):
+        for i, b in enumerate(bytes(13) if n == skip else bytes.fromhex(roll)):
+            s.mem[at + i] = b
+    return s
+
+
+def test_the_castle_gates_three_rolls_become_save_and_are_put_back():
+    s = _castle_gates()
+    s.suppress_encounters()
+    rolls = [at for at, _roll in S.SILVER_BLADES_CASTLE_GATE_ROLLS]
+    assert pokes(s) == [(at, S.ECL_SAVE) for at in rolls]
+    rows = s.restore_encounter_gates()
+    assert [s.mem[at] for at in rolls] == [0x08] * 3
+    assert [r["action"] for r in rows] == ["restored"] * 3
+    assert all(r["verified"] for r in rows)
+    s._check_save_allowed()
+
+
+@pytest.mark.parametrize("skip", range(3))
+def test_the_castle_gates_write_nothing_unless_every_roll_is_there(skip):
+    s = _castle_gates(skip)
+    s.suppress_encounters()
+    assert pokes(s) == []
+    assert any("its script is not at" in line for line in s.lines)
+
+
+def _fight_reachable(ecllist, machine, base, body, start, stop, rolls):
+    """Whether a `SETUPMON` or `COMBAT` can run from START before an `EXIT` or
+    STOP.  A `RANDOM` at an address in ROLLS stores its limit, as the poked
+    `SAVE` does; every other `RANDOM` and every unwritten variable is
+    unknown, and an unknown condition is followed both ways."""
+    from tools.areas.eclsweep import DESTINATIONS, decode
+    fights = {0x0C, ecllist.COMBAT}
+    seen = set()
+    todo = [(start - base, (), None)]
+    while todo:
+        at, known, latch = todo.pop()
+        if (at, known, latch) in seen or base + at == stop:
+            continue
+        seen.add((at, known, latch))
+        st = decode(machine, body, at)
+        if st.op in fights:
+            return True
+        values = dict(known)
+
+        def value(kind, operand):
+            return operand if kind in (0x00, 0x02) else values.get(operand)
+
+        nxt = [st.end]
+        if st.op == 0x08:
+            (_k, top), (_k2, dest) = st.operands
+            values.pop(dest, None)
+            if base + at in rolls:
+                values[dest] = top
+        elif st.op == S.ECL_SAVE:
+            (kind, operand), (_k2, dest) = st.operands
+            stored = value(kind, operand)
+            values.pop(dest, None)
+            if stored is not None:
+                values[dest] = stored
+        else:
+            for n in DESTINATIONS.get(st.op, ()):
+                values.pop(st.operands[n][1], None)
+        if st.op == ecllist.COMPARE:
+            latch = tuple(value(*operand) for operand in st.operands)
+        elif st.op in ecllist.TESTS:
+            skipped = decode(machine, body, st.end).end
+            if latch is None or None in latch:
+                nxt = [st.end, skipped]
+            else:
+                nxt = [st.end if ecllist.TESTS[st.op](*latch) else skipped]
+        else:
+            latch = None
+        if st.op in (ecllist.GOTO, ecllist.GOSUB):
+            nxt = [st.address(0) - base] + ([st.end] if st.op == ecllist.GOSUB
+                                            else [])
+        elif st.op in (ecllist.ONGOTO, ecllist.ONGOSUB):
+            nxt = [st.address(n) - base for n in range(2, len(st.operands))]
+        elif st.op in ecllist.NO_FALLTHROUGH:
+            nxt = []
+        known = tuple(sorted(values.items()))
+        todo.extend((n, known, latch) for n in nxt)
+    return False
+
+
+def test_the_castle_gates_guards_are_the_script_and_every_roll_is_needed():
+    ecllist, machine, base, bodies = _silver_scripts()
+    body = bodies["ECL52"]
+    gate = S.ENCOUNTER_GATES[(G.SECRET_OF_THE_SILVER_BLADES.key, 0x52)]
+    rolls = [at for at, _value in gate.pokes]
+    assert len(gate.guards) == 3
+    for at, want in gate.guards:
+        assert body[at - base:at - base + len(want)] == want
+    assert gate.pokes == tuple((at, S.ECL_SAVE) for at, _want in gate.guards)
+    # The step entry's head, up to its square dispatch, and arm 0 of that
+    # dispatch: the ordinary squares.
+    head = (0x846A, 0x84F3)
+    arm0 = (0x8598, None)
+    reach = lambda where, poked: _fight_reachable(  # noqa: E731
+        ecllist, machine, base, body, *where, set(poked))
+    assert not reach(head, rolls) and not reach(arm0, rolls)
+    assert reach(head, rolls[1:])
+    assert reach(arm0, [rolls[0], rolls[2]])
+    assert reach(arm0, rolls[:2])
+
+
+def test_the_temple_of_tyr_has_no_wandering_roll():
+    ecllist, machine, base, bodies = _silver_scripts()
+    from tools.areas.eclsweep import decode
+    gate = S.ENCOUNTER_GATES[(G.SECRET_OF_THE_SILVER_BLADES.key, 0x34)]
+    assert gate.pokes == () and gate.guards == ()
+    ops = []
+    off, body = 0, bodies["ECL34"]
+    while (st := decode(machine, body, off)) is not None and off < len(body):
+        ops.append(st.op)
+        off = st.end
+    assert 0x08 not in ops and off == len(body)
+    arm = decode(machine, body, decode(machine, body, 4).address(0) - base)
+    dispatch = decode(machine, body, arm.end)
+    assert dispatch.op == ecllist.ONGOTO
+    ordinary, off = [], dispatch.address(2) - base
+    while not ordinary or ordinary[-1] not in ecllist.NO_FALLTHROUGH:
+        st = decode(machine, body, off)
+        ordinary.append(st.op)
+        off = st.end
+    assert ordinary == [S.ECL_SAVE, S.ECL_SAVE, ecllist.EXIT]
