@@ -12,6 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap import actions as engine  # noqa: E402
 from automap import amigatrip  # noqa: E402
+from automap.amigafasttravel import AmigaFastTravel, _Hop  # noqa: E402
 from tools.amiga import fasttravelrun as ftr  # noqa: E402
 from tools.amiga import tripprobe  # noqa: E402
 
@@ -574,6 +575,19 @@ def test_an_area_read_inside_continue_pending_is_recorded(world):
 
     world.area = 13
     assert world.drive(Inside(polls=4))["areas_seen"] == [13, 27, 0]
+
+
+def test_the_wrapper_records_the_area_the_real_continue_pending_reads(monkeypatch):
+    target = object()
+    monkeypatch.setattr(amigatrip, "ROWS", {"pool-of-radiance": ROW})
+    monkeypatch.setattr(amigatrip, "area_id", lambda t, row: 9)
+    travel = AmigaFastTravel("pool-of-radiance", None)
+    travel._repaired = target
+    travel.pending = _Hop(7, 5, SimpleNamespace(id=1, name="Far place"), None, b"")
+    seen = []
+    with ftr._watching_area(seen.append):
+        travel.continue_pending(target)
+    assert seen == [9]
 
 
 def test_a_trip_that_never_leaves_sees_one_area(world):
