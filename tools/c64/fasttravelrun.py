@@ -38,6 +38,12 @@ presses RETURN, and only on a `PRESS ...` message: the move sub-bar
 on a bar offering it (`YES NO`, at most `ANSWERS_PER_TRIP` times a trip).
 Given several times, each word answers one question in order, only when it is
 on the bar, and a question met with none left fails the run.
+`--answer-in AREA:WORD` (repeatable, one word per area) selects WORD on every
+question bar offering it while the cache-slot and came-from bytes both read
+AREA, before any `--answer` word and without using one, at most
+`AREA_ANSWERS_PER_LEG` times a leg: Silver Blades' New Verdigris asks whether
+to leave town (`ECL10` entry 0, `YES NO`) when a party arrives on its gate
+square 3,0, and `16:NO` keeps the party there where `YES` takes it to The Ruins.
 A "cannot act right now" answer from `legality` or `apply` is retried every
 `BUSY_SECONDS`, at most `BUSY_TRIES` times; the bar's "the game was busy"
 message every `BAR_BUSY_SECONDS`, at most `BAR_BUSY_TRIES` times.
@@ -45,7 +51,8 @@ message every `BAR_BUSY_SECONDS`, at most `BAR_BUSY_TRIES` times.
 as `saved.D64`. `--step-after` turns before it steps when the party stands where
 the forward key leaves the area. Both wait for the world bar first, answering a question the arrival
 drew (an `--answer` word on the bar, RETURN on a `PRESS` message), and fail without stepping or saving
-when it never comes back.
+when it never comes back. Indoors the step waits for the world bar again the same way, so a
+question the step drew is answered before the next leg, and the leg fails when it never comes back.
 
 `--through-bar` runs each leg through the Fast Travel row the window builds for
 the title (offscreen), picks the destination in its dropdown, presses its
@@ -98,6 +105,8 @@ BAR_BUSY_TRIES = 30
 CONNECT_TRIES = 5
 #: Times one leg answers a bar with `--answer`.
 ANSWERS_PER_TRIP = 4
+#: Times one leg answers a bar with `--answer-in` before the leg is given up.
+AREA_ANSWERS_PER_LEG = 6
 #: Seconds the game takes to draw an arrival, before the last screenshot.
 SETTLE_SECONDS = 3.0
 #: Every Nth screen look also takes a screenshot.
@@ -332,6 +341,20 @@ def parse_stage(text: str) -> tuple[int, int, int]:
     return parsed
 
 
+def parse_area_answers(texts: list[str]) -> dict[int, str]:
+    """`AREA:WORD` items (AREA decimal) as {area: WORD}; one word per area."""
+    answers: dict[int, str] = {}
+    for text in texts:
+        found = re.fullmatch(r"(\d+):([A-Za-z]+)", text.strip())
+        if found is None:
+            raise DriverError(f"--answer-in {text!r} is not AREA:WORD")
+        area, word = int(found[1]), found[2].upper()
+        if answers.get(area, word) != word:
+            raise DriverError(f"--answer-in gives area {area} two words, {answers[area]} and {word}")
+        answers[area] = word
+    return answers
+
+
 def fasttravel_addresses(game):
     found = fasttravel.addresses_for(game)
     if found is None:
@@ -356,8 +379,12 @@ class Driver:
                  stages: list[tuple[int, int, int]] | None = None,
                  party_reader: Callable[[object, object], object] | None = None,
                  no_encounters: bool = False, gates: dict | None = None,
-                 step_after: bool = False):
+                 step_after: bool = False, area_answers: dict[int, str] | None = None):
         self.no_encounters = no_encounters
+        #: `--answer-in`: the word answering any question bar in an area, by area id.
+        self.area_answers = dict(area_answers or {})
+        #: Bars answered from `area_answers` in this leg.
+        self.area_answered = 0
         self.step_after = step_after
         #: `ENCOUNTER_GATES`, or None to take it from `tools/c64/session.py`.
         self.gates = gates
@@ -397,11 +424,40 @@ class Driver:
     def row24(self, screen) -> str:
         return screen.row(24).strip() if screen is not None else ""
 
-    def service(self, answer: str | None, answered: int) -> tuple[str | None, str]:
+    def here(self, now: dict | None = None) -> int | None:
+        """The area the party is in (NOW, or read): both bytes agree, else None."""
+        if now is None:
+            with self.target() as target:
+                now = reading(target, self.addresses)
+        area = now["came_from"] & 0x7F
+        return area if now["slot"] & 0x7F == area else None
+
+    def answer_in_area(self, row: str, now: dict | None) -> bool:
+        """Select the `--answer-in` word of the area the party is in, when row 24 is a question offering it."""
+        words = row.split()
+        if not self.area_answers or not self.question_bar(words):
+            return False
+        area = self.here(now)
+        word = self.area_answers.get(area)
+        if word is None or word not in words:
+            return False
+        if self.area_answered >= AREA_ANSWERS_PER_LEG:
+            raise DriverError(f"area {area} asked ({row}) more than {AREA_ANSWERS_PER_LEG} times "
+                              f"in one leg; --answer-in {area}:{word} does not end it")
+        self.sess.select_bar(word, timeout=15)
+        self.area_answered += 1
+        self._unanswered = ("", 0)
+        self.log("area-answer", area=area, word=word, row24=row)
+        return True
+
+    def service(self, answer: str | None, answered: int,
+                now: dict | None = None) -> tuple[str | None, str]:
         """Deal with whatever the game is asking; returns (what was done, row 24).
 
         The order is the point: a disk prompt is answered by `handle_prompt`
-        and RETURN is never pressed on one, whatever else the row says.
+        and RETURN is never pressed on one, whatever else the row says. An
+        `--answer-in` word comes before `--answer`; NOW is the poll's reading
+        of the area bytes, read here when None and needed.
         """
         screen = self.sess.screen()
         row = self.row24(screen)
@@ -413,6 +469,8 @@ class Driver:
             return None, row
         if MOVE_SUBBAR in row:
             return None, row
+        if self.answer_in_area(row, now):
+            return "answer", row
         if isinstance(answer, (list, tuple)):
             words = row.split()
             if self.answers_used < len(answer):
@@ -487,6 +545,7 @@ class Driver:
             raise DriverError(f"{dest_id} is not an area of {self.game.title}")
         summary = {"dest": dest_id, "result": "not_legal", "questions": 0,
                    "areas_seen": []}
+        self.area_answered = 0
         self.note_state(tag, "before")
         self.stage(leg, tag)
         self.hold_encounters(tag)
@@ -616,6 +675,10 @@ class Driver:
             raise DriverError(f"leg {tag}: the step left area {area_before & 0x7F} for {area_after & 0x7F}")
         if encounter:
             raise DriverError(f"leg {tag}: an encounter is under way after the step")
+        if not grid:
+            row = self._clear_to_world_bar(self.answer)
+            if row is not None:
+                raise DriverError(f"leg {tag}: the world bar never came back after the step ({row})")
 
     @staticmethod
     def encounter_menu(screen) -> bool:
@@ -720,7 +783,7 @@ class Driver:
             self.follow_encounters(tag, now)
             if self.clock() >= next_look:
                 next_look = self.clock() + SCREEN_SECONDS
-                done, row = self.service(self.answer, summary["questions"])
+                done, row = self.service(self.answer, summary["questions"], now)
                 if done == "answer":
                     summary["questions"] += 1
                 if done:
@@ -903,6 +966,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--answer", action="append", metavar="WORD",
                         help="a bar word to select when the game asks, e.g. YES; given more than once "
                              "each word answers one question, in order, and a further question fails the run")
+    parser.add_argument("--answer-in", action="append", default=[], metavar="AREA:WORD",
+                        help="select WORD on every question bar offering it while the party is in "
+                             "AREA (decimal id), before any --answer word; repeatable, one per area")
     parser.add_argument("--then-save", action="store_true",
                         help="after every leg arrived, make camp and save the game, and keep the "
                              "disk as saved.D64 in --out")
@@ -928,8 +994,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         peeks = [parse_peek(text) for text in args.peek]
         stages = [parse_stage(text) for text in args.stage]
+        area_answers = parse_area_answers(args.answer_in)
     except DriverError as exc:
         parser.error(str(exc))
+    for area in area_answers:
+        if engine.area_by_id(area, game.title) is None:
+            parser.error(f"--answer-in {area} is not an area of {game.title}")
     for leg, _, _ in stages:
         if leg >= len(args.to):
             parser.error(f"--stage names leg {leg} but there are {len(args.to)} legs")
@@ -960,7 +1030,7 @@ def main(argv: list[str] | None = None) -> int:
                                     action, out, log, answer=answer,
                                     budget=args.budget, game=game, peeks=peeks,
                                     stages=stages, no_encounters=args.no_encounters,
-                                    step_after=args.step_after)
+                                    step_after=args.step_after, area_answers=area_answers)
                     driver.shot("0-start")
                     driver.run(args.to)
                     driver.shot("final")

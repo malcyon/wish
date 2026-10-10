@@ -226,7 +226,7 @@ class Party:
 
 def build(screen_at=lambda t: Screen("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"), area_at=None, script_at=None, answer=None,
           budget=60.0, connect=None, party_at=lambda t: None, game=None, peeks=None,
-          stages=None, **ft_kw):
+          stages=None, area_answers=None, **ft_kw):
     clock = Clock()
     memory = Memory(clock, area_at or (lambda t: 7 if t < 1 else 18),
                     script_at or (lambda t: 7 if t < 1 else 18))
@@ -236,7 +236,8 @@ def build(screen_at=lambda t: Screen("MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"), 
     log = ftr.Log(stream, clock)
     drv = ftr.Driver(sess, connect or (lambda: memory), ft, _OUT["dir"], log, answer=answer,
                      sleep=clock.sleep, clock=clock, budget=budget, game=game, peeks=peeks,
-                     stages=stages, party_reader=lambda target, game: party_at(clock.now))
+                     stages=stages, party_reader=lambda target, game: party_at(clock.now),
+                     area_answers=area_answers)
     return drv, sess, ft, memory, clock, stream
 
 
@@ -1175,3 +1176,119 @@ def test_a_step_that_changes_the_area_stops_the_run_and_is_logged():
         drv.step("t", 18)
     (left,) = [e for e in events(stream) if e["event"] == "left-area"]
     assert left["was"] == 18 and left["now"] == 27
+
+
+def _gate_question(after_step=False):
+    """New Verdigris' leave-town question (`ECL10` entry 0): `YES NO` on arrival, or once the
+    party has pressed a key, until NO is selected; the world bar after that, and before the arrival."""
+    live = {}
+
+    def screen_at(t):
+        sess = live["sess"]
+        arrived = any(e["event"] == "arrival-check" for e in events(live["stream"]))
+        asked = sess.pressed if after_step else arrived
+        if "NO" in sess.bars or not asked:
+            return Screen(WORLD if arrived else "")
+        return Screen("YES NO")
+    return screen_at, live
+
+
+def test_the_gate_question_is_answered_with_the_areas_word_before_the_step():
+    screen_at, live = _gate_question()
+    drv, sess, _ft, _mem, _clock, stream = build(
+        screen_at=screen_at, answer=["YES"], area_answers={18: "NO"})
+    live.update(sess=sess, stream=stream)
+    drv.step_after = True
+    results = drv.run([18])
+    assert results[0]["result"] == "arrived"
+    assert sess.bars == ["NO"] and drv.answers_used == 0
+    (answered,) = [e for e in events(stream) if e["event"] == "area-answer"]
+    assert answered["area"] == 18 and answered["word"] == "NO"
+    kinds = [e["event"] for e in events(stream)]
+    assert kinds.index("area-answer") < kinds.index("step")
+    assert sess.pressed[:1] == ("I",)
+
+
+def test_without_an_area_word_the_gate_question_still_stops_the_leg():
+    screen_at, live = _gate_question()
+    drv, sess, _ft, _mem, _clock, stream = build(screen_at=screen_at)
+    live.update(sess=sess, stream=stream)
+    drv.step_after = True
+    with pytest.raises(ftr.DriverError, match=r"world bar never came back after arrival \(YES NO\)"):
+        drv.run([18])
+    assert sess.pressed == ()
+
+
+def test_an_area_word_answers_only_in_its_own_area():
+    # Area 7 before t=1, then 18; in transit the cache slot is the destination while
+    # the came-from byte is still the area left.
+    drv, sess, _ft, _mem, clock, _stream = build(
+        screen_at=lambda t: Screen("YES NO"), area_answers={18: "NO"},
+        area_at=lambda t: 7 if t < 1 else 18, script_at=lambda t: 7 if t < 2 else 18)
+    for now in (0.0, 1.5):
+        clock.now = now
+        assert drv.service(None, 0) == (None, "YES NO")
+    assert sess.bars == []
+    clock.now = 3.0
+    assert drv.service(None, 0) == ("answer", "YES NO")
+    assert sess.bars == ["NO"]
+
+
+def test_an_area_word_leaves_a_message_and_a_bar_without_it_alone():
+    for row in ("THERE IS NO WAY OUT", "ATTACK TALK LEAVE"):
+        drv, sess, *_ = build(screen_at=lambda t, row=row: Screen(row), area_answers={18: "NO"},
+                              area_at=lambda t: 18, script_at=lambda t: 18)
+        drv.service(None, 0)
+        assert sess.bars == []
+
+
+def test_a_question_the_step_draws_is_answered_before_the_leg_ends():
+    screen_at, live = _gate_question(after_step=True)
+    drv, sess, _ft, _mem, _clock, stream = build(screen_at=screen_at, area_answers={18: "NO"})
+    live.update(sess=sess, stream=stream)
+    drv.step_after = True
+    sess.moves_on = ("I",)
+    results = drv.run([18])
+    assert results[0]["result"] == "arrived" and sess.bars == ["NO"]
+    kinds = [e["event"] for e in events(stream)]
+    assert kinds.index("step") < kinds.index("area-answer") < kinds.index("areas-seen")
+
+
+def test_a_question_the_step_draws_with_no_answer_stops_the_leg():
+    screen_at, live = _gate_question(after_step=True)
+    drv, sess, _ft, _mem, _clock, stream = build(screen_at=screen_at)
+    live.update(sess=sess, stream=stream)
+    drv.step_after = True
+    sess.moves_on = ("I",)
+    with pytest.raises(ftr.DriverError, match=r"never came back after the step \(YES NO\)"):
+        drv.run([18])
+
+
+def test_area_answers_are_bounded_in_a_leg_and_counted_afresh_in_the_next():
+    drv, sess, *_ = build(screen_at=lambda t: Screen("YES NO"), area_answers={18: "NO"},
+                          area_at=lambda t: 18, script_at=lambda t: 18)
+    for _ in range(ftr.AREA_ANSWERS_PER_LEG):
+        drv.service(None, 0)
+    with pytest.raises(ftr.DriverError, match="more than 6 times"):
+        drv.service(None, 0)
+    assert sess.bars == ["NO"] * ftr.AREA_ANSWERS_PER_LEG
+    with pytest.raises(ftr.DriverError, match="more than 6 times"):
+        drv.trip(7, "t")
+    assert sess.bars == ["NO"] * (2 * ftr.AREA_ANSWERS_PER_LEG)
+
+
+def test_answer_in_parses_one_word_per_area():
+    assert ftr.parse_area_answers(["16:no", "16:NO", "82:YES"]) == {16: "NO", 82: "YES"}
+    for bad in (["16"], ["NO:16"], ["16:NO", "16:YES"]):
+        with pytest.raises(ftr.DriverError):
+            ftr.parse_area_answers(bad)
+
+
+def test_answer_in_for_an_area_the_title_lacks_is_a_usage_error(capsys):
+    for value, message in (("9999:NO", "--answer-in 9999 is not an area of"),
+                           ("16-NO", "--answer-in '16-NO' is not AREA:WORD")):
+        with pytest.raises(SystemExit) as exc:
+            ftr.main(["--title", "secret-of-the-silver-blades", "--save", "x.D64",
+                      "--to", "16", "--answer-in", value])
+        assert exc.value.code == 2
+        assert message in capsys.readouterr().err
