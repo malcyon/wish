@@ -1,0 +1,3 @@
+d {{ agent_guest_test_runner_lock_dir }} 0755 root root -
+f {{ agent_guest_test_runner_lock_dir }}/execution.lock 0600 {{ ansible_user_id }} {{ ansible_user_id }} -
+f {{ agent_guest_test_runner_lock_dir }}/control.lock 0600 {{ ansible_user_id }} {{ ansible_user_id }} -

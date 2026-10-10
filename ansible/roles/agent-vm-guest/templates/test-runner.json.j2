@@ -1,0 +1,12 @@
+{{ {
+  'schema_version': 1,
+  'enabled': true,
+  'uid': ansible_user_uid | int,
+  'slice': agent_guest_test_runner_slice,
+  'service': agent_guest_test_runner_service,
+  'execution_lock': agent_guest_test_runner_lock_dir ~ '/execution.lock',
+  'control_lock': agent_guest_test_runner_lock_dir ~ '/control.lock',
+  'state_dir': agent_guest_test_runner_state_dir,
+  'memory_max_bytes': agent_guest_test_runner_memory_max_bytes | int,
+  'allowed_environment': agent_guest_test_runner_allowed_environment
+} | to_nice_json }}

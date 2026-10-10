@@ -1,0 +1,180 @@
+---
+- name: Require the shared agent account and systemd
+  ansible.builtin.assert:
+    that:
+      - ansible_user_uid | int > 0
+      - ansible_service_mgr == 'systemd'
+    fail_msg: The managed test runner needs the agent account and systemd.
+
+- name: Read the agent user manager's delegated controllers
+  ansible.builtin.command:
+    argv:
+      - cat
+      - "/sys/fs/cgroup/user.slice/user-{{ ansible_user_uid }}.slice/user@{{ ansible_user_uid }}.service/cgroup.subtree_control"
+  register: agent_guest_test_runner_controllers
+  changed_when: false
+  check_mode: false
+
+- name: Require delegated memory control
+  ansible.builtin.assert:
+    that: "'memory' in agent_guest_test_runner_controllers.stdout.split()"
+    fail_msg: The agent user manager does not have delegated memory control.
+
+- name: Create the persistent request directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: '0700'
+  loop:
+    - "{{ ansible_user_dir }}/.local/state/wish"
+    - "{{ agent_guest_test_runner_state_dir }}"
+
+- name: Create the policy and user-unit directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/wish
+    - /etc/systemd/user
+    - /etc/tmpfiles.d
+
+- name: Install the test slice
+  become: true
+  ansible.builtin.template:
+    src: wish-tests.slice.j2
+    dest: "/etc/systemd/user/{{ agent_guest_test_runner_slice }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install the stable-lock boot rule
+  become: true
+  ansible.builtin.template:
+    src: wish-tests-tmpfiles.conf.j2
+    dest: /etc/tmpfiles.d/wish-tests.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create the stable-lock directory now
+  become: true
+  ansible.builtin.file:
+    path: "{{ agent_guest_test_runner_lock_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create stable lock inodes without replacing existing locks
+  become: true
+  ansible.builtin.copy:
+    content: ''
+    dest: "{{ agent_guest_test_runner_lock_dir }}/{{ item }}.lock"
+    force: false
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: '0600'
+  loop:
+    - execution
+    - control
+
+- name: Enforce lock ownership and permissions without replacing inodes
+  become: true
+  ansible.builtin.file:
+    path: "{{ agent_guest_test_runner_lock_dir }}/{{ item }}.lock"
+    state: file
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    mode: '0600'
+  loop:
+    - execution
+    - control
+  when: not ansible_check_mode
+
+- name: Reload the agent's user manager
+  ansible.builtin.systemd_service:
+    scope: user
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
+  when: not ansible_check_mode
+
+- name: Start the empty test slice
+  ansible.builtin.systemd_service:
+    scope: user
+    name: "{{ agent_guest_test_runner_slice }}"
+    state: started
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
+  when: not ansible_check_mode
+
+- name: Read the active test slice's memory limit
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - show
+      - "{{ agent_guest_test_runner_slice }}"
+      - --property=MemoryMax
+      - --property=MemorySwapMax
+      - --property=ControlGroup
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_user_uid }}"
+  register: agent_guest_test_runner_slice_properties
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Confirm the active test slice's memory limits
+  ansible.builtin.assert:
+    that:
+      - "'MemoryMax=' ~ (agent_guest_test_runner_memory_max_bytes | string) in agent_guest_test_runner_slice_properties.stdout_lines"
+      - "'MemorySwapMax=0' in agent_guest_test_runner_slice_properties.stdout_lines"
+    fail_msg: The test slice did not take its expected memory limits.
+  when: not ansible_check_mode
+
+- name: Read the test slice cgroup's effective memory limit
+  ansible.builtin.command:
+    argv:
+      - cat
+      - "/sys/fs/cgroup{{ (agent_guest_test_runner_slice_properties.stdout_lines | select('match', '^ControlGroup=') | first).split('=', 1)[1] }}/memory.max"
+  register: agent_guest_test_runner_cgroup_memory_max
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Confirm the cgroup took the configured memory limit
+  ansible.builtin.assert:
+    that: agent_guest_test_runner_cgroup_memory_max.stdout | int == agent_guest_test_runner_memory_max_bytes | int
+    fail_msg: The test slice cgroup does not have its configured memory limit.
+  when: not ansible_check_mode
+
+- name: Install the enabled test-runner policy after verifying the slice
+  become: true
+  ansible.builtin.template:
+    src: test-runner.json.j2
+    dest: "{{ agent_guest_test_runner_policy }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Read the installed test-runner policy
+  become: true
+  ansible.builtin.slurp:
+    src: "{{ agent_guest_test_runner_policy }}"
+  register: agent_guest_test_runner_installed_policy
+  when: not ansible_check_mode
+
+- name: Confirm the installed policy agrees with the cgroup
+  ansible.builtin.assert:
+    that:
+      - (agent_guest_test_runner_installed_policy.content | b64decode | from_json).enabled
+      - >-
+        (agent_guest_test_runner_installed_policy.content | b64decode | from_json).memory_max_bytes | int
+        == agent_guest_test_runner_cgroup_memory_max.stdout | int
+    fail_msg: The installed test-runner policy and cgroup disagree.
+  when: not ansible_check_mode
