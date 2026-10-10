@@ -553,6 +553,27 @@ _LOAD_RECOMPUTE_FROM_PORTS = ("DOS",)
 RING_POWER = 0x81
 
 
+def effective_class_levels(class_levels: Sequence[int],
+                           former_class_levels: Sequence[int],
+                           former_level: int, race: int) -> tuple[int, ...]:
+    """Each slot's level as both builders ask for it: the higher of the current
+    and the former level, the former counting only once the class is regained.
+    Runs :func:`goldbox.amiga_pod_recompute.pod_effective_level` over a record
+    holding just the four inputs, so the rule has one copy."""
+    from goldbox import amiga_pod_recompute
+
+    rec = bytearray(max(FORMER_CLASS_LEVELS, CLASS_LEVELS, RACE) + 0x20)
+    rec[RACE] = race
+    rec[FORMER_LEVEL] = min(int(former_level), 0xFF)
+    for slot in range(CLASS_LEVEL_COUNT):
+        if slot < len(class_levels):
+            rec[CLASS_LEVELS + slot] = int(class_levels[slot])
+        if slot < len(former_class_levels):
+            rec[FORMER_CLASS_LEVELS + slot] = int(former_class_levels[slot])
+    return tuple(amiga_pod_recompute.pod_effective_level(rec, slot)
+                 for slot in range(CLASS_LEVEL_COUNT))
+
+
 def engine_spell_slots(class_levels: Sequence[int], abilities: Sequence[int],
                        items: Sequence[bytes]) -> dict[str, tuple[int, ...]]:
     """The three spell-slot arrays a character holds once its rings are readied.
@@ -3401,7 +3422,10 @@ def write_pod(char: NeutralCharacter) -> tuple[PodWriter, Report]:
             class_mask |= CLASS_BIT[class_name]
     in_force = tuple(num(k) for k in ABILITY_KEYS)
     if castable is not None and char.port in _SPELL_SLOT_RECOMPUTE_FROM_PORTS:
-        castable = engine_spell_slots(tuple(slots), in_force, carried)
+        castable = engine_spell_slots(
+            effective_class_levels(slots, former_slots or (), former_level or 0,
+                                   RACES.index(race_name)),
+            in_force, carried)
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),

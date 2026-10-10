@@ -1857,10 +1857,11 @@ def _dos_rebuilt_slots(record: PodSheetRecord) -> dict[str, bytes]:
     items whatever the file stores."""
     from goldbox.items import Item
 
-    levels = [0] * amiga_pod.CLASS_LEVEL_COUNT
-    for index, name in ((0, "level_cleric"), (3, "level_paladin"),
-                        (4, "level_ranger"), (5, "level_magic_user")):
-        levels[index] = int(record.get(name))
+    held = record.get_raw("class_levels")
+    former = record.get_raw("former_class_levels")
+    levels = amiga_pod.effective_class_levels(
+        held, former, record.get_raw("former_level")[0],
+        record.get_raw("race")[0])
     abilities = [int(record.get(key)) for key in
                  ("strength", "intelligence", "wisdom")]
     built = amiga_pod.dos_rebuilt_spell_slots(

@@ -1478,7 +1478,7 @@ def test_the_level_drain_marks_and_the_training_flag_are_written_and_read():
 # --- the spell-slot arrays a DOS source gets ----------------------------------
 
 def _dos_mage(level=28, intelligence=18, wisdom=18, stored=None, power=None,
-              readied=1):
+              readied=1, former_cleric=0, left_at=0):
     """A made-up DOS magic-user with ten fifth-level spells memorised and,
     when `power` is given, one item of that power byte."""
     f = dos_port.FIELDS_BY_NAME_FOR[POD.key]
@@ -1488,6 +1488,8 @@ def _dos_mage(level=28, intelligence=18, wisdom=18, stored=None, power=None,
     raw[f["race"].offset] = 5
     raw[f["class_levels"].offset + 5] = level
     raw[f["class_bits"].offset] = 1
+    raw[f["former_class_levels"].offset] = former_cleric
+    raw[f["former_level"].offset] = left_at
     for name, value in (("intelligence", intelligence), ("wisdom", wisdom)):
         raw[f[name].offset:f[name].offset + 2] = bytes((value, value))
     at = f["spells_castable_magic_user"].offset
@@ -1593,19 +1595,27 @@ def test_every_shipped_pc_holds_the_slots_the_amiga_builder_gives():
         assert dict(char.spells_castable) == want, name
 
 
-def test_every_dos_record_but_the_pregenerated_two_converts_to_builder_slots():
+def test_every_dos_record_converts_to_the_slots_its_own_load_builds():
     seen = 0
     for path in dos_records():
         out = dos_codec.to_neutral(dos_codec.read_character(path))
-        if out.get("name") in ("ABAGAIL", "PAINE"):
-            continue
+        stored = out.get("spells_castable")
         pc, _ = amiga_pod.to_pc(out)
         back = amiga_pod.PodCharacter.from_bytes(pc)
-        want = amiga_pod.engine_spell_slots(
-            back.class_levels, back.abilities, [n.raw for n in back.items])
-        assert dict(back.spells_castable) == want, path.name
+        assert dict(back.spells_castable) == {
+            k: tuple(v) for k, v in stored.items()}, path.name
         seen += 1
     assert seen >= 10
+
+
+def test_a_former_class_gives_no_slots_until_it_is_regained():
+    def cleric(level, left_at):
+        pc, _ = amiga_pod.to_pc(_dos_mage(
+            level=level, former_cleric=11, left_at=left_at))
+        return dict(amiga_pod.PodCharacter.from_bytes(pc).spells_castable)[
+            "cleric"]
+    assert not any(cleric(9, 11))
+    assert any(cleric(12, 11))
 
 
 # --- the THAC0 and saves the DOS load rebuilds --------------------------------
