@@ -1804,8 +1804,11 @@ def test_the_village_walls_load_after_the_area_file_save():
 
 
 @pytest.mark.parametrize("to", [0x34, 0x52])
-def test_only_the_village_and_the_wall_areas_have_an_arrival_epilogue(to):
+def test_areas_without_pins_or_walls_have_no_arrival_epilogue(to):
     assert trip.arrival_epilogue(SILVER, to) == b""
+
+
+def test_the_village_arrival_epilogue_is_twenty_five_bytes():
     assert len(trip.arrival_epilogue(SILVER, 0x51)) == 25
 
 
@@ -1830,6 +1833,14 @@ def test_a_silver_blades_trip_into_area_51_sets_all_three_pins():
     assert epilogue == (trip.save(1, 0x4BE7) + trip.save(1, 0x4BE8)
                         + trip.save(0, 0x4BE9))
     assert len(epilogue) == 18
+
+
+def _saves_4be9(code: bytes) -> bool:
+    """Whether `code` holds a whole `SAVE value, [$4BE9]` statement."""
+    whole = trip.save(0, 0x4BE9)
+    return any(code[i] == whole[0] and code[i + 1] == whole[1]
+               and code[i + 3:i + 6] == whole[3:]
+               for i in range(len(code) - len(whole) + 1))
 
 
 def test_every_two_piece_wall_area_missing_a_piece_clears_the_third_pin():
@@ -1866,7 +1877,7 @@ def test_every_two_piece_wall_area_missing_a_piece_clears_the_third_pin():
                 second = operands[1]
                 if (op != trip.LOADPIECES or second in (127, 255)
                         or second in ids
-                        or trip.save(0, 0x4BE9)[3:] in body[:at]):
+                        or _saves_4be9(body[:at])):
                     continue
                 checked.add(area)
                 assert trip.save(0, 0x4BE9) in trip.arrival_epilogue(
