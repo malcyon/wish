@@ -3184,7 +3184,8 @@ Two things the whole set agrees on and neither probe was aimed at:
   second half of **base/current pairs**, and the sheet draws the current one.
   §1.5 saw that for the abilities; it is the record's general pattern.
 * **THAC0 never moved.** Every window from `0x030` to `0x0B5` left it reading
-  `4`. §2.4 explains it: THAC0 is derived and the record's copy is ignored.
+  `4`. §2.4 explains where the sheet takes it from: `0x186` is copied from
+  `0x07F`, and only the recompute at `0x03C238` writes `0x07F`.
 
 **R1's seven level values were the clue nobody read.** With `0x07E`–`0x0C7`
 ramped the sheet printed **seven** numbers on the level line where R2 printed
@@ -3257,7 +3258,8 @@ to 1234 and the sheet drew `233`, which is its 200 platinum plus 11 gems plus
 22 jewelry. It set the second movement byte to 99 and the sheet drew `12`, the
 base. P3 wrote base armour class 10 with a dexterity of 15 and the sheet drew
 `ARMOR CLASS 9`; it wrote damage `1d6+2` with a strength of 18 and the sheet
-drew `1D6+4`. THAC0 was computed from the class levels and never from the record. The
+drew `1D6+4`. THAC0 reached the sheet through `0x186`, copied from `0x07F`, which only the
+recompute at `0x03C238` writes. The
 character-sheet routine reads all of these from `0x186`–`0x192`, and the loader
 fills that block itself:
 
@@ -3427,7 +3429,7 @@ that is mostly empty, and filling it is the project.
 | abilities ×6 | `0x014` singles — CONFIRMED | `0x010` singles — CONFIRMED | `0x010` singles — CONFIRMED | `0x070`, **base/current pairs** — CONFIRMED |
 | exceptional strength | `0x01A` — CONFIRMED | `0x016` — CONFIRMED | `0x016` — CONFIRMED | `0x07C`, pair — CONFIRMED |
 | second ability block | `0x065`, 7 — CONFIRMED | — | — | folded into the pairs — PROBABLE |
-| 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | `0x186`, and **derived on load** from the class levels — the record's copy is ignored (§2.4) |
+| 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | `0x186`, copied from `0x07F` at `0x0195D0`; only the recompute at `0x03C238` writes `0x07F` (§2.4) |
 | race | `0x072` — CONFIRMED | `0x02E` — CONFIRMED | `0x02E` — CONFIRMED | `0x058` — CONFIRMED (`HALF-ELF`, `DWARF`). `ELF` 0, `HALF-ELF` 1, `DWARF` 2, `GNOME` 3, `HALFLING` 4, `HUMAN` 5 — a **different table again** from the C64's (`goldbox/c64_port.py`) |
 | class | `0x073` — CONFIRMED | `0x02F` — CONFIRMED | `0x02F` — CONFIRMED | `0x059` — CONFIRMED (`THIEF`, `FIGHTER`); 0-based, 17 entries, singles first (§2.4) |
 | age | `0x074` u16 LE — CONFIRMED | `0x030` u16 LE — CONFIRMED | `0x030` u16 **BE** — CONFIRMED | `0x052` u16 **BE** — CONFIRMED (`21075 YEARS`) |
