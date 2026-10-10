@@ -333,6 +333,19 @@ def test_silver_blades_sheet_family_and_camp_sheet_items_list_each_other():
     assert 'camp_sheet_items_2' in identity['camp_sheet_2']['also']
 
 
+@pytest.mark.parametrize('title', ['pool', 'curse', 'ssb', 'darkness'])
+def test_states_that_share_one_picture_list_each_other(title):
+    """Two states whose rules are the same picture cannot be told apart, so a crop named for either matches both."""
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, title)
+    for kind in ('guards', 'identity'):
+        rules = [(state, json.dumps([rule['box'], rule['sha256'], rule.get('and', [])]), set(rule['also']))
+                 for state, value in spec[kind].items() for rule in _rules(value)]
+        for state, picture, also in rules:
+            for other, other_picture, _ in rules:
+                if other != state and other_picture == picture:
+                    assert other in also, (kind, state, other)
+
+
 def _interstitial_screens(title):
     from tools.amiga import route_silver_blades
     from tools.amiga.route_curse import CURSE

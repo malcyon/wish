@@ -900,7 +900,9 @@
       "sha256": "dcf7b49dce41cae070cb4090df821d725eda803a3b7ab7e66b591c2963eb5925"
     },
     "elminster_menu": {
-      "also": [],
+      "also": [
+        "elminster_row"
+      ],
       "box": [
         58,
         402,
@@ -2219,6 +2221,18 @@
     "WISH-2/r9-l4/b1/shots/13-world.png": [
       "place_x11_y4_f2",
       "world"
+    ],
+    "WISH-2/thac0-live-control/control2/shots/12-world.png": [
+      "place_x4_y7_f1_w22_5"
+    ],
+    "WISH-2/thac0-live-control/control2/shots/13-world.png": [
+      "place_x4_y7_f0_w22_4"
+    ],
+    "WISH-2/thac0-live-fixed/fixed/shots/12-world.png": [
+      "place_x4_y7_f1_w22_5"
+    ],
+    "WISH-2/thac0-live-fixed/fixed/shots/13-world.png": [
+      "place_x4_y7_f0_w22_4"
     ],
     "WISH-2/train-measure/measure1/shots/14-elminster.png": [
       "elminster_menu"
