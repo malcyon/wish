@@ -415,10 +415,22 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
                                 "differing_unnamed_saved_offsets": [i for i in
                                     (0x2f, 0x3b, 0x3e) if
                                     len({first[i], second[i], saved_tail[i - 0x2e]}) > 1]})
+    if not all_payloads_match:
+        status = "payload_mismatch"
+    elif bundle:
+        status = "bundle_inventory_incomplete"
+    elif any(row["differing_offsets"] for row in differences):
+        status = "captured_metadata_differs"
+    else:
+        status = "captured_heads_equal"
     return {"items": differences, "all_payloads_match_f": all_payloads_match,
-            "bundle_inventory_incomplete": bundle,
-            "full_match": all_payloads_match and not bundle
-            and all(not row["differing_offsets"] for row in differences)}
+             "bundle_inventory_incomplete": bundle,
+             "full_match": all_payloads_match and not bundle
+             and all(not row["differing_offsets"] for row in differences),
+             "evidence_status": status,
+             "provenance": "receipt_artifact_consistency_only",
+             "independently_authenticated": False,
+             "preservation_established": False}
 
 
 def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None) -> dict:
@@ -1097,7 +1109,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"darknessreturn: {exc}", file=sys.stderr)
         return 2
     print(json.dumps({"success": True, "receipt": str(args.out / f"{args.phase}-receipt.json"),
-                      "checks": result["checks"]}, indent=2, sort_keys=True))
+                      "checks": result["checks"],
+                      "item_comparison_status": result["item_comparison"]["evidence_status"]},
+                     indent=2, sort_keys=True))
     return 0
 
 

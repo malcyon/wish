@@ -7,6 +7,7 @@ import json
 import os
 import pathlib
 import struct
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -374,6 +375,49 @@ def test_comparison_classifies_display_and_relocated_links_without_losing_saved_
     assert report["items"][0]["link_offsets"] == [0x2c]
     assert not report["items"][0]["payload_offsets"]
     assert "raw_hex" not in json.dumps(report)
+    assert report["evidence_status"] == "captured_metadata_differs"
+    assert report["provenance"] == "receipt_artifact_consistency_only"
+    assert report["independently_authenticated"] is False
+    assert report["preservation_established"] is False
+
+
+def test_coordinated_capture_receipt_hashes_and_f_still_do_not_prove_preservation(tmp_path):
+    root, entries, readings, disk = _comparison_fixture(tmp_path)
+    saved = bytearray(disk.read_file("F"))
+    at = amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_RECORD_BYTES + 1
+    saved[at] ^= 1
+    for phase in range(2):
+        path = root / f"{phase}.json"
+        artifact = json.loads(path.read_text())
+        record = artifact["items"][0]
+        raw = bytearray.fromhex(record["raw_hex"])
+        raw[0x2f] ^= 1
+        record["raw_hex"] = raw.hex()
+        record["sha256"] = hashlib.sha256(raw).hexdigest()
+        record["tail20_sha256"] = hashlib.sha256(raw[0x2e:0x42]).hexdigest()
+        readings[phase]["party"][0]["items"][0] = record["sha256"]
+        path.write_text(json.dumps(artifact))
+        entries[phase]["file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1],
+                                   SimpleNamespace(read_file=lambda name: bytes(saved)), root)
+    assert report["all_payloads_match_f"] and not report["bundle_inventory_incomplete"]
+    assert report["evidence_status"] == "captured_metadata_differs"
+    assert report["provenance"] == "receipt_artifact_consistency_only"
+    assert report["independently_authenticated"] is False
+    assert report["preservation_established"] is False
+
+
+def test_equal_capture_heads_remain_unauthenticated_and_unproved(tmp_path):
+    root, entries, readings, disk = _comparison_fixture(tmp_path)
+    first = (root / "0.json").read_bytes()
+    (root / "1.json").write_bytes(first)
+    entries[1]["file_sha256"] = entries[0]["file_sha256"]
+    readings[1] = readings[0]
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert report["full_match"] and report["evidence_status"] == "captured_heads_equal"
+    assert report["provenance"] == "receipt_artifact_consistency_only"
+    assert report["independently_authenticated"] is False
+    assert report["preservation_established"] is False
 
 
 @pytest.mark.parametrize("damage", ["missing", "short", "hash", "identity", "link"])
@@ -421,12 +465,56 @@ def test_saved_payload_difference_never_matches_f(tmp_path, offset):
     report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
     assert not report["all_payloads_match_f"] and not report["full_match"]
     assert offset in report["items"][0]["payload_offsets"]
+    assert report["evidence_status"] == "payload_mismatch"
+    assert report["preservation_established"] is False
 
 
 def test_bundle_head_never_claims_complete_inventory(tmp_path):
     root, entries, readings, disk = _comparison_fixture(tmp_path, bundle=True)
     report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
     assert report["bundle_inventory_incomplete"] and not report["full_match"]
+    assert report["evidence_status"] == "bundle_inventory_incomplete"
+    assert report["preservation_established"] is False
+
+
+def test_payload_mismatch_takes_reporting_priority_over_incomplete_bundle(tmp_path):
+    root, entries, readings, disk = _comparison_fixture(tmp_path, bundle=True)
+    saved = bytearray(disk.read_file("F"))
+    saved[amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_RECORD_BYTES + 1] ^= 1
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1],
+                                   SimpleNamespace(read_file=lambda name: bytes(saved)), root)
+    assert report["bundle_inventory_incomplete"] is True
+    assert report["all_payloads_match_f"] is False
+    assert report["evidence_status"] == "payload_mismatch"
+
+
+@pytest.mark.parametrize("phase", ["p2", "reload"])
+@pytest.mark.parametrize("status", ["payload_mismatch", "bundle_inventory_incomplete"])
+def test_main_reports_item_status_without_changing_route_success(
+        tmp_path, monkeypatch, capsys, phase, status):
+    root, entries, readings, disk = _comparison_fixture(tmp_path, bundle=(
+        status == "bundle_inventory_incomplete"))
+    if status == "payload_mismatch":
+        saved = bytearray(disk.read_file("F"))
+        saved[amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_RECORD_BYTES + 1] ^= 1
+        disk = SimpleNamespace(read_file=lambda name: bytes(saved))
+    comparison = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1],
+                                       disk, root)
+    assert comparison["evidence_status"] == status
+    assert comparison["preservation_established"] is False
+    receipt = {"checks": {"load": True}, "item_comparison": comparison}
+    monkeypatch.setattr(driver, "terminating", nullcontext)
+    monkeypatch.setattr(driver, "run_p2", lambda *args: receipt)
+    monkeypatch.setattr(driver, "run_reload", lambda *args: receipt)
+    argv = [phase, "--run-id", "synthetic", "--holder", "synthetic",
+            "--audio-proof", str(tmp_path / "audio"), "--out", str(tmp_path),
+            "--budget", "1000"]
+    argv.extend(["--previous-return-attempts", "2"] if phase == "p2"
+                else ["--receipt", str(tmp_path / "prior")])
+    assert driver.main(argv) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["success"] is True and output["checks"] == receipt["checks"]
+    assert output["item_comparison_status"] == status
 
 
 def test_capture_write_failure_retains_no_published_file(tmp_path, monkeypatch):
