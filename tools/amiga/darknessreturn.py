@@ -25,11 +25,14 @@ from tools.amiga import (  # noqa: E402
     fasttravelrun,
     guardmaps,
     noencounters,
+    route_camp,
     route_darkness,
+    screens,
 )
-from tools.amiga.screens import PixelGuards  # noqa: E402
+from tools.amiga.screens import PixelGuards, rules_of  # noqa: E402
 from tools.amiga.staging import sha256  # noqa: E402
 from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 SOURCE = pathlib.Path.home() / ".cache/wish/acceptance/WISH-338/prep/disk3.adf"
 SOURCE_HASH = "113be1f13e96648e2cd17bebfb2b4f5f6d32a88a7eb2b4ca6f49b74e906f9d80"
@@ -44,6 +47,30 @@ TITLE = "pools-of-darkness"
 MAX_EXPERIMENT_SECONDS = 3600
 SAVE_LETTER = "F"
 EXPECTED_START = (22, 4)
+
+# This contract applies to one registered source, never to P2's TURBO K party.
+BUNDLE_SPECIMEN = "wish2-w4d-case-used-disk3"
+BUNDLE_IMAGE_SHA256 = "bf0dba2bb2f66981c6ae80e6aaf7c7dbb358fc0cbaaec0db61cc69a0910fcb1c"
+BUNDLE_SOURCE_F_SHA256 = "4f95c1e81158fcceed47f7497e8301dae8f98327bfa082808b9031960a5b48cd"
+BUNDLE_NAMES = ("TROND AAGE L", "YVONNE", "MARIT", "INA", "HILDE", "RENATE", "STORM")
+BUNDLE_HEADS = (16, 12, 6, 8, 10, 6, 6)
+BUNDLE_PLACE = {"area": 5, "x": 3, "y": 10, "facing": 3}
+BUNDLE_EXEC_SHA256 = "6f8fee2dd8ea035b156cb0eb1c1d16e9172aa450a4f2b9e54e6d0018cf65c4d4"
+BUNDLE_CONFIG_SHA256 = "f8c66a210efc8fbcec4eaa0cac50f6354964a6d7818418b0e8113a7010605ca2"
+BUNDLE_PREPARED_SHA256 = "55d4a3fa960ec96884b5e9f9e9265124dee480d2015ccc84dcdf461eebe076de"
+BUNDLE_MANIFEST_SHA256 = "5b28297f1432ebced6812be75f516ade3a9f221f36a8bdee46a79e2ccf4e77fe"
+BUNDLE_CURRENT_RULES_SHA256 = "0c89dcb51801da5cfa74811ece873cb0d104da5e1fcc04e9c9b42fdac62e9409"
+# Exact source-specific selectors established on retained W4D frames, not generic alternatives.
+BUNDLE_GUARD_VARIANTS = {"title": 0, "party_menu": 0, "load_from": 0,
+                         "load_picker": 0, "disk2_prompt": 0, "loaded_menu": 1,
+                         "sheet": 2, "save_picker": 1, "journal": 1,
+                         "journal_answer": 0, "world": 2, "camp": 2,
+                         "camp_sheet_items_5": 1, "camp_items_5": 0,
+                         "camp_items_5_row3": 0, "camp_save_picker": 2,
+                         "exit_game": 2}
+BUNDLE_IDENTITY_VARIANTS = {"loaded_menu": 6, "sheet": 6,
+                            "camp_sheet_items_5": 1, "camp_items_5": 1}
+BUNDLE_IDENTITY_STATES = tuple(BUNDLE_IDENTITY_VARIANTS)
 
 
 def _require(condition: bool, reason: str) -> None:
@@ -405,13 +432,69 @@ def _bundle_nodes(target: amiga.AmigaTarget, members: tuple) -> dict:
     return {"coverage": "complete", "nodes": result}
 
 
+def _source_members(members: tuple) -> None:
+    _require(members is not None and len(members) == 7 and
+             tuple((m.slot, m.name, len(m.item_nodes)) for m in members) ==
+             tuple((i, name, count) for i, (name, count) in enumerate(zip(
+                 BUNDLE_NAMES, BUNDLE_HEADS, strict=True))),
+             "bundle_source_identity: seven ordered members or 64 head counts differ")
+    cases = [(m.slot, i, node) for m in members for i, node in enumerate(m.item_nodes)
+             if len(node.raw) == 0x42 and node.raw[0x2e] == 0x49]
+    _require(len(cases) == 1 and cases[0][:2] == (4, 2) and cases[0][2].raw[0x3a] == 4,
+             "bundle_source_identity: HILDE's third head is not the sole four-child case")
+
+
+def _source_recheck(target: amiga.AmigaTarget, members: tuple,
+                    regions: tuple[tuple[int, int], ...], located: tuple,
+                    reading: dict) -> None:
+    _require(_measured_regions(target) == regions,
+             "bundle_source_stale: measured regions changed")
+    _require(callable(getattr(target, "locate", None)),
+             "bundle_source_stale: machine cannot be located again")
+    target.locate(memory=regions)
+    _require((target.anchor_base, target.data_base, tuple(target.memory)) == located,
+             "bundle_source_stale: located build or memory ranges changed")
+    fresh = amigaparty.read_party(target)
+    _source_members(fresh)
+    _require(tuple((m.slot, m.name, m.hp, m.hp_max, m.address,
+                    hashlib.sha256(m.raw).hexdigest(),
+                    [hashlib.sha256(raw).hexdigest() for _, raw in m.items()],
+                    [hashlib.sha256(raw).hexdigest() for _, raw in m.effects()])
+                   for m in fresh) ==
+             tuple((m["slot"], m["name"], m["hp"], m["hp_max"],
+                    m["record_address"], m["record_sha256"], m["items"], m["effects"])
+                   for m in reading["party"]),
+             "bundle_source_stale: member record, chain or effects changed")
+    _require(tuple((m.slot, m.name, m.hp, m.hp_max,
+                    tuple((n.address, n.raw) for n in m.item_nodes),
+                    tuple(m.effects())) for m in fresh) ==
+             tuple((m.slot, m.name, m.hp, m.hp_max,
+                    tuple((n.address, n.raw) for n in m.item_nodes),
+                    tuple(m.effects())) for m in members),
+             "bundle_source_stale: member list, head or effects changed")
+
+
 def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict,
-                   target: amiga.AmigaTarget | None = None) -> dict:
+                    target: amiga.AmigaTarget | None = None, *, source: bool = False) -> dict:
     """Keep exact live nodes private and verify them against this read's hashes."""
-    _require(bool(members) and members[0].name == "TURBO K" and members[0].slot == 0,
-             "the capture's first member is not TURBO K in slot 0")
-    nodes = members[0].item_nodes
-    _require(len(nodes) > 4, "the capture is missing first-member items 3 or 4")
+    if source:
+        _source_members(members)
+        _require(target is not None, "bundle_source_identity: measured memory target is missing")
+        regions = _measured_regions(target)
+        located = (target.anchor_base, target.data_base, tuple(target.memory))
+        for member, summary in zip(members, reading["party"], strict=True):
+            _require(len(member.raw) == amiga_savegame.POD_RECORD_BYTES
+                     and any(base <= member.address
+                             and member.address + len(member.raw) <= base + size
+                             for base, size in regions),
+                     "bundle_source_range: member record is outside measured memory")
+            summary["record_address"] = member.address
+            summary["record_sha256"] = hashlib.sha256(member.raw).hexdigest()
+    else:
+        _require(bool(members) and members[0].name == "TURBO K" and members[0].slot == 0,
+                 "the capture's first member is not TURBO K in slot 0")
+        nodes = members[0].item_nodes
+        _require(len(nodes) > 4, "the capture is missing first-member items 3 or 4")
     saved = []
     _require(len(members) == len(reading["party"]), "the live member count changed during capture")
     for member, summary in zip(members, reading["party"]):
@@ -429,15 +512,29 @@ def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict,
                           "sha256": digest,
                           "tail20_sha256": hashlib.sha256(node.raw[0x2e:0x42]).hexdigest()})
     bundle = (_bundle_nodes(target, members) if target is not None else
-              {"coverage": "legacy", "nodes": []})
+               {"coverage": "legacy", "nodes": []})
+    if source:
+        _require(bundle["coverage"] == "complete" and len(bundle["nodes"]) == 1
+                 and (bundle["nodes"][0]["slot"], bundle["nodes"][0]["chain_index"]) == (4, 2)
+                 and len(bundle["nodes"][0]["children"]) == 4,
+                 "bundle_source_capture: 64 heads and four children are required")
+        _source_recheck(target, members, regions, located, reading)
     payload = (json.dumps({"items": saved, "bundle": bundle}, indent=2, sort_keys=True) + "\n").encode()
     temp = path.with_name(path.name + ".tmp")
     try:
         with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as file:
             file.write(payload)
+        if source:
+            _require(os.name == "posix" and temp.stat().st_uid == os.getuid()
+                     and stat.S_IMODE(temp.stat().st_mode) == 0o600,
+                     "bundle_source_privacy: private node file has wrong owner or mode")
         temp.replace(path)
         _require(hashlib.sha256(path.read_bytes()).hexdigest() == hashlib.sha256(payload).hexdigest(),
                  "the private node file did not read back")
+        if source:
+            _require(path.stat().st_uid == os.getuid()
+                     and stat.S_IMODE(path.stat().st_mode) == 0o600,
+                     "bundle_source_privacy: published node file has wrong owner or mode")
     finally:
         temp.unlink(missing_ok=True)
     return {"file_sha256": hashlib.sha256(payload).hexdigest(),
@@ -654,19 +751,23 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
              "preservation_established": False}
 
 
-def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None) -> dict:
-    row = amigatrip.row_for(TITLE)
+def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None,
+               source: bool = False) -> dict:
+    row = None if source else amigatrip.row_for(TITLE)
     members = amigaparty.read_party(target)
-    reading = {"trip": fasttravelrun._reading(target, row),
-            "variables": [v.as_log() for v in amigavars.read_variables(
-                target, TITLE, (0x25, 0x26, 0x34, 0x35, 0x129, 0xC1, 0xBF))],
-            "party": None if members is None else [
+    reading = {"party": None if members is None else [
                 {"name": m.name, "slot": m.slot, "hp": m.hp, "hp_max": m.hp_max,
-                 "items": [hashlib.sha256(node).hexdigest() for _, node in m.items()],
-                 "effects": [hashlib.sha256(node).hexdigest() for _, node in m.effects()]}
-                 for m in members]}
+                  "items": [hashlib.sha256(node).hexdigest() for _, node in m.items()],
+                  "effects": [hashlib.sha256(node).hexdigest() for _, node in m.effects()]}
+                  for m in members]}
+    if not source:
+        reading = {"trip": fasttravelrun._reading(target, row),
+                   "variables": [v.as_log() for v in amigavars.read_variables(
+                       target, TITLE, (0x25, 0x26, 0x34, 0x35, 0x129, 0xC1, 0xBF))],
+                   **reading}
     if capture is not None:
-        reading["capture"] = _capture_nodes(capture, members, reading, target)
+        reading["capture"] = _capture_nodes(capture, members, reading, target, source=True) if source else (
+            _capture_nodes(capture, members, reading, target))
     return reading
 
 
@@ -710,6 +811,317 @@ def _checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, checkpoint: 
             "screen": run.events[-1]["screen"]},
     })
     return reading
+
+
+def _source_slot(disk: amiga_adf.AmigaDisk, letter: str, expected: str) -> tuple[bytes, Any]:
+    try:
+        data = amiga_savegame.pod_read_slot(disk, letter)
+        parsed = amiga_savegame.pod_parse(data)
+    except (amiga_savegame.AmigaSaveError, amiga_savegame.PodSaveError) as exc:
+        raise RouteError(f"bundle_source_{letter.lower()}: saved slot does not decode: {exc}") from exc
+    _require(hashlib.sha256(data).hexdigest() == expected,
+             f"bundle_source_{letter.lower()}: slot digest differs")
+    _require(tuple(c.name.strip() for c in parsed.characters) == BUNDLE_NAMES
+             and tuple(c.items for c in parsed.characters) == BUNDLE_HEADS
+             and tuple(c.bundled for c in parsed.characters) == (0, 0, 0, 0, 4, 0, 0),
+             f"bundle_source_{letter.lower()}: party or inventory count differs")
+    cases = []
+    for member, block in enumerate(parsed.characters):
+        at = block.at + amiga_savegame.POD_RECORD_BYTES
+        end = block.at + block.size - block.effects * amiga_savegame.POD_EFFECT_BYTES
+        for index in range(block.items):
+            head = data[at:at + 20]
+            _require(len(head) == 20 and at + 20 <= end,
+                     "bundle_source_saved: short head or item/effect boundary")
+            at += 20
+            if head[0] == 0x49:
+                quantity = head[0x0c]
+                children = tuple(data[at + 20 * n:at + 20 * (n + 1)]
+                                 for n in range(quantity))
+                _require(len(children) == quantity and all(len(child) == 20 for child in children)
+                         and at + 20 * quantity <= end,
+                         "bundle_source_saved: child crosses the effect boundary")
+                cases.append((member, index, quantity, children))
+                at += 20 * quantity
+        _require(at == end, "bundle_source_saved: item cursor does not meet effect boundary")
+    _require(len(cases) == 1 and cases[0][:3] == (4, 2, 4)
+             and len(set(cases[0][3])) == 4
+             and all(child[0] == 39 for child in cases[0][3]),
+             "bundle_source_saved: HILDE's four distinct ordered children are missing")
+    return data, parsed
+
+
+def _source_contract(manifest_path: pathlib.Path, manifest: dict) -> tuple[pathlib.Path, str]:
+    """Verify the registered F and the independently prepared, unoccupied working B."""
+    entry = specimens._one_entry(BUNDLE_SPECIMEN, specimens.tree_root())
+    source = pathlib.Path(entry["_provenance"]).parent / "fetched-disk3.adf"
+    _require(entry["sha256"].get(source.name) == BUNDLE_IMAGE_SHA256
+             and sha256(source) == BUNDLE_IMAGE_SHA256,
+             "bundle_source_image: registered image digest differs")
+    original = amiga_adf.AmigaDisk.open(source)
+    _require(not original.verify(), "bundle_source_image: ADF verification failed")
+    _source_slot(original, "F", BUNDLE_SOURCE_F_SHA256)
+    _require(route_darkness.DARKNESS.read_slot(original, "F").get("place") == BUNDLE_PLACE,
+             "bundle_source_image: selected F saved place differs")
+    _require(manifest_path.is_file() and sha256(manifest_path) == BUNDLE_MANIFEST_SHA256
+             and manifest.get("title") == "darkness"
+             and manifest.get("loaded_letter") == "B"
+             and manifest.get("names_a") == list(BUNDLE_NAMES)
+             and manifest.get("state_a") == BUNDLE_PLACE
+             and manifest.get("substitute") == {"path": str(source),
+                                                "sha256": BUNDLE_IMAGE_SHA256, "letter": "F"},
+             "bundle_source_manifest: prepared B is not the pinned seven-member F")
+    for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                     ("disk2", route_darkness.DARKNESS_DISK2_SHA256)):
+        row = manifest["disks"][key]
+        _require(pathlib.Path(row["path"]).stat().st_uid == os.getuid()
+                 and stat.S_IMODE(pathlib.Path(row["path"]).stat().st_mode) == 0o600,
+                 f"bundle_source_privacy: {key} is not owner/0600")
+        _require(row["sha256"] == pin and sha256(pathlib.Path(row["path"])) == pin,
+                 f"bundle_source_manifest: {key} differs from its original pin")
+    disk1 = amiga_adf.AmigaDisk.open(manifest["disks"]["disk1"]["path"])
+    _require(hashlib.sha256(disk1.read_file("/Pools of Darkness")).hexdigest() ==
+             BUNDLE_EXEC_SHA256, "bundle_source_manifest: executable differs")
+    _require(sha256(pathlib.Path(__file__).with_name("goldbox-a500.uae")) ==
+             BUNDLE_CONFIG_SHA256, "bundle_source_manifest: boot configuration differs")
+    working = manifest["disks"]["disk3"]
+    _require(pathlib.Path(working["path"]).stat().st_uid == os.getuid()
+             and stat.S_IMODE(pathlib.Path(working["path"]).stat().st_mode) == 0o600,
+             "bundle_source_privacy: working disk 3 is not owner/0600")
+    disk_hash = sha256(pathlib.Path(working["path"]))
+    _require(working["sha256"] == disk_hash == BUNDLE_PREPARED_SHA256,
+             "bundle_source_manifest: prepared image digest differs or is original media")
+    disk = amiga_adf.AmigaDisk.open(working["path"])
+    _require(not disk.verify() and not ({"F", "G"} & set(route_darkness.DARKNESS.slot_letters(disk))),
+             "bundle_source_manifest: prepared ADF is damaged or F/G is occupied")
+    b, _ = _source_slot(disk, "B", BUNDLE_SOURCE_F_SHA256)
+    _require(b == amiga_savegame.pod_read_slot(original, "F")
+             and route_darkness.DARKNESS.read_slot(disk, "B").get("place") == BUNDLE_PLACE,
+             "bundle_source_manifest: prepared B differs from selected F")
+    return source, disk_hash
+
+
+def _source_controls(path: pathlib.Path, manifest_path: pathlib.Path, disk_hash: str
+                     ) -> tuple[PixelGuards, PixelGuards, dict]:
+    """Require an offline preparer's explicitly selected current-reader screen rules."""
+    validated = json.loads(path.read_text())
+    _require(path.resolve().is_relative_to(manifest_path.parent.resolve())
+             and path.stat().st_uid == os.getuid()
+             and stat.S_IMODE(path.stat().st_mode) == 0o600,
+             "bundle_source_privacy: source controls are not private to this run")
+    _require(validated.get("source_image_sha256") == BUNDLE_IMAGE_SHA256
+             and validated.get("source_f_sha256") == BUNDLE_SOURCE_F_SHA256
+             and validated.get("prepared_disk3_sha256") == disk_hash == BUNDLE_PREPARED_SHA256
+             and validated.get("manifest_sha256") == sha256(manifest_path) == BUNDLE_MANIFEST_SHA256
+             and validated.get("current_rules_sha256") == BUNDLE_CURRENT_RULES_SHA256
+             and validated.get("screen_reader_sha256") == sha256(pathlib.Path(screens.__file__))
+             and validated.get("executable_sha256") == BUNDLE_EXEC_SHA256
+             and validated.get("config_sha256") == BUNDLE_CONFIG_SHA256,
+             "bundle_source_controls: offline preparation or current reader differs")
+    current_path = pathlib.Path(guardmaps.__file__).with_name("guards_darkness.json")
+    _require(sha256(current_path) == BUNDLE_CURRENT_RULES_SHA256,
+             "bundle_source_controls: current rule map differs from offline reader")
+    current = json.loads(current_path.read_text())
+    controls = []
+    for kind, needed in (("guards", BUNDLE_GUARD_VARIANTS),
+                         ("identity", BUNDLE_IDENTITY_VARIANTS)):
+        spec = validated[kind]
+        file = pathlib.Path(spec["path"])
+        _require(file.is_file() and file.resolve().is_relative_to(manifest_path.parent.resolve())
+                 and file.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(file.stat().st_mode) == 0o600
+                 and sha256(file) == spec["sha256"],
+                 f"bundle_source_controls: {kind} file differs")
+        choices = spec["variants"]
+        _require(choices == needed,
+                 f"bundle_source_controls: {kind} has missing or extra selected states")
+        guard = PixelGuards(file)
+        _require(set(guard.rules) == set(needed)
+                 and all(len(rules_of(guard.rules[state])) == 1 for state in needed),
+                 f"bundle_source_controls: {kind} is not a source-only subset")
+        for state, index in needed.items():
+            selected = rules_of(current[kind][state])[index]
+            rule = rules_of(guard.rules[state])[0]
+            _require(all(rule.get(field, ()) == selected.get(field, ())
+                         for field in ("box", "sha256", "and")),
+                     f"bundle_source_controls: {kind} {state} is not its selected rule")
+        guard.rules = {state: rules_of(guard.rules[state])[0] for state in needed}
+        controls.append(guard)
+    return controls[0], controls[1], validated
+
+
+def _source_checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, phase: str,
+                       receipt: dict, run: SourceGuardedRun, disk_hash: str) -> dict:
+    """Publish one complete capture only after the whole party and measured ranges recheck."""
+    _require(run.events and run.events[-1].get("screen") in
+             ("save_picker", "camp_save_picker", "camp"),
+             "bundle_source_capture: checkpoint screen has no matched guard")
+    regions = _measured_regions(target)
+    path = directory / f"{phase}.json"
+    reading = _live_read(target, capture=path, source=True)
+    proof = reading.pop("capture")
+    _require(_measured_regions(target) == regions,
+             "bundle_source_stale: checkpoint range identity changed")
+    _require((proof["bundle_coverage"], proof["bundle_heads"], proof["bundle_children"]) ==
+             ("complete", 1, 4) and len(path.read_bytes()) > 0,
+             "bundle_source_capture: required 64+4 private file is missing")
+    entry = {"checkpoint": phase, "path": path.relative_to(directory.parent.parent).as_posix(),
+             "file_sha256": proof["file_sha256"], "heads": sum(BUNDLE_HEADS),
+             "bundle_heads": 1, "bundle_children": 4,
+             "measured_regions": [list(r) for r in regions],
+             "machine": {"anchor_base": target.anchor_base, "data_base": target.data_base},
+             "order": len(receipt.get("item_nodes", [])), "source_disk_sha256": BUNDLE_IMAGE_SHA256,
+             "prepared_disk_sha256": disk_hash, "source_f_sha256": BUNDLE_SOURCE_F_SHA256,
+             "screen": {"shot": run.events[-1]["shot"], "time": run.events[-1]["time"],
+                        "state": run.events[-1]["screen"]}}
+    receipt.setdefault("item_nodes", []).append(entry)
+    return reading
+
+
+def _source_compare(entry: dict, reading: dict, disk: amiga_adf.AmigaDisk,
+                    letter: str, digest: str, root: pathlib.Path,
+                    *, role: str, previous: dict | None = None) -> dict:
+    """Compare 64 ordered heads and four children with one specifically labelled slot."""
+    _require(letter in ("F", "G") and role in ("selected-source", "same-run-F", "same-run-G"),
+             "bundle_source_reference: unsupported letter or role")
+    _require((letter, digest, role) == ("F", BUNDLE_SOURCE_F_SHA256, "selected-source")
+             or (letter, role) in (("F", "same-run-F"), ("G", "same-run-G")),
+             "bundle_source_reference: source, F and G labels cannot be exchanged")
+    data, parsed = _source_slot(disk, letter, digest)
+    relative = pathlib.PurePosixPath(entry["path"])
+    _require(not relative.is_absolute() and ".." not in relative.parts,
+             "bundle_source_capture: private path escapes its run")
+    artifact_path = root.joinpath(*relative.parts)
+    payload = artifact_path.read_bytes()
+    _require(hashlib.sha256(payload).hexdigest() == entry["file_sha256"],
+             "bundle_source_capture: private artifact digest differs")
+    artifact = json.loads(payload)
+    records = artifact["items"]
+    bundle = artifact["bundle"]
+    _require(entry["heads"] == len(records) == 64 and bundle["coverage"] == "complete"
+             and len(bundle["nodes"]) == entry["bundle_heads"] == 1
+             and entry["bundle_children"] == 4
+             and tuple((p["slot"], p["name"], len(p["items"]))
+                       for p in reading["party"]) == tuple((i, name, count)
+                       for i, (name, count) in enumerate(zip(BUNDLE_NAMES, BUNDLE_HEADS, strict=True))),
+             "bundle_source_capture: seven members, 64 heads and one case required")
+    region = entry["measured_regions"]
+    _require(region and all(len(r) == 2 and r[1] > 0 for r in region),
+             "bundle_source_capture: measured ranges are missing")
+    spans: list[tuple[int, int]] = []
+
+    def node(raw_hex: str, digest_hex: str, address: int, length: int) -> bytes:
+        raw = bytes.fromhex(raw_hex)
+        _require(len(raw) == length and hashlib.sha256(raw).hexdigest() == digest_hex
+                 and type(address) is int and address >= 0x100 and not address & 1,
+                 "bundle_source_capture: node bytes, pointer or digest differs")
+        end = address + 70
+        _require(any(base <= address and end <= base + size for base, size in region)
+                 and all(end <= start or address >= stop for start, stop in spans),
+                 "bundle_source_capture: overlapping or out-of-range allocation")
+        spans.append((address, end))
+        return raw
+
+    heads: dict[tuple[int, int], tuple[int, bytes]] = {}
+    n = 0
+    for slot, count in enumerate(BUNDLE_HEADS):
+        for index in range(count):
+            record = records[n]
+            n += 1
+            _require((record["slot"], record["name"], record["chain_index"]) ==
+                     (slot, BUNDLE_NAMES[slot], index),
+                     "bundle_source_capture: head owner, name or order differs")
+            raw = node(record["raw_hex"], record["sha256"], record["address"], 66)
+            _require(record["length"] == 66
+                     and record["sha256"] == reading["party"][slot]["items"][index]
+                     and hashlib.sha256(raw[0x2e:0x42]).hexdigest() == record["tail20_sha256"],
+                     "bundle_source_capture: ordinary same-read receipt differs")
+            heads[slot, index] = (record["address"], raw)
+    for slot, count in enumerate(BUNDLE_HEADS):
+        for index in range(count):
+            address, raw = heads[slot, index]
+            next_address = heads[slot, index + 1][0] if index + 1 < count else 0
+            _require(int.from_bytes(raw[0x2a:0x2e], "big") == next_address,
+                     "bundle_source_capture: head-list topology differs")
+    case = bundle["nodes"][0]
+    _require((case["slot"], case["chain_index"]) == (4, 2)
+             and len(case["children"]) == 4
+             and case["address"] == heads[4, 2][0],
+             "bundle_source_capture: HILDE case owner differs")
+    # The full head uses an already reserved span. Replace its 66-byte reservation.
+    spans.remove((case["address"], case["address"] + 70))
+    full = node(case["raw_hex"], case["sha256"], case["address"], 70)
+    _require(full[:66] == heads[4, 2][1] and full[0x2e] == 0x49 and full[0x3a] == 4,
+             "bundle_source_capture: case head differs from same read")
+    children = []
+    pointer = int.from_bytes(full[0x42:0x46], "big")
+    for ordinal, child in enumerate(case["children"]):
+        _require((child["ordinal"], child["address"]) == (ordinal, pointer) and pointer != 0,
+                 "bundle_source_capture: missing or reordered child")
+        raw = node(child["raw_hex"], child["sha256"], pointer, 70)
+        children.append(raw)
+        pointer = int.from_bytes(raw[0x42:0x46], "big")
+    _require(pointer == 0, "bundle_source_capture: terminal child link is not NULL")
+    differences = []
+    for slot, block in enumerate(parsed.characters):
+        cursor = block.at + amiga_savegame.POD_RECORD_BYTES
+        end = block.at + block.size - block.effects * amiga_savegame.POD_EFFECT_BYTES
+        for index in range(block.items):
+            saved = data[cursor:cursor + 20]
+            cursor += 20
+            raw = heads[slot, index][1]
+            offsets = [i for i in range(20) if raw[0x2e + i] != saved[i]]
+            if offsets:
+                differences.append({"slot": slot, "head": index, "kind": "head",
+                                    "payload_offsets": [i + 0x2e for i in offsets],
+                                    "unnamed_saved_offsets": [i + 0x2e for i in offsets
+                                                              if i in (1, 13, 16)]})
+            if (slot, index) == (4, 2):
+                _require(saved[0] == 0x49 and saved[0x0c] == 4,
+                         "bundle_source_reference: saved case quantity differs")
+                for ordinal, child in enumerate(children):
+                    saved_child = data[cursor:cursor + 20]
+                    cursor += 20
+                    _require(len(saved_child) == 20 and saved_child[0] == 39,
+                             "bundle_source_reference: saved child is missing")
+                    offsets = [i for i in range(20) if child[0x2e + i] != saved_child[i]]
+                    if offsets:
+                        differences.append({"slot": 4, "head": 2, "kind": "child",
+                                            "ordinal": ordinal,
+                                            "payload_offsets": [i + 0x2e for i in offsets],
+                                            "unnamed_saved_offsets": [i + 0x2e for i in offsets
+                                                                      if i in (1, 13, 16)]})
+        _require(cursor == end, "bundle_source_reference: item/effect boundary differs")
+    _require(len(spans) == 68, "bundle_source_capture: allocation count differs")
+    metadata = []
+    if previous is not None:
+        older = previous["items"]
+        _require(len(older) == 64, "bundle_source_capture: earlier heads are missing")
+        for first, second in zip(older, records, strict=True):
+            a, b = bytes.fromhex(first["raw_hex"]), bytes.fromhex(second["raw_hex"])
+            offsets = [i for i in range(66) if a[i] != b[i]]
+            if offsets:
+                metadata.append({"slot": second["slot"], "head": second["chain_index"],
+                                 "display_offsets": [i for i in offsets if i < 0x2a],
+                                 "link_offsets": [i for i in offsets if 0x2a <= i < 0x2e],
+                                 "payload_offsets": [i for i in offsets if i >= 0x2e]})
+        older_case = previous["bundle"]["nodes"][0]
+        for ordinal, (a, b) in enumerate(zip(older_case["children"], case["children"], strict=True)):
+            x, y = bytes.fromhex(a["raw_hex"]), bytes.fromhex(b["raw_hex"])
+            offsets = [i for i in range(70) if x[i] != y[i]]
+            if offsets:
+                metadata.append({"slot": 4, "head": 2, "child": ordinal,
+                                 "display_offsets": [i for i in offsets if i < 0x2a],
+                                 "stale_link_offsets": [i for i in offsets if 0x2a <= i < 0x2e],
+                                 "payload_offsets": [i for i in offsets if 0x2e <= i < 0x42],
+                                 "child_link_offsets": [i for i in offsets if i >= 0x42]})
+    return {"reference_letter": letter, "reference_role": role, "reference_sha256": digest,
+            "heads": 64, "bundle_heads": 1, "bundle_children": 4,
+            "payload_differences": differences, "metadata_differences": metadata,
+            "all_payloads_match_reference": not differences,
+            "evidence_status": "payload_mismatch" if differences else "capture_coverage_complete",
+            "provenance": "receipt_artifact_consistency_only",
+            "independently_authenticated": False, "preservation_established": False}
 
 
 def _value(reading: dict, variable: int) -> int:
@@ -809,6 +1221,326 @@ class GuardedRun:
                 except RouteError:
                     pass
             raise RouteError("the world did not follow the bounded journal Continue") from None
+
+
+class SourceGuardedRun(GuardedRun):
+    """Apply the preparer's party-specific identity variant on each matching frame."""
+
+    def __init__(self, *args: Any, identity: PixelGuards):
+        super().__init__(*args)
+        self.identity = identity
+        self.out.chmod(0o700)
+        _require(_private_directory(self.out.stat(), os.getuid()),
+                 "bundle_source_privacy: screenshot directory is not owner/0700")
+
+    def see(self, state: str, limit: float | None = None) -> pathlib.Path:
+        crop = super().see(state, limit)
+        if state in BUNDLE_IDENTITY_STATES:
+            _require(self.identity(state, crop),
+                     f"bundle_source_identity: {state} shows another party")
+        return crop
+
+
+class SourcePrivateGuest:
+    """Fetch only into exclusive, owner-readable files below this private run."""
+
+    def __init__(self, guest: WinGuest, root: pathlib.Path):
+        self.guest, self.root = guest, root
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.guest, name)
+
+    def get(self, remote: str, local: pathlib.Path, timeout: float) -> Any:
+        _require(local.resolve().is_relative_to(self.root.resolve()) and not local.exists(),
+                 "bundle_source_privacy: fetch path is outside this fresh run")
+        _require(_private_directory(self.root.stat(), os.getuid()),
+                 "bundle_source_privacy: run directory lost owner-only access")
+        local.parent.chmod(0o700)
+        _require(_private_directory(local.parent.stat(), os.getuid()),
+                 "bundle_source_privacy: fetched directory is not owner/0700")
+        with os.fdopen(os.open(local, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb"):
+            pass
+        response = self.guest.get(remote, local, timeout=timeout)
+        _require(local.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(local.stat().st_mode) == 0o600,
+                 "bundle_source_privacy: fetched media has wrong owner or mode")
+        return response
+
+
+def _source_fetched(guest: SourcePrivateGuest, remote: str, out: pathlib.Path,
+                    limit: float) -> tuple[amiga_adf.AmigaDisk, str]:
+    """Read the game-written F twice, before G, with independent identical ADF copies."""
+    _require(limit > 0, "bundle_source_deadline: no time remains for F readback")
+    paths = (out / "f-readback-1.adf", out / "f-readback-2.adf")
+    hashes = []
+    for path in paths:
+        guest.get(remote, path, timeout=min(30, limit))
+        disk = amiga_adf.AmigaDisk.open(path)
+        _require(not disk.verify(), "bundle_source_f: fetched ADF fails verification")
+        raw = amiga_savegame.pod_read_slot(disk, "F")
+        hashes.append(hashlib.sha256(raw).hexdigest())
+    _require(hashes[0] == hashes[1] and sha256(paths[0]) == sha256(paths[1]),
+             "bundle_source_f: two independent fetches differ")
+    disk = amiga_adf.AmigaDisk.open(paths[1])
+    _source_slot(disk, "F", hashes[1])
+    _require(route_darkness.DARKNESS.read_slot(disk, "F").get("place") == BUNDLE_PLACE,
+             "bundle_source_f: game-written save has another saved place")
+    return disk, hashes[1]
+
+
+def _source_saved_artifact(entry: dict, root: pathlib.Path) -> dict:
+    relative = pathlib.PurePosixPath(entry["path"])
+    _require(not relative.is_absolute() and ".." not in relative.parts,
+             "bundle_source_capture: artifact path escapes its run")
+    data = root.joinpath(*relative.parts).read_bytes()
+    _require(hashlib.sha256(data).hexdigest() == entry["file_sha256"],
+             "bundle_source_capture: earlier artifact changed")
+    return json.loads(data)
+
+
+def _source_world(run: SourceGuardedRun) -> None:
+    run.press("loaded_menu", "B", "journal")
+    run.press("journal", "X", "journal_answer")
+    run.press("journal_answer", "RET")
+    try:
+        run.see("world", 60)
+    except RouteError:
+        for _ in range(3):
+            run.press("continue", "RET")
+            try:
+                run.see("world", 60)
+                return
+            except RouteError:
+                pass
+        raise RouteError("bundle_source_world: no measured world followed the journal") from None
+
+
+def run_bundle_source(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
+    """Offline-built camp-only source capture; a separate runner must authorize execution."""
+    _require(os.name == "posix", "bundle_source_privacy: POSIX owner checks are required")
+    _require(0 < args.budget <= 1800 and args.budget > 600,
+             "bundle_source_deadline: total budget must reserve 600 of at most 1800 seconds")
+    _require(not args.out.exists(), "bundle_source_privacy: output must be fresh")
+    root = pathlib.Path.home() / ".cache/wish/acceptance/WISH-360" / args.run_id
+    _require(args.out.parent.resolve() == root.resolve() and args.manifest.parent.resolve() == root.resolve(),
+             "bundle_source_privacy: output and prepared manifest must share this private run")
+    _require(_private_directory(root.stat(), os.getuid()),
+             "bundle_source_privacy: prepared run must have POSIX owner/0700")
+    args.out.mkdir(mode=0o700)
+    _require(_private_directory(args.out.stat(), os.getuid()),
+             "bundle_source_privacy: output has wrong owner or mode")
+    began = time.time()
+    deadline = time.monotonic() + args.budget
+    action_end = deadline - 600
+    receipt: dict[str, Any] = {"phase": "bundle-source", "run_id": args.run_id,
+                               "holder": args.holder, "began": began,
+                               "combined_deadline": began + args.budget,
+                               "source_image_sha256": BUNDLE_IMAGE_SHA256,
+                               "selected_source_f_sha256": BUNDLE_SOURCE_F_SHA256,
+                               "checks": {}, "cleanup": [], "success": False,
+                               "independently_authenticated": False,
+                               "preservation_established": False}
+    guest = SourcePrivateGuest(guest or WinGuest(), root)
+    command = [str(pathlib.Path(__file__)), "bundle-source", "--run-id", args.run_id,
+               "--holder", args.holder]
+    booted = False
+    run = None
+    manifest = None
+    source = None
+    disk_hash = None
+    capture_dir = None
+
+    def action_left(cap: float) -> float:
+        left = min(cap, action_end - time.monotonic())
+        _require(left > 0, "bundle_source_deadline: action time expired; cleanup reserved")
+        return left
+
+    try:
+        _require(args.manifest.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(args.manifest.stat().st_mode) == 0o600,
+                 "bundle_source_privacy: prepared manifest is not owner/0600")
+        manifest = json.loads(args.manifest.read_text())
+        source, disk_hash = _source_contract(args.manifest, manifest)
+        guards, identity, controls = _source_controls(args.controls, args.manifest, disk_hash)
+        receipt["prepared_disk_sha256"] = disk_hash
+        receipt["controls_sha256"] = sha256(args.controls)
+        receipt["selected_guard_sha256"] = controls["guards"]["sha256"]
+        receipt["selected_identity_sha256"] = controls["identity"]["sha256"]
+        capture_dir = _capture_dir(args.run_id)
+        _require(not set(route_darkness.DARKNESS.slot_letters(
+            amiga_adf.AmigaDisk.open(manifest["disks"]["disk3"]["path"]))) & {"F", "G"},
+            "bundle_source_manifest: F/G occupied before boot")
+        boot = _boot(guest, args.manifest, manifest, args.holder, args.audio_proof,
+                     time.monotonic() + action_left(1200), command)
+        booted = True
+        receipt["boot"] = {key: boot[key] for key in ("holder", "claim", "start")}
+        receipt["boot"]["disk_keys"] = sorted(boot["remotes"])
+        run = SourceGuardedRun(guest, args.holder, args.out / "screens", guards, action_end,
+                               identity=identity)
+        run.title()
+        run.press("title", "P", "party_menu")
+        run.press("party_menu", "L", "load_from")
+        run.press("load_from", "P", "load_picker")
+        run.press("load_picker", "B", "disk2_prompt")
+        guest.insert(args.holder, 0, boot["remotes"]["disk2"], timeout=action_left(60),
+                     sha256=manifest["disks"]["disk2"]["sha256"])
+        run.press("disk2_prompt", "SPACE", "loaded_menu")
+        run.press("loaded_menu", "V", "sheet")
+        run.press("sheet", "E", "loaded_menu")
+        run.press("loaded_menu", "S", "save_picker")
+        target = _target(args.holder)
+        receipt["initial"] = _source_checkpoint(target, capture_dir, "initial-pre-f",
+                                                  receipt, run, disk_hash)
+        first = receipt["item_nodes"][-1]
+        source_disk = amiga_adf.AmigaDisk.open(source)
+        receipt["initial_comparison"] = _source_compare(
+            first, receipt["initial"], source_disk, "F", BUNDLE_SOURCE_F_SHA256,
+            root, role="selected-source")
+        _require(receipt["initial_comparison"]["all_payloads_match_reference"],
+                 "bundle_source_reference: initial payload mismatch before F")
+        receipt["checks"]["initial_coverage"] = True
+        action_left(30)
+        run.press("save_picker", "F", "loaded_menu")
+        receipt["checks"]["save_f_ui_acknowledged"] = True
+        f_disk, f_digest = _source_fetched(guest, boot["remotes"]["disk3"],
+                                          args.out, action_left(120))
+        receipt["same_run_f_sha256"] = f_digest
+        receipt["checks"]["same_run_f_verified"] = True
+        _source_world(run)
+        run.press("world", "E", "camp")
+        _require([m["name"] for m in receipt["initial"]["party"]] == list(BUNDLE_NAMES),
+                 "bundle_source_identity: camp entry does not have the selected party")
+        steps = route_camp.steps_for(("items 5",), name="darkness", party_size=7)
+        _require(all(kind == "key" for _key, _state, kind in steps)
+                 and steps[-1][1] == "camp", "bundle_source_camp: unexpected item route")
+        state = "camp"
+        for key, following, _kind in steps:
+            run.press(state, key, following)
+            state = following
+        run.press("camp", "S", "camp_save_picker")
+        target = _target(args.holder)
+        receipt["pre_g"] = _source_checkpoint(target, capture_dir, "pre-g",
+                                                receipt, run, disk_hash)
+        second = receipt["item_nodes"][-1]
+        receipt["pre_g_comparison"] = _source_compare(
+            second, receipt["pre_g"], f_disk, "F", f_digest, root,
+            role="same-run-F", previous=_source_saved_artifact(first, root))
+        _require(receipt["pre_g_comparison"]["all_payloads_match_reference"],
+                 "bundle_source_reference: pre-G differs from same-run F")
+        receipt["checks"]["pre_g_coverage"] = True
+        action_left(30)
+        run.press("camp_save_picker", "G", "exit_game")
+        run.press("exit_game", "N", "camp")
+        receipt["checks"]["save_g_ui_acknowledged"] = True
+        target = _target(args.holder)
+        receipt["post_g"] = _source_checkpoint(target, capture_dir, "post-g",
+                                                 receipt, run, disk_hash)
+        receipt["checks"]["post_g_coverage"] = True
+    except BaseException as exc:
+        receipt["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if run is not None:
+            receipt["screens"] = [{**event, **({"crop": pathlib.Path(event["crop"])
+                                  .relative_to(root).as_posix()} if "crop" in event else {})}
+                                  for event in run.events]
+        if booted:
+            try:
+                left = min(30.0, max(1.0, deadline - time.monotonic()))
+                if deadline - time.monotonic() <= 0:
+                    receipt["cleanup"].append("cleanup deadline expired")
+                receipt["halt"] = acceptance.halt_lane(
+                    guest, args.holder, timeout=left, manifest_path=args.manifest,
+                    command=command)
+                receipt["checks"]["halt"] = True
+                if receipt["checks"].get("save_f_ui_acknowledged"):
+                    fetched = receipt["halt"]["fetched"]["disk3"]
+                    _require(sha256(pathlib.Path(fetched["path"])) == fetched["sha256"],
+                             "bundle_source_f: final fetched image digest differs")
+                    final_disk = amiga_adf.AmigaDisk.open(fetched["path"])
+                    _require(not final_disk.verify(), "bundle_source_g: fetched ADF fails verification")
+                    raw = amiga_savegame.pod_read_slot(final_disk, "F")
+                    final_f = hashlib.sha256(raw).hexdigest()
+                    receipt["final_f_sha256"] = final_f
+                    _require(final_f == receipt.get("same_run_f_sha256"),
+                             "bundle_source_f: final same-run F differs from prior fetch")
+                    receipt["checks"]["final_f_verified"] = True
+                    if receipt["checks"].get("save_g_ui_acknowledged"):
+                        g_digest = hashlib.sha256(amiga_savegame.pod_read_slot(
+                            final_disk, "G")).hexdigest()
+                        _source_slot(final_disk, "G", g_digest)
+                        _require(route_darkness.DARKNESS.read_slot(final_disk, "G").get("place") ==
+                                 BUNDLE_PLACE, "bundle_source_g: saved place differs")
+                        receipt["same_run_g_sha256"] = g_digest
+                        receipt["checks"]["same_run_g_verified"] = True
+                        if receipt["checks"].get("post_g_coverage"):
+                            receipt["post_g_comparison"] = _source_compare(
+                                receipt["item_nodes"][-1], receipt["post_g"], final_disk,
+                                "G", g_digest, root, role="same-run-G",
+                                previous=_source_saved_artifact(receipt["item_nodes"][-2], root))
+                            _require(receipt["post_g_comparison"]["all_payloads_match_reference"],
+                                     "bundle_source_reference: post-G differs from same-run G")
+                            receipt["checks"]["post_g_alignment"] = True
+            except Exception as exc:  # noqa: BLE001 - retain all independent cleanup failures
+                receipt["cleanup"].append(f"halt or fetched save: {exc}")
+        try:
+            _require(source is not None and sha256(source) == BUNDLE_IMAGE_SHA256,
+                     "bundle_source_image: original changed")
+            _source_slot(amiga_adf.AmigaDisk.open(source), "F", BUNDLE_SOURCE_F_SHA256)
+            receipt["checks"]["source_unchanged"] = True
+        except Exception as exc:  # noqa: BLE001
+            receipt["cleanup"].append(f"source hash: {exc}")
+        if disk_hash is not None and manifest is not None:
+            try:
+                _require(sha256(pathlib.Path(manifest["disks"]["disk3"]["path"])) == disk_hash
+                         and sha256(args.manifest) == BUNDLE_MANIFEST_SHA256
+                         and all(sha256(pathlib.Path(manifest["disks"][key]["path"])) == pin
+                                 for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                                                  ("disk2", route_darkness.DARKNESS_DISK2_SHA256))),
+                         "bundle_source_image: prepared originals changed")
+                receipt["checks"]["prepared_unchanged"] = True
+            except Exception as exc:  # noqa: BLE001
+                receipt["cleanup"].append(f"prepared source hash: {exc}")
+        if "halt" in receipt:
+            for file in receipt["halt"].get("fetched", {}).values():
+                if "path" in file:
+                    location = pathlib.Path(file["path"])
+                    if not location.resolve().is_relative_to(root.resolve()):
+                        receipt["cleanup"].append("fetched path escapes private run")
+                        file.pop("path")
+                    else:
+                        file["path"] = location.relative_to(root).as_posix()
+        receipt["success"] = ("error" not in receipt and not receipt["cleanup"] and
+                              all(receipt["checks"].get(key) is True for key in
+                                  ("initial_coverage", "pre_g_coverage", "post_g_coverage",
+                                   "save_f_ui_acknowledged", "same_run_f_verified",
+                                   "save_g_ui_acknowledged", "same_run_g_verified",
+                                   "post_g_alignment", "final_f_verified", "halt",
+                                   "source_unchanged", "prepared_unchanged")))
+        _write_source_receipt(args.out / "bundle-source-receipt.json", receipt)
+    if not receipt["success"]:
+        raise RouteError(receipt.get("error") or "; ".join(receipt["cleanup"]))
+    return receipt
+
+
+def _write_source_receipt(path: pathlib.Path, receipt: dict) -> None:
+    """Publish a private, read-back checked report without game payloads."""
+    _require("raw_hex" not in json.dumps(receipt),
+             "bundle_source_privacy: raw node bytes reached the public receipt")
+    payload = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as file:
+            file.write(payload)
+        _require(temp.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(temp.stat().st_mode) == 0o600,
+                 "bundle_source_privacy: receipt has wrong owner or mode")
+        temp.replace(path)
+        _require(path.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(path.stat().st_mode) == 0o600
+                 and hashlib.sha256(path.read_bytes()).digest() == hashlib.sha256(payload).digest(),
+                 "bundle_source_privacy: private receipt readback differs")
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def _export_guards(out: pathlib.Path) -> PixelGuards:
@@ -1325,17 +2057,34 @@ def main(argv: list[str] | None = None) -> int:
             phase.add_argument("--previous-return-attempts", type=int, required=True)
         else:
             phase.add_argument("--receipt", type=pathlib.Path, required=True)
+    source = phases.add_parser("bundle-source")
+    source.add_argument("--run-id", required=True)
+    source.add_argument("--holder", required=True)
+    source.add_argument("--audio-proof", type=pathlib.Path, required=True)
+    source.add_argument("--manifest", type=pathlib.Path, required=True)
+    source.add_argument("--controls", type=pathlib.Path, required=True)
+    source.add_argument("--out", type=pathlib.Path, required=True)
+    source.add_argument("--budget", type=float, required=True)
     args = parser.parse_args(argv)
     try:
         with terminating():
-            result = run_p2(args) if args.phase == "p2" else run_reload(args)
+            result = (run_bundle_source(args) if args.phase == "bundle-source" else
+                      run_p2(args) if args.phase == "p2" else run_reload(args))
     except (RouteError, OSError, ValueError, KeyError) as exc:
-        print(f"darknessreturn: {exc}", file=sys.stderr)
+        print(f"{'Bundle source' if args.phase == 'bundle-source' else 'darknessreturn'}: {exc}",
+              file=sys.stderr)
         return 2
-    print(json.dumps({"success": True, "receipt": str(args.out / f"{args.phase}-receipt.json"),
+    print(json.dumps({"success": True, "receipt": ("bundle-source-receipt.json"
+                                                   if args.phase == "bundle-source" else
+                                                   str(args.out / f"{args.phase}-receipt.json")),
                       "checks": result["checks"],
-                      "item_comparison_status": result["item_comparison"]["evidence_status"]},
-                     indent=2, sort_keys=True))
+                      "item_comparison_status": (result["post_g_comparison"]["evidence_status"]
+                                                 if args.phase == "bundle-source" else
+                                                 result["item_comparison"]["evidence_status"]),
+                      **({"independently_authenticated": False,
+                          "preservation_established": False}
+                         if args.phase == "bundle-source" else {})},
+                      indent=2, sort_keys=True))
     return 0
 
 

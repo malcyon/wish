@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -1152,3 +1153,529 @@ def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch
     assert events == ["load", "f-loaded", "snapshot", "on", "NP8", "world", "post-step",
                       "off", "discard", "halt"]
     assert loaded_hashes == [f_hash, f_hash]
+
+
+def _seven_source(tmp_path, monkeypatch):
+    """Generate all seven records, 64 relocated main heads and four child allocations."""
+    saved = bytearray(amiga_savegame.POD_SAVEGAME_SIZE)
+    struct.pack_into(">H", saved, amiga_savegame.POD_COUNT_AT, 7)
+    heads, children, members = [], [], []
+    cursor = amiga_savegame.POD_PARTY_AT
+    address = 0x2000
+    case_at = None
+    for slot, (name, count) in enumerate(zip(driver.BUNDLE_NAMES, driver.BUNDLE_HEADS,
+                                              strict=True)):
+        name_at = cursor + amiga_savegame.POD_NAME_AT
+        saved[name_at:name_at + len(name)] = name.encode()
+        struct.pack_into(">I", saved, cursor + amiga_savegame.POD_ITEM_COUNT_AT, count)
+        cursor += amiga_savegame.POD_RECORD_BYTES
+        nodes = []
+        for index in range(count):
+            tail = bytearray(20)
+            tail[0] = 0x49 if (slot, index) == (4, 2) else 0x12
+            tail[1] = (slot * 19 + index) % 256
+            tail[13], tail[16] = slot + 7, index + 8
+            full = bytearray(70)
+            full[0x2a:0x2e] = (address + 0x80 if index + 1 < count else 0).to_bytes(4, "big")
+            if (slot, index) == (4, 2):
+                case_at = address
+                tail[0x0c] = 4
+                full[0x42:0x46] = (0x8000).to_bytes(4, "big")
+            full[0x2e:0x42] = tail
+            heads.append((address, bytes(full)))
+            nodes.append(SimpleNamespace(address=address, raw=bytes(full[:66])))
+            saved[cursor:cursor + 20] = tail
+            cursor += 20
+            if (slot, index) == (4, 2):
+                for ordinal in range(4):
+                    child_at = 0x8000 + ordinal * 0x80
+                    child = bytearray(70)
+                    child[0x2a:0x2e] = (0x55667788).to_bytes(4, "big")
+                    child[0x42:0x46] = (child_at + 0x80 if ordinal < 3 else 0).to_bytes(4, "big")
+                    child[0x2e] = 39
+                    child[0x2f], child[0x3b], child[0x3e] = ordinal + 1, 20 + ordinal, 40 + ordinal
+                    saved[cursor:cursor + 20] = child[0x2e:0x42]
+                    cursor += 20
+                    children.append((child_at, bytes(child)))
+            address += 0x80
+        address += 0x100
+        members.append(SimpleNamespace(slot=slot, name=name, hp=3, hp_max=9,
+                                       address=0xA000 + slot * 0x200,
+                                       raw=bytes(amiga_savegame.POD_RECORD_BYTES),
+                                       item_nodes=tuple(nodes),
+                                       items=lambda nodes=nodes: tuple((n.address, n.raw) for n in nodes),
+                                       effects=lambda: ()))
+    target = _BundleMemory(heads, children)
+    target.anchor_base = target.data_base = 0x1000
+    target.locate = lambda memory: target.data_base
+    monkeypatch.setattr(driver.amigaparty, "read_party", lambda _target: tuple(members))
+    monkeypatch.setattr(driver.fasttravelrun, "_reading", lambda *a: {})
+    monkeypatch.setattr(driver.amigavars, "read_variables", lambda *a: [])
+    slot = bytes(saved)
+    disk = SimpleNamespace(read_file=lambda name: slot)
+    root = tmp_path / "run"
+    directory = root / "item-nodes"
+    directory.mkdir(parents=True)
+    path = directory / "initial.json"
+
+    def capture():
+        reading = driver._live_read(target, capture=path, source=True)
+        proof = reading.pop("capture")
+        return reading, {"path": "item-nodes/initial.json", "file_sha256": proof["file_sha256"],
+                         "heads": 64, "bundle_heads": 1, "bundle_children": 4,
+                         "measured_regions": [[0, driver.amiga.EXEC_PAGE]]}
+
+    return SimpleNamespace(saved=slot, disk=disk, target=target, members=members,
+                           children=children, case=case_at, root=root, path=path, capture=capture)
+
+
+def test_seven_member_source_captures_64_heads_four_children_and_specific_f(tmp_path, monkeypatch):
+    generated = _seven_source(tmp_path, monkeypatch)
+    reading, entry = generated.capture()
+    assert "trip" not in reading and "variables" not in reading
+    digest = hashlib.sha256(generated.saved).hexdigest()
+    monkeypatch.setattr(driver, "BUNDLE_SOURCE_F_SHA256", digest)
+    report = driver._source_compare(entry, reading, generated.disk, "F", digest,
+                                    generated.root, role="selected-source")
+    assert (report["heads"], report["bundle_heads"], report["bundle_children"]) == (64, 1, 4)
+    assert report["all_payloads_match_reference"]
+    assert report["independently_authenticated"] is False
+    assert report["preservation_established"] is False
+    artifact = json.loads(generated.path.read_text())
+    assert [(node["slot"], node["chain_index"]) for node in artifact["items"] if
+            node["slot"] == 4] == [(4, index) for index in range(10)]
+    case = artifact["bundle"]["nodes"][0]
+    assert (case["slot"], case["chain_index"], len(case["children"])) == (4, 2, 4)
+    assert [bytes.fromhex(child["raw_hex"])[0x2f] for child in case["children"]] == [1, 2, 3, 4]
+    assert all(bytes.fromhex(child["raw_hex"])[0x2a:0x2e] == b"\x55\x66\x77\x88"
+               for child in case["children"])
+    assert "raw_hex" not in json.dumps(report)
+    assert generated.path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("damage", ["name", "slot", "count", "case", "six-members"])
+def test_source_capture_blocks_wrong_order_and_case_without_weakening_turbo_guard(
+        tmp_path, monkeypatch, damage):
+    generated = _seven_source(tmp_path, monkeypatch)
+    members = generated.members
+    if damage == "name":
+        members[4].name = "OTHER"
+    elif damage == "slot":
+        members[4].slot = 3
+    elif damage == "count":
+        members[4].item_nodes = members[4].item_nodes[:-1]
+    elif damage == "six-members":
+        members.pop()
+    else:
+        case = members[4].item_nodes[2]
+        case.raw = case.raw[:0x2e] + b"\x12" + case.raw[0x2f:]
+        generated.target.put(generated.case + 0x2e, b"\x12")
+    with pytest.raises(RouteError, match="bundle_source_identity"):
+        generated.capture()
+    assert not generated.path.exists()
+
+
+def test_both_sources_still_block_the_other_capture_contract(tmp_path, monkeypatch):
+    generated = _seven_source(tmp_path, monkeypatch)
+    reading = {"party": [{"slot": m.slot, "name": m.name,
+                          "items": [hashlib.sha256(n.raw).hexdigest() for n in m.item_nodes]}
+                         for m in generated.members]}
+    with pytest.raises(RouteError, match="TURBO K"):
+        driver._capture_nodes(generated.path, tuple(generated.members), reading)
+    with pytest.raises(RouteError, match="bundle_source_identity"):
+        driver._capture_nodes(generated.path, _synthetic_members(),
+                              {"party": reading["party"][:1]}, generated.target, source=True)
+    assert not generated.path.exists()
+
+
+@pytest.mark.parametrize("damage, category", [
+    ("early-null", "bundle_null"), ("extra", "bundle_quantity"),
+    ("odd", "bundle_pointer"), ("overlap", "bundle_overlap"),
+    ("cycle", "bundle_overlap"), ("out-of-range", "bundle_range_unsupported"),
+    ("short", "bundle_short_read"), ("quantity", "bundle_source_identity"),
+    ("complement", "bundle_range_unsupported"), ("regions", "bundle_range_unsupported"),
+    ("stale-head", "bundle_stale"), ("stale-child", "bundle_stale"),
+    ("stale-party", "bundle_source_stale"), ("member-range", "bundle_source_range"),
+])
+def test_source_capture_blocks_damaged_private_topology_and_late_changes(
+        tmp_path, monkeypatch, damage, category):
+    generated = _seven_source(tmp_path, monkeypatch)
+    target = generated.target
+    if damage in ("early-null", "extra", "odd", "overlap", "out-of-range"):
+        pointer = {"early-null": 0, "extra": generated.children[0][0],
+                   "odd": generated.children[0][0] + 1, "overlap": generated.case,
+                   "out-of-range": driver.amiga.EXEC_PAGE + 0x80}[damage]
+        address = generated.case + 0x42 if damage != "extra" else generated.children[-1][0] + 0x42
+        target.put(address, pointer.to_bytes(4, "big"))
+    elif damage == "cycle":
+        target.put(generated.children[0][0] + 0x42, generated.children[0][0].to_bytes(4, "big"))
+    elif damage == "short":
+        original = target.read
+        target.read = lambda address, count: (b"\0" * 69 if address == generated.children[0][0]
+                                              and count == 70 else original(address, count))
+    elif damage == "quantity":
+        generated.members[4].item_nodes[2].raw = (generated.members[4].item_nodes[2].raw[:0x3a]
+                                                 + b"\x03" + generated.members[4].item_nodes[2].raw[0x3b:])
+    elif damage == "complement":
+        target.put(0x1000 + driver.amiga.EXEC_CHK_BASE, b"\0" * 4)
+    elif damage == "regions":
+        target.memory = ((0, driver.amiga.EXEC_PAGE - 1),)
+    elif damage == "stale-head":
+        target.put(generated.case, b"\x70")
+    elif damage == "stale-child":
+        original = target.read
+        count = 0
+
+        def moving(address, size):
+            nonlocal count
+            if address == generated.children[0][0] and size == 70:
+                count += 1
+                if count == 2:
+                    return b"\x99" + original(address + 1, size - 1)
+            return original(address, size)
+
+        target.read = moving
+    elif damage == "member-range":
+        generated.members[6].address = driver.amiga.EXEC_PAGE + 0x200
+    else:
+        original = driver.amigaparty.read_party
+        calls = 0
+
+        def changing(target):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                later = copy.deepcopy(original(target))
+                later[6].hp = 4
+                return later
+            return original(target)
+
+        monkeypatch.setattr(driver.amigaparty, "read_party", changing)
+    with pytest.raises(RouteError, match=category):
+        generated.capture()
+    assert not generated.path.exists()
+
+
+def test_source_comparison_keeps_unnamed_payload_and_reference_letters_separate(
+        tmp_path, monkeypatch):
+    generated = _seven_source(tmp_path, monkeypatch)
+    reading, entry = generated.capture()
+    digest = hashlib.sha256(generated.saved).hexdigest()
+    with pytest.raises(RouteError, match="bundle_source_reference"):
+        driver._source_compare(entry, reading, generated.disk, "G", digest,
+                               generated.root, role="same-run-F")
+    with pytest.raises(RouteError, match="bundle_source_reference"):
+        driver._source_compare(entry, reading, generated.disk, "F", digest,
+                               generated.root, role="selected-source")
+    generated.path.unlink()
+    generated.target.put(generated.children[0][0] + 0x2f, b"\x77")
+    reading, entry = generated.capture()
+    report = driver._source_compare(entry, reading, generated.disk, "F", digest,
+                                    generated.root, role="same-run-F")
+    assert not report["all_payloads_match_reference"]
+    assert report["payload_differences"] == [{"slot": 4, "head": 2, "kind": "child",
+                                               "ordinal": 0, "payload_offsets": [0x2f],
+                                               "unnamed_saved_offsets": [0x2f]}]
+    assert report["preservation_established"] is False
+
+
+@pytest.mark.parametrize("damage", ["source-as-g", "g-as-f", "missing-g", "short-g",
+                                     "saved-quantity", "saved-child"])
+def test_source_comparison_binds_each_letter_to_its_own_fetched_slot(
+        tmp_path, monkeypatch, damage):
+    generated = _seven_source(tmp_path, monkeypatch)
+    reading, entry = generated.capture()
+    f_slot = generated.saved
+    g_slot = bytearray(f_slot)
+    g_slot[-1] ^= 1
+    if damage == "short-g":
+        g_slot.pop()
+    if damage == "saved-quantity":
+        # The case's byte 12 lies after 16+12+6+8 earlier heads and HILDE's first two.
+        h = amiga_savegame.pod_parse(f_slot).characters[4]
+        case_at = h.at + amiga_savegame.POD_RECORD_BYTES + 2 * 20
+        g_slot[case_at + 12] = 3
+    if damage == "saved-child":
+        h = amiga_savegame.pod_parse(f_slot).characters[4]
+        case_at = h.at + amiga_savegame.POD_RECORD_BYTES + 2 * 20
+        g_slot[case_at + 20] = 0x12
+    slots = {"F": f_slot, "G": bytes(g_slot)}
+
+    def read_file(name):
+        letter = name[-5].upper()
+        if letter == "G" and damage == "missing-g":
+            raise amiga_adf.AmigaDiskError("generated G is missing")
+        return slots[letter]
+
+    disk = SimpleNamespace(read_file=read_file)
+    f_hash = hashlib.sha256(f_slot).hexdigest()
+    g_hash = hashlib.sha256(g_slot).hexdigest()
+    if damage == "source-as-g":
+        with pytest.raises(RouteError, match="digest differs"):
+            driver._source_compare(entry, reading, disk, "G", f_hash,
+                                   generated.root, role="same-run-G")
+    elif damage == "g-as-f":
+        with pytest.raises(RouteError, match="digest differs"):
+            driver._source_compare(entry, reading, disk, "F", g_hash,
+                                   generated.root, role="same-run-F")
+    elif damage == "missing-g":
+        with pytest.raises(RouteError, match="bundle_source_g"):
+            driver._source_compare(entry, reading, disk, "G", g_hash,
+                                   generated.root, role="same-run-G")
+    elif damage == "short-g":
+        with pytest.raises(RouteError, match="bundle_source_g"):
+            driver._source_compare(entry, reading, disk, "G", g_hash,
+                                   generated.root, role="same-run-G")
+    else:
+        with pytest.raises(RouteError, match="bundle_source"):
+            driver._source_compare(entry, reading, disk, "G", g_hash,
+                                   generated.root, role="same-run-G")
+
+
+@pytest.mark.parametrize("damage", [None, "wrong-variant", "unfiltered", "missing-identity",
+                                     "wrong-reader", "wrong-prepared-digest"])
+def test_source_controls_require_one_current_source_variant_per_screen(tmp_path, monkeypatch, damage):
+    shared = pathlib.Path(driver.guardmaps.__file__).with_name("guards_darkness.json")
+    current = json.loads(shared.read_text())
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text("Generated prepared manifest\n")
+    manifest.chmod(0o600)
+    monkeypatch.setattr(driver, "BUNDLE_MANIFEST_SHA256", sha256(manifest))
+    specs = {}
+    for kind, variants in (("guards", driver.BUNDLE_GUARD_VARIANTS),
+                           ("identity", driver.BUNDLE_IDENTITY_VARIANTS)):
+        selected = {state: driver.rules_of(current[kind][state])[index]
+                    for state, index in variants.items()}
+        if damage == "wrong-variant" and kind == "identity":
+            selected["camp_items_5"] = driver.rules_of(current[kind]["camp_items_5"])[0]
+        elif damage == "unfiltered" and kind == "guards":
+            selected["loaded_menu"] = current[kind]["loaded_menu"]
+        elif damage == "missing-identity" and kind == "identity":
+            del selected["camp_items_5"]
+        path = tmp_path / f"{kind}.json"
+        path.write_text(json.dumps(selected))
+        path.chmod(0o600)
+        specs[kind] = {"path": str(path), "sha256": sha256(path), "variants": variants}
+    prepared = driver.BUNDLE_PREPARED_SHA256
+    validated = {"source_image_sha256": driver.BUNDLE_IMAGE_SHA256,
+                 "source_f_sha256": driver.BUNDLE_SOURCE_F_SHA256,
+                 "prepared_disk3_sha256": ("0" * 64 if damage == "wrong-prepared-digest"
+                                           else prepared),
+                 "manifest_sha256": sha256(manifest),
+                 "current_rules_sha256": driver.BUNDLE_CURRENT_RULES_SHA256,
+                 "screen_reader_sha256": sha256(pathlib.Path(driver.screens.__file__)),
+                 "executable_sha256": driver.BUNDLE_EXEC_SHA256,
+                 "config_sha256": driver.BUNDLE_CONFIG_SHA256, **specs}
+    if damage == "wrong-reader":
+        validated["screen_reader_sha256"] = "0" * 64
+    controls = tmp_path / "selected.json"
+    controls.write_text(json.dumps(validated))
+    controls.chmod(0o600)
+    if damage:
+        with pytest.raises(RouteError, match="bundle_source_controls"):
+            driver._source_controls(controls, manifest, prepared)
+    else:
+        guards, identity, _ = driver._source_controls(controls, manifest, prepared)
+        assert set(guards.rules) == set(driver.BUNDLE_GUARD_VARIANTS)
+        assert set(identity.rules) == set(driver.BUNDLE_IDENTITY_VARIANTS)
+        assert all(len(driver.rules_of(v)) == 1 for v in guards.rules.values())
+
+
+def test_pinned_prepared_b_and_registered_f_have_full_ordered_boundaries_when_available():
+    manifest = (pathlib.Path.home() / ".cache/wish/acceptance/WISH-360/"
+                "bundle-w4d-source-prep1/prepare.json")
+    if not manifest.is_file():
+        pytest.skip("private offline W4D preparation is not available on this machine")
+    source, prepared = driver._source_contract(manifest, json.loads(manifest.read_text()))
+    assert prepared == driver.BUNDLE_PREPARED_SHA256
+    assert sha256(source) == driver.BUNDLE_IMAGE_SHA256
+    assert sha256(manifest) == driver.BUNDLE_MANIFEST_SHA256
+
+
+def _source_coordinator(tmp_path, monkeypatch, *, fail=None):
+    generated = _seven_source(tmp_path, monkeypatch)
+    root = tmp_path / ".cache/wish/acceptance/WISH-360/synthetic-source"
+    root.mkdir(parents=True, mode=0o700)
+    source = root / "source-input.adf"
+    source.write_bytes(b"Generated original disk marker")
+    monkeypatch.setattr(driver, "BUNDLE_IMAGE_SHA256", sha256(source))
+    source_slot = generated.saved
+    f_slot = bytearray(source_slot)
+    f_slot[-1] ^= 1
+    g_slot = bytearray(f_slot)
+    g_slot[-2] ^= 1
+    slots = {"F": bytes(f_slot), "G": bytes(g_slot)}
+    hashes = {key: hashlib.sha256(value).hexdigest() for key, value in slots.items()}
+    monkeypatch.setattr(driver, "BUNDLE_SOURCE_F_SHA256",
+                        hashlib.sha256(source_slot).hexdigest())
+    fetched = root / "fetched-disk3.adf"
+    fetched.write_bytes(b"Generated fetched disk marker")
+    prepared = root / "prepare.json"
+    disks = {}
+    for key in ("disk1", "disk2", "disk3"):
+        local = root / f"{key}.adf"
+        local.write_bytes(f"Generated {key} disk marker".encode())
+        disks[key] = {"path": str(local), "sha256": sha256(local)}
+    monkeypatch.setattr(driver, "BUNDLE_PREPARED_SHA256", disks["disk3"]["sha256"])
+    monkeypatch.setattr(driver.route_darkness, "DARKNESS_DISK1_SHA256", disks["disk1"]["sha256"])
+    monkeypatch.setattr(driver.route_darkness, "DARKNESS_DISK2_SHA256", disks["disk2"]["sha256"])
+    prepared.write_text(json.dumps({"disks": disks}))
+    prepared.chmod(0o600)
+    monkeypatch.setattr(driver, "BUNDLE_MANIFEST_SHA256", sha256(prepared))
+    controls = root / "controls.json"
+    controls.write_text("{}")
+    events = []
+    comparisons = []
+    clock = {"value": 100.0}
+    if fail == "deadline":
+        monkeypatch.setattr(driver.time, "monotonic", lambda: clock["value"])
+
+    class Disk:
+        def __init__(self, is_source=False):
+            self.is_source = is_source
+
+        def verify(self):
+            return []
+
+        def read_file(self, name):
+            return source_slot if self.is_source else slots[name[-5].upper()]
+
+    class Guest:
+        def insert(self, holder, drive, remote, timeout, sha256):
+            events.append(("insert", drive))
+
+    class Run:
+        def __init__(self, *a, **kw):
+            self.events = []
+
+        def see(self, state, limit=None):
+            events.append(("screen", state))
+            if fail == "identity" and state == "loaded_menu":
+                raise RouteError("injected source identity mismatch")
+            self.events.append({"screen": state, "shot": len(self.events) + 1, "time": 1.0})
+
+        def title(self):
+            self.see("title")
+
+        def press(self, state, key, following=None):
+            self.see(state)
+            events.append(("key", key))
+            self.events.append({"key": key})
+            if following is not None:
+                self.see(following)
+
+    def checkpoint(target, directory, phase, receipt, run, disk_hash):
+        events.append(("checkpoint", phase))
+        if fail == phase:
+            raise RouteError(f"injected {phase} failure")
+        if fail == "deadline" and phase == "initial-pre-f":
+            clock["value"] = 1301.0
+        receipt.setdefault("item_nodes", []).append({"checkpoint": phase})
+        return {"party": [{"name": name} for name in driver.BUNDLE_NAMES]}
+
+    def compare(entry, reading, disk, letter, digest, root, *, role, previous=None):
+        comparisons.append((entry["checkpoint"], letter, digest, role))
+        match = not (fail == "initial-mismatch" and role == "selected-source" or
+                     fail == "pre-g-mismatch" and role == "same-run-F" or
+                     fail == "post-g-mismatch" and role == "same-run-G")
+        return {"all_payloads_match_reference": match,
+                "evidence_status": "capture_coverage_complete" if match else "payload_mismatch",
+                "independently_authenticated": False, "preservation_established": False}
+
+    def halt(guest, holder, **kwargs):
+        events.append(("halt", holder))
+        return {"fetched": {"disk3": {"path": str(fetched), "sha256": sha256(fetched)}}}
+
+    def boot(guest, manifest_path, manifest, holder, proof, deadline, command):
+        events.append(("boot", holder))
+        return {"holder": holder, "claim": "ok claimed", "start": "ok started",
+                "remotes": {"disk2": "remote-disk2", "disk3": "remote-disk3"}}
+
+    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(driver, "_source_contract", lambda *a: (source, driver.BUNDLE_PREPARED_SHA256))
+    monkeypatch.setattr(driver, "_source_controls", lambda *a: (
+        None, None, {"guards": {"sha256": "guards"}, "identity": {"sha256": "identity"}}))
+    monkeypatch.setattr(driver, "_capture_dir", lambda *a: root / "item-nodes")
+    monkeypatch.setattr(driver, "_target", lambda *a: object())
+    monkeypatch.setattr(driver, "_boot", boot)
+    monkeypatch.setattr(driver, "SourceGuardedRun", Run)
+    monkeypatch.setattr(driver, "_source_checkpoint", checkpoint)
+    monkeypatch.setattr(driver, "_source_compare", compare)
+    monkeypatch.setattr(driver, "_source_saved_artifact", lambda *a: {})
+    monkeypatch.setattr(driver, "_source_fetched", lambda *a: (Disk(), hashes["F"]))
+    monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: Disk(
+        pathlib.Path(path) == source))
+    monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
+        slot_letters=lambda disk: [], read_slot=lambda disk, letter: {"place": driver.BUNDLE_PLACE}))
+    monkeypatch.setattr(driver.acceptance, "halt_lane", halt)
+    args = SimpleNamespace(budget=1800, out=root / "source-output", run_id="synthetic-source",
+                           holder="generated-holder", audio_proof=root / "audio.json",
+                           manifest=prepared, controls=controls)
+    return args, Guest(), events, comparisons, hashes
+
+
+@pytest.mark.parametrize("failure", [None, "identity", "initial-pre-f", "initial-mismatch",
+                                     "deadline", "pre-g", "pre-g-mismatch", "post-g",
+                                     "post-g-mismatch"])
+def test_source_coordinator_never_uses_a_next_save_after_a_failed_checkpoint(
+        tmp_path, monkeypatch, failure):
+    args, guest, events, comparisons, hashes = _source_coordinator(tmp_path, monkeypatch,
+                                                                    fail=failure)
+    if failure:
+        with pytest.raises(RouteError):
+            driver.run_bundle_source(args, guest=guest)
+    else:
+        result = driver.run_bundle_source(args, guest=guest)
+        assert result["success"] and all(result["checks"].values())
+        assert result["same_run_f_sha256"] == hashes["F"]
+        assert result["same_run_g_sha256"] == hashes["G"]
+        assert result["independently_authenticated"] is False
+        assert result["preservation_established"] is False
+        assert [(e[1], e[2], e[3]) for e in comparisons] == [
+            ("F", driver.BUNDLE_SOURCE_F_SHA256, "selected-source"),
+            ("F", hashes["F"], "same-run-F"), ("G", hashes["G"], "same-run-G")]
+    receipt = json.loads((args.out / "bundle-source-receipt.json").read_text())
+    assert receipt["success"] is (failure is None)
+    if failure:
+        expected = {"identity": "injected source identity mismatch",
+                    "initial-pre-f": "injected initial-pre-f failure",
+                    "initial-mismatch": "initial payload mismatch before F",
+                    "deadline": "bundle_source_deadline: action time expired",
+                    "pre-g": "injected pre-g failure",
+                    "pre-g-mismatch": "pre-G differs from same-run F",
+                    "post-g": "injected post-g failure",
+                    "post-g-mismatch": "post-G differs from same-run G"}[failure]
+        assert expected in " ".join((receipt.get("error", ""), *receipt["cleanup"]))
+    assert events[0] == ("boot", args.holder)
+    assert events[-1] == ("halt", args.holder)
+    keys = [key for kind, key in events if kind == "key"]
+    if failure in ("identity", "initial-pre-f", "initial-mismatch", "deadline"):
+        assert "F" not in keys and "G" not in keys
+    elif failure in ("pre-g", "pre-g-mismatch"):
+        assert "F" in keys and "G" not in keys
+    else:
+        assert "F" in keys and "G" in keys
+    if failure in ("post-g", "post-g-mismatch"):
+        assert receipt["checks"]["save_g_ui_acknowledged"] is True
+        assert receipt["checks"]["same_run_g_verified"] is True
+        assert receipt["success"] is False
+    if failure is None:
+        assert keys.count("NP8") == keys.count("NP2") == 3
+        assert "U" not in keys and "J" not in keys
+        assert comparisons[0][0] == "initial-pre-f"
+        assert events.index(("checkpoint", "initial-pre-f")) < events.index(("key", "F"))
+        assert events.index(("checkpoint", "pre-g")) < events.index(("key", "G"))
+        assert receipt["halt"]["fetched"]["disk3"]["path"] == "fetched-disk3.adf"
+        assert "raw_hex" not in json.dumps(receipt)
+
+
+def test_source_receipt_keeps_owner_mode_and_no_raw_payload(tmp_path):
+    receipt = {"phase": "bundle-source", "success": True,
+               "independently_authenticated": False, "preservation_established": False}
+    path = tmp_path / "private.json"
+    driver._write_source_receipt(path, receipt)
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert json.loads(path.read_text()) == receipt
+    with pytest.raises(RouteError, match="raw node bytes"):
+        driver._write_source_receipt(tmp_path / "blocked.json", {"raw_hex": "not a game byte"})
+    assert not (tmp_path / "blocked.json").exists()
