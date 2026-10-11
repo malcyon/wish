@@ -474,6 +474,8 @@ class Controller:
     def _compare_checkpoint(self, name: str, expected: Any,
                             engine: dict[str, Any]) -> dict[str, Any]:
         if expected is None:
+            if name == "ssb_leave_terminal" and engine.get("fix") is None:
+                return row("unproven", observed=engine, reason="the game fix was not readable")
             return row("awaiting image review", observed=engine)
         fix = engine.get("fix")
         if fix is None:

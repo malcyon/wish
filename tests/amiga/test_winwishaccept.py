@@ -937,6 +937,70 @@ def _discovery_controller(tmp_path, monkeypatch):
     return controller, game, clock, snapshots, calls
 
 
+def test_only_terminal_unknown_checkpoint_requires_a_readable_fix(tmp_path, monkeypatch):
+    controller, *_ = _discovery_controller(tmp_path, monkeypatch)
+    unreadable = {"fix": None, "geo_sha256": "synthetic", "party": None}
+    verdict = controller._compare_checkpoint("ssb_leave_terminal", None, unreadable)
+    assert verdict["status"] == "unproven"
+    assert verdict["reason"] == "the game fix was not readable"
+    assert verdict["observed"] is unreadable
+    assert controller._compare_checkpoint("ordinary_unknown", None, unreadable)["status"] == (
+        "awaiting image review")
+    readable = {**unreadable, "fix": {"x": 15, "y": 8, "facing": 1}}
+    verdict = controller._compare_checkpoint("ssb_leave_terminal", None, readable)
+    assert verdict["status"] == "awaiting image review"
+    assert verdict["observed"] is readable
+
+
+@pytest.mark.parametrize("readable", [False, True])
+def test_terminal_discovery_real_checkpoint_retains_pair_and_fix_verdict(tmp_path,
+                                                                         monkeypatch, readable):
+    from automap import amigaparty
+    from tools.amiga import amigatarget, route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    previous = controller._checkpoint
+    real_checkpoint = winwishaccept.Controller._checkpoint
+    def checkpoint(name, expected, frame):
+        if name == "ssb_leave_terminal":
+            return real_checkpoint(controller, name, expected, frame)
+        return previous(name, expected, frame)
+    monkeypatch.setattr(controller, "_checkpoint", checkpoint)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: None)
+    terminal = SimpleNamespace(x=15, y=8, facing=1, outdoors=False,
+                               world_map=False, window=None, heading=None)
+    restored = SimpleNamespace(x=3, y=3, facing=2)
+    fixes = iter((terminal if readable else None, restored))
+    target = SimpleNamespace(fix=lambda: next(fixes), geo=lambda: b"synthetic",
+                             close=lambda: None)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: target)
+    def shot(guest, holder, kind, path):
+        pathlib.Path(path).write_bytes(b"wish")
+        pathlib.Path(str(path) + ".json").write_text("{}")
+    monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    result = controller.run_discovery()
+    pair = result["checkpoints"]["ssb_leave_terminal"]
+    assert pathlib.Path(pair["wish"]).read_bytes() == b"wish"
+    assert pathlib.Path(pair["wish_sidecar"]).is_file()
+    assert pathlib.Path(pair["controls"]).read_text() == "Controls\n"
+    assert pair["pair_atomic"] is False
+    assert pair["game"] is result["discovery"]["evidence"][-1]
+    assert (pair["observed"]["fix"] is None) == (not readable)
+    assert game.keys[-1] == "NP8"
+    if readable:
+        assert result["failure"] is None
+        assert pair["comparison"]["status"] == "awaiting image review"
+        assert result["discovery"]["status"] == "awaiting image review"
+    else:
+        assert "the game fix was not readable" in result["failure"]
+        assert pair["comparison"]["status"] == "unproven"
+        assert result["discovery"]["status"] == "failed"
+        assert result["cleanup"]["restored"] is True
+
+
 def test_discovery_prefix_and_only_one_terminal_key_without_actions(tmp_path, monkeypatch):
     from tools.amiga import route_silver_blades
 
