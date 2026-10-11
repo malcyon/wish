@@ -2221,7 +2221,7 @@ class EditorBinding(QObject):
             fresh.mkdir(parents=True)
             try:
                 written = dialog.direction.write(dialog.rehearsal, fresh)
-            except Exception:
+            except Exception as exc:
                 _log.exception("could not write a conversion into %s", fresh)
                 #: `rmtree`, not `rmdir`: a direction's `write` puts several
                 #: files in the folder, so a writer that fails partway leaves
@@ -2230,7 +2230,9 @@ class EditorBinding(QObject):
                 #: destination under a `wish-YYYY-MM-DD` name, indis-
                 #: tinguishable from a conversion that worked.
                 shutil.rmtree(fresh, ignore_errors=True)
-                dialog.report_failure(convert_mod.CANNOT_CONVERT)
+                dialog.report_failure(
+                    DISK_FULL if files.out_of_space(exc)
+                    else convert_mod.CANNOT_CONVERT)
                 continue
             if dialog.direction.destination_port == "c64":
                 self.load(str(written[0]))
@@ -2912,7 +2914,8 @@ class EditorBinding(QObject):
             if interactive:
                 QMessageBox.critical(
                     self.root, "Cannot save",
-                    DISK_FULL if isinstance(exc, AmigaDiskFull) else str(exc))
+                    DISK_FULL if (isinstance(exc, AmigaDiskFull)
+                                  or files.out_of_space(exc)) else str(exc))
                 return "failed"
             raise
         if self.party.port == "c64":
@@ -3580,10 +3583,12 @@ class EditorBinding(QObject):
                     RECOVERY_FAILED_NO_BACKUP.format(destination=destination))
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, text)
             return
-        except (saveplan.SaveAsError, OSError):
+        except (saveplan.SaveAsError, OSError) as exc:
             _log.exception("could not publish a Save As to %s",
                            plan.destination.path)
-            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
+            QMessageBox.critical(
+                self.root, CANNOT_SAVE_TITLE,
+                DISK_FULL if files.out_of_space(exc) else SAVE_AS_FAILED)
             return
         note = files.written_note(published.destination.path, published.backup)
         self._hide_destination_section()

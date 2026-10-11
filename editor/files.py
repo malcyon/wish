@@ -21,6 +21,7 @@ save that would have gone through without it.
 from __future__ import annotations
 
 import datetime as _dt
+import errno
 import logging
 import os
 import pathlib
@@ -61,6 +62,13 @@ class TargetNotEmpty(RuntimeError):
     One folder holding two parties' files is neither of them, so a
     destination that is not empty is blocked rather than mixed into.
     """
+
+
+def out_of_space(exc: BaseException) -> bool:
+    """Whether `exc` is the operating system saying the drive or the player's
+    quota has no room left for a write."""
+    return (isinstance(exc, OSError)
+            and exc.errno in (errno.ENOSPC, getattr(errno, "EDQUOT", None)))
 
 
 def _no_backup_folder(name: str) -> NoBackupFolder:
