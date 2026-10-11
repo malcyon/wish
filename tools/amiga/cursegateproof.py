@@ -12,10 +12,12 @@ import argparse
 import contextlib
 import hashlib
 import json
+import os
 import pathlib
 import re
 import shutil
 import signal
+import stat
 import sys
 import time
 from typing import Any
@@ -23,9 +25,11 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap import amiga, amigaparty, amigatrip, amigavars  # noqa: E402
+from automap import amiga, amigaparty, amigatrip, amigavars, gamedisks  # noqa: E402
+from goldbox.amiga_adf import AmigaDisk  # noqa: E402
 from tools.amiga import (  # noqa: E402
     acceptance,
+    amiga68k,
     noencounters,
     route_curse,
     screens,
@@ -55,6 +59,219 @@ CLEANUP = 300
 VARS = (0x4C02, 0x4C05, 0x4C06, 0x7ECA, 0x7F79, 0x7F7A)
 QUALIFIED = (0x4C02, 0x4C05, 0x4C06)
 NAMES = ("MATHEW", "PHILIPPE", "SHARA", "LEDERA", "TRAVIS", "MARK")
+EXE_SHA256 = "8d4ceba86e4b7659e5fa678446f9cafdfd5f4aa70c59c68d44862ed12bb83fb8"
+ECL_SHA256 = "18a41bbd89cf136b4140c5a215606dab747d744e706b5cf7b9f8de8321e3b450"
+ECL_SIZE = 7622
+COMPARISON = bytes.fromhex("00010001000100")
+HANDLERS = {1: 0x42BB2, 5: 0x432FC, 7: 0x43518}
+DIRECT = {"pc": (0x5004, 2), "script_pointer": (0x5006, 4),
+          "opcode": (0x58C2, 1), "previous": (0x5CF1, 1),
+          "caller": (0x583C, 4), "comparison": (0x5844, 7),
+          "stop": (0x3330, 1), "area_change": (0x332F, 1),
+          "change_pending": (0x4FFF, 1), "mode": (0x3D56, 1),
+          "menu": (0x1C24, 2), "variable_pointer": (0x3DBE, 4),
+          "word_pointer": (0x3D00, 4), "cursor_pointer": (0x383C, 4),
+          "dialog_pointer": (0x66EA, 4), "dialog_count": (0x39F6, 2),
+          "dialog_initialized": (0x39F4, 1)}
+
+
+def _u(raw: bytes) -> int:
+    return int.from_bytes(raw, "big")
+
+
+def _range(target, address: int, length: int, label: str) -> None:
+    regions = getattr(target, "memory", None)
+    require(isinstance(regions, tuple) and bool(regions)
+            and any(base <= address and address + length <= base + size
+                    for base, size in regions), f"{label} is outside measured memory")
+
+
+def _disjoint(a: tuple[int, int], b: tuple[int, int]) -> bool:
+    return a[1] <= b[0] or b[1] <= a[0]
+
+
+def pinned_executable() -> dict:
+    """Resolve handlers and runtime code anchoring from the registered executable."""
+    root = gamedisks.find("amiga")
+    require(root is not None, "the registered Amiga disk root is missing")
+    path = (root / "Curse_Of_The_Azure_Bonds" /
+            "CurseOfTheAzureBonds_A.adf")
+    raw = AmigaDisk.open(path).read_file("/Curse")
+    require(hashlib.sha256(raw).hexdigest() == EXE_SHA256,
+            "the registered Curse executable does not match the full pin")
+    exe = amiga68k.Executable.parse(raw)
+    data = exe.small_data
+    code = exe.hunks[0]
+    require(data is not None and code.kind == "CODE" and code.file_offset is not None,
+            "the pinned executable has no expected code/data hunks")
+    jumps = []
+    for offset in (0, 6, 12):
+        blob = raw[data.file_offset + offset:data.file_offset + offset + 6]
+        require(blob[:2] == b"\x4e\xf9"
+                and exe.relocs.get((data.number, offset + 2)) == code.number,
+                "the executable's code-base relocation is not pinned")
+        jumps.append((offset, _u(blob[2:])))
+    handlers = {}
+    for kind, file_at in HANDLERS.items():
+        table = 0x2FD2 + 4 * (kind - 1)
+        require(exe.relocs.get((data.number, table)) == code.number,
+                "a dialog handler is not relocated to the code hunk")
+        relative = _u(raw[data.file_offset + table:data.file_offset + table + 4])
+        require(code.file_offset + relative == file_at,
+                "the executable's dialog handler differs")
+        handlers[kind] = (relative, raw[file_at:file_at + 4])
+    return {"jumps": tuple(jumps), "handlers": handlers,
+            "code_size": code.size, "sha256": EXE_SHA256}
+
+
+def relocated_handlers(target, pinned: dict) -> dict[int, int]:
+    """Measure a common runtime code base from three independently relocated jumps."""
+    base = target.data_base
+    jumps = pinned["jumps"]
+    for offset, _ in jumps:
+        _range(target, base + offset, 6, "code-base jump")
+    live_jumps = [target.read(base + offset, 6) for offset, _ in jumps]
+    require(all(blob[:2] == b"\x4e\xf9" and len(blob) == 6 for blob in live_jumps),
+            "the live code-base jumps differ")
+    bases = {_u(blob[2:]) - relative for blob, (_, relative)
+             in zip(live_jumps, jumps)}
+    require(len(bases) == 1, "the live jumps disagree on the code base")
+    code_base = bases.pop()
+    _range(target, code_base, pinned["code_size"], "relocated code hunk")
+    handlers = {}
+    for kind, (relative, prefix) in pinned["handlers"].items():
+        address = code_base + relative
+        _range(target, address, len(prefix), "relocated dialog handler")
+        require(target.read(address, len(prefix)) == prefix,
+                "the live dialog handler differs from the pinned executable")
+        handlers[kind] = address
+    return handlers
+
+
+def observe_state(target, pinned: dict) -> dict:
+    """Read one bounded, raw diagnostic state without altering the running game."""
+    if getattr(target, "data_base", None) is None:
+        target.locate()
+    elif getattr(target, "anchor_base", None) is not None:
+        target.check_base()
+    d = target.data_base
+    for name, (offset, length) in DIRECT.items():
+        _range(target, d + offset, length, name)
+    direct = {name: target.read(d + offset, length)
+              for name, (offset, length) in DIRECT.items()}
+    s, v, w, p = (_u(direct[name]) for name in
+                  ("script_pointer", "variable_pointer", "word_pointer",
+                   "cursor_pointer"))
+    for name, address in (("script", s), ("variables", v),
+                          ("word table", w), ("cursor", p)):
+        require(address and not address & 1, f"{name} pointer is null or odd")
+        _range(target, address, 4, f"{name} pointer")
+    count = _u(direct["dialog_count"])
+    require(1 <= count <= 24, "dialog item count is not 1..24")
+    require(_u(direct["dialog_pointer"]) == d + 0x39F8,
+            "dialog items do not use the inline array")
+    pointed = {"script": (s + 0x8000, ECL_SIZE),
+               "roll_limit": (v + 0xFEF2, 4),
+               "word_table": (w + 0x9804, 10),
+               "cursor": (p, 68), "dialog": (d + 0x39F8, count * 32)}
+    for name, (address, length) in pointed.items():
+        require(address >= 0 and (address & 1) == 0,
+                f"{name} has an invalid pointer")
+        _range(target, address, length, name)
+    protected = [(d + offset, d + offset + length)
+                 for offset, length in DIRECT.values()]
+    protected.extend((address, address + length) for name, (address, length)
+                     in pointed.items() if name != "cursor")
+    for destination in ((d + 0x348A, d + 0x368E), (p + 4, p + 68)):
+        require(all(_disjoint(destination, span) for span in protected),
+                "cursor writes alias protected interpreter or pointed data")
+    raw = {name: target.read(address, length)
+           for name, (address, length) in pointed.items()}
+    handlers = relocated_handlers(target, pinned)
+    for i in range(count):
+        item = raw["dialog"][32 * i:32 * (i + 1)]
+        handler = _u(item[:4])
+        kinds = [kind for kind, address in handlers.items() if handler == address]
+        require(len(kinds) == 1, f"dialog item {i} has an unpinned handler")
+        require(item[0x1C] & 0x80, f"dialog item {i} is not drawn")
+        require(kinds[0] != 5 or _u(item[4:8]) == 0,
+                f"dialog item {i} has an active type-5 callback")
+    require(direct["dialog_initialized"] != b"\x00",
+            "world dialog is not initialized")
+    require(len(raw["script"]) == ECL_SIZE
+            and hashlib.sha256(raw["script"]).hexdigest() == ECL_SHA256
+            and hashlib.sha256(raw["script"][:20]).hexdigest()[:8] == ENTRY
+            and raw["script"][0x1952:0x1958] == ORIGINAL
+            and raw["script"][0x1960] == 0,
+            "the complete original ECL01 body or EXIT differs")
+    result = {"direct": direct, "pointed": raw, "pointers": (s, v, w, p),
+              "handlers": handlers, "reading": live(target, reuse_location=True),
+              "time": time.time(), "monotonic": time.monotonic()}
+    return result
+
+
+def rejected_candidate(before: dict, captures: list[dict], index: int,
+                       world_frames: list[bool]) -> tuple[bool, list[str]]:
+    """A sampled persistent EXIT is diagnostic, never a branch or suppression proof."""
+    errors = []
+    if len(captures) != 4 or len(world_frames) != 2 or not all(world_frames):
+        return False, ["world frame or bracket is missing"]
+    expected = (4 - index, 14, 3)
+    try:
+        at_world(before["reading"], (5 - index, 14, 3))
+        for capture in captures:
+            at_world(capture["reading"], expected)
+    except RouteError:
+        errors.append("area, mode, destination, or live attribute differs")
+    baseline = captures[0]
+    for i, capture in enumerate(captures[1:], 1):
+        for key, value in baseline["direct"].items():
+            if capture["direct"][key] != value:
+                errors.append(f"bracket {i} changed {key}")
+        for key in ("pointers", "handlers"):
+            if capture[key] != baseline[key]:
+                errors.append(f"bracket {i} changed {key}")
+        for key in ("script", "roll_limit", "word_table", "dialog"):
+            if capture["pointed"][key] != baseline["pointed"][key]:
+                errors.append(f"bracket {i} changed {key}")
+    direct = baseline["direct"]
+    expected_bytes = {"pc": b"\x99\x61", "opcode": b"\x00", "previous": b"\x19",
+                      "caller": b"\x00" * 4, "comparison": COMPARISON,
+                      "stop": b"\x00", "area_change": b"\x00",
+                      "change_pending": b"\x00", "mode": b"\x04",
+                      "menu": b"\x00\x01"}
+    errors.extend(f"the EXIT {key} differs" for key, value in expected_bytes.items()
+                  if direct[key] != value)
+    if all(before["direct"][key] == direct[key]
+           for key in ("pc", "opcode", "previous", "comparison", "caller")):
+        errors.append("the EXIT signature was present before the move")
+    roll, limit = _u(baseline["pointed"]["roll_limit"][:2]), _u(
+        baseline["pointed"]["roll_limit"][2:])
+    if limit not in (10, 20, 30, 40) or not limit < roll <= 100:
+        errors.append("the rejected comparison has no bounded roll and limit")
+    return not errors, errors
+
+
+def _private_observation(folder: pathlib.Path, label: str, state: dict) -> dict:
+    """Write raw measured bytes only beneath the owner-private evidence directory."""
+    actual = folder.stat()
+    require(os.name == "posix" and actual.st_uid == os.getuid()
+            and stat.S_IMODE(actual.st_mode) == 0o700,
+            "the observation directory is not owner-private")
+    payload = {"time": state["time"], "monotonic": state["monotonic"],
+               "reading": state["reading"], "pointers": state["pointers"],
+               "handlers": state["handlers"],
+               "direct": {k: v.hex() for k, v in state["direct"].items()},
+               "pointed": {k: v.hex() for k, v in state["pointed"].items()}}
+    blob = (json.dumps(payload, sort_keys=True) + "\n").encode()
+    path = folder / f"{label}.json"
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as out:
+        out.write(blob)
+    require(stat.S_IMODE(path.stat().st_mode) == 0o600,
+            "the raw observation is not owner-private")
+    return {"order": label, "time": state["time"],
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            "script_sha256": hashlib.sha256(state["pointed"]["script"]).hexdigest()}
 
 
 def require(ok: bool, reason: str) -> None:
@@ -232,9 +449,12 @@ def pinned(target, expected: bytes) -> dict:
     return result
 
 
-def live(target, *, names: bool = False) -> dict:
+def live(target, *, names: bool = False, reuse_location: bool = False) -> dict:
     """Keep note-backed member-table readings distinct from qualified flags."""
-    target.locate()
+    if not reuse_location or getattr(target, "data_base", None) is None:
+        target.locate()
+    elif getattr(target, "anchor_base", None) is not None:
+        target.check_base()
     row = amigatrip.row_for(TITLE)
     fields = {f"{v:04X}": reading.as_log()
               for v in VARS for reading in amigavars.read_variables(target, TITLE, (v,))}
@@ -300,13 +520,21 @@ def off_checked(switch, state, target) -> dict:
 class Screens:
     """Grab the emulator's frame; only a matched guard permits the next key."""
 
-    def __init__(self, guest, holder, folder, guards, identity, route_end, report, receipt):
+    def __init__(self, guest, holder, folder, guards, identity, route_end, report, receipt,
+                 *, private=False):
         self.guest, self.holder, self.folder = guest, holder, folder
         self.guards, self.identity, self.route_end = guards, identity, route_end
         self.report, self.receipt = report, receipt
         self.events = report.setdefault("events", [])
         self.count = 0
-        folder.mkdir()
+        self.private = private
+        if private:
+            folder.mkdir(mode=0o700)
+            require(os.name == "posix" and folder.stat().st_uid == os.getuid()
+                    and stat.S_IMODE(folder.stat().st_mode) == 0o700,
+                    "the private screenshot directory has the wrong owner or mode")
+        else:
+            folder.mkdir()
 
     def left(self, cap: float) -> float:
         left = min(cap, self.route_end - time.monotonic())
@@ -318,9 +546,16 @@ class Screens:
         raw = self.folder / f"{self.count:03d}-{label}.raw.png"
         crop = self.folder / f"{self.count:03d}-{label}.png"
         good = self.guest.grab(label, raw, crop, self.left(20))
-        self.events.append({"label": label, "raw": str(raw),
-                            "crop": str(crop) if good else None,
-                            "sha256": sha256(raw)})
+        if self.private:
+            for path in (raw, crop) if good else (raw,):
+                path.chmod(0o600)
+                require(stat.S_IMODE(path.stat().st_mode) == 0o600,
+                        "the screenshot is not owner-private")
+        event = {"label": label, "raw": str(raw),
+                 "crop": str(crop) if good else None, "sha256": sha256(raw)}
+        if self.private:
+            event.update(time=time.time(), order=self.count)
+        self.events.append(event)
         self.receipt()
         return crop if good else None
 
@@ -396,8 +631,70 @@ def classify(world: bool, combat: bool, mode: int | None,
 
 
 def observe_step(shots: Screens, target, index: int, before: dict,
-                 combat_guard, *, replay: bool) -> tuple[str, dict | None]:
+                 combat_guard, *, replay: bool, observe_rejected: bool = False,
+                 pinned_exe: dict | None = None, private: pathlib.Path | None = None
+                 ) -> tuple[str, dict | None]:
     """Keep an unknown screen as evidence; do not interpret a world miss as combat."""
+    if observe_rejected:
+        require(not replay and pinned_exe is not None and private is not None,
+                "the rejected observation is not a replay")
+        end = time.monotonic() + shots.left(35)
+        expected = (4 - index, 14, 3)
+        while time.monotonic() < end:
+            crop = shots.grab(f"observe-{index}-settle")
+            if crop is None:
+                continue
+            if not shots.guards("world", crop):
+                return "unknown", {"outcome": "unknown", "reason": "not the world screen",
+                                   "crop": str(crop)}
+            reading = live(target, reuse_location=True)
+            if reading["area"] != 1 or reading["mode"] != 4:
+                return "unknown", {"outcome": "unknown", "reason": "not ordinary area 1",
+                                   "crop": str(crop)}
+            if reading["square"] == before["square"]:
+                time.sleep(min(0.5, max(0, end - time.monotonic())))
+                continue
+            at_world(reading, expected)
+            break
+        else:
+            return "unknown", {"outcome": "unknown", "reason": "no indexed destination"}
+
+        captured, frames, ordering = [], [], []
+        stream = shots.report["candidate_observation"].setdefault("read_order", [])
+
+        def measured(entry: dict) -> None:
+            ordering.append(entry)
+            stream.append({"move": index, **entry})
+            shots.receipt()
+
+        for bracket in range(2):
+            first = observe_state(target, pinned_exe)
+            measured(_private_observation(private, f"move-{index}-b{bracket}-pre", first))
+            crop = shots.grab(f"observe-{index}-b{bracket}")
+            frames.append(crop is not None and shots.guards("world", crop))
+            measured({"order": f"move-{index}-b{bracket}-screen", "time": time.time(),
+                      "sha256": sha256(crop) if crop is not None else None,
+                      "raw_sha256": shots.events[-1]["sha256"]})
+            last = observe_state(target, pinned_exe)
+            measured(_private_observation(private, f"move-{index}-b{bracket}-post", last))
+            captured.extend((first, last))
+            if bracket == 0:
+                pause = min(1.0, shots.left(2))
+                interval = {"order": "NO-COMMAND interval", "started": time.time(),
+                            "seconds": pause}
+                measured(interval)
+                time.sleep(pause)
+                interval["ended"] = time.time()
+                stream[-1]["ended"] = interval["ended"]
+                shots.receipt()
+        valid, reasons = rejected_candidate(before, captured, index, frames)
+        unsafe = any(reason.startswith(("world frame", "area, mode", "bracket "))
+                     or reason == "the EXIT signature was present before the move"
+                     for reason in reasons)
+        outcome = "candidate" if valid else ("unknown" if unsafe else "world")
+        return outcome, {"outcome": outcome, "reading": captured[-1]["reading"],
+                         "valid": valid, "mismatches": reasons, "order": ordering,
+                         "crop": str(crop) if crop is not None else None}
     end = time.monotonic() + shots.left(35)
     last: dict | None = None
     while time.monotonic() < end:
@@ -426,7 +723,8 @@ def observe_step(shots: Screens, target, index: int, before: dict,
 
 
 def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
-          report: dict) -> None:
+          report: dict, *, observe_rejected: bool = False,
+          pinned_exe: dict | None = None, private: pathlib.Path | None = None) -> None:
     """One off snapshot, up to two control moves, then only a matched replay."""
     report["candidate"] = False
     shots.see("title", 250, opening=True)
@@ -443,6 +741,48 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
     require(tuple(start["names"] or ()) == NAMES, "slot B is not the MATHEW party")
     original = pinned(target, ORIGINAL)
     report["start"] = {"reading": start, "script": original}
+    if observe_rejected:
+        require(pinned_exe is not None and private is not None and switch is None,
+                "rejected observation cannot activate the switch or replay")
+        require(not state.load()["on"] and state.load()["rows"] == [],
+                "rejected observation needs an empty, switched-off journal")
+        report["candidate_observation"] = {"status": "incomplete", "moves": [],
+                                            "read_order": []}
+        report["snapshot_attempted"] = {"holder": holder, "name": SNAPSHOT}
+        shots.receipt()
+        report["snapshot"] = receipt_of(guest.snapshot(SNAPSHOT, holder))
+        report["snapshot_taken"] = True
+        shots.receipt()
+        shots.press("NP2")
+        prior = shots.world_at(target, (4, 14, 3), 35)
+        report["observation_turn"] = prior
+        shots.receipt()
+        for index in (1, 2):
+            at_world(prior, (5 - index, 14, 3))
+            require(not state.load()["on"] and state.load()["rows"] == [],
+                    "the observation journal was changed")
+            pre = observe_state(target, pinned_exe)
+            at_world(pre["reading"], (5 - index, 14, 3))
+            initial = _private_observation(private, f"move-{index}-before", pre)
+            report["candidate_observation"]["read_order"].append({"move": index, **initial})
+            shots.receipt()
+            shots.press("NP8")
+            outcome, seen = observe_step(shots, target, index, prior, combat_guard,
+                                         replay=False, observe_rejected=True,
+                                         pinned_exe=pinned_exe, private=private)
+            candidate = report["candidate_observation"]
+            candidate["moves"].append({"index": index, "before": initial,
+                                       **(seen or {"outcome": outcome})})
+            shots.receipt()
+            if outcome == "candidate":
+                candidate["status"] = "sampled rejected-chance candidate"
+                return
+            if outcome != "world":
+                candidate["status"] = "incomplete"
+                return
+            prior = seen["reading"]
+        report["candidate_observation"]["status"] = "no candidate in two moves"
+        return
     world_crop = pathlib.Path(shots.events[-1]["crop"])
     screens.checked_rule(shots.folder.parent / "combat-reference.png", COMBAT_BOX,
                          "combat", (world_crop,))
@@ -525,18 +865,37 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
 
 
 def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=None,
-         guards=None, identity=None, combat_guard=None) -> dict:
+          guards=None, identity=None, combat_guard=None) -> dict:
     """Prepare private images, claim one lane, compare, and always clean up ours."""
     start_time = time.monotonic()
     route_end, total_end = start_time + TOTAL - CLEANUP, start_time + TOTAL
     state = noencounters.WinuaeState(noencounters.winuae_state_path(args.holder))
     manifest = preflight(args, state)
     gate_row()
+    observation = getattr(args, "observe_rejected", False)
+    pinned_exe = pinned_executable() if observation else None
+    require(not observation or os.name == "posix",
+            "private rejected observations need POSIX owner and mode checks")
     require(route_end - time.monotonic() > 120, "too little route time remains to boot")
-    args.out.mkdir(parents=True)
+    private = None
+    if observation:
+        args.out.mkdir(parents=True, mode=0o700)
+        private = args.out / "observations"
+        require(args.out.stat().st_uid == os.getuid()
+                and stat.S_IMODE(args.out.stat().st_mode) == 0o700,
+                "the rejected-observation folder is not owner-private")
+        private.mkdir(mode=0o700)
+        require(private.stat().st_uid == os.getuid()
+                and stat.S_IMODE(private.stat().st_mode) == 0o700,
+                "the raw evidence folder is not owner-private")
+    else:
+        args.out.mkdir(parents=True)
     local = args.out / "prepare.json"
     prepared = private_media(manifest, args.out)
     record(local, prepared)
+    if observation:
+        for path in (local, *(args.out / f"{key}.adf" for key in MEDIA)):
+            path.chmod(0o600)
     report: dict[str, Any] = {"verdict": "inconclusive", "candidate": False,
                               "branch_witness_verified": False,
                               "branch_witness_reason": "no independent live ECL01 branch witness",
@@ -546,6 +905,8 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
                               "journal_initial": state.load()}
     screens.canonical_file(COMBAT_REFERENCE, args.out / "combat-reference.png")
     combat_reference = args.out / "combat-reference.png"
+    if observation:
+        combat_reference.chmod(0o600)
     report["combat_reference"] = {"original": str(COMBAT_REFERENCE),
                                   "original_sha256": COMBAT_SHA256,
                                   "canonical": str(combat_reference),
@@ -559,9 +920,13 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
     old_alarm = signal.getsignal(signal.SIGALRM)
     alarm_set = False
     command = [str(pathlib.Path(__file__)), "--manifest", str(args.manifest),
-               "--holder", args.holder, "--out", str(args.out)]
+                "--holder", args.holder, "--out", str(args.out)]
+    if observation:
+        command.append("--observe-rejected")
     def receipt():
         record(args.out / "summary.json", report)
+        if observation:
+            (args.out / "summary.json").chmod(0o600)
 
     receipt()
     try:
@@ -580,8 +945,12 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
         receipt()
         target = target or amiga.AmigaTarget(amiga.WinuaePipe(holder=args.holder),
                                             amiga.MACHINES[TITLE])
-        shots = Screens(guest, args.holder, args.out / "shots", guards, identity,
-                        route_end, report, receipt)
+        if observation:
+            shots = Screens(guest, args.holder, args.out / "shots", guards, identity,
+                            route_end, report, receipt, private=True)
+        else:
+            shots = Screens(guest, args.holder, args.out / "shots", guards, identity,
+                            route_end, report, receipt)
         # The reference is an observed combat menu, not an invented pixel hash.
         rule = screens.guard_rule(combat_reference, COMBAT_BOX, "combat")
         report["combat_reference"]["box"] = rule
@@ -608,8 +977,12 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
             receipt()
             shots.press(key)
 
-        switch = switch_factory(press_when_patched)
-        proof(shots, target, switch, state, guest, args.holder, combat_guard, report)
+        if observation:
+            proof(shots, target, None, state, guest, args.holder, combat_guard,
+                  report, observe_rejected=True, pinned_exe=pinned_exe, private=private)
+        else:
+            switch = switch_factory(press_when_patched)
+            proof(shots, target, switch, state, guest, args.holder, combat_guard, report)
     except BaseException as exc:
         report["error"] = f"{type(exc).__name__}: {exc}"
         receipt()
@@ -735,6 +1108,8 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
             report["cleanup"].append({"deadline_error": "total 900-second deadline passed"})
             report["verdict"] = "inconclusive: total deadline passed"
         record(args.out / "summary.json", report)
+        if observation:
+            (args.out / "summary.json").chmod(0o600)
     return report
 
 
@@ -747,12 +1122,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--holder", required=True)
     parser.add_argument("--wait-lane", type=float, default=0)
+    parser.add_argument("--observe-rejected", action="store_true")
     args = parser.parse_args(argv)
     with terminating():
         result = run(args)
-    print(json.dumps({k: result.get(k) for k in ("verdict", "error", "cleanup", "elapsed_seconds",
-                                                   "diagnostic_pair", "branch_witness_verified",
-                                                   "branch_witness_reason")},
+    fields = ("verdict", "error", "cleanup", "elapsed_seconds", "diagnostic_pair",
+              "branch_witness_verified", "branch_witness_reason")
+    if args.observe_rejected:
+        fields += ("candidate_observation",)
+    print(json.dumps({k: result.get(k) for k in fields},
                       sort_keys=True))
     return 1
 
