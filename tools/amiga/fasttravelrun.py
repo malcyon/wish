@@ -220,10 +220,12 @@ GUARD_FILES = {"pool-of-radiance": "pool", "curse-of-the-azure-bonds": "curse",
 
 
 def continue_guard(title: str | None, out: pathlib.Path,
-                   maps: pathlib.Path | None = None) -> Callable[[bytes], bool] | None:
+                   maps: pathlib.Path | None = None,
+                   log: Log | None = None) -> Callable[[bytes], bool] | None:
     """Whether a screenshot's bytes show the title's PRESS RETURN bar, by its `continue` guard.
 
-    None when the title has no such guard. Bytes that are no Amiga frame do not
+    None when the title has no such guard, or its file cannot be used (the reason
+    goes to `log`, so the run goes on with the screen-holds-still rule). Bytes that are no Amiga frame do not
     match. The animated picture beside the bar never settles, so a frame that
     shows the bar is answerable without holding still.
     """
@@ -233,12 +235,17 @@ def continue_guard(title: str | None, out: pathlib.Path,
     path = (maps or pathlib.Path(__file__).parent) / f"guards_{name}.json"
     if name is None or not path.exists():
         return None
-    rule = json.loads(path.read_text())["guards"].get("continue")
-    if rule is None:
+    try:
+        rule = json.loads(path.read_text())["guards"].get("continue")
+        if rule is None:
+            return None
+        rules = out / "continue-guard.json"
+        rules.write_text(json.dumps({"continue": rule}))
+        guards = screens.PixelGuards(rules)
+    except (OSError, ValueError, KeyError, AttributeError, screens.RouteError) as exc:
+        if log is not None:
+            log("continue_guard_unavailable", path=str(path), reason=repr(exc))
         return None
-    rules = out / "continue-guard.json"
-    rules.write_text(json.dumps({"continue": rule}))
-    guards = screens.PixelGuards(rules)
 
     def shows_bar(data: bytes) -> bool:
         raw, crop = out / "continue-raw.png", out / "continue-crop.png"
@@ -395,11 +402,14 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
         log("timeout", budget=budget)
     if summary["result"] == "idle":
         next_look = window_began = clock()
-        held = looks = 0
+        held = looks = bar_looks = 0
         kept = baseline
+        # A press leaves the bar it answered on screen; another bar-based press
+        # waits until a look without the bar has been seen.
+        bar_gone = True
 
         def ask() -> None:
-            nonlocal next_look, held, looks, window_began, kept
+            nonlocal next_look, held, looks, window_began, kept, bar_looks, bar_gone
             if (len(summary["arrival_keys"]) == len(arrival_keys)
                     or (clock() - window_began >= ANSWER_SECONDS and looks >= ARRIVAL_MIN_POLLS)
                     or clock() < next_look
@@ -411,7 +421,11 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
             why = tripprobe._unanswered(
                 {"key_taken": True, "area_changed": False}, kept, screen.last)
             bar = bool(at_continue and screen.last is not None and at_continue(screen.last))
-            if why is None and held < 1 and not bar:
+            bar_looks = bar_looks + 1 if bar else 0
+            bar_gone = bar_gone or not bar
+            # Two looks in a row, so the game has drawn the bar and reads input.
+            by_bar = bar and bar_looks >= 2 and bar_gone
+            if why is None and held < 1 and not by_bar:
                 why = "the screen was still changing"
             if why is None:
                 key = arrival_keys[len(summary["arrival_keys"])]
@@ -421,7 +435,7 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
                 press(key)
                 summary["arrival_keys"].append(key)
                 summary["arrival_answered"] = True
-                kept, held, looks = screen.last, 0, 0
+                kept, held, looks, bar_looks, bar_gone = screen.last, 0, 0, 0, False
                 sleep(SETTLE_SECONDS)
                 window_began = clock()
             else:
@@ -547,7 +561,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results = []
     leg = 0
-    at_continue = continue_guard(args.title, out)
+    at_continue = None
 
     def terminated(*_: object) -> None:
         raise SystemExit(143)
@@ -563,6 +577,7 @@ def main(argv: list[str] | None = None) -> int:
         target.locate()
         with open(out / "fasttravel.jsonl", "w") as stream:
             log = Log(stream, time.monotonic)
+            at_continue = continue_guard(args.title, out, log=log)
             try:
                 with (measuring_row(args.title, log) if args.measure_row
                       else contextlib.nullcontext()):

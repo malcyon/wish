@@ -340,6 +340,69 @@ def test_a_changing_screen_that_is_not_the_continue_bar_still_waits(world, monke
                for e in world.events())
 
 
+def _two_key_arrival(world, monkeypatch, screens):
+    """Two presses are wanted; `screens(world, presses)` gives the frame before each poll."""
+    _arriving(world, monkeypatch)
+    redraws = iter(range(10_000))
+
+    def gate(target, row):
+        world.screen = b"%s %d" % (screens(world, len(world.pressed)), next(redraws))
+        return len(world.pressed) >= 2 or world.clock.now >= 1000.0 + 90.0
+    monkeypatch.setattr(amigatrip, "gate", gate)
+
+
+def test_the_bar_left_on_screen_by_one_press_does_not_take_the_next_key(world, monkeypatch):
+    _two_key_arrival(world, monkeypatch, lambda world, presses: b"bar")
+    world.drive(_Arrives(polls=1), arrival_answer=["RET", "RET"],
+                at_continue=lambda data: data.startswith(b"bar"))
+    assert world.pressed == ["RET"]
+
+
+def test_the_next_key_goes_once_the_bar_has_been_gone_and_is_back(world, monkeypatch):
+    seen = {}
+
+    def screens(world, presses):
+        if presses == 1:
+            seen.setdefault("at", world.clock.now)
+            if world.clock.now < seen["at"] + 8.0:
+                return b"between"
+        return b"bar"
+    _two_key_arrival(world, monkeypatch, screens)
+    got = world.drive(_Arrives(polls=1), arrival_answer=["RET", "RET"],
+                      at_continue=lambda data: data.startswith(b"bar"))
+    assert world.pressed == ["RET", "RET"] and got["settled"], world.events()
+
+
+def test_one_look_at_the_bar_is_not_enough_to_press(world, monkeypatch):
+    _redrawing_with(world, monkeypatch, b"x")
+    looks = []
+
+    def once(data):
+        looks.append(data)
+        return len(looks) == 1
+    world.drive(_Arrives(polls=1), arrival_answer="RET", at_continue=once)
+    assert world.pressed == []
+
+
+def test_an_unusable_guards_file_is_logged_and_the_run_goes_on_without_it(tmp_path):
+    import json as jsonlib  # noqa: PLC0415
+
+    maps = tmp_path / "maps"
+    maps.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+    bad = {"not json": "{", "no guards": jsonlib.dumps({"labels": {}}),
+           "bad rule": jsonlib.dumps({"guards": {"continue": {"box": [1, 2, 3, 4],
+                                                              "sha256": "zz"}}})}
+    for what, text in bad.items():
+        (maps / "guards_pool.json").write_text(text)
+        logged = []
+        got = ftr.continue_guard("pool-of-radiance", work, maps,
+                                 log=lambda event, **fields: logged.append((event, fields)))
+        assert got is None, what
+        assert [event for event, _ in logged] == ["continue_guard_unavailable"], what
+
+
 def _frame(colour):
     import io  # noqa: PLC0415
 
