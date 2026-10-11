@@ -389,15 +389,15 @@ def test_an_unusable_guards_file_is_logged_and_the_run_goes_on_without_it(tmp_pa
 
     maps = tmp_path / "maps"
     maps.mkdir()
-    work = tmp_path / "work"
-    work.mkdir()
+    frames = tmp_path / "frames"
+    frames.mkdir()
     bad = {"not json": "{", "no guards": jsonlib.dumps({"labels": {}}),
            "bad rule": jsonlib.dumps({"guards": {"continue": {"box": [1, 2, 3, 4],
                                                               "sha256": "zz"}}})}
     for what, text in bad.items():
         (maps / "guards_pool.json").write_text(text)
         logged = []
-        got = ftr.continue_guard("pool-of-radiance", work, maps,
+        got = ftr.continue_guard("pool-of-radiance", frames, maps,
                                  log=lambda event, **fields: logged.append((event, fields)))
         assert got is None, what
         assert [event for event, _ in logged] == ["continue_guard_unavailable"], what
@@ -427,9 +427,9 @@ def test_the_continue_guard_matches_the_bar_and_nothing_else(tmp_path):
     maps = tmp_path / "maps"
     maps.mkdir()
     (maps / "guards_pool.json").write_text(jsonlib.dumps({"guards": {"continue": rule}}))
-    work = tmp_path / "work"
-    work.mkdir()
-    shows = ftr.continue_guard("pool-of-radiance", work, maps)
+    frames = tmp_path / "frames"
+    frames.mkdir()
+    shows = ftr.continue_guard("pool-of-radiance", frames, maps)
     assert shows(_frame((1, 2, 3))) is True
     assert shows(_frame((9, 9, 9))) is False
     assert shows(b"world") is False
