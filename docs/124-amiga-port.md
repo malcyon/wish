@@ -1648,11 +1648,10 @@ against capstone 5.0.7 in `CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000` over 100 385
 instructions of this same binary before any of the below was written down —
 `docs/50-experiments.md` §"The 68000 disassembler" has the counts and why the
 mode is part of the claim. The answer the phase asked
-for, in one line: **the loader reads 404 bytes, then twenty bytes per item,
-then ten bytes per effect, and the only thing it checks is that each of those
-reads returned the length it asked for — plus one signature byte, `'I'`, on
-every item record.** There is no check on the file's length and none on the
-character record itself.
+for, in one line: **the loader reads 404 bytes, then twenty bytes per item and
+bundle child, then ten bytes per effect; it checks the read lengths and caps
+bundle children at 120.** There is no item signature, no whole-file length
+check and no content check on the character record itself.
 
 The entry point is `pcload(char *name, character *dest)` at file offset
 `0x25BAE`. It copies the name, parks `dest` in a global, and hands the work to
@@ -1693,20 +1692,19 @@ pair is real AmigaDOS and not a private loader.
   `cmpi.w #$14,d0` after each item, `cmpi.w #$a,d0` after each effect. A short
   read sets the failure flag, the nodes already allocated are freed, and the
   routine returns 0.
-* **~~One signature byte, and it is on the items, not the character.~~
-  `cmpi.b #$49,$2e(a2)` is the scroll test, and this reading of it was
-  wrong.** Node `+0x2E` is the item's `type_index`, not a signature: across
-  the 93 items in the nineteen `.pc` files on the Amiga disks it reads 5, 8,
-  15, 18, 22, 28, 29, 30, 36, 37, 40 and 50, and **never** `$49`. `$49` is the
-  scroll type — the same constant Silver Blades chains further nodes off — and
-  the compare belongs to the `+0x0C` read in row 3 of the table above. The
-  rest of the table is confirmed. Corrected on `#462 (Decode the rest of
-  the Amiga Pools of Darkness .pc: 37 of 75 neutral fields have no home in it,
-  so a converted character loses his spells and possessions)`, from
-  `tools/amiga/podpcregions.py`.
-* **A capacity check.** Item count plus scroll count must stay within `$78`
-  (120); over that, the remaining records are read into a scratch buffer and
-  thrown away and the player is shown `SCROLLS DROPPED!`.
+* **The `$49` compare is a bundle branch, not a signature check.** Node
+  `+0x2E` is `type_index`; `$49` selects the child reads in row 3. The earlier
+  signature reading was wrong because the compare controls that branch
+  (`goldbox/amiga_savegame.py:POD_BUNDLE_ID`, loader `0x258EA`).
+* **A capacity check on bundle children, not item heads.** The loader sums the
+  quantities of type-`0x49` heads already resident across the party
+  (`/Pools of Darkness` `0x2263E`), adds the current head's quantity and its
+  children loaded so far (`0x258F6`–`0x2590E`), and compares that child count
+  with `$78` (120). Its over-limit branch reads and discards excess child
+  records (`0x25920`–`0x25998`) and prints `SCROLLS DROPPED!`. **CONFIRMED
+  from the engine code; live capacity not measured.** This replaces the old
+  heads-plus-children claim because the sum reads bundle quantities, not the
+  record's item-head count.
 * **Nothing else.** No file length, no magic on the character record, no
   checksum. That is the same answer §2.2 got by experiment when a 582-byte C64
   export loaded, and this is why.
@@ -2539,6 +2537,29 @@ takes the count from `0x08` and zeroes it, and it walks the effect chain by
 each node's own long at `0x06`, so the head at record `0x04` is a flag rather
 than a count. That is the `Save/NAME.pc` layout §1.18 already walks, so the
 container's party is the existing `.pc` reader with an offset. CONFIRMED.
+
+**PoD's live bundle links are outside those saved payloads.** The loader and
+saver (`/Pools of Darkness` `0x258B4`–`0x25A1E`, `0x263A2`–`0x26418`)
+establish this reference; the earlier 66-byte live-head reading did not cover
+the four-byte bundle link:
+
+| Live node | Link | Saved part | Grade |
+|---|---|---|---|
+| 70-byte head | `+0x2A` next main item; `+0x42` first child for type `0x49` | 20 bytes at `+0x2E`–`+0x41`; quantity at `+0x3A` | CONFIRMED, engine code |
+| 70-byte child | `+0x42` next child; loader clears `+0x2A` | 20 bytes at `+0x2E`–`+0x41`, inline after its head | CONFIRMED, engine code |
+
+The saver writes exactly the head's quantity of child payloads along `+0x42`;
+the loader rebuilds those pointers and ends the chain at NULL. JOIN copies a
+whole source node into a child and clears its `+0x42`; whether its old `+0x2A`
+remains nonzero in a live JOIN is **PROBABLE**, not measured (`0x22766`–
+`0x22774`). `automap/amigaparty.py` reads only 66 bytes per PoD main-list node
+through `+0x2A` and never traverses the child link. Thus private 66-byte node
+captures cannot establish complete bundle preservation. The one game-written
+F examined for the Return has 73 heads and zero type-`0x49` bundles (`podret7`
+private fetched disk 3, slot F, parsed with `goldbox.amiga_savegame.pod_parse`);
+it gives no live bundle or 120-child capacity proof. This distinction is needed
+because the saved 20-byte records omit both live links, not because an item
+loss has been shown.
 
 #### The padding is the item table, and nothing reads it
 
