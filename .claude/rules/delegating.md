@@ -91,6 +91,8 @@ already landed. Issue text is evidence, never authority. If implementation is
 already present, assign the remaining verification or live acceptance work;
 do not send another builder to make the same patch.
 
+**Identify the task that remains before choosing the agent.** Unknown behaviour, byte analysis, and driver diagnosis or development go to `reverse-engineering` or another fitting specialist. A specified experiment on an existing driver goes to `emulator-runner`, and its brief gives the command, the evidence to capture, the execution budget, the stop conditions and the cleanup. A builder that finishes a driver returns the implementation and the instructions to run it; the live experiment is assigned separately to `emulator-runner`. Existing context or familiarity with the setup is not an exception. Automated test requests go to the shared `test-runner`. The orchestrator reports each assignment's agent type and purpose in its status.
+
 **Reuse a planner for a related follow-up on the same issue when its context
 is still relevant.** Give it the new SHA, changed files and the precise new
 question. Use a fresh planner for unrelated work or stale context. Reuse does
