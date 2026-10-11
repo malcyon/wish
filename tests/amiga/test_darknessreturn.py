@@ -684,6 +684,18 @@ def test_bundle_alignment_requires_the_specific_game_written_f_digest(tmp_path):
                               disk, root, "0" * 64)
 
 
+@pytest.mark.parametrize("phase", [0, 1])
+def test_bundle_comparison_rejects_private_head_with_unmatched_slot(tmp_path, phase):
+    root, entries, readings, disk = _bundled_fixture(tmp_path)
+    path = root / f"{phase}.json"
+    artifact = json.loads(path.read_text())
+    artifact["bundle"]["nodes"][0]["slot"] = 99
+    path.write_text(json.dumps(artifact))
+    entries[phase]["file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(RouteError, match="bundle_capture: unmatched slot"):
+        driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+
+
 def test_bundle_child_old_head_link_is_compared_not_used_as_child_link(tmp_path):
     root, entries, readings, disk = _bundled_fixture(tmp_path)
     path = root / "1.json"

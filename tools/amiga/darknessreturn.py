@@ -522,9 +522,10 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
                      "bundle_capture: missing ordered bundle nodes")
             found = {}
             for node in phase_bundle["nodes"]:
-                identity = (node["slot"], next(
-                    m["name"] for m in before_reading["party"] if m["slot"] == node["slot"]),
-                    node["chain_index"])
+                names = [m["name"] for m in before_reading["party"]
+                         if m["slot"] == node["slot"]]
+                _require(len(names) == 1, "bundle_capture: unmatched slot")
+                identity = (node["slot"], names[0], node["chain_index"])
                 _require(identity in phase_heads and identity not in found,
                          "bundle_capture: unexpected or repeated bundle identity")
                 head = bytes.fromhex(node["raw_hex"])
