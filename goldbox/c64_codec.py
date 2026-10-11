@@ -680,11 +680,13 @@ DOS_PC_TAKEN_OVER = 0xB3
 ANIMATE_DEAD_ID = 32
 
 #: The titles whose engine knows effect id 32 as Animate Dead.
-ANIMATE_DEAD_TITLES = frozenset({"pool-of-radiance", "curse-of-the-azure-bonds"})
+ANIMATE_DEAD_TITLES = frozenset({dos_port.POOL_OF_RADIANCE.key,
+                                 dos_port.CURSE_OF_THE_AZURE_BONDS.key})
 
 #: The titles whose `attack_level` the cast zeroes and the C64 reader copies.
-ATTACK_LEVEL_RESTORED_TITLES = frozenset({"curse-of-the-azure-bonds",
-                                          "secret-of-the-silver-blades"})
+ATTACK_LEVEL_RESTORED_TITLES = frozenset({
+    dos_port.CURSE_OF_THE_AZURE_BONDS.key,
+    dos_port.SECRET_OF_THE_SILVER_BLADES.key})
 
 
 class DispelledZombieNode(bytes):

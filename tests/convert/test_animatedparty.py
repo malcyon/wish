@@ -1536,3 +1536,105 @@ def _read_back_party(rehearsal, folder, letter):
     for name, data in rehearsal.files.items():
         (folder / name).write_bytes(data)
     return dos_codec.read_party(folder, letter)
+
+
+
+def _editor_tests():
+    """`tests/editor` on the import path, so its synthetic Pools of Darkness
+    folder and disk helpers load when this file runs alone."""
+    import pathlib
+    import sys
+
+    here = str(pathlib.Path(__file__).resolve().parents[1] / "editor")
+    if here not in sys.path:
+        sys.path.append(here)
+
+
+def _pod_zombie_folder(root, control, cast=True, marked=True):
+    """A synthetic Pools of Darkness DOS folder whose one character holds the
+    bytes the cast writes (unless `cast` is false, which leaves the turning
+    class a companion keeps), with marker bytes in the `field_83_87` window
+    the engine never reads."""
+    _editor_tests()
+    from test_saveplan_pod import _dos_folder, _record
+
+    folder = _dos_folder(root)
+    raw = bytearray(_record().to_bytes())
+    o = _LATER_OFFSETS[_LATER_POD]
+    for name, value in _CAST.items():
+        if name in o and (cast or name != "turn"):
+            raw[o[name]] = value
+    raw[o["ctl"]] = control
+    if marked:
+        raw[o["ctl"] + 2], raw[o["ctl"] + 3] = 0x11, 0x22
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(raw))
+    return folder
+
+
+def _pod_save_as_amiga(monkeypatch, tmp_path, control, cast=True):
+    _editor_tests()
+    from test_saveplan_pod import _disk_file, _disk_three, _flag, _to_amiga
+
+    from editor import convert
+    from editor.roster import Party
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    _flag(monkeypatch, "1")
+    folder = _pod_zombie_folder(tmp_path, control, cast)
+    party = Party(convert.Source.detect(folder, slot="A"))
+    plan = _to_amiga(party, tmp_path,
+                     _disk_file(tmp_path, _disk_three("A")))
+    [image] = plan.files.values()
+    blocks = amiga_savegame.pod_parse(amiga_savegame.pod_read_slot(
+        AmigaDisk(bytearray(image)), "A")).blocks
+    source = dos_codec.to_neutral(dos_codec.read_party(folder, "A")[0])
+    return source, amiga_pod.pod_to_neutral(blocks[0]), plan
+
+
+def test_a_pools_of_darkness_dos_zombie_player_converts_living_to_the_amiga(
+        monkeypatch, tmp_path):
+    source, arrived, plan = _pod_save_as_amiga(monkeypatch, tmp_path, 0xB3)
+    assert c64_codec.zombie_player(source)
+    assert not c64_codec.zombie_player(arrived)
+    assert arrived.get("status") == "okay"
+    assert arrived.get("npc_control_byte") is None
+    assert dos_codec.window_source(arrived)[2:] \
+        == dos_codec.window_source(source)[2:] == bytes((0x11, 0x22))
+    assert plan.report.losses == []
+
+
+def test_a_pools_of_darkness_dos_zombie_companion_stays_a_zombie_on_the_amiga(
+        monkeypatch, tmp_path):
+    source, arrived, _plan = _pod_save_as_amiga(
+        monkeypatch, tmp_path, 0xB2, cast=False)
+    assert not c64_codec.zombie_player(source)
+    assert arrived.get("status") == "animated"
+    assert arrived.get("npc_control_byte") == 0xB2
+
+
+def test_a_pools_of_darkness_amiga_zombie_player_reads_back_living_on_dos(
+        monkeypatch, tmp_path):
+    """The Amiga to DOS Save As does not report the zombie's conversion to a
+    living character as a loss."""
+    import shutil
+
+    from test_podsave import _dos_source, _synthetic_disk_three
+
+    from editor import convert, saveplan
+    from editor.roster import Party
+
+    (tmp_path / "src").mkdir()
+    stage = tmp_path / "stage"
+    shutil.copytree(_pod_zombie_folder(tmp_path / "src", 0xB3, marked=False), stage)
+    disk = _synthetic_disk_three("A")
+    with monkeypatch.context() as patch:
+        patch.setattr(c64_codec, "living_player", lambda char: char)
+        kept = convert.PodDosToAmiga().rehearse(
+            _dos_source(stage, "A"), "A", None, disk_three=disk, replace=True)
+    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+    image = tmp_path / "kept.adf"
+    image.write_bytes(kept.disk)
+    party = Party(convert.Source.detect(image, slot="A"))
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos-out")
+    assert plan.files

@@ -1720,6 +1720,38 @@ def zombie_player_fields(member, snapshot,
     return fields
 
 
+def pod_zombie_player_record(member, snapshot, destination: "Destination",
+                             record: PodSheetRecord) -> PodSheetRecord:
+    """`record`, a Pools of Darkness sheet, as the destination should read
+    back a zombie player character: converted living
+    (`c64_codec.living_player`), so his movement, turning class, control byte
+    and animated, side and quickfight bytes differ from the sheet by that
+    rule and not by a loss. `record` itself for any other character."""
+    from .podsheet import TABLE
+
+    if (destination.native or getattr(destination.title, "key",
+                                      destination.title)
+            != dos_port.POOLS_OF_DARKNESS.key):
+        return record
+    neutral = (amiga_pod.pod_to_neutral(member.native)
+               if snapshot.port == "amiga"
+               else source_neutral(member, snapshot, snapshot.title))
+    if not c64_codec.zombie_player(neutral):
+        return record
+    living = c64_codec.living_player(neutral)
+    raw = bytearray(record.to_bytes())
+    raw[TABLE["movement"].offset] = 12
+    raw[TABLE["turn_class"].offset] = 0
+    raw[TABLE["field_83_87"].offset] = int(living.get("npc_control_byte") or 0)
+    flags = TABLE["field_10c_10f"].offset
+    for at in (0, 2, 3):
+        raw[flags + at] = 0
+    patched = type(record)(bytes(raw))
+    if hasattr(record, "items"):
+        patched.items = record.items
+    return patched
+
+
 def _is_pool(destination: "Destination") -> bool:
     return (getattr(destination.title, "key", destination.title)
             == dos_codec.POOL_OF_RADIANCE.key)
@@ -2422,6 +2454,10 @@ def prepare_save_as(party: Any, port: str, path: "str | pathlib.Path",
         for name, value in zombie_player_fields(
                 member, snapshot, destination).items():
             record.set(name, value)
+    for row, (member, record) in enumerate(zip(party.members, expected)):
+        if isinstance(record, PodSheetRecord):
+            expected[row] = pod_zombie_player_record(
+                member, snapshot, destination, record)
     validate(destination, files, expected, accounted=losses(report),
              expected_names=expected_names, source_port=source.port)
     if report is not None and report.warnings:

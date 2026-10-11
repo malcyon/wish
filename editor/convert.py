@@ -1079,6 +1079,20 @@ class PodDosToAmiga(Direction):
         self.destination_game = dos_port.POOLS_OF_DARKNESS
         self.source_key = self.deltas.key
 
+    @staticmethod
+    def _living(char: Any) -> Any:
+        """`char` as `living_player` leaves it, with the source's
+        `field_83_87` window kept: that function builds a new record, and the
+        Amiga writer needs the window's bytes after the control byte, whose
+        own byte becomes the living record's."""
+        living = c64_codec.living_player(char)
+        window = dos_codec.window_source(char)
+        if living is not char and window is not None:
+            control = living.get("npc_control_byte") or 0
+            dos_codec.set_window_source(
+                living, bytes((control,)) + bytes(window[1:]))
+        return living
+
     def rehearse(self, source: Source, slot: str, options: Any,
                 names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None,
@@ -1117,7 +1131,7 @@ class PodDosToAmiga(Direction):
             savgam, container,
             source=str(pathlib.Path(source.path) / savgam_path.name))
         characters = saveplan.fit_names(
-            [dos_codec.to_neutral(c) for c in raw_party],
+            [self._living(dos_codec.to_neutral(c)) for c in raw_party],
             self.destination_port, self.deltas.key, names)
         savegame, save_report = amiga_savegame.pod_new_savegame(
             state, characters)
