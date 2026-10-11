@@ -1665,7 +1665,8 @@ def test_opening_preflight_requires_independent_two_box_rule_and_pins(tmp_path, 
         assert result[3]["provenance"]["approved_media_sha256"] == pins
 
 
-@pytest.mark.parametrize("mode", ["ssb-opening-second", "ssb-opening-after-second"])
+@pytest.mark.parametrize("mode", ["ssb-opening-second", "ssb-opening-after-second",
+                                  "ssb-opening-after-third"])
 @pytest.mark.parametrize("fault", [None, "missing", "prose", "footer"])
 def test_second_page_preflight_requires_both_independent_boxes_before_artifact(
         tmp_path, monkeypatch, mode, fault):
@@ -1691,6 +1692,7 @@ def test_second_page_preflight_requires_both_independent_boxes_before_artifact(
     monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda argv: (
         (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
     second = json.loads(json.dumps(winwishaccept.OPENING_SECOND_RULE))
+    third = json.loads(json.dumps(winwishaccept.OPENING_THIRD_RULE))
     if fault == "prose":
         second["sha256"] = "0" * 64
     elif fault == "footer":
@@ -1700,7 +1702,8 @@ def test_second_page_preflight_requires_both_independent_boxes_before_artifact(
     monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
         rules={**{state: True for state in states},
                "ssb_opening_first": winwishaccept.OPENING_FIRST_RULE,
-               **({} if fault == "missing" else {"ssb_opening_second": second})}))
+               **({} if fault == "missing" else {"ssb_opening_second": second}),
+               **({"ssb_opening_third": third} if mode == "ssb-opening-after-third" else {})}))
     zip_path = tmp_path / "artifact.zip"
     zip_path.write_bytes(b"build")
     (tmp_path / winwishaccept.winwish.COMMIT_FILE).write_text(SHA)
@@ -1730,10 +1733,13 @@ def _second_controller(tmp_path, monkeypatch, mode, frames):
 
     def grab(state, raw, crop, timeout):
         exact = previous(state, raw, crop, timeout)
-        if state in ("ssb_opening_unknown", "ssb_opening_after_second_unknown"):
+        if state in ("ssb_opening_unknown", "ssb_opening_after_second_unknown",
+                     "ssb_opening_after_third_unknown"):
             pathlib.Path(crop).write_bytes(next(seen))
         elif state == "ssb_opening_second":
             pathlib.Path(crop).write_bytes(b"second")
+        elif state == "ssb_opening_third":
+            pathlib.Path(crop).write_bytes(b"third")
         return exact
 
     game.grab = grab
@@ -1742,10 +1748,329 @@ def _second_controller(tmp_path, monkeypatch, mode, frames):
                  "ssb_opening_second": winwishaccept.OPENING_SECOND_RULE}
 
         def __call__(self, state, crop):
-            return state != "ssb_opening_second" or pathlib.Path(crop).read_bytes() == b"second"
+            return state not in ("ssb_opening_second", "ssb_opening_third") or (
+                pathlib.Path(crop).read_bytes() == state.removeprefix("ssb_opening_").encode())
 
     controller.guards = Guards()
     return controller, game, clock, snapshots, calls
+
+
+def _third_controller(tmp_path, monkeypatch, frames):
+    controller, game, clock, snapshots, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-after-third", frames)
+    controller.clock = lambda: clock.now
+    controller.guards.rules = {**controller.guards.rules,
+                               "ssb_opening_third": winwishaccept.OPENING_THIRD_RULE}
+    return controller, game, clock, snapshots, calls
+
+
+def test_third_page_mode_sends_one_guarded_return_then_captures_fresh_unknown(
+        tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, snapshots, calls = _third_controller(
+        tmp_path, monkeypatch,
+        (b"second", b"partial", b"third", b"after-third", b"after-third", b"after-third"))
+    answers = []
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (
+        answers.append(args) or (0, "answered")))
+    result = controller.run_opening_second()
+    assert result["failure"] is None and len(answers) == 1
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET", "RET", "RET"]
+    assert result["checkpoints"]["ssb_opening_third"]["game"] is result["discovery"]["evidence"][2]
+    assert result["checkpoints"]["ssb_opening_after_third"]["game"] is result["discovery"]["evidence"][5]
+    assert result["discovery"]["evidence"][5]["shot_source"]["source"] == "winuae-pipe"
+    assert result["discovery"]["status"] == "awaiting image review"
+    assert snapshots == [] and result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
+def test_third_page_both_late_draws_fit_post_ack_windows_without_fourth_key(
+        tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _third_controller(
+        tmp_path, monkeypatch,
+        (b"second", b"partial", b"partial", b"third",
+         b"partial", b"partial", b"after-third"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original_press, original_grab = game.press, game.grab
+    captures = []
+    def press(holder, key, timeout):
+        original_press(holder, key, timeout)
+        if key == "RET":
+            clock.now += 1.7
+    def grab(state, raw, crop, timeout):
+        if state in ("ssb_opening_after_second_unknown", "ssb_opening_after_third_unknown"):
+            captures.append((state, timeout))
+            clock.now += 1.55
+        return original_grab(state, raw, crop, timeout)
+    game.press, game.grab = press, grab
+    result = controller.run_opening_second()
+    assert result["failure"] is None
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET", "RET", "RET"]
+    assert [state for state, _ in captures] == (["ssb_opening_after_second_unknown"] * 3
+                                                 + ["ssb_opening_after_third_unknown"] * 3)
+    assert all(0 < timeout <= 5 for _, timeout in captures)
+    assert result["checkpoints"]["ssb_opening_third"]["game"] is result["discovery"]["evidence"][3]
+    assert result["checkpoints"]["ssb_opening_after_third"]["game"] is (
+        result["discovery"]["evidence"][6])
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
+@pytest.mark.parametrize("frames", [
+    (b"second", b"first", b"first", b"first"),
+    (b"second", b"second", b"second", b"second"),
+    (b"second", b"partial", b"partial", b"partial"),
+])
+def test_third_page_requires_complete_current_capture_before_return(
+        tmp_path, monkeypatch, frames):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _third_controller(tmp_path, monkeypatch, frames)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    result = controller.run_opening_second()
+    assert "ssb_opening_third was not recognized" in result["failure"]
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET", "RET"]
+    assert "ssb_opening_third" not in result["checkpoints"]
+    assert len(result["discovery"]["evidence"]) == 4
+    assert all(pathlib.Path(frame["raw"]).is_file() for frame in result["discovery"]["evidence"])
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
+@pytest.mark.parametrize("fault", ["stale", "no_receipt", "late", "checkpoint",
+                                    "unreadable", "reconfirm", "reconfirm_stale"])
+def test_third_page_faults_stop_before_third_return_and_preserve_evidence(
+        tmp_path, monkeypatch, fault):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _third_controller(
+        tmp_path, monkeypatch, (b"second", b"third"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original_grab, original_checkpoint, original_await = (
+        game.grab, controller._checkpoint, controller._await)
+    def grab(state, raw, crop, timeout):
+        previous = game.last_shot
+        exact = original_grab(state, raw, crop, timeout)
+        if state == "ssb_opening_after_second_unknown":
+            if fault == "stale":
+                game.last_shot = previous
+            elif fault == "no_receipt":
+                game.last_shot = {"source": "fake", "pid": 12, "counter": 4}
+            elif fault == "late":
+                clock.now += 5.25
+        return exact
+    def checkpoint(name, expected, frame):
+        if name == "ssb_opening_third" and fault == "checkpoint":
+            raise winwishaccept.AcceptanceStop("delayed third checkpoint failed")
+        original_checkpoint(name, expected, frame)
+        if name == "ssb_opening_third" and fault == "unreadable":
+            controller.checkpoints[name]["observed"]["fix"] = None
+    def await_state(state, **kwargs):
+        if state == "ssb_opening_third" and fault == "reconfirm":
+            raise winwishaccept.AcceptanceStop("third page changed before Return")
+        previous = game.last_shot
+        frame = original_await(state, **kwargs)
+        if state == "ssb_opening_third" and fault == "reconfirm_stale":
+            frame["shot_source"] = previous
+        return frame
+    game.grab = grab
+    monkeypatch.setattr(controller, "_checkpoint", checkpoint)
+    monkeypatch.setattr(controller, "_await", await_state)
+    result = controller.run_opening_second()
+    assert result["failure"] and result["discovery"]["status"] == "failed"
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET", "RET"]
+    assert "ssb_opening_after_third" not in result["checkpoints"]
+    assert all(pathlib.Path(frame["raw"]).is_file() for frame in result["discovery"]["evidence"])
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
+@pytest.mark.parametrize("fault", ["late", "receipt", "raw", "unreadable"])
+def test_post_third_capture_stays_fresh_and_bounded_without_fourth_return(
+        tmp_path, monkeypatch, fault):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _third_controller(
+        tmp_path, monkeypatch,
+        (b"second", b"third", b"after-third", b"after-third", b"after-third"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original_press, original_grab, original_checkpoint = (
+        game.press, game.grab, controller._checkpoint)
+    captures = []
+    def press(holder, key, timeout):
+        original_press(holder, key, timeout)
+        if key == "RET":
+            clock.now += 1.7
+    def grab(state, raw, crop, timeout):
+        previous = game.last_shot
+        if state == "ssb_opening_after_third_unknown":
+            captures.append(timeout)
+            clock.now += 5.25 if fault == "late" else 1.55
+        exact = original_grab(state, raw, crop, timeout)
+        if state == "ssb_opening_after_third_unknown":
+            if fault == "receipt":
+                game.last_shot = previous
+            elif fault == "raw":
+                pathlib.Path(crop).unlink()
+                return False
+        return exact
+    def checkpoint(name, expected, frame):
+        original_checkpoint(name, expected, frame)
+        if name == "ssb_opening_after_third" and fault == "unreadable":
+            controller.checkpoints[name]["observed"]["fix"] = None
+    game.press, game.grab = press, grab
+    monkeypatch.setattr(controller, "_checkpoint", checkpoint)
+    result = controller.run_opening_second()
+    assert result["failure"] and game.keys == [
+        "P", "L", "D", "V", "E", "B", "RET", "RET", "RET"]
+    assert captures and all(0 < timeout <= 5 for timeout in captures)
+    if fault == "raw":
+        assert "no exact terminal crop" in result["failure"]
+        assert all(frame["crop"] is None for frame in result["discovery"]["evidence"][2:])
+    assert all(pathlib.Path(frame["raw"]).is_file() for frame in result["discovery"]["evidence"])
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
+def test_third_opening_rule_accepts_only_one_of_122_retained_crops(tmp_path):
+    from tools.amiga import guardmaps, screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir("acceptance") / "WISH-1"
+    current = root / "ssb-after-second2"
+    crops = ([current / f"game-{n:03d}.png" for n in range(42)]
+             + [current / f"opening-{n}.png" for n in range(2)]
+             + [current / f"after-second-{n}.png" for n in range(3)]
+             + [root / "ssb-leave1" / f"game-{n:03d}.png" for n in range(71)]
+             + [root / "ssb-opening-first1" / name for name in
+                ("game-042.png", "opening-0.png", "opening-1.png", "opening-2.png")])
+    if not all(path.is_file() for path in crops):
+        pytest.skip("the 122 retained Silver Blades opening crops are not on this machine")
+    assert guardmaps.main(["export", "--title", "ssb", "--out", str(tmp_path)]) == 0
+    guards = screens.PixelGuards(tmp_path / "guards.json")
+    assert guards.rules["ssb_opening_third"] == winwishaccept.OPENING_THIRD_RULE
+    matched = [path for path in crops if guards("ssb_opening_third", path)]
+    assert matched == [current / "after-second-2.png"]
+    assert guards("continue", current / "after-second-2.png")
+    assert not guards("ssb_opening_third", current / "after-second-0.png")
+    assert not guards("ssb_opening_third", current / "after-second-1.png")
+    with Image.open(current / "after-second-2.png") as image:
+        for part in (winwishaccept.OPENING_THIRD_RULE,
+                     winwishaccept.OPENING_THIRD_RULE["and"][0]):
+            changed = image.convert("RGB")
+            box = part["box"]
+            pixel = changed.getpixel((box[0], box[1]))
+            changed.putpixel((box[0], box[1]), (pixel[0] ^ 1, pixel[1], pixel[2]))
+            altered = tmp_path / f"altered-{box[1]}.png"
+            changed.save(altered)
+            assert not guards("ssb_opening_third", altered)
+
+
+@pytest.mark.parametrize("fault", ["missing", "prose", "footer"])
+def test_third_page_preflight_rejects_changed_export_before_fetch(tmp_path, monkeypatch, fault):
+    from tools.amiga import maproute, route_silver_blades
+
+    args = _discovery_args(tmp_path)
+    args.discover = "ssb-opening-after-third"
+    args.manifest.write_text('{"title":"ssb","opening_scene":true,"substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for key in ("df0", "df1"):
+        (tmp_path / f"{key}.adf").write_bytes(key.encode())
+    route = _discovery_route(tmp_path)
+    pins = {"df0": winwishaccept.DISCOVERY_DF0_SHA256,
+            "df1": route_silver_blades.DISK_B_SHA256}
+    route.media = tuple(SimpleNamespace(key=m.key, path=m.path, sha256=pins[m.key])
+                        for m in route.media)
+    original_digest = winwishaccept.digest
+    monkeypatch.setattr(winwishaccept, "digest", lambda path: pins[path.stem]
+                        if path.suffix == ".adf" else original_digest(path))
+    route.guard_path.write_text("{}")
+    monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda argv: (
+        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    third = json.loads(json.dumps(winwishaccept.OPENING_THIRD_RULE))
+    if fault == "prose":
+        third["sha256"] = "0" * 64
+    elif fault == "footer":
+        third["and"][0]["sha256"] = "0" * 64
+    phase = maproute._load("ssb", "D")
+    states = {"title", *(step.state for step in phase.steps[:6])}
+    monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
+        rules={**{state: True for state in states},
+               "ssb_opening_first": winwishaccept.OPENING_FIRST_RULE,
+               "ssb_opening_second": winwishaccept.OPENING_SECOND_RULE,
+               **({} if fault == "missing" else {"ssb_opening_third": third})}))
+    monkeypatch.setattr(winwishaccept.winwish, "fetch", lambda *argv:
+                        pytest.fail("artifact touched before third-page guard"))
+    with pytest.raises(winwishaccept.AcceptanceStop):
+        winwishaccept.preflight(args, guest=SimpleNamespace(gh=lambda *argv: "[]"),
+                                route_for=lambda *argv: route, driver_sha=SHA)
+
+
+@pytest.mark.parametrize("fault", ["missing", "prose", "footer"])
+def test_third_page_controller_rechecks_independent_guard_before_keys(
+        tmp_path, monkeypatch, fault):
+    controller, game, _, _, calls = _third_controller(tmp_path, monkeypatch, (b"second",))
+    rules = dict(controller.guards.rules)
+    third = json.loads(json.dumps(winwishaccept.OPENING_THIRD_RULE))
+    if fault == "missing":
+        rules.pop("ssb_opening_third")
+    elif fault == "prose":
+        third["sha256"] = "0" * 64
+        rules["ssb_opening_third"] = third
+    else:
+        third["and"][0]["sha256"] = "0" * 64
+        rules["ssb_opening_third"] = third
+    controller.guards.rules = rules
+    result = controller.run_opening_second()
+    assert "independent exact two-box guard" in result["failure"]
+    assert game.keys == [] and result["cleanup"]["errors"] == []
+    assert not controller.booted and ("down",) not in calls
+
+
+@pytest.mark.parametrize("name", ["ssb_opening_third", "ssb_opening_after_third"])
+def test_third_page_unknown_checkpoints_require_readable_fix(tmp_path, monkeypatch, name):
+    controller, *_ = _discovery_controller(tmp_path, monkeypatch)
+    verdict = controller._compare_checkpoint(name, None, {"fix": None})
+    assert verdict["status"] == "unproven"
+    assert verdict["reason"] == "the game fix was not readable"
+
+
+def test_third_page_retains_delayed_wish_pairs_for_both_new_checkpoints(
+        tmp_path, monkeypatch):
+    from automap import amigaparty
+    from tools.amiga import amigatarget, route_silver_blades
+
+    controller, game, _, _, calls = _third_controller(
+        tmp_path, monkeypatch,
+        (b"second", b"third", b"after-third", b"after-third", b"after-third"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = controller._checkpoint
+    def checkpoint(name, expected, frame):
+        if name in ("ssb_opening_third", "ssb_opening_after_third"):
+            return winwishaccept.Controller._checkpoint(controller, name, expected, frame)
+        return original(name, expected, frame)
+    monkeypatch.setattr(controller, "_checkpoint", checkpoint)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: None)
+    fix = SimpleNamespace(x=7, y=13, facing=0, outdoors=False, world_map=False,
+                          window=None, heading=None)
+    target = SimpleNamespace(fix=lambda: fix, geo=lambda: None, close=lambda: None)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: target)
+    def shot(guest, holder, kind, path):
+        pathlib.Path(path).write_bytes(b"wish")
+        pathlib.Path(str(path) + ".json").write_text("{}")
+    monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    result = controller.run_opening_second()
+    assert result["failure"] is None
+    for name, index in (("ssb_opening_third", 1), ("ssb_opening_after_third", 4)):
+        pair = result["checkpoints"][name]
+        assert pair["game"] is result["discovery"]["evidence"][index]
+        assert pair["pair_atomic"] is False and pathlib.Path(pair["wish_sidecar"]).is_file()
+        assert pathlib.Path(pair["wish"]).read_bytes() == b"wish"
+        assert pair["comparison"]["status"] == "awaiting image review"
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET", "RET", "RET"]
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
 
 
 @pytest.mark.parametrize("mode,keys,frames", [

@@ -48,7 +48,14 @@ OPENING_SECOND_RULE = {
     "and": [{"box": [186, 404, 586, 426],
              "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
 }
-OPENING_MODES = ("ssb-opening-first", "ssb-opening-second", "ssb-opening-after-second")
+OPENING_THIRD_RULE = {
+    "box": [88, 302, 700, 400],
+    "sha256": "68c1de2212991faf7da8fa11e9e806cd7d54f8c51e788d81e766dcc6f5d93bf4",
+    "and": [{"box": [186, 404, 586, 426],
+             "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
+}
+OPENING_MODES = ("ssb-opening-first", "ssb-opening-second", "ssb-opening-after-second",
+                 "ssb-opening-after-third")
 
 
 def _opening_first_phase(route: Any) -> Any:
@@ -278,6 +285,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
                   "ssb_opening_first"}
         if mode != "ssb-opening-first":
             states.add("ssb_opening_second")
+        if mode == "ssb-opening-after-third":
+            states.add("ssb_opening_third")
     elif discovery:
         states = {"title"} | {state for phase in _discovery_phases(route).values()
                               for state in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -290,6 +299,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         raise AcceptanceStop("opening discovery needs the independent exact two-box guard")
     if mode in OPENING_MODES[1:] and guards.rules["ssb_opening_second"] != OPENING_SECOND_RULE:
         raise AcceptanceStop("second opening discovery needs the independent exact two-box guard")
+    if mode == "ssb-opening-after-third" and guards.rules["ssb_opening_third"] != OPENING_THIRD_RULE:
+        raise AcceptanceStop("third opening discovery needs the independent exact two-box guard")
     if not route.loaded_slot or len(route.loaded_slot) != 1:
         raise AcceptanceStop("the manifest has no single prepared load slot")
     if not driver_sha:
@@ -519,7 +530,8 @@ class Controller:
                             engine: dict[str, Any]) -> dict[str, Any]:
         if expected is None:
             if name in ("ssb_leave_terminal", "ssb_opening_after_first",
-                        "ssb_opening_second", "ssb_opening_after_second") and engine.get("fix") is None:
+                        "ssb_opening_second", "ssb_opening_after_second",
+                        "ssb_opening_third", "ssb_opening_after_third") and engine.get("fix") is None:
                 return row("unproven", observed=engine, reason="the game fix was not readable")
             return row("awaiting image review", observed=engine)
         fix = engine.get("fix")
@@ -1318,7 +1330,7 @@ class Controller:
         return exact_frames[-1]
 
     def run_opening_second(self) -> dict[str, Any]:
-        """Stop on the second page, or observe one more Return in the later mode."""
+        """Stop at the selected guarded page, then capture only its approved successor."""
         self.summary["discovery"] = row()
         self.summary["challenge_key_count"] = None
         self.summary["challenge_key_count_verified"] = False
@@ -1330,6 +1342,9 @@ class Controller:
             if (getattr(self.guards, "rules", {}).get("ssb_opening_first") != OPENING_FIRST_RULE
                     or self.guards.rules.get("ssb_opening_second") != OPENING_SECOND_RULE):
                 raise AcceptanceStop("opening discovery needs both independent exact two-box guards")
+            if (mode == "ssb-opening-after-third"
+                    and self.guards.rules.get("ssb_opening_third") != OPENING_THIRD_RULE):
+                raise AcceptanceStop("third opening discovery needs the independent exact two-box guard")
             self._up()
             self._game_section()
             title = self._await("title", limit=300)
@@ -1346,18 +1361,39 @@ class Controller:
             if self.checkpoints.get("ssb_opening_second", {}).get(
                     "observed", {}).get("fix") is None:
                 raise AcceptanceStop("the game fix was not readable")
-            if mode == "ssb-opening-after-second":
+            if mode in ("ssb-opening-after-second", "ssb-opening-after-third"):
                 # Reconfirm the page after the delayed, non-atomic Wish checkpoint.
                 self._await("ssb_opening_second", limit=30)
                 self._press("RET")
                 second_start = self.clock()
                 following = self._capture_unknown_frames(
                     "ssb_opening_after_second_unknown", "after-second",
-                    min(second_start + 5, self.route_end))
-                self._checkpoint("ssb_opening_after_second", None, following)
-                if self.checkpoints.get("ssb_opening_after_second", {}).get(
+                    min(second_start + 5, self.route_end),
+                    stop_guard="ssb_opening_third" if mode == "ssb-opening-after-third" else None)
+                following_name = ("ssb_opening_third" if mode == "ssb-opening-after-third"
+                                  else "ssb_opening_after_second")
+                self._checkpoint(following_name, None, following)
+                if self.checkpoints.get(following_name, {}).get(
                         "observed", {}).get("fix") is None:
                     raise AcceptanceStop("the game fix was not readable")
+                if mode == "ssb-opening-after-third":
+                    previous_shot = self.game.last_shot
+                    confirmed = self._await("ssb_opening_third", limit=30)
+                    receipt = confirmed.get("shot_source")
+                    if (receipt is previous_shot or not isinstance(receipt, dict)
+                            or receipt.get("source") != "winuae-pipe"
+                            or type(receipt.get("pid")) is not int or receipt["pid"] <= 0
+                            or type(receipt.get("counter")) is not int or receipt["counter"] <= 0):
+                        raise AcceptanceStop("third opening reconfirmation has no fresh pipe receipt")
+                    self._press("RET")
+                    third_start = self.clock()
+                    terminal = self._capture_unknown_frames(
+                        "ssb_opening_after_third_unknown", "after-third",
+                        min(third_start + 5, self.route_end))
+                    self._checkpoint("ssb_opening_after_third", None, terminal)
+                    if self.checkpoints.get("ssb_opening_after_third", {}).get(
+                            "observed", {}).get("fix") is None:
+                        raise AcceptanceStop("the game fix was not readable")
             self.summary["discovery"]["status"] = "awaiting image review"
             self.summary["discovery"]["reason"] = "Opening image identification and mapping remain unproven"
         except BaseException as exc:

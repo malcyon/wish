@@ -1718,6 +1718,30 @@
       "example": "WISH-1/ssb-opening-first1/opening-2.png",
       "sha256": "b2853ef5783edfbc138ca70d86ffab72c097b43bb3598145fc4a050a5e460f57"
     },
+    "ssb_opening_third": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [
+            186,
+            404,
+            586,
+            426
+          ],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [
+        88,
+        302,
+        700,
+        400
+      ],
+      "example": "WISH-1/ssb-after-second2/after-second-2.png",
+      "sha256": "68c1de2212991faf7da8fa11e9e806cd7d54f8c51e788d81e766dcc6f5d93bf4"
+    },
     "scrolls_dropped": {
       "also": [],
       "box": [
