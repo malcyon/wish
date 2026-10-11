@@ -195,8 +195,8 @@ DIRECT: tuple[tuple[str, str], ...] = (
 )
 
 # Pool's Animate Dead and turning routines establish these two byte meanings.
-# Curse's turning row is measured too (`TURN_CLASS_TITLES`); the creature type
-# in Curse, and both bytes in the other C64 titles, remain unmeasured.
+# Curse's turning row and creature type are measured too; both bytes in the
+# other C64 titles remain unmeasured.
 POOL_DIRECT: tuple[tuple[str, str], ...] = (
     ("creature_type", "creature_type"),
     ("turn_class", "turn_class"),
@@ -206,9 +206,8 @@ POOL_FIELDS_UNMEASURED: tuple[tuple[str, str], ...] = (
     ("turn_class", "this title's undead turning row has not been measured"),
 )
 
-#: The titles whose turning row is measured: Pool of Radiance and Curse of the
-#: Azure Bonds both look the target's row up in the same table.  Only Pool's
-#: creature-type byte is measured, so `creature_type` stays Pool-only.
+#: Pool of Radiance and Curse of the Azure Bonds both use the turning row and
+#: creature type.  The other titles have neither byte mapped.
 TURN_CLASS_TITLES = frozenset({"pool-of-radiance",
                                "curse-of-the-azure-bonds"})
 
@@ -220,8 +219,7 @@ def undead_direct(key: str) -> tuple[tuple[str, str], ...]:
     fields alike.
     """
     return tuple((n, c) for n, c in POOL_DIRECT
-                 if key == "pool-of-radiance"
-                 or (n == "turn_class" and key in TURN_CLASS_TITLES))
+                 if key in TURN_CLASS_TITLES)
 
 
 def undead_unmeasured(key: str) -> tuple[tuple[str, str], ...]:

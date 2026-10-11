@@ -60,26 +60,27 @@ def test_pool_writer_dispositions_account_for_both_fields_as_copies():
         assert dos_codec.write_targets()[name].startswith("from neutral")
 
 
-def test_the_pool_mapping_claims_only_the_turning_row_of_curse():
+def test_curse_maps_creature_type_and_turning_row_but_later_titles_do_not():
     source = CharacterRecord.blank()
     source.set("creature_type", 4)
     source.set("turn_class", 2)
     later = c64_codec.read(source, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
-    assert "creature_type" not in later
+    assert later.get("creature_type") == 4
     assert later.get("turn_class") == 2
 
     raw = bytearray(dos_port.CURSE_OF_THE_AZURE_BONDS.record_size)
     raw[_CURSE_TURN] = 2
+    raw[0x11A] = 4
     later = dos_codec.to_neutral(dos_codec.DosCharacter(
         bytes(raw), deltas=dos_port.CURSE_OF_THE_AZURE_BONDS))
-    assert "creature_type" not in later
+    assert later.get("creature_type") == 4
     assert later.get("turn_class") == 2
 
     curse_c64 = c64_codec.field_disposition(c64_port.CURSE_OF_THE_AZURE_BONDS)
     curse_dos = dos_codec.write_field_disposition(
         dos_port.CURSE_OF_THE_AZURE_BONDS)
-    assert curse_c64["creature_type"].startswith("dropped:")
-    assert curse_dos["creature_type"].startswith("dropped:")
+    assert not curse_c64["creature_type"].startswith("dropped:")
+    assert not curse_dos["creature_type"].startswith("dropped:")
     assert not curse_c64["turn_class"].startswith("dropped:")
     assert not curse_dos["turn_class"].startswith("dropped:")
 
@@ -101,41 +102,57 @@ _CURSE_TURN = dos_port.FIELDS_BY_NAME_FOR[
     dos_port.CURSE_OF_THE_AZURE_BONDS.key]["turn_class"].offset
 
 
-def test_a_curse_turning_row_converts_between_dos_and_the_amiga():
+def test_a_curse_companion_type_and_turning_row_convert_between_dos_and_amiga():
     deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
     key = "curse-of-the-azure-bonds"
     raw = bytearray(deltas.record_size)
     raw[_CURSE_TURN] = 2
+    raw[0xF7] = 0xB2
+    raw[0x11A] = 4
+    raw[0x11B] = 0x5A
     neutral_dos = dos_codec.to_neutral(
         dos_codec.DosCharacter(bytes(raw), deltas=deltas))
-    assert neutral_dos.get("turn_class") == 2
+    assert (neutral_dos.get("npc_control_byte"),
+            neutral_dos.get("creature_type"),
+            neutral_dos.get("turn_class")) == (0xB2, 4, 2)
 
     amiga, report = amiga_later.write_later(neutral_dos, key)
     amiga_offset = amiga_port.CURSE_DELTAS.offset(_CURSE_TURN)
-    assert amiga.raw[amiga_offset] == 2
-    assert not any(line.startswith("turn_class") for line in report.dropped)
+    assert (amiga.raw[amiga_port.CURSE_DELTAS.offset(0xF7)],
+            amiga.raw[amiga_port.CURSE_DELTAS.offset(0x11A)],
+            amiga.raw[amiga_port.CURSE_DELTAS.offset(0x11B)],
+            amiga.raw[amiga_offset]) == (0xB2, 4, 0x5A, 2)
+    assert not any(line.startswith(("creature_type", "turn_class"))
+                   for line in report.dropped)
     back = amiga_later.to_neutral_later(amiga)
-    assert back.get("turn_class") == 2
+    assert (back.get("npc_control_byte"), back.get("creature_type"),
+            back.get("turn_class")) == (0xB2, 4, 2)
 
     dos, _i, _s, report = dos_codec.write(back, deltas=deltas)
-    assert dos[_CURSE_TURN] == 2
-    assert not any(line.startswith("turn_class") for line in report.dropped)
+    assert (dos[0xF7], dos[0x11A], dos[0x11B], dos[_CURSE_TURN]) == (
+        0xB2, 4, 0x5A, 2)
+    assert not any(line.startswith(("creature_type", "turn_class"))
+                   for line in report.dropped)
 
 
-def test_a_curse_turning_row_survives_a_round_trip_through_the_c64():
+def test_a_curse_companion_type_and_turning_row_cross_the_c64():
     deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
     raw = bytearray(deltas.record_size)
     raw[_CURSE_TURN] = 2
+    raw[0xF7] = 0xB2
+    raw[0x11A] = 4
     neutral_dos = dos_codec.to_neutral(
         dos_codec.DosCharacter(bytes(raw), deltas=deltas))
 
     c64, report = c64_codec.write(neutral_dos)
-    assert c64.get("turn_class") == 2
-    assert not any(line.startswith("turn_class") for line in report.dropped)
+    assert (c64.get("flags_0b8"), c64.get("creature_type"),
+            c64.get("turn_class")) == (0xB2, 4, 2)
+    assert not any(line.startswith(("creature_type", "turn_class"))
+                   for line in report.dropped)
 
     dos, _i, _s, _r = dos_codec.write(c64_codec.read(
         c64, game=c64_port.CURSE_OF_THE_AZURE_BONDS), deltas=deltas)
-    assert dos[_CURSE_TURN] == 2
+    assert (dos[0xF7], dos[0x11A], dos[_CURSE_TURN]) == (0xB2, 4, 2)
 
 
 def _pool_c64(control: int, status: int) -> CharacterRecord:

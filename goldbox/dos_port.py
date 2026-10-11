@@ -1197,8 +1197,7 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "spells_memorised": 84, "spellbook": 100,
-           "spells_castable_cleric": 5, "spells_castable_magic_user": 5,
-           "creature_type": 0},
+           "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
     inserts={"level": (_x(1, "former_level", "Level left the old class at",
                           _OK, _FORMER_LEVEL_NOTE, kind=Kind.U8),),
              "class_levels": (_x(8, "former_class_levels",
@@ -1206,7 +1205,7 @@ CURSE_OF_THE_AZURE_BONDS = DosDeltas(
              "spells_castable_cleric": (
                  _x(5, "spells_castable_druid", "Druid spell slots", _MAYBE,
                     _DRUID_SLOT_NOTE),),
-             "icon_colours": 1, "creature_type": 1,
+             "icon_colours": 1,
              "heap_104": (_paladin_cures(), 3)})
 
 #: Secret of the Silver Blades, 439 bytes.  Curse's record plus a spellbook
