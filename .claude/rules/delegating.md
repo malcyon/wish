@@ -133,6 +133,30 @@ instructions.
 **Give each agent its own files.** Several agents in one working tree will
 collide. Assign non-overlapping areas, and say which in the brief.
 
+**Assign a bounded outcome rather than a sequence of fragmentary handoffs.**
+Name the player result, next executable step, owned files, proof, exact
+dependency, and stopping condition. Keep planners separate from builders,
+driver builders separate from emulator runners, and independent reviewers
+separate from authors. Prepare specimens, game-written saves, game and app
+builds, configuration, journal answers, navigation route, expected observations,
+slot, stop budget and cleanup in independent work when the live lane is busy;
+preparation has its own concrete deliverable and never executes the live run.
+Isolate independent builders and validation in separate worktrees; use short
+main-tree integration windows and frozen dependencies for final integrated
+checks. Do not hold a worker's isolated check for unrelated root Ruff work.
+
+After a report, the root diagnoses and assigns the smallest authorized blocker
+removal before extended bookkeeping. A finished worker, busy test-runner,
+missing evidence or spent worker budget does not hold the whole ticket.
+Within existing authority a new bounded assignment may remove another
+obstacle; it must not override Donald's hold, renew a prohibited experiment or
+repeat a failed hypothesis without new evidence. Refill useful research,
+building and emulator assignments toward eight actual workers when independent
+work exists. Count CI and artifact watchers separately and idle runners or
+finished agents as inactive. With fewer workers, name each remaining ticket's
+exact next-step dependency, remover and resume condition instead of inventing
+a capacity blocker.
+
 **For a conversion repair, plan the live proof with the fix.** The brief or
 existing plan identifies the specimen and its provenance, same-title
 destination port, existing driver and its path or missing capability, bounded
