@@ -1050,9 +1050,9 @@ class PreferencesDialog(QDialog):
         #: The sort is stable and named rows compare on name alone, so a name
         #: two areas share keeps the table's own order. A row with no approved
         #: name reads `Area N` rather than its script name. The unnamed demo
-        #: areas of Pool of Radiance and Curse are unfasttravelable, so
-        #: `fasttravelable` alone excludes them; Silver Blades' unnamed areas
-        #: are in its table.
+        #: areas of Pool of Radiance, Curse and Silver Blades (area 4) are
+        #: unfasttravelable, so `fasttravelable` alone excludes them; Silver
+        #: Blades' other unnamed area is in its table.
         rows = sorted(
             (a for a in area_table.areas_for_title(game.title)
              if a.fasttravelable),
