@@ -426,6 +426,36 @@ def _original_live(target: amiga.AmigaTarget, original: bytes) -> dict:
             "area_digest": noencounters.digest(area)}
 
 
+def _verified_reload_gate(target: amiga.AmigaTarget, state: noencounters.WinuaeState,
+                          original: bytes, reply: dict) -> dict:
+    """Require the reload switch to have changed this area-17 gate before NP8."""
+    saved = state.load()
+    memory = noencounters.PipeMemory(target)
+    memory.clear()
+    address = memory.resolve(ROW_SPEC)
+    script_address = memory.resolve(noencounters.script_spec(_gate_row()))
+    _require(address is not None and script_address is not None,
+             "reload area-17 gate pointer is absent")
+    applied = [row for row in reply.get("rows", [])
+               if row.get("row") == ROW_SPEC and row.get("address") == address
+               and row.get("new") == "09" and "stopped" not in row
+               and "error" not in row]
+    journalled = [row for row in saved["rows"]
+                  if row.get("spec") == ROW_SPEC and row.get("address") == address
+                  and row.get("digest") == ROW_DIGEST
+                  and row.get("original") == "08" and row.get("changed") == "09"]
+    _require(saved["on"] and len(applied) == 1 and len(journalled) == 1,
+             "reload area-17 gate was not applied and journalled")
+    actual = memory.read(address, noencounters.STATEMENT)
+    area = memory.read(script_address, noencounters.ENTRY_TABLE)
+    _require(noencounters.digest(original) == ROW_DIGEST
+             and actual == b"\x09" + original[1:]
+             and noencounters.digest(area) == AREA_DIGEST,
+             "reload area-17 gate readback differs from the prepared library")
+    return {"address": address, "statement_digest": noencounters.digest(actual),
+            "area_digest": noencounters.digest(area)}
+
+
 def _trip(holder: str, disks: pathlib.Path, out: pathlib.Path, left: float) -> list[dict]:
     command = [sys.executable, str(pathlib.Path(fasttravelrun.__file__)),
                "--holder", holder, "--disks", str(disks), "--title", TITLE,
@@ -734,7 +764,8 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
         snapshots.append("reload-before-step")
         switched = _switch(args.holder, target, guest, state)
         receipt["on"] = switched.on()
-        _require(state.load()["on"], "the ordinary RAM switch did not turn on")
+        receipt["verified_gate"] = _verified_reload_gate(
+            target, state, original, receipt["on"])
         response = _switch(args.holder, target, guest, state).keys(["NP8"])
         _require(response.get("pressed") == ["NP8"] and "error" not in response
                  and "stopped" not in response, "reload NP8 did not land")

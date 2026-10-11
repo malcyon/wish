@@ -167,6 +167,35 @@ def test_media_gate_survives_reload_and_is_restored_before_save_and_release(tmp_
     assert lane.checked >= 3
 
 
+@pytest.mark.parametrize("damage", ["stopped", "wrong opcode"])
+def test_reload_step_requires_applied_area17_gate(tmp_path, monkeypatch, damage):
+    memory, lane, state, original, entries = _live_gate(tmp_path, monkeypatch)
+    if damage == "wrong opcode":
+        memory.load(original, entries)
+    switch = noencounters.WinuaeEncounters(driver.TITLE, memory, state=state,
+                                          lane_check=lambda: lane.lane("proof", 30))
+    reply = switch.on()
+    assert state.load()["on"]
+    if damage == "wrong opcode":
+        assert any(row.get("new") == "09" for row in reply["rows"])
+        memory.write(memory.buffer + 0x8BC7, b"\x01")
+    else:
+        assert any(row.get("stopped") for row in reply["rows"])
+    with pytest.raises(RouteError, match="reload area-17 gate"):
+        driver._verified_reload_gate(memory, state, original, reply)
+
+
+def test_reload_step_accepts_applied_area17_gate(tmp_path, monkeypatch):
+    memory, lane, state, original, entries = _live_gate(tmp_path, monkeypatch)
+    memory.load(original, entries)
+    switch = noencounters.WinuaeEncounters(driver.TITLE, memory, state=state,
+                                          lane_check=lambda: lane.lane("proof", 30))
+    proof = driver._verified_reload_gate(memory, state, original, switch.on())
+    assert proof["address"] == memory.buffer + 0x8BC7
+    assert proof["statement_digest"] == noencounters.digest(b"\x09" + original[1:])
+    assert proof["area_digest"] == driver.AREA_DIGEST
+
+
 @pytest.mark.parametrize("damage", ["wrong statement", "wrong area", "lost pointer"])
 def test_media_adoption_blocks_wrong_loaded_gate(tmp_path, monkeypatch, damage):
     memory, lane, state, original, entries = _live_gate(tmp_path, monkeypatch)
