@@ -32,13 +32,21 @@ def test_observe_world_requires_unique_full_geo_and_original_party(tmp_path, mon
     crop = tmp_path / "world.png"
     crop.write_bytes(b"generated world")
     names = [f"MEMBER {n}" for n in range(6)]
-    members = [SimpleNamespace(name=name, slot=n) for n, name in enumerate(names)]
+    members = [SimpleNamespace(name=name, slot=n, hp=100 + n, hp_max=110 + n)
+               for n, name in enumerate(names)]
+    base = 0x1000
+    def read(address, length):
+        return {
+            (base + 0x5B12, 1): b"\x02", (base + 0x743C, 1): b"\x04",
+            (base + 0x57A4, 4): (0x2340).to_bytes(4, "big"),
+            (base + 0x5F2C, 2): b"\x00\x02",
+        }[(address, length)]
     target = SimpleNamespace(data_base=0x1000, fix=lambda: SimpleNamespace(
         x=1, y=2, facing=1, world_map=False),
-        read=lambda address, length: b"\x00\x02",
+        read=read,
         resident_geo_address=lambda: 0x2000, geo=lambda: b"x" * 1024)
     monkeypatch.setattr(acceptance.amigatarget, "connect_pipe", lambda *a, **k: target)
-    monkeypatch.setattr(acceptance.amigaparty, "mode", lambda t: 2)
+    monkeypatch.setattr(acceptance.amigaparty, "mode", lambda t: t.read(base + 0x5B12, 1)[0])
     monkeypatch.setattr(acceptance.amigaparty, "read_party", lambda t: members)
     monkeypatch.setattr(amiga, "load_maps", lambda p: {
         "GEO21": SimpleNamespace(to_bytes=lambda: b"x" * 1024),

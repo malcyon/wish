@@ -199,16 +199,40 @@ def _observe_preclaim(manifest_path: pathlib.Path, guard: Any, identity: Any) ->
 
 
 def _observe_world(holder: str, manifest: dict, disk3: pathlib.Path,
-                   guard: Any, crop: pathlib.Path) -> dict[str, Any]:
+                    guard: Any, crop: pathlib.Path,
+                    record_identity: Callable[[dict[str, Any]], None] | None = None
+                    ) -> dict[str, Any]:
     """Identify the resident GEO by exact bytes, never by the saved dungeon word."""
     for state in ("yes_no", "continue", "encounter", "journal"):
         if _has_rule(guard, state) and guard(state, crop):
             raise RouteError(f"observe-load world also matches {state}")
     target = amigatarget.connect_pipe(holder, amiga.MACHINES["pools-of-darkness"], fresh=True)
-    mode = amigaparty.mode(target)
-    party = amigaparty.read_party(target)
-    if mode != 2 or party is None or len(party) != 6 or sorted(m.slot for m in party) != list(range(6)) \
-            or [m.name.strip() for m in party] != manifest["names_a"]:
+    diagnostic: dict[str, Any] = {"data_base": target.data_base}
+    try:
+        mode = amigaparty.mode(target)
+        diagnostic["mode"] = None if mode is None else f"{mode:02x}"
+        diagnostic["previous_mode"] = target.read(target.data_base + 0x743C, 1).hex()
+        diagnostic["head"] = int.from_bytes(target.read(target.data_base + 0x57A4, 4), "big")
+        party = amigaparty.read_party(target)
+        diagnostic["party_count"] = None if party is None else len(party)
+        diagnostic["members"] = []
+        if party is not None:
+            for member in party:
+                diagnostic["members"].append({"slot": member.slot, "name": member.name,
+                                              "hp": member.hp, "hp_max": member.hp_max})
+        after = amigaparty.mode(target)
+        diagnostic["mode_after_party"] = None if after is None else f"{after:02x}"
+        diagnostic["checks"] = {
+            "mode": mode == 2,
+            "party_present": party is not None,
+            "count": party is not None and len(party) == 6,
+            "slots": party is not None and sorted(m.slot for m in party) == list(range(6)),
+            "names": party is not None and [m.name.strip() for m in party] == manifest["names_a"],
+        }
+    finally:
+        if record_identity is not None:
+            record_identity(diagnostic)
+    if not all(diagnostic["checks"].values()):
         raise RouteError("observe-load live mode or party differs from original B")
     fix = target.fix()
     if fix is None or (fix.x, fix.y, fix.facing) != (1, 2, 1) or fix.world_map:
@@ -3408,9 +3432,21 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     digest = capture(name, check=False)
                     guarded = False
                 read_after(n, state, guarded)
+                if observe_load and n == 5:
+                    loaded_target = amigatarget.connect_pipe(
+                        holder, amiga.MACHINES["pools-of-darkness"], fresh=True)
+                    loaded_mode = amigaparty.mode(loaded_target)
+                    result["loaded_menu_mode"] = (
+                        None if loaded_mode is None else f"{loaded_mode:02x}")
+                    log("loaded_menu_mode", loaded_menu_mode=result["loaded_menu_mode"])
                 if observe_load and n == 10:
+                    def record_identity(diagnostic: dict[str, Any]) -> None:
+                        result["observe_identity"] = diagnostic
+                        log("observe_identity", observe_identity=diagnostic)
+
                     result["observation"] = _observe_world(
-                        holder, manifest, disks["disk3"], guard, shots / f"{name}.png")
+                        holder, manifest, disks["disk3"], guard, shots / f"{name}.png",
+                        record_identity)
                     if result["observation"]["geo_id"] is None:
                         raise RouteError("observe-load resident GEO has no unique full-byte match")
                 if digest == previous:

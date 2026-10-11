@@ -1086,6 +1086,13 @@ def _observe_fixture(tmp_path, monkeypatch):
                                        .read_file("/SAVE/savgamB.sav")).hexdigest())
     monkeypatch.setattr(foundation.amigatarget, "executable", lambda *args: b"generated engine")
     monkeypatch.setattr(foundation.amigatarget, "verify", lambda *args: [])
+    def initial_read(address, length):
+        assert (address, length) == (0x1000 + 0x5B12, 1)
+        return b"\x02"
+    monkeypatch.setattr(foundation.amigatarget, "connect_pipe", lambda *a, **k: SimpleNamespace(
+        data_base=0x1000, read=initial_read))
+    monkeypatch.setattr(foundation.amigaparty, "mode",
+                        lambda target: target.read(target.data_base + 0x5B12, 1)[0])
     monkeypatch.setattr(foundation, "OBSERVE_ENGINE_SHA256",
                         hashlib.sha256(b"generated engine").hexdigest())
     monkeypatch.setattr(foundation, "DARKNESS", _dark_title())
@@ -1195,16 +1202,143 @@ def test_observe_load_wrong_sheet_identity_stops_before_the_next_key(
 def test_observe_load_wrong_live_identity_stops_without_another_key(
         tmp_path, monkeypatch, clock):
     path, title, guard, names = _observe_fixture(tmp_path, monkeypatch)
-    members = [SimpleNamespace(slot=i, name=name) for i, name in enumerate(names)]
+    members = [SimpleNamespace(slot=i, name=name, hp=100 + i, hp_max=110 + i)
+               for i, name in enumerate(names)]
     members[3].name = "WRONG MEMBER"
+    base = 0x1000
+    def read(address, length):
+        return {
+            (base + 0x5B12, 1): b"\x02", (base + 0x743C, 1): b"\x04",
+            (base + 0x57A4, 4): (0x2340).to_bytes(4, "big"),
+        }[(address, length)]
     monkeypatch.setattr(foundation.amigatarget, "connect_pipe",
-                        lambda *args, **kwargs: object())
-    monkeypatch.setattr(foundation.amigaparty, "mode", lambda target: 2)
+                        lambda *args, **kwargs: SimpleNamespace(data_base=base, read=read))
+    monkeypatch.setattr(foundation.amigaparty, "mode",
+                        lambda target: target.read(base + 0x5B12, 1)[0])
     monkeypatch.setattr(foundation.amigaparty, "read_party", lambda target: tuple(members))
     guest, result = _observe_run(path, title, guard, clock)
     assert result["success"] is False
     assert result["error"] == "RouteError: observe-load live mode or party differs from original B"
     assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+def test_observe_load_valid_world_identity_reaches_unique_generated_geo(
+        tmp_path, monkeypatch, clock):
+    path, title, guard, names = _observe_fixture(tmp_path, monkeypatch)
+    base, head = 0x1000, 0x2340
+    resident = bytes(range(256)) * 4
+    members = tuple(SimpleNamespace(slot=i, name=name, hp=100 + i, hp_max=110 + i)
+                    for i, name in enumerate(names))
+    def read(address, length):
+        return {
+            (base + 0x5B12, 1): b"\x02", (base + 0x743C, 1): b"\x04",
+            (base + 0x57A4, 4): head.to_bytes(4, "big"),
+            (base + 0x5F2C, 2): b"\x00\x02",
+        }[(address, length)]
+    target = SimpleNamespace(
+        data_base=base, read=read,
+        fix=lambda: SimpleNamespace(x=1, y=2, facing=geo.EAST, world_map=False),
+        resident_geo_address=lambda: 0x3000, geo=lambda: resident)
+    monkeypatch.setattr(foundation.amigatarget, "connect_pipe", lambda *a, **k: target)
+    monkeypatch.setattr(foundation.amigaparty, "mode", lambda t: t.read(base + 0x5B12, 1)[0])
+    monkeypatch.setattr(foundation.amigaparty, "read_party", lambda t: members)
+    monkeypatch.setattr(foundation.amiga, "load_maps", lambda p: {
+        "GEO-GENERATED": SimpleNamespace(to_bytes=lambda: resident)})
+    guest, result = _observe_run(path, title, guard, clock)
+    assert result["success"] is True and result["observation"]["geo_id"] == "GEO-GENERATED"
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+@pytest.mark.parametrize("damage", ["mode", "missing_party", "count", "slot", "name"])
+def test_observe_load_retains_each_failed_world_identity_check(
+        tmp_path, monkeypatch, clock, damage):
+    path, title, guard, names = _observe_fixture(tmp_path, monkeypatch)
+    guest = ObserveGuest(clock, save_key="disk3")
+    members = [SimpleNamespace(slot=i, name=name, hp=100 + i, hp_max=110 + i)
+               for i, name in enumerate(names)]
+    if damage == "count":
+        members.pop()
+    elif damage == "slot":
+        members[3].slot = 2
+    elif damage == "name":
+        members[3].name = "OTHER"
+    base, head = 0x1000, 0x2340
+    target = SimpleNamespace(data_base=base)
+    reads = []
+    mode_samples = []
+
+    def read(address, length):
+        reads.append((address, length))
+        if (address, length) == (base + 0x743C, 1):
+            return b"\x04"
+        if (address, length) == (base + 0x57A4, 4):
+            return head.to_bytes(4, "big")
+        if (address, length) == (base + 0x5B12, 1):
+            value = 4 if damage == "mode" and "RET" in _keys(guest) else 2
+            mode_samples.append(value)
+            return bytes([value])
+        raise AssertionError(f"Unexpected read: {address:#x}, {length}")
+
+    target.read = read
+    monkeypatch.setattr(foundation.amigatarget, "connect_pipe", lambda *a, **k: target)
+    monkeypatch.setattr(foundation.amigaparty, "mode", lambda t: t.read(base + 0x5B12, 1)[0])
+    monkeypatch.setattr(foundation.amigaparty, "read_party",
+                        lambda t: None if damage == "missing_party" else tuple(members))
+    guest, result = _observe_run(path, title, guard, clock, guest=guest)
+    assert result["error"] == "RouteError: observe-load live mode or party differs from original B"
+    assert result["success"] is False and result["completed"] is False
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+    assert (base + 0x5B12, 1) in reads
+    assert mode_samples == ([2, 4, 4] if damage == "mode" else [2, 2, 2])
+    expected_checks = {"mode": damage != "mode", "party_present": damage != "missing_party",
+                       "count": damage not in ("missing_party", "count"),
+                       "slots": damage not in ("missing_party", "count", "slot"),
+                       "names": damage not in ("missing_party", "count", "name")}
+    diagnostic = result["observe_identity"]
+    assert diagnostic == {
+        "data_base": base, "mode": "04" if damage == "mode" else "02",
+        "previous_mode": "04", "head": head,
+        "party_count": None if damage == "missing_party" else len(members),
+        "members": [] if damage == "missing_party" else [
+            {"slot": m.slot, "name": m.name, "hp": m.hp, "hp_max": m.hp_max}
+            for m in members],
+        "checks": expected_checks,
+        "mode_after_party": "04" if damage == "mode" else "02",
+    }
+    assert result["loaded_menu_mode"] == "02"
+    saved = json.loads((tmp_path / "recon1" / "summary.json").read_text())
+    assert saved["observe_identity"] == diagnostic and saved["loaded_menu_mode"] == "02"
+    events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
+    assert any(row.get("observe_identity") == diagnostic for row in events)
+
+
+def test_observe_load_keeps_known_bytes_when_a_live_reader_raises(
+        tmp_path, monkeypatch, clock):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+    base = 0x1000
+    def read(address, length):
+        if (address, length) == (base + 0x5B12, 1):
+            return b"\x02"
+        if (address, length) == (base + 0x743C, 1):
+            return b"\x04"
+        raise OSError("synthetic head read failed")
+    monkeypatch.setattr(foundation.amigatarget, "connect_pipe",
+                        lambda *a, **k: SimpleNamespace(data_base=base, read=read))
+    guest, result = _observe_run(path, title, guard, clock)
+    assert result["error"] == "OSError: synthetic head read failed"
+    assert result["observe_identity"] == {
+        "data_base": base, "mode": "02", "previous_mode": "04"}
+    saved = json.loads((tmp_path / "recon1" / "summary.json").read_text())
+    assert saved["observe_identity"] == result["observe_identity"]
+    events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
+    assert any(row.get("observe_identity") == result["observe_identity"] for row in events)
+    assert result["success"] is False and _keys(guest) == "P L P B SPACE V E B X RET".split()
     assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
         "stop", "get", "get", "get", "release"]
 
