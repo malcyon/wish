@@ -43,6 +43,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from goldbox import (
+    amiga_later,
     amiga_pod,
     amiga_pod_recompute,
     amiga_por,
@@ -1675,6 +1676,19 @@ def charmed_pool_fields(record: CharacterRecord, neutral: NeutralCharacter,
     return {}
 
 
+#: Zombie read-back covers the titles whose writers convert him living.
+ZOMBIE_READ_BACK_TITLES = frozenset({
+    dos_codec.POOL_OF_RADIANCE.key,
+    dos_port.CURSE_OF_THE_AZURE_BONDS.key,
+    dos_port.SECRET_OF_THE_SILVER_BLADES.key,
+})
+
+_AMIGA_LATER_READ_KEYS = frozenset({
+    dos_port.CURSE_OF_THE_AZURE_BONDS.key,
+    dos_port.SECRET_OF_THE_SILVER_BLADES.key,
+})
+
+
 def zombie_player_fields(member, snapshot,
                          destination: "Destination") -> dict[str, int]:
     """The bytes a zombie Pool player character should be read back holding
@@ -1685,13 +1699,20 @@ def zombie_player_fields(member, snapshot,
     and the ability flag differ from the sheet by that rule and not by a
     loss. `{}` for any other character or route.
     """
-    if destination.native or not _is_pool(destination):
+    if destination.native:
+        return {}
+    title_key = getattr(destination.title, "key", destination.title)
+    if title_key not in ZOMBIE_READ_BACK_TITLES:
         return {}
     neutral = source_neutral(member, snapshot, snapshot.title)
     if not c64_codec.zombie_player(neutral):
         return {}
-    fields = {"movement": 12, "turn_class": 0, "creature_type": 0}
-    if not c64_codec.pool_charmed_player(c64_codec.living_player(neutral)):
+    compared = _compared_fields(destination)
+    fields = {"movement": 12}
+    fields.update({name: 0 for name in ("turn_class", "creature_type")
+                   if name in compared})
+    if _is_pool(destination) and not c64_codec.pool_charmed_player(
+            c64_codec.living_player(neutral)):
         # A charmed zombie's ability byte is the charm's, set by
         # `charmed_pool_fields`.
         fields["flags_0b8"] = c64_codec.pool_ability_flag(
@@ -1711,6 +1732,8 @@ def source_neutral(member: Any, snapshot: Any, title: Any) -> NeutralCharacter:
                                             title, member.index)
     if snapshot.port == "dos":
         return dos_codec.to_neutral(member.native)
+    if getattr(title, "key", title) in _AMIGA_LATER_READ_KEYS:
+        return amiga_later.to_neutral_later(member.native)
     return amiga_por.to_neutral(member.native)
 
 

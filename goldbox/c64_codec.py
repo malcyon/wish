@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from . import (
     classcode,
     derive,
+    dos_port,
     effects,
     neutral,
     paladin,
@@ -678,6 +679,13 @@ DOS_PC_TAKEN_OVER = 0xB3
 #: Animate Dead's effect id, the id its trait slot and its row both hold.
 ANIMATE_DEAD_ID = 32
 
+#: The titles whose engine knows effect id 32 as Animate Dead.
+ANIMATE_DEAD_TITLES = frozenset({"pool-of-radiance", "curse-of-the-azure-bonds"})
+
+#: The titles whose `attack_level` the cast zeroes and the C64 reader copies.
+ATTACK_LEVEL_RESTORED_TITLES = frozenset({"curse-of-the-azure-bonds",
+                                          "secret-of-the-silver-blades"})
+
 
 class DispelledZombieNode(bytes):
     """The Animate Dead node `read` makes for a zombie whose row was dispelled.
@@ -739,20 +747,36 @@ def living_player(char: NeutralCharacter) -> NeutralCharacter:
     def put(name, value):
         out.set(name, value, why, Confidence.CONFIRMED, Provenance.COMPUTED)
 
-    for name in ("granted_effects", "running_effects"):
-        nodes = out.get(name)
-        if nodes is not None:
-            put(name, [n for n in nodes if bytes(n)[0] != ANIMATE_DEAD_ID])
-    innate = out.get("innate_effects")
-    if innate is not None:
-        put("innate_effects", [i for i in innate if i != ANIMATE_DEAD_ID])
+    # Id 32 is Animate Dead only where the engine has the spell's undo;
+    # Silver Blades and Pools of Darkness give it another meaning.
+    title = getattr(char.game, "key", char.game) or "pool-of-radiance"
+    if title in ANIMATE_DEAD_TITLES:
+        for name in ("granted_effects", "running_effects"):
+            nodes = out.get(name)
+            if nodes is not None:
+                put(name, [n for n in nodes
+                           if bytes(n)[0] != ANIMATE_DEAD_ID])
+        innate = out.get("innate_effects")
+        if innate is not None:
+            put("innate_effects", [i for i in innate if i != ANIMATE_DEAD_ID])
     charmed = pool_charmed_player(out)
     put("status", "okay")
     put("active", True)
     put("hp_current", max(1, out.get("hp_current") or 0))
-    put("turn_class", 0)
+    # A field the source does not hold is one its writers do not map, and
+    # setting it would add a drop line the never-animated member lacks.
+    pool = title == "pool-of-radiance"
+    if pool or out.get("turn_class") is not None:
+        put("turn_class", 0)
     put("movement", 12)
-    put("creature_type", 0)
+    if pool or out.get("creature_type") is not None:
+        put("creature_type", 0)
+    if title in ATTACK_LEVEL_RESTORED_TITLES and (
+            out.get("attack_level") is not None):
+        # The cast zeroes the byte; the engine's undo restores it from the
+        # fighter level, and a never-animated member holds the same value.
+        put("attack_level", dos_port.deltas_for(title).attack_level_stored(
+            out.get("levels") or {}, out.get("former_levels") or {}))
     out.fields.pop("turn_power", None)
     if not charmed:
         put("hostile", False)
@@ -1093,6 +1117,8 @@ def pool_charmed_player(char: NeutralCharacter) -> bool:
     A charm node the writer converts, on a character who is not a companion
     or whom DOS drives with its taken-over control byte.
     """
+    if getattr(char.game, "key", char.game) not in (None, "pool-of-radiance"):
+        return False
     deltas = deltas_for(char.game)
     if deltas is not POOL_OF_RADIANCE_RECORD:
         return False

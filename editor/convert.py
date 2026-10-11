@@ -1022,8 +1022,9 @@ class PodAmigaToDos(Direction):
         data = amiga_savegame.pod_read_slot(disk, source.slot)
         state = amiga_savegame.pod_from_amiga(
             data, source=f"{source.path} slot {source.slot}")
-        characters = [amiga_pod.pod_to_neutral(block)
-                     for block in amiga_savegame.pod_parse(data).blocks]
+        characters = [
+            c64_codec.living_player(amiga_pod.pod_to_neutral(block))
+            for block in amiga_savegame.pod_parse(data).blocks]
         characters = saveplan.fit_names(
             characters, self.destination_port, self.deltas.key, names)
         vault = amiga_savegame.pod_read_vault(disk, source.slot)
