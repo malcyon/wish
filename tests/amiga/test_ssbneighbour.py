@@ -75,6 +75,99 @@ def test_journal_dependencies_stop_before_output_or_guest(tmp_path, monkeypatch,
                       if missing in ("reader", "template") else ["registry", "reader", "tables"])
 
 
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("during", ["reader", "tables"])
+def test_expired_journal_preflight_stops_before_output_or_guest(tmp_path, monkeypatch,
+                                                                retry, during):
+    inputs = {}
+    for key in ("boot_source", "disk_b_source", "substitute", "published_df1", "df0", "df1"):
+        disk = tmp_path / f"{key}.adf"
+        disk.write_bytes(f"synthetic {key}".encode())
+        inputs[key] = {"path": str(disk), "sha256": hashlib.sha256(disk.read_bytes()).hexdigest()}
+    manifest = {**inputs, "disks": {key: inputs[key] for key in ("df0", "df1")},
+                "registered": {key: inputs[key] for key in ("boot_source", "disk_b_source",
+                                                              "substitute")}
+                | {"published": inputs["published_df1"]},
+                "state_a": {"area": 16, "x": 3, "y": 7, "facing": 2},
+                "names_a": [f"Member {n}" for n in range(6)],
+                "mode": "substitute_title", "title": "ssb", "loaded_letter": "D",
+                "slot_letter": "D"}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    out = tmp_path / "result"
+    old_receipt = None
+    if retry:
+        old_out = tmp_path / "previous"
+        old_out.mkdir()
+        old_receipt = old_out / "receipt.json"
+        old_receipt.write_text(json.dumps({"success": False, "retryable": True,
+            "retry_of": None, "manifest": str(path.resolve()), "holder": "fake-holder",
+            "out": str(old_out.resolve()), "combined_deadline": 1005}))
+    now = [1000]
+    monkeypatch.setattr(neighbour.time, "time", lambda: now[0])
+    monkeypatch.setattr(gamedisks, "names", lambda: ["codewheel"])
+
+    def reader(interpreter):
+        assert interpreter == neighbour.sys.executable
+        if during == "reader":
+            now[0] = 1006
+
+    def tables(adf):
+        assert adf == pathlib.Path(inputs["df0"]["path"])
+        if during == "tables":
+            now[0] = 1006
+        return [object()]
+
+    monkeypatch.setattr(neighbour.route_silver_blades, "journal_preflight", reader)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "tables", tables)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "answer",
+                        lambda *a, **k: pytest.fail("Journal answer was called"))
+    monkeypatch.setattr(neighbour.acceptance, "boot_lane",
+                        lambda *a, **k: pytest.fail("Lane was claimed"))
+
+    class Guest:
+        def _run(self, *a, **k):
+            pytest.fail("SSH mute was queried")
+
+        def press(self, *a, **k):
+            pytest.fail("A key was sent")
+
+    args = argparse.Namespace(manifest=path, holder="fake-holder", out=out,
+                              budget=5, wait_lane=0, retry_of=old_receipt)
+    with pytest.raises(RouteError, match="the combined deadline expired"):
+        neighbour.run(args, guest=Guest())
+    assert not out.exists()
+    if old_receipt is not None:
+        assert not old_receipt.with_suffix(".retry-claimed").exists()
+
+
+def test_journal_preflight_with_time_remaining_creates_no_output(tmp_path, monkeypatch):
+    inputs = {}
+    for key in ("boot_source", "disk_b_source", "substitute", "published_df1", "df0", "df1"):
+        disk = tmp_path / f"{key}.adf"
+        disk.write_bytes(f"synthetic {key}".encode())
+        inputs[key] = {"path": str(disk), "sha256": hashlib.sha256(disk.read_bytes()).hexdigest()}
+    manifest = {**inputs, "disks": {key: inputs[key] for key in ("df0", "df1")},
+                "registered": {key: inputs[key] for key in ("boot_source", "disk_b_source",
+                                                              "substitute")}
+                | {"published": inputs["published_df1"]},
+                "state_a": {"area": 16, "x": 3, "y": 7, "facing": 2},
+                "names_a": [f"Member {n}" for n in range(6)],
+                "mode": "substitute_title", "title": "ssb", "loaded_letter": "D",
+                "slot_letter": "D"}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(neighbour.time, "time", lambda: 1000)
+    monkeypatch.setattr(gamedisks, "names", lambda: ["codewheel"])
+    monkeypatch.setattr(neighbour.route_silver_blades, "journal_preflight", lambda interpreter: None)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "tables", lambda adf: [object()])
+    out = tmp_path / "result"
+    prepared, deadline = neighbour.preflight(path, out, None, 5)
+    assert prepared == manifest
+    assert deadline == 1005
+    assert not out.exists()
+
+
 @pytest.mark.parametrize("unknown_picker,failure", [
     (False, None), (True, None), (False, "snapshot_lost"),
     (False, "snapshot_before_create"), (False, "shot_timeout"),

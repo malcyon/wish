@@ -118,6 +118,7 @@ def preflight(path: pathlib.Path, out: pathlib.Path, retry_of: pathlib.Path | No
         raise RouteError("journal prerequisites are unavailable before boot") from exc
     except SystemExit as exc:
         raise RouteError("journal prerequisites are unavailable before boot") from exc
+    require(time.time() < wall_deadline, "the combined deadline expired")
     return manifest, wall_deadline
 
 
