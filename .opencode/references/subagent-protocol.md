@@ -1,5 +1,11 @@
 # OpenCode specialist protocol
 
+Keep OpenCode lifecycle and scheduling adaptations in OpenCode-only files.
+Do not copy them into native Claude Code or Codex skills, Codex agent or hook
+definitions, or shared rules that would change another runtime. Obtain
+Donald's separate explicit approval before proposing any such edit; a general
+alignment request does not authorize synchronization.
+
 Paths in agent prompts are relative to the repository root. Read `AGENTS.md`
 and its applicable `.claude/rules/` before acting; OpenCode does not load
 Claude Code's path-scoped rules automatically. Read the portable body of the

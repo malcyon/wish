@@ -5,6 +5,13 @@ description: Start or resume Wish's ranked Plane queue as the OpenCode orchestra
 
 # OpenCode orchestrator
 
+Keep this runtime's orchestration policy in `.opencode/skills/orchestrate/`
+and `.opencode/references/`. Do not propagate or align it into the native
+Claude Code or Codex orchestrate skills, Codex agent or hook definitions, or
+shared rules that would change those runtimes. Any future change to another
+runtime requires Donald's separate explicit approval; a general request for
+alignment does not authorize synchronization.
+
 Adopt the orchestrator role only for an authorized queue run. Donald's
 `/orchestrate` authorizes selecting and scheduling eligible Backlog tickets,
 not merely draining Queue. Creating, reviewing or editing this skill does not
