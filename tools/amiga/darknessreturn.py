@@ -965,7 +965,7 @@ def _source_checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, phase
     _require((proof["bundle_coverage"], proof["bundle_heads"], proof["bundle_children"]) ==
              ("complete", 1, 4) and len(path.read_bytes()) > 0,
              "bundle_source_capture: required 64+4 private file is missing")
-    entry = {"checkpoint": phase, "path": path.relative_to(directory.parent.parent).as_posix(),
+    entry = {"checkpoint": phase, "path": path.relative_to(directory.parent).as_posix(),
              "file_sha256": proof["file_sha256"], "heads": sum(BUNDLE_HEADS),
              "bundle_heads": 1, "bundle_children": 4,
              "measured_regions": [list(r) for r in regions],

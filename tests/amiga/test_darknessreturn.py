@@ -1297,6 +1297,57 @@ def test_seven_member_source_captures_64_heads_four_children_and_specific_f(tmp_
         assert generated.path.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.parametrize("damage", [None, "missing", "tampered", "party"])
+def test_source_checkpoint_artifact_resolves_for_comparison_before_f(tmp_path, monkeypatch, damage):
+    private_path = _synthetic_private_files(monkeypatch, tmp_path)
+    generated = _seven_source(tmp_path, monkeypatch)
+    directory = private_path(generated.root / "item-nodes")
+    receipt = {"item_nodes": []}
+    run = SimpleNamespace(events=[{"screen": "save_picker", "shot": 1, "time": 1.0}])
+    reading = driver._source_checkpoint(generated.target, directory, "initial-pre-f",
+                                        receipt, run, "generated prepared digest")
+    entry = receipt["item_nodes"][0]
+    artifact = directory / "initial-pre-f.json"
+    assert artifact.is_file()
+    assert entry["checkpoint"] == "initial-pre-f"
+    assert entry["path"] == "item-nodes/initial-pre-f.json"
+    assert generated.root.joinpath(*pathlib.PurePosixPath(entry["path"]).parts) == artifact
+    digest = hashlib.sha256(generated.saved).hexdigest()
+    monkeypatch.setattr(driver, "BUNDLE_SOURCE_F_SHA256", digest)
+    if damage == "missing":
+        artifact.unlink()
+    elif damage == "tampered":
+        artifact.write_bytes(artifact.read_bytes() + b" ")
+    elif damage == "party":
+        reading["party"][4]["name"] = "OTHER"
+
+    keys = []
+
+    def compare_before_f():
+        comparison = driver._source_compare(entry, reading, generated.disk, "F", digest,
+                                            generated.root, role="selected-source")
+        driver._require(comparison["all_payloads_match_reference"],
+                        "bundle_source_reference: initial payload mismatch before F")
+        keys.append("F")
+        return comparison
+
+    if damage == "missing":
+        with pytest.raises(FileNotFoundError):
+            compare_before_f()
+    elif damage == "tampered":
+        with pytest.raises(RouteError, match="private artifact digest differs"):
+            compare_before_f()
+    elif damage == "party":
+        with pytest.raises(RouteError, match="seven members, 64 heads and one case required"):
+            compare_before_f()
+    else:
+        comparison = compare_before_f()
+        assert comparison["all_payloads_match_reference"]
+        assert comparison["independently_authenticated"] is False
+        assert comparison["preservation_established"] is False
+    assert keys == ([] if damage else ["F"])
+
+
 @pytest.mark.parametrize("damage", ["name", "slot", "count", "case", "six-members"])
 def test_source_capture_blocks_wrong_order_and_case_without_weakening_turbo_guard(
         tmp_path, monkeypatch, damage):
