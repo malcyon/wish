@@ -545,7 +545,8 @@ def test_run_halts_only_its_holder_and_checks_media_before_verdict(
 
     def halt(guest, holder, timeout, *, manifest_path, command):
         command_calls.append(("halt", holder))
-        return {"holder": holder, "fetched": {key: {"sha256": proof.sha256(
+        return {"holder": holder, "stop": "stopped", "release": "released",
+                "fetched": {key: {"sha256": proof.sha256(
             out / f"{key}.adf")} for key in pins}}
 
     monkeypatch.setattr(proof.acceptance, "halt_lane", halt)
@@ -580,4 +581,167 @@ def test_run_halts_only_its_holder_and_checks_media_before_verdict(
     else:
         assert scenario.journal.load() == {"on": False, "rows": []}
         assert scenario.guest.calls[-1] == "discard"
+        assert [next(iter(step)) for step in report["cleanup"]][:4] == [
+            "off", "restore", "readback", "discard"]
+        assert set(report["halt"]["fetched"]) == set(pins)
         assert proof.sha256(out / "summary.json")
+
+
+@pytest.fixture
+def cleanup_run(tmp_path, monkeypatch, scenario):
+    """Synthetic clock, media and lane with the real halt ordering."""
+    now = [1000.0]
+    monkeypatch.setattr(proof.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(proof.signal, "setitimer", lambda *args: None)
+    source = tmp_path / "source"
+    source.mkdir()
+    out = tmp_path / "private"
+    pins = {}
+    for key in ("save", "diskb"):
+        (source / f"{key}.adf").write_bytes(f"generated {key}".encode())
+        pins[key] = proof.sha256(source / f"{key}.adf")
+    registered = tmp_path / "generated-registered"
+    registered.write_bytes(b"generated placeholder")
+    entry = {"path": str(registered), "sha256": proof.sha256(registered)}
+    manifest = {"disks": {key: {"path": str(source / f"{key}.adf"), "sha256": digest}
+                          for key, digest in pins.items()},
+                "registered": {"specimen": entry}, "substitute": entry}
+    monkeypatch.setattr(proof, "SOURCE", source)
+    monkeypatch.setattr(proof, "MEDIA", pins)
+    monkeypatch.setattr(proof, "preflight", lambda *args: manifest)
+    monkeypatch.setattr(proof, "gate_row", lambda: None)
+    monkeypatch.setattr(proof.noencounters, "WinuaeState", lambda path: scenario.journal)
+    monkeypatch.setattr(proof.screens, "canonical_file", lambda src, dst: dst.write_bytes(
+        b"generated frame"))
+    monkeypatch.setattr(proof.screens, "guard_rule", lambda *args: {"sha256": "generated"})
+    monkeypatch.setattr(proof, "Screens", lambda *args: scenario.shots)
+    monkeypatch.setattr(proof.acceptance, "boot_lane", lambda *a, **k: {"holder": k["holder"]})
+    lane = []
+    monkeypatch.setattr(proof.acceptance, "_lane_events", lambda folder, event, holder: (
+        [{"remotes": {key: f"generated-{key}" for key in pins}}] if event == "boot" else []))
+    monkeypatch.setattr(proof.acceptance, "_lane_log", lambda folder, data: lane.append(data))
+    monkeypatch.setattr(proof.acceptance, "_entry", lambda path: {"sha256": proof.sha256(path)})
+    scenario.guest.stop = lambda holder, timeout: lane.append(("stop", timeout)) or "stopped"
+
+    def get(remote, local, timeout):
+        lane.append(("get", timeout))
+        local.write_bytes((source / f"{remote.split('-')[-1]}.adf").read_bytes())
+
+    scenario.guest.get = get
+    scenario.guest.release = lambda holder, timeout: lane.append(("release", timeout)) or "released"
+    scenario.guest.status = lambda timeout: "no claims"
+    args = Namespace(manifest=source / "prepare.json", out=out, holder="wish365-ecl01",
+                     audio_proof=tmp_path / "mute", wait_lane=0,
+                     guards=tmp_path / "guards", identity=tmp_path / "identity")
+
+    def run():
+        return proof.run(args, guest=scenario.guest, target=scenario.pipe,
+                         switch_factory=lambda press: scenario.switch,
+                         guards=object(), identity=object(), combat_guard=lambda image: True)
+
+    return now, scenario, lane, run
+
+
+def test_cleanup_off_timeout_retains_journal_and_releases_owned_lane(cleanup_run, monkeypatch):
+    now, scenario, lane, run = cleanup_run
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        report["snapshot_attempted"] = {"holder": holder, "name": proof.SNAPSHOT}
+        report["snapshot"] = guest.snapshot(proof.SNAPSHOT, holder)
+        report["snapshot_taken"] = True
+        switch.on()
+        now[0] = 1600.0
+        raise RouteError("route expired while row held")
+
+    monkeypatch.setattr(proof, "proof", route)
+    scenario.switch.off = lambda: scenario.switch.calls.append("off") or (
+        now.__setitem__(0, 1751.0) or {"error": "off timed out"})
+    report = run()
+    assert report["error"].endswith("route expired while row held")
+    assert scenario.switch.calls[-1] == "off"
+    assert scenario.guest.calls == ["snapshot"]
+    assert [event[0] for event in lane if isinstance(event, tuple)] == ["stop", "release"]
+    assert report["journal_final"]["rows"] and report["verdict"].startswith("inconclusive")
+    assert any("off_error" in event for event in report["cleanup"])
+    assert any("fetch_skipped" in event for event in report["cleanup"])
+
+
+def test_lost_snapshot_receipt_never_restores_but_discards_after_off(cleanup_run, monkeypatch):
+    now, scenario, lane, run = cleanup_run
+
+    def missing(name, holder):
+        scenario.guest.calls.append("snapshot")
+        raise RouteError("snapshot reply lost")
+
+    scenario.guest.snapshot = missing
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        report["snapshot_attempted"] = {"holder": holder, "name": proof.SNAPSHOT}
+        guest.snapshot(proof.SNAPSHOT, holder)
+
+    monkeypatch.setattr(proof, "proof", route)
+    report = run()
+    assert report["snapshot_attempted"] == {"holder": "wish365-ecl01",
+                                             "name": proof.SNAPSHOT}
+    assert scenario.guest.calls == ["snapshot", "discard"]
+    assert report["verdict"] == "inconclusive"
+    assert [event[0] for event in lane if isinstance(event, tuple)] == [
+        "stop", "get", "get", "release"]
+    assert any("snapshot_error" in event for event in report["cleanup"])
+
+
+def test_halt_timeouts_clip_and_release_after_failed_fetch(cleanup_run, monkeypatch):
+    now, scenario, lane, run = cleanup_run
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        report["snapshot_attempted"] = {"holder": holder, "name": proof.SNAPSHOT}
+        report["snapshot"] = guest.snapshot(proof.SNAPSHOT, holder)
+        report["snapshot_taken"] = True
+        now[0] = 1750.0
+
+    monkeypatch.setattr(proof, "proof", route)
+
+    def stop(holder, timeout):
+        lane.append(("stop", timeout))
+        now[0] += 30
+        return "stopped"
+
+    def get(remote, local, timeout):
+        lane.append(("get", timeout))
+        now[0] += 50
+        raise RouteError("fetch timed out")
+
+    scenario.guest.stop, scenario.guest.get = stop, get
+    report = run()
+    assert [event[0] for event in lane if isinstance(event, tuple)] == [
+        "stop", "get", "get", "release"]
+    assert lane[0][1] >= lane[1][1] > lane[2][1] > 0
+    assert report["verdict"] == "inconclusive"
+    assert any("halt_error" in event for event in report["cleanup"])
+
+
+def test_failed_release_and_status_leave_holder_unresolved(cleanup_run, monkeypatch):
+    now, scenario, lane, run = cleanup_run
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        now[0] = 1760.0
+        raise RouteError("route failed before snapshot")
+
+    def release(holder, timeout):
+        lane.append(("release", timeout))
+        raise RouteError("release receipt lost")
+
+    scenario.guest.release = release
+    scenario.guest.status = lambda timeout: (_ for _ in ()).throw(RouteError("status lost"))
+    monkeypatch.setattr(proof, "proof", route)
+    report = run()
+    assert report["error"].endswith("route failed before snapshot")
+    assert [event[0] for event in lane if isinstance(event, tuple)] == ["stop", "release"]
+    assert report["holder_unresolved"] is True
+    assert "release receipt lost" in str(report["cleanup"])
+    assert "status lost" in str(report["cleanup"])
+    assert report["verdict"] == "inconclusive"

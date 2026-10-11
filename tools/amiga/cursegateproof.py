@@ -9,6 +9,7 @@ nothing about suppression. Only the holder this command claims is stopped.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import pathlib
@@ -70,6 +71,54 @@ def record(path: pathlib.Path, report: dict) -> None:
 def receipt_of(value: Any) -> Any:
     """Keep a pipe receipt in JSON without discarding its diagnostic fields."""
     return value.as_dict() if hasattr(value, "as_dict") else value
+
+
+@contextlib.contextmanager
+def bounded_until(deadline: float):
+    """Interrupt a cleanup call without granting time beyond the original run deadline."""
+    remaining = deadline - time.monotonic()
+    require(remaining > 0, "cleanup deadline reached")
+
+    def expired(signum, frame):
+        raise RouteError("cleanup call exceeded its deadline")
+
+    previous = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, remaining)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    require(time.monotonic() <= deadline, "cleanup call exceeded its deadline")
+
+
+class CleanupGuest:
+    """Give the shared halt sequence one deadline and preserve release time."""
+
+    def __init__(self, guest, deadline):
+        self.guest, self.deadline = guest, deadline
+        self.release_receipt = None
+
+    def __getattr__(self, name):
+        return getattr(self.guest, name)
+
+    def _time(self, cap, *, release=False):
+        remaining = self.deadline - time.monotonic() - (0 if release else 45)
+        require(remaining > 0, "cleanup reserve reached before release" if not release
+                else "total deadline reached before release")
+        return min(cap, remaining)
+
+    def stop(self, holder, timeout):
+        return self.guest.stop(holder, timeout=self._time(timeout))
+
+    def get(self, remote, local, timeout):
+        return self.guest.get(remote, local, timeout=self._time(timeout))
+
+    def release(self, holder, timeout):
+        self.release_receipt = self.guest.release(
+            holder, timeout=self._time(timeout, release=True))
+        return self.release_receipt
 
 
 def private_media(manifest: dict, out: pathlib.Path) -> dict:
@@ -364,6 +413,8 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
     world_crop = pathlib.Path(shots.events[-1]["crop"])
     screens.checked_rule(shots.folder.parent / "combat-reference.png", COMBAT_BOX,
                          "combat", (world_crop,))
+    report["snapshot_attempted"] = {"holder": holder, "name": SNAPSHOT}
+    shots.receipt()
     report["snapshot"] = receipt_of(guest.snapshot(SNAPSHOT, holder))
     report["snapshot_taken"] = True
     shots.receipt()
@@ -441,13 +492,14 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
 
 
 def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=None,
-        guards=None, identity=None, combat_guard=None) -> dict:
+         guards=None, identity=None, combat_guard=None) -> dict:
     """Prepare private images, claim one lane, compare, and always clean up ours."""
+    start_time = time.monotonic()
+    route_end, total_end = start_time + TOTAL - CLEANUP, start_time + TOTAL
     state = noencounters.WinuaeState(noencounters.winuae_state_path(args.holder))
     manifest = preflight(args, state)
     gate_row()
-    start_time = time.monotonic()
-    route_end, total_end = start_time + TOTAL - CLEANUP, start_time + TOTAL
+    require(route_end - time.monotonic() > 120, "too little route time remains to boot")
     args.out.mkdir(parents=True)
     local = args.out / "prepare.json"
     prepared = private_media(manifest, args.out)
@@ -534,36 +586,76 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
             report["screens"] = shots.events
         if booted:
             off_ok = False
+            off_deadline = min(time.monotonic() + 90, total_end - 90)
             try:
-                if switch is not None:
-                    report["cleanup"].append({"off": off_checked(switch, state, target)})
-                else:
-                    require(not state.load()["on"] and not state.load()["rows"],
-                            "switch state is pending without its driver")
-                    pinned(target, ORIGINAL)
-                    report["cleanup"].append({"off": "already original"})
+                with bounded_until(off_deadline):
+                    if switch is not None:
+                        report["cleanup"].append({"off": off_checked(switch, state, target)})
+                    else:
+                        require(not state.load()["on"] and not state.load()["rows"],
+                                "switch state is pending without its driver")
+                        pinned(target, ORIGINAL)
+                        report["cleanup"].append({"off": "already original"})
                 off_ok = True
             except BaseException as exc:
                 report["cleanup"].append({"off_error": f"{type(exc).__name__}: {exc}"})
-            if report.get("snapshot_taken") and off_ok:
+            if report.get("snapshot_attempted") and off_ok:
+                snapshot_deadline = min(time.monotonic() + 120, total_end - 90)
+                restored = False
+                if report.get("snapshot_taken"):
+                    try:
+                        with bounded_until(snapshot_deadline):
+                            report["cleanup"].append({"restore": receipt_of(
+                                guest.restore(SNAPSHOT, args.holder))})
+                            pinned(target, ORIGINAL)
+                            require(not state.load()["on"] and not state.load()["rows"],
+                                    "the journal changed after restore")
+                            report["cleanup"].append({"readback": "original and empty journal"})
+                            restored = True
+                    except BaseException as exc:
+                        report["cleanup"].append({"snapshot_error":
+                                                  f"{type(exc).__name__}: {exc}"})
                 try:
-                    report["cleanup"].append({"restore": receipt_of(
-                        guest.restore(SNAPSHOT, args.holder))})
-                    shots.world_at(target, (4, 14, 1), 25)
-                    pinned(target, ORIGINAL)
-                    guest.discard(SNAPSHOT, args.holder)
-                    report["cleanup"].append({"discard": SNAPSHOT})
+                    with bounded_until(snapshot_deadline):
+                        report["cleanup"].append({"discard": receipt_of(
+                            guest.discard(SNAPSHOT, args.holder))})
+                    if not restored:
+                        report["cleanup"].append({"snapshot_error":
+                                                  "restore was not verified; snapshot identity retained"})
                 except BaseException as exc:
                     report["cleanup"].append({"snapshot_error": f"{type(exc).__name__}: {exc}"})
+            if report.get("snapshot_attempted") and not off_ok:
+                report["cleanup"].append({"snapshot_skipped": "off was not verified"})
+            remaining = total_end - time.monotonic()
+            fetch = remaining >= 150
+            if not fetch:
+                report["cleanup"].append({"fetch_skipped": "less than 150 seconds remain"})
+            cleanup_guest = CleanupGuest(guest, total_end)
             try:
                 report["halt"] = acceptance.halt_lane(
-                    guest, args.holder, timeout=max(1, min(30, total_end - time.monotonic())),
-                    manifest_path=local, command=command)
-                for key, digest in MEDIA.items():
-                    require(report["halt"]["fetched"][key]["sha256"] == digest,
-                            f"the guest changed its private {key} disk")
+                    cleanup_guest, args.holder,
+                    timeout=min(30, max(0, remaining)),
+                    manifest_path=local if fetch else None, command=command)
+                if fetch:
+                    for key, digest in MEDIA.items():
+                        require(report["halt"]["fetched"][key]["sha256"] == digest,
+                                f"the guest changed its private {key} disk")
             except BaseException as exc:
                 report["cleanup"].append({"halt_error": f"{type(exc).__name__}: {exc}"})
+            if cleanup_guest.release_receipt is not None:
+                report["release_receipt"] = receipt_of(cleanup_guest.release_receipt)
+            if "halt" not in report or "release" not in report["halt"]:
+                if cleanup_guest.release_receipt is not None:
+                    report["holder_unresolved"] = False
+                else:
+                    try:
+                        with bounded_until(total_end):
+                            status = guest.status(timeout=total_end - time.monotonic())
+                        report["holder_status"] = status
+                        report["holder_unresolved"] = args.holder in status
+                    except BaseException as exc:
+                        report["holder_unresolved"] = True
+                        report["cleanup"].append({"status_error": f"{type(exc).__name__}: {exc}"})
         try:
             require(all(sha256(SOURCE / f"{key}.adf") == digest
                         and sha256(args.out / f"{key}.adf") == digest
@@ -575,6 +667,10 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
         except BaseException as exc:
             report["cleanup"].append({"media_error": f"{type(exc).__name__}: {exc}"})
         if report.get("candidate") and not report.get("error") and report.get("halt") \
+                and "release" in report["halt"] and fetch \
+                and off_ok and report.get("snapshot_taken") \
+                and any("readback" in item for item in report["cleanup"]) \
+                and any("discard" in item for item in report["cleanup"]) \
                 and report.get("source_hashes") == "unchanged" \
                 and not any(any(k.endswith("_error") for k in item)
                             for item in report["cleanup"]):
@@ -590,6 +686,9 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
             report["cleanup"].append({"journal_error": f"{type(exc).__name__}: {exc}"})
             report["verdict"] = "inconclusive: final encounter journal is not clear"
         report["elapsed_seconds"] = time.monotonic() - start_time
+        if report["elapsed_seconds"] > TOTAL:
+            report["cleanup"].append({"deadline_error": "total 900-second deadline passed"})
+            report["verdict"] = "inconclusive: total deadline passed"
         record(args.out / "summary.json", report)
     return report
 
