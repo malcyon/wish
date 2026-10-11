@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -216,3 +217,80 @@ def test_failed_p2_receipt_cannot_start_reload(tmp_path):
                                            "source_unchanged": True}}
     with pytest.raises(RouteError, match="failed or missing"):
         driver._restored_source(receipt)
+
+
+@pytest.mark.parametrize("step_fails", [False, True])
+def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
+        tmp_path, monkeypatch, step_fails):
+    events = []
+    holder = "proof"
+    state = SimpleNamespace(load=lambda: {"on": False, "rows": []})
+
+    class Guest:
+        def snapshot(self, name, owner):
+            assert owner == holder
+            events.append(("snapshot", name))
+
+        def discard(self, name, owner):
+            assert owner == holder
+            events.append(("discard", name))
+
+    class Run:
+        def __init__(self, *args):
+            self.events = []
+
+        def load(self, *args):
+            pass
+
+        def left(self, *args):
+            return 10
+
+        def see(self, *args):
+            pass
+
+        def press(self, *args):
+            pass
+
+    def adoption(*args):
+        count = sum(event[0] == "adopt" for event in events)
+        events.append(("adopt", count))
+        return {}
+
+    def step(*args):
+        events.append(("step", "NP8"))
+        if step_fails:
+            raise RouteError("injected NP8 failure")
+        return {"pressed": ["NP8"]}
+
+    manifest = {"encounter_media": {"prepared_image": "unused"}, "names_a": []}
+    monkeypatch.setattr(driver, "_export_guards", lambda out: None)
+    monkeypatch.setattr(driver, "_prepare_p2", lambda *args: (tmp_path / "manifest", manifest))
+    monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(driver, "_library", lambda disk: b"library")
+    monkeypatch.setattr(driver, "_row_from_library", lambda *args: b"original")
+    monkeypatch.setattr(driver, "_boot", lambda *args: {"remotes": {}})
+    monkeypatch.setattr(driver, "GuardedRun", Run)
+    monkeypatch.setattr(driver, "_target", lambda owner: object())
+    monkeypatch.setattr(driver, "_live_read", lambda target: {"party": []})
+    monkeypatch.setattr(driver, "_require_world", lambda *args, **kwargs: None)
+    monkeypatch.setattr(driver, "_stage_flag", lambda target: {})
+    monkeypatch.setattr(driver, "adopt_loaded_media", adoption)
+    monkeypatch.setattr(driver, "_trip", lambda *args: [])
+    monkeypatch.setattr(driver, "_step_under_switch", step)
+    monkeypatch.setattr(driver, "_value", lambda reading, variable: 0)
+    monkeypatch.setattr(driver, "restore_loaded_media", lambda *args: {})
+    monkeypatch.setattr(driver, "_original_live", lambda *args: {})
+    monkeypatch.setattr(driver, "_halt", lambda *args: ({}, {}))
+    monkeypatch.setattr(driver, "_check_source", lambda: None)
+    monkeypatch.setattr(driver.noencounters, "WinuaeState", lambda path: state)
+    args = SimpleNamespace(previous_return_attempts=2, budget=1200, out=tmp_path / "p2",
+                           run_id="proof", holder=holder, audio_proof=tmp_path / "audio")
+    if step_fails:
+        with pytest.raises(RouteError, match="injected NP8 failure"):
+            driver.run_p2(args, guest=Guest())
+    else:
+        assert driver.run_p2(args, guest=Guest())["success"]
+    assert events == [("snapshot", "b0"), ("snapshot", "b1"), ("adopt", 0),
+                      ("adopt", 1), ("snapshot", "p2-before-step"), ("step", "NP8"),
+                      ("discard", "b0"), ("discard", "b1"),
+                      ("discard", "p2-before-step")]

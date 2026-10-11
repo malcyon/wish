@@ -639,6 +639,8 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         receipt["returned"] = returned
         receipt["post_return_adoption"] = adopt_loaded_media(args.holder, target,
                                                                state, original, guest)
+        guest.snapshot("p2-before-step", args.holder)
+        snapshots.append("p2-before-step")
         receipt["step_command"] = _step_under_switch(args.holder, target, guest,
                                                        state, original)
         run.see("world", 60)
