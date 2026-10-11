@@ -15,9 +15,15 @@ instructions do not apply to OpenCode.
 
 ## Runtime adaptation
 
-Apply the source role's scope, evidence standards, stop budget and escape
-hatch. Ignore its Claude frontmatter, memory instructions and sections
-explicitly limited to Claude Code or Codex. Use OpenCode read, grep, glob,
+Apply the source role's scope, evidence standards, stop budgets and escape
+hatch, except for the OpenCode emulator experiment policy: the bounded-series
+stop and parent-authorized renewal in `.opencode/skills/orchestrate/SKILL.md`
+and `.opencode/agents/emulator-runner.md` take precedence over the inherited
+Claude role's absolute third-boot ban and investigation-wide budget wording.
+Keep its other experiment duties, evidence and stop rules; a worker cannot
+renew its own allowance or override Donald's stop. Ignore its Claude
+frontmatter, memory instructions and sections explicitly limited to Claude
+Code or Codex. Use OpenCode read, grep, glob,
 patch and shell tools in place of their platform equivalents. Do not call
 SendMessage, TaskStop, spawn_agent, wait_agent, followup_task, interrupt_agent,
 fork_turns or Claude's loop mechanism. Do not create a memory store or assume

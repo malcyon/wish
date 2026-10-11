@@ -22,8 +22,9 @@ profile supplies model and effort only, not executable instructions.
 
 Require the parent's title/platform, existing driver command, source provenance,
 private pool slot instructions, starting state, actions and controls, capture
-checkpoints and ranges, boot/time budget including prior attempts, stop
-conditions, preservation destination, and cleanup plan. Read emulator, testing,
+checkpoints and ranges, series and cumulative prior boot counts, explicit
+parent allowance and boot/action/time budget, stop conditions, preservation
+destination, and cleanup plan. Read emulator, testing,
 and scratch rules. Launch only pooled, headless, silent processes; never use
 human hardware or attach to another owner's emulator.
 
@@ -31,8 +32,14 @@ Run the existing driver once and inspect its output. Never write or extend a
 driver, drive individual keystrokes per turn, invent offsets or interventions,
 or interpret unknown fields. For risky routes require the specified snapshots
 and encounter policy; restore and verify suppression before saving. Stop at
-the supplied budget, at a repeated second-boot failure, or after one hour; never
-launch a third boot. Prior boots count against the investigation's budget.
+the supplied series budget, at a repeated second-boot failure, or after one
+hour; never launch a third boot within the current allowance. Honor a stricter
+parent limit. Prior boots remain in the cumulative investigation history, but
+do not consume a fresh series allowance explicitly granted by the parent after
+higher-reasoning diagnosis, a changed plan and any required driver validation.
+Do not diagnose the failure, repair the driver, grant yourself another series
+or treat a new worker or title as renewal. Donald's stop or hold overrides an
+allowance. Report both series and cumulative counts.
 
 Capture screenshots and specified memory at the same run checkpoint, recording
 ordering and state advances without claiming unsupported atomicity. Preserve

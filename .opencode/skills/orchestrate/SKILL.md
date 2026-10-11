@@ -96,26 +96,62 @@ repository implementation or run tests or emulators.
 The role IDs are the lowercase spellings in `.opencode/agents/`. Read the
 definition before writing its brief. Reuse a planner only for a related
 follow-up with current evidence; keep planner, builder and reviewer separate.
-Root owns blocker resolution: on a worker escape hatch, spent experiment
-budget, missing driver or specimen, missing evidence, unanswered engine
-behavior or repeated failed hypothesis, diagnose the remaining task and
-dispatch the smallest authorized removal before extended bookkeeping. Route
-existing-code mechanism to senior-analyst, difficult approach or multi-agent
-staging to architect, bytes/screens/driver work to reverse-engineering, and
-an UNKNOWN or broken assumption not settled by more specimens to deep-research.
-Do not override a role's model to simulate escalation. Retain specialist
-results and stop repeating failed hypotheses; escalate further only with new
-evidence or a precise unresolved question suited to a higher tier, not an
-arbitrary number of planning passes.
-
+Root also owns missing drivers, specimens and evidence, worker escape hatches,
+unanswered engine behavior and failed hypotheses: identify the next authorized
+removal and dispatch its fitting specialist, rather than treating these as
+external holds.
 Brief a bounded outcome, not a fragment whose only deliverable is another
 handoff: name the player result, owned files, proof, dependencies and the
-specific stopping condition. When a limit applies, root may assign a different
-bounded preparation or investigation within existing authority; it may not
-renew a prohibited experiment, override Donald's hold or repeat a failed
-hypothesis without new evidence. Keep planner, builder, independent reviewer,
+specific stopping condition. Keep planner, builder, independent reviewer,
 driver builder and emulator runner in their distinct roles. Root alone spawns,
-integrates, commits and relays serialized managed checks.
+integrates, commits and relays serialized managed checks. Follow the bounded
+experiment escalation and resumption policy below when a limit is reached.
+
+### Bounded experiment escalation and resumption
+
+Root owns the sequence: stop the current attempt series, preserve its evidence
+and cumulative lifetime boot/attempt history, assign higher-reasoning diagnosis,
+complete necessary driver repair and validation, authorize a fresh bounded
+emulator-runner series, then assess its result. Two boots or one hour is the
+default stop for each series (honor stricter limits); it triggers escalation,
+not a permanent lifetime ceiling or permission for a worker to renew itself.
+Changing workers, titles or series never erases prior attempts. Never simply
+rebrief the same failed approach, and never allow repeated retries on the
+strength of a renewed allowance alone.
+
+Route a failed emulator-runner or junior-dev attempt to the fitting configured
+higher-reasoning specialist: senior-analyst for an existing-code mechanism,
+reverse-engineering for bytes, screens or driver diagnosis, architect for a
+hard approach or multi-agent staging, and deep-research for an UNKNOWN or
+lower-tier diagnosis that cannot settle the cause. An exhausted specialist
+escalates the precise unresolved question to architect or deep-research as
+appropriate. Moving to the same or a lower tier, or changing a profile's
+model, is not escalation from a runner or builder. Use configured profiles for
+higher reasoning than the failed execution task, not necessarily a model above
+the Astra root. If diagnosis already used the highest configured tier, retain
+and deepen that specialist's investigation or seek a fitting independent peer
+review; change the approach on evidence, not on a model override. No still-higher
+model is required to proceed or grounds for an external hold.
+
+Before authorizing another series, require an evidence-supported diagnosis or
+hypothesis and changed approach: what failed, the proposed mechanism and its
+supporting evidence, what changes, the predicted observation that discriminates
+it from a control, driver/build/source/guard readiness, fresh boot, action,
+time and cleanup limits, and stop criteria. A diagnostic live run may establish
+the cause; final proof is not a prerequisite, but an unchanged blind retry is
+not a changed approach. Assign missing prerequisites to the fitting specialist
+and validate the repaired driver separately from the live run. With queue-run
+authority and no Donald hold, root explicitly grants the runner a new bounded
+allowance with series and cumulative counts;
+routine renewed runs need no new user approval. Dispatch the eligible successor
+or missing-prerequisite specialist in the same coordination cycle, not just a
+plan or audit. If the renewed series fails, stop and escalate its new evidence
+and unresolved cause; do not automatically issue another allowance.
+
+Donald-only approval, an explicit stop or hold, and external access limits
+remain binding. If genuinely blocked, name the exact unavailable authority or
+dependency, its owner and the condition for resuming. Spent budget, missing
+evidence or a missing driver is root-owned work, not a Donald-only blocker.
 
 Every brief opens with owned files, the focused proof and the report that ends
 the task. Include authorization scope, excluded files, working directory,
@@ -176,13 +212,13 @@ Readiness belongs to the next authorized step, not the ticket's final proof.
 A missing plan calls for a planner; a missing acceptance driver calls for
 driver diagnosis or building; a ready driver calls for a bounded live run.
 Missing evidence is normally an investigation input, not a whole-ticket hold.
-An exhausted emulator budget bars blindly repeating the same experiment, not
-independent static diagnosis, planning or building. A revised plan does not
-renew boot, menu or key allowances or override Donald's hold. Record the
-current next-step obstacle separately from any final acceptance gap. Use an
-external hold only after a specialist establishes an unavailable dependency,
-Donald-only approval or access, or an exact unavailable runtime or Plane
-transition; record the owner and condition for resuming.
+An exhausted emulator series invokes bounded experiment escalation and
+resumption above; diagnosis and preparation can proceed while the old series
+is stopped. A revised plan alone grants no boot, menu or key allowance. Record
+the next-step obstacle separately from the final acceptance gap. Use an
+external hold only for an established unavailable dependency, Donald-only
+approval or access, or an exact unavailable runtime or Plane transition;
+record its owner and resumption condition.
 Planning and preparation are ticket work and require the same confirmed start
 as building or acceptance. A busy emulator lane or overlapping integration
 does not block independent planning or worktree preparation. Record what can
@@ -331,15 +367,14 @@ At startup, in this order:
    final result of the run. Refill independent useful work after each report.
    Preserve the runtime, approval and capacity boundaries above.
 
-On each blocked or completed report, diagnose and dispatch the smallest
-authorized removal first; do not turn missing evidence, a busy runner, a
-finished worker or a spent worker budget into a whole-ticket external hold.
-Record the exact remaining obstacle, evidence paths, current SHA, failed
-hypotheses and spent experiments without renewing them. Confirm live In Progress
-state and shared ownership, process and post findings, then dispatch the next
-authorized specialist before yielding. Reconcile the single current table and
-revisit eligible Backlog tickets; keep independent ready work running without
-sacrificial idle workers.
+On each blocked or completed report, confirm live In Progress state and shared
+ownership, process and post findings, then dispatch the next authorized
+specialist before yielding. For a spent emulator series, execute the bounded
+experiment escalation and resumption sequence above rather than treating its
+budget as an external hold or granting an undiagnosed retry. Record the exact
+obstacle, evidence paths, SHA, failed hypotheses and cumulative attempts;
+reconcile the single current table and revisit eligible Backlog tickets. Keep
+independent ready work running without sacrificial idle workers.
 
 OpenCode has no exposed `wait_agent` or self-scheduling loop here. Background
 completion notifications resume coordination; do not poll children, sleep,
