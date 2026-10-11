@@ -271,10 +271,11 @@ not supported. The mechanism is [`96`](96-live-memory-automapper.md) and the
 buttons' gate is [`102`](102-live-actions.md#on-the-amiga). Each cell below is
 what the code does at this commit; a cell with a result is graded by how it was
 seen. Action and Level up availability below requires
-`WISH_EXPERIMENTAL_AMIGA_ACTIONS`, the matching attached writable title and a
-non-combat mode; Level up also requires an eligible member. Availability is
-not four-title acceptance of a press in Wish's own WinUAE tab followed by a
-game-sheet check and reload.
+`WISH_EXPERIMENTAL_AMIGA_ACTIONS`, a matching attached title and a readable
+non-combat mode. Writing actions and Level up also need a writable backend;
+Save spells only reads, so its action gate permits a read-only backend. Level
+up also requires an eligible member. Availability is not four-title acceptance
+of a press in Wish's own WinUAE tab followed by a game-sheet check and reload.
 
 | | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
 |---|---|---|---|---|

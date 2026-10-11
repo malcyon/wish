@@ -300,7 +300,7 @@ one reason:
 | condition | where it comes from |
 |---|---|
 | the title has a party row and the action is in its `confirmed` set | `amigaparty.ROWS`: the field was written, seen on the game's own screen and kept across a step |
-| the row's `measured` set has what the action needs | Heal needs `hp_max`; on Curse every action also needs `combat_value`, because Curse's fight value is from the code only (`REQUIRES`, `FIGHT_VALUE_FROM_CODE`) |
+| the row's `measured` set has what the action needs | Heal needs `hp_max`; `FIGHT_VALUE_FROM_CODE` additionally requires `combat_value` for every Curse action, and Curse's row now records the live-measured fight value (`REQUIRES`, `FIGHT_VALUE_FROM_CODE`, `amigaparty.ROWS`) |
 | the target can write, except Save spells, which only reads | `AmigaTarget.can_write`: `M` packets through the FS-UAE helper, `DBG W` lines through the WinUAE pipe |
 | the mode byte reads | `amigaparty.mode`, one byte per title; it is 5 in a fight (Curse's value is measured and appears in the code) |
 | the mode is not a fight, unless the row lists the action in `combat_legal` | no row lists any |
