@@ -73,8 +73,10 @@ Curse of the Azure Bonds' `/Curse` (file offsets) differs only where noted:
 
 `memorize N` and `cast N` open line N's Memorize or Cast list and leave it again with
 nothing chosen, after `P` presses of NP3 when written `memorize N P` or `cast N P`; they are
-built for Pools of Darkness only. No guard rule is cut for the magic menu or either list, so a
-run that reaches them settles each screen and measures.
+built for Pools of Darkness only, and a measure run settles any list screen its guard map lacks.
+`castspell N S` casts spell S of line N's Cast list on the caster, and `memorizespell N S`
+memorizes spell S of line N's grimoire and keeps it; both are built for Pools of Darkness only,
+and every screen they wait for is strict.
 
 `display` opens that list and leaves it again; it is built for Curse and Pool
 of Radiance, the titles whose magic menu and list viewer have been read.
@@ -129,6 +131,20 @@ and the same kind of picker, with `Lay` where the other two say `Heal`:
 * **Both lists** move the highlight one row on NP2 and NP8. NP3 moves it to the window's
   bottom row and each further NP3 scrolls the list on by up to a window, and NP9 does the same
   upwards; at the end of the list NP3 leaves the screen as it was.
+* **Choosing a spell**, as measured in a WinUAE boot on ABAGAIL (line 5 of the DOS default
+  party after Save As Amiga). Both lists open with the first spell highlighted, and NP2 skips
+  the level headings, so spell S is S - 1 presses of NP2 down (four from Cure Light Wounds
+  landed on Read Magic, the fifth on Find Traps under the next heading). The Cast list's `C` on
+  Cure Light Wounds shows the party panel with the caster highlighted and the bar `CAST SPELL ON
+  WHOM SELECT EXIT`, the same picture as a case spell's target picker; `S` casts on the caster and
+  redraws the Cast list with the same row highlighted and the count one lower. No message was on
+  screen. A cast spell is queued to be memorized again: the magic menu's `M` then opens on
+  `<NAME>'S SPELLS TO MEMORIZE`, listing it with a `*`, under the bar `SPELLS OK? KEEP EXIT`.
+  That screen's `E` clears the queue and shows the grimoire, whose free-slot row then counts the
+  cast spell's slot (CLERIC 1 at first level, twice). The grimoire's `M` takes one free slot of the
+  highlighted spell's level (CLERIC 0) and leaves the screen as it was when none is free; its `E`
+  shows the queue and the queue's `K` keeps it and returns to the magic menu. The magic menu of a
+  member with no Rest on its bar (`CAST MEMORIZE SCRIBE DISPLAY EXIT`) is its own guard picture.
 
 Pool of Radiance's `/program` (file offsets; one build on every disk-one image)
 takes `items N`, which shows the item list of the member on line N, `rest
@@ -292,6 +308,20 @@ LIST_EXIT = "E"
 LIST_PAGE = "NP3"
 #: The most NP3 presses one `memorize` or `cast` step takes.
 LIST_PAGES_MAX = 20
+#: The titles whose camp cast and memorize choices have been measured, so `castspell N S` and
+#: `memorizespell N S` may name them.
+SPELL_TITLES = frozenset({"darkness"})
+#: The key that moves a Memorize or Cast list's highlight to the next spell, past any heading.
+SPELL_NEXT = "NP2"
+#: The Cast list's key that casts the highlighted spell, and the target picker's key that picks
+#: the highlighted member, who is the caster.
+CAST_SPELL, CAST_SELECT = "C", "S"
+#: The grimoire's key that memorizes the highlighted spell, and the queue's key that keeps it.
+MEMORIZE_SPELL, MEMORIZE_KEEP = "M", "K"
+#: The most spells down a list `castspell N S` and `memorizespell N S` may name.
+SPELL_ROWS = 50
+#: The target picker a cast spell that asks whom shows.
+CAST_TARGET = "camp_cast_target"
 #: The titles whose camp sheet steps, `view N` and `heal N`, are not built: Pool of Radiance's
 #: sheet has no HEAL, and its guard map holds no camp sheet.
 SHEETLESS = frozenset({"pool"})
@@ -384,6 +414,17 @@ def magic_list_state(kind: str, line: int, page: int = 0) -> str:
     return state if page == 0 else f"{state}_page{page}"
 
 
+def spell_row_state(kind: str, line: int, row: int) -> str:
+    """Party line `line`'s `memorize` or `cast` list with spell `row` highlighted, both from 1."""
+    state = magic_list_state(kind, line)
+    return state if row == 1 else f"{state}_spell{row}"
+
+
+def keep_state(line: int) -> str:
+    """Party line `line`'s spells to memorize, under the bar `SPELLS OK? KEEP EXIT`."""
+    return f"{magic_list_state('memorize', line)}_keep"
+
+
 def join_state(line: int) -> str:
     """The screen right after `J` on party line `line`'s item list, grabbed for the message."""
     return JOIN_LIST if line == 1 else f"{JOIN_LIST}_{line}"
@@ -407,6 +448,12 @@ def is_magic_list(state: str) -> bool:
     """Whether `state` is a camp Memorize or Cast list, on any page."""
     names = "|".join(MAGIC_LISTS.values())
     return re.fullmatch(rf"(?:{names}){_LINE}(?:_page[1-9][0-9]?)?", state) is not None
+
+
+def is_spell_row(state: str) -> bool:
+    """Whether `state` is a Memorize or Cast list with a spell below the first highlighted."""
+    names = "|".join(MAGIC_LISTS.values())
+    return re.fullmatch(rf"(?:{names}){_LINE}_spell[1-9][0-9]?", state) is not None
 
 
 def is_join(state: str) -> bool:
@@ -442,7 +489,8 @@ def _min_wait(state: str) -> float:
         return 0.0
     if is_joined(state):
         return JOINED_WAIT
-    if (is_items(state) and "_row" in state) or (is_magic_list(state) and "_page" in state):
+    if ((is_items(state) and "_row" in state) or (is_magic_list(state) and "_page" in state)
+            or is_spell_row(state)):
         return ROW_WAIT
     return MIN_WAITS.get(state, 10.0)
 
@@ -551,6 +599,40 @@ def _magic_place(words: list[str]) -> tuple[int, int] | None:
     return int(words[1]), int(words[2]) if len(words) == 3 else 0
 
 
+#: The steps that choose a spell: `castspell N S` and `memorizespell N S`.
+SPELL_VERBS = ("castspell", "memorizespell")
+
+
+def _spell_place(words: list[str]) -> tuple[int, int] | None:
+    """The party line and spell a `castspell N S` or `memorizespell N S` token names, else None."""
+    return _item_place(words) if words[0] in SPELL_VERBS else None
+
+
+def _queue_problem(tokens: tuple[str, ...]) -> str | None:
+    """Why the Memorize screens of `tokens` cannot be told in advance, or None.
+
+    Memorize opens on the grimoire, or on the queue of spells to memorize once a `castspell` or
+    `memorizespell` on that line has queued one. A rest may memorize the queue or not, so after it
+    the opening screen is not known; `memorize N [P]` presses only NP3 and E, and E on the queue
+    would clear it.
+    """
+    queued: dict[int, str] = {}
+    for token in tokens:
+        words = token.split()
+        if words[0] == "rest":
+            queued = {line: "unknown" for line in queued}
+        elif words[0] in SPELL_VERBS:
+            line = int(words[1])
+            if words[0] == "memorizespell" and queued.get(line) == "unknown":
+                return (f"{token!r}: after a rest, Memorize may open on line {line}'s queue or on "
+                        f"its grimoire, and which one is not measured")
+            queued[line] = "queued"
+        elif words[0] == "memorize" and int(words[1]) in queued:
+            return (f"{token!r}: Memorize opens on line {words[1]}'s queue after a castspell or "
+                    f"memorizespell, and E there clears it")
+    return None
+
+
 def _join_place(words: list[str]) -> tuple[int, int] | None:
     """The party line and item row a `join N I` token names, else None."""
     return _item_place(words) if words[0] == "join" else None
@@ -623,6 +705,13 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     later `read` of the game-written save is what proves none was left unread. `memorize N` and
     `cast N` open line N's Memorize or Cast list, press NP3 P times when written `memorize N P`
     or `cast N P`, and leave it with nothing chosen (only for a title in `MAGIC_LIST_TITLES`).
+    `castspell N S` casts spell S of line N's Cast list, counted from 1 past the level headings,
+    on the caster at the target picker, and `memorizespell N S` memorizes spell S of line N's
+    grimoire and keeps the queue (only for a title in `SPELL_TITLES`). A spell that asks no target
+    stops the run at the picker's guard, after the cast. Once either step has queued a spell on a
+    line, Memorize opens there on the queue, whose `E` clears it before the grimoire is shown, so a
+    later `memorizespell` keeps only its own spell; a `memorize N [P]` on such a line, or a
+    `memorizespell` on it after a rest, is blocked.
     """
     view_lines, heal_lines = sheet_lines(name)
     _validate_machine_steps(tuple(t for t in tokens if is_machine_step(t)))
@@ -702,6 +791,19 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             if pages > LIST_PAGES_MAX:
                 raise RouteError(f"{token!r}: a list takes 0 to {LIST_PAGES_MAX} page presses")
             continue
+        if words[0] in SPELL_VERBS:
+            if name not in SPELL_TITLES:
+                raise RouteError(f"{token!r}: casting and memorizing a chosen spell are built for "
+                                 f"Pools of Darkness only")
+            place = _spell_place(words)
+            if place is None:
+                raise RouteError(f"camp step {token!r} is not {words[0]} N S")
+            line, row = place
+            if not 1 <= line <= lines_held:
+                raise RouteError(f"{token!r}: the party has lines 1 to {lines_held} only")
+            if not 1 <= row <= SPELL_ROWS:
+                raise RouteError(f"{token!r}: a step names spells 1 to {SPELL_ROWS} only")
+            continue
         if words[0] == "join":
             if name not in JOIN_TITLES:
                 raise RouteError(f"{token!r}: JOIN is built for Silver Blades only")
@@ -741,9 +843,13 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
             " or row N I" if name in ITEMS_TITLES else "") + (
             " or ready N I" if name in READY_TITLES else "") + (
             " or use N I S|Y" if name in USE_TITLES else "") + (
-            " or memorize N [P] or cast N [P]" if name in MAGIC_LIST_TITLES else "")
+            " or memorize N [P] or cast N [P]" if name in MAGIC_LIST_TITLES else "") + (
+            " or castspell N S or memorizespell N S" if name in SPELL_TITLES else "")
         raise RouteError(f"camp step {token!r} is not view, view N, heal, heal N, "
                          f"rest DURATION or display{also}")
+    problem = _queue_problem(tokens)
+    if problem:
+        raise RouteError(problem)
     if rest_minutes(tokens) >= CLOCK_BLIND_REST and name in SHEETLESS:
         raise RouteError(
             f"rests totalling {CLOCK_BLIND_REST} minutes or more need a sheet after the last "
@@ -819,6 +925,8 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
     without it the highlight moves forward only.
     """
     steps: list[tuple[str, str, str]] = []
+    # The lines whose Memorize opens on the queue of spells to memorize.
+    queued: set[int] = set()
     for token in normalise(tokens):
         words = token.split()
         if words[0] == "view":
@@ -896,6 +1004,39 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
                       for n in range(1, pages + 1)]
             steps += [(LIST_EXIT, MAGIC_MENU, "key"), (MAGIC_EXIT, CAMP, "key")]
             steps += back
+        elif words[0] == "castspell":
+            line, row = int(words[1]), int(words[2])
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(CAMP_MAGIC, MAGIC_MENU, "key"),
+                      (MAGIC_LIST_KEYS["cast"], magic_list_state("cast", line), "key")]
+            steps += [(SPELL_NEXT, spell_row_state("cast", line, n), "key")
+                      for n in range(2, row + 1)]
+            # The list comes back with the same row highlighted and the count one lower.
+            steps += [(CAST_SPELL, CAST_TARGET, "key"),
+                      (CAST_SELECT, spell_row_state("cast", line, row), "key"),
+                      (LIST_EXIT, MAGIC_MENU, "key"), (MAGIC_EXIT, CAMP, "key")]
+            steps += back
+            queued.add(line)
+        elif words[0] == "memorizespell":
+            line, row = int(words[1]), int(words[2])
+            there, back = _moves(line, name, party_size, CAMP)
+            steps += there
+            steps += [(CAMP_MAGIC, MAGIC_MENU, "key")]
+            if line in queued:
+                # The queue's E clears it and shows the grimoire.
+                steps += [(MAGIC_LIST_KEYS["memorize"], keep_state(line), "key"),
+                          (LIST_EXIT, magic_list_state("memorize", line), "key")]
+            else:
+                steps += [(MAGIC_LIST_KEYS["memorize"], magic_list_state("memorize", line), "key")]
+            steps += [(SPELL_NEXT, spell_row_state("memorize", line, n), "key")
+                      for n in range(2, row + 1)]
+            # M redraws the free-slot row; with no slot free it leaves the screen as it was.
+            steps += [(MEMORIZE_SPELL, spell_row_state("memorize", line, row), "key"),
+                      (LIST_EXIT, keep_state(line), "key"), (MEMORIZE_KEEP, MAGIC_MENU, "key"),
+                      (MAGIC_EXIT, CAMP, "key")]
+            steps += back
+            queued.add(line)
         elif words[0] == "display":
             # The list is left from its first page; a further page is recorded, not read.
             steps += [(CAMP_MAGIC, MAGIC_MENU, "key"), (MAGIC_DISPLAY, DISPLAY, "key"),
@@ -909,6 +1050,7 @@ def steps_for(tokens: tuple[str, ...], name: str = "ssb", party_size: int | None
                     steps += [(field, REST_MENU, "key")]
                     steps += [(REST_ADD, REST_MENU, "key")] * count
             steps += [(REST_GO, CAMP, "key")]
+            queued.clear()
     return tuple(steps)
 
 
@@ -930,7 +1072,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
     The camp states are not strict: a screen the guard map lacks is settled and
     marks the run as measuring, so one boot can capture them all, and the camp
     save's own strict picker still stops the run before any write. The states of
-    an `items`, `join`, `ready` or `use` step are strict instead, the camp bar and each list JOIN
+    an `items`, `join`, `ready`, `use`, `castspell` or `memorizespell` step are strict instead, the camp bar and each list JOIN
     redraws included, so every key of those steps goes out on a screen its guard
     recognised. A measure run settles on a screen no rule matches only in the states of the
     steps in `NAVIGATION_VERBS`, which press keys that change no game state, except the camp bar
@@ -970,6 +1112,9 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
                         if t.split()[0] in ("items", "row", "join", "ready", "use"))
     item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
     item_states |= {joined_after(state) for state in item_states if is_join(state)}
+    # A rest between two spell steps on one line is blocked where it would change their screens.
+    spell_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in SPELL_VERBS)
+    item_states |= {state for _, state, _ in steps_for(spell_tokens, name, party_size)}
     strict = title.strict | ({CAMP} | item_states if item_states else set())
     # A `memorize` or `cast` presses its second key on the magic menu, so it must be recognised.
     if any(t.split()[0] in ("memorize", "cast") for t in normalise(tokens)):

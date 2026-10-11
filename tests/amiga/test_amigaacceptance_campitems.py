@@ -554,3 +554,260 @@ def test_memorize_and_cast_go_before_the_camp_save_with_slot_letters_as_simple_k
     # The list keys follow the magic menu, so it must be recognised; the lists themselves stay loose.
     assert route_camp.MAGIC_MENU in title.strict
     assert not {"camp_memorize_5", "camp_cast_5"} & set(title.strict)
+
+
+# Casting and memorizing a chosen spell, as measured on ABAGAIL (line 5 of six).
+
+def test_castspell_highlights_the_spell_casts_it_on_the_caster_and_leaves_through_the_magic_menu():
+    assert route_camp.steps_for(("castspell 5 3",), "darkness", 6) == (
+        ("NP8", "camp", "key"), ("NP8", "camp", "key"),
+        ("M", "camp_magic", "key"), ("C", "camp_cast_5", "key"),
+        ("NP2", "camp_cast_5_spell2", "key"), ("NP2", "camp_cast_5_spell3", "key"),
+        ("C", "camp_cast_target", "key"), ("S", "camp_cast_5_spell3", "key"),
+        ("E", "camp_magic", "key"), ("E", "camp", "key"),
+        ("NP2", "camp", "key"), ("NP2", "camp", "key"))
+    assert route_camp.steps_for(("castspell 1 1",), "darkness", 6) == (
+        ("M", "camp_magic", "key"), ("C", "camp_cast", "key"),
+        ("C", "camp_cast_target", "key"), ("S", "camp_cast", "key"),
+        ("E", "camp_magic", "key"), ("E", "camp", "key"))
+
+
+def test_memorizespell_opens_the_grimoire_or_after_a_cast_the_queue_it_clears_first():
+    # With nothing queued, Memorize opens on the grimoire.
+    assert route_camp.steps_for(("memorizespell 1 2",), "darkness", 6) == (
+        ("M", "camp_magic", "key"), ("M", "camp_memorize", "key"),
+        ("NP2", "camp_memorize_spell2", "key"), ("M", "camp_memorize_spell2", "key"),
+        ("E", "camp_memorize_keep", "key"), ("K", "camp_magic", "key"),
+        ("E", "camp", "key"))
+    # A cast queues its spell, so Memorize opens on the queue, whose E shows the grimoire.
+    steps = route_camp.steps_for(("castspell 5 1", "memorizespell 5 3"), "darkness", 6)
+    memorize = steps[len(route_camp.steps_for(("castspell 5 1",), "darkness", 6)):]
+    assert memorize[:8] == (
+        ("NP8", "camp", "key"), ("NP8", "camp", "key"),
+        ("M", "camp_magic", "key"), ("M", "camp_memorize_5_keep", "key"),
+        ("E", "camp_memorize_5", "key"),
+        ("NP2", "camp_memorize_5_spell2", "key"), ("NP2", "camp_memorize_5_spell3", "key"),
+        ("M", "camp_memorize_5_spell3", "key"))
+    # Another line's queue does not change where this line's Memorize opens.
+    assert route_camp.steps_for(("castspell 2 1", "memorizespell 1 1"), "darkness", 6)[-5] == (
+        "M", "camp_memorize", "key")
+
+
+@pytest.mark.parametrize("text,why", [
+    ("castspell 1", "is not castspell N S"),
+    ("memorizespell 1 x", "is not memorizespell N S"),
+    ("castspell 1 0", "spells 1 to 50 only"),
+    ("memorizespell 1 51", "spells 1 to 50 only"),
+    ("castspell 7 1", "lines 1 to 6 only"),
+    ("castspell 5 1;memorize 5", "Memorize opens on line 5's queue"),
+    ("memorizespell 5 1;memorize 5 2", "Memorize opens on line 5's queue"),
+    ("castspell 5 1;rest 1h;memorizespell 5 1", "after a rest, Memorize may open"),
+])
+def test_spell_steps_block_a_place_or_a_memorize_screen_they_cannot_tell(text, why):
+    with pytest.raises(RouteError, match=why):
+        route_camp.validate_steps(tuple(text.split(";")), 6, name="darkness")
+
+
+def test_spell_steps_allow_a_memorize_on_another_line_and_a_cast_after_a_rest():
+    route_camp.validate_steps(("castspell 5 1", "memorize 4"), 6, name="darkness")
+    route_camp.validate_steps(("castspell 5 1", "rest 1h", "castspell 5 1"), 6, name="darkness")
+
+
+@pytest.mark.parametrize("name", ["pool", "ssb", "curse"])
+def test_spell_steps_are_blocked_for_a_title_whose_choices_are_unmeasured(name):
+    for token in ("castspell 1 1", "memorizespell 1 1"):
+        with pytest.raises(RouteError, match="built for Pools of Darkness only"):
+            route_camp.validate_steps((token,), 4, name=name)
+
+
+def test_spell_steps_are_strict_go_before_the_camp_save_and_are_not_measured():
+    tokens = ("castspell 5 1", "memorizespell 5 3")
+    title = route_camp.camp_title(route_darkness.DARKNESS, tokens, 6, name="darkness")
+    at = route_darkness.DARKNESS.route.index(route_camp.CAMP_SAVE_STEP)
+    added = route_camp.steps_for(tokens, "darkness", 6)
+    assert title.route == (*route_darkness.DARKNESS.route[:at], *added,
+                           *route_darkness.DARKNESS.route[at:])
+    assert {state for _, state, _ in added} <= set(title.strict)
+    assert route_camp.measure_blockers(tokens) == list(tokens)
+    assert not {state for _, state, _ in added} & set(title.measure_loose)
+    # C and E are kept slot letters on this route, so on these screens they are menu keys.
+    assert {("C", "camp_cast_target"), ("E", "camp_memorize_5_keep")} <= set(title.plain_keys)
+
+
+class MagicCampGuest(PoolCampGuest):
+    """Pool's camp with Pools of Darkness' magic menu, Cast list, target picker, grimoire and queue.
+
+    Every slot starts full (`free`), as ABAGAIL's did. A cast queues its spell; the queue's `E`
+    clears it, which frees its slot, and shows the grimoire; the grimoire's `M` takes a free slot
+    and queues the spell, and changes nothing with none free. `asks` is whether the spell shows the
+    target picker; one that does not is cast at once and the Cast list redrawn.
+    """
+
+    MAGIC = ("magic", "cast", "target", "grimoire", "keep")
+
+    def __init__(self, clock, *, asks=True, free=0, pending=()):
+        super().__init__(clock, ROWS)
+        self.asks, self.free, self.pending = asks, free, list(pending)
+        self.row, self.cast_rows, self.memorized_rows = 1, [], []
+
+    def _cast(self):
+        self.cast_rows.append(self.row)
+        self.pending.append(self.row)
+
+    def press(self, holder, key, timeout=None):
+        if not (self.screen in self.MAGIC or (self.screen == "camp" and key == "M")):
+            saving = self.screen == "save_picker" and key in ("H", "I")
+            super().press(holder, key, timeout)
+            if saving:
+                self._write(key, self.place)
+            return
+        measure.ScreenGuest.press(self, holder, key, timeout)
+        screen = self.screen
+        if screen == "camp":
+            self.screen = "magic"
+        elif screen == "magic":
+            if key == "C":
+                self.screen, self.row = "cast", 1
+            elif key == "M":
+                self.screen, self.row = ("keep" if self.pending else "grimoire"), 1
+            elif key == "E":
+                self.screen = "camp"
+        elif screen == "cast":
+            if key == "NP2":
+                self.row += 1
+            elif key == "C" and self.asks:
+                self.screen = "target"
+            elif key == "C":
+                self._cast()
+            elif key == "E":
+                self.screen = "magic"
+        elif screen == "target":
+            if key == "S":
+                self._cast()
+            self.screen = "cast"
+        elif screen == "grimoire":
+            if key == "NP2":
+                self.row += 1
+            elif key == "M" and self.free:
+                self.free -= 1
+                self.pending.append(self.row)
+                self.memorized_rows.append(self.row)
+            elif key == "E":
+                self.screen = "keep"
+        elif screen == "keep":
+            if key == "K":
+                self.screen = "magic"
+            elif key == "E":
+                self.free += len(self.pending)
+                self.pending, self.screen, self.row = [], "grimoire", 1
+
+    def _show(self, cropped):
+        if self.screen in self.MAGIC:
+            cropped.write_text(json.dumps(
+                [self.screen, self.row, self.free, [len(self.pending), len(self.cast_rows)]]))
+        else:
+            super()._show(cropped)
+
+
+class MagicCampGuard(PoolCampGuard):
+    """Each magic screen's rule, like the real one, reads its bar: it tells screens apart, not rows."""
+
+    def __contains__(self, state):
+        return super().__contains__(state) or _magic_screen(state) is not None
+
+    def __call__(self, state, path):
+        wanted = _magic_screen(state)
+        if wanted is None:
+            return super().__call__(state, path)
+        try:
+            shown = json.loads(path.read_text())[0]
+        except ValueError:
+            return False
+        return shown == wanted
+
+
+def _magic_screen(state):
+    if state == route_camp.MAGIC_MENU:
+        return "magic"
+    if state == route_camp.CAST_TARGET:
+        return "target"
+    if state.endswith("_keep"):
+        return "keep"
+    if state.startswith("camp_cast"):
+        return "cast"
+    if state.startswith("camp_memorize"):
+        return "grimoire"
+    return None
+
+
+def _magic_run(tmp_path, clock, tokens, guest):
+    """An accept run of Pool's route with the darkness spell steps of `tokens` before its camp save."""
+    darkness = route_camp.camp_title(route_darkness.DARKNESS, tokens, 6, name="darkness")
+    base = dataclasses.replace(
+        route_pool.POOL, read_slot=_read_slot, slot_letters=_letters, slot_files=_files)
+    at = route_pool.POOL.route.index(route_camp.CAMP_SAVE_STEP)
+    # Pool saves to C and D, but C is the Cast keys' letter here, so the fake saves to H and I.
+    saves = {"C": "H", "D": "I"}
+    route = tuple((saves[key], state, kind) if kind == "write" else (key, state, kind)
+                  for key, state, kind in base.route)
+    title = dataclasses.replace(
+        base, route=(*route[:at], *route_camp.steps_for(tokens, "darkness", 6), *route[at:]),
+        control_letter="H", after_letter="I",
+        strict=base.strict | (darkness.strict - route_darkness.DARKNESS.strict))
+    slots = [("A", _slot(START, NAMES)), ("B", b"kept slot")]
+    disks = {"disk1": _adf(tmp_path / "disk1.adf", "ONE"),
+             "disk2": _adf(tmp_path / "disk2.adf", "TWO"),
+             "save": _adf(tmp_path / "save.adf", "POOLSAVE", slots)}
+    manifest = {"disks": disks, "registered": {"reg": _adf(tmp_path / "reg.adf", "REG")},
+                "loaded_letter": "A", "state_a": START, "names_a": NAMES}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+
+    def write(letter, place):
+        remote = next(r for r in guest.mounted if r and r.endswith("-save.adf"))
+        disk = AmigaDisk(guest.remote[remote])
+        disk.write_file(f"/SAVE/savgam{letter}.sav", _slot(place, NAMES))
+        guest.remote[remote] = disk.to_bytes()
+
+    guest._write = write
+    return acceptance.run_recon(
+        path, guest=guest, guard=MagicCampGuard(guest), identity=RowsIdentity(),
+        holder="wish16-test", audio_proof=_audio_proof(tmp_path), title=title, accept=True)
+
+
+def test_a_cast_and_a_memorize_press_their_keys_on_recognised_screens(tmp_path, clock):
+    tokens = ("castspell 1 1", "memorizespell 1 3")
+    guest = MagicCampGuest(clock)
+    result = _magic_run(tmp_path, clock, tokens, guest)
+    assert result["error"] == "" and result["success"] is True, result["error"]
+    wanted = [key for key, _, _ in route_camp.steps_for(tokens, "darkness", 6)]
+    assert _after_camp(guest)[:len(wanted) + 1] == [*wanted, "S"]
+    # The first spell was cast; the queue's E freed its slot, and the third spell took it.
+    assert guest.cast_rows == [1] and guest.memorized_rows == [3]
+    assert guest.pending == [3] and guest.free == 0
+
+
+def test_a_spell_that_asks_no_target_stops_the_run_before_any_select_key(tmp_path, clock):
+    guest = MagicCampGuest(clock, asks=False)
+    result = _magic_run(tmp_path, clock, ("castspell 1 1",), guest)
+    assert result["success"] is False
+    assert "camp_cast_target screen was not recognized" in result["error"]
+    assert _after_camp(guest) == ["M", "C", "C"]
+
+
+def test_a_memorize_with_no_free_slot_stops_the_run_before_the_queue_is_kept(tmp_path, clock):
+    guest = MagicCampGuest(clock)
+    result = _magic_run(tmp_path, clock, ("memorizespell 1 3",), guest)
+    assert result["success"] is False and "left the screen unchanged" in result["error"]
+    assert _after_camp(guest) == ["M", "M", "NP2", "NP2", "M"]
+    assert guest.memorized_rows == []
+
+
+def test_a_save_that_already_queues_spells_stops_the_run_before_any_spell_is_chosen(
+        tmp_path, clock):
+    # Memorize opens on the queue, not the grimoire this step waits for; its E would clear it.
+    guest = MagicCampGuest(clock, pending=[2])
+    result = _magic_run(tmp_path, clock, ("memorizespell 1 3",), guest)
+    assert result["success"] is False
+    assert "camp_memorize screen was not recognized" in result["error"]
+    assert _after_camp(guest) == ["M", "M"] and guest.pending == [2]

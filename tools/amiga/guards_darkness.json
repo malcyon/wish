@@ -39,7 +39,12 @@
       "also": [
         "camp_cast_5_page1",
         "camp_cast_5_page2",
-        "camp_cast_5_page3"
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
       ],
       "box": [
         58,
@@ -54,7 +59,12 @@
       "also": [
         "camp_cast_5",
         "camp_cast_5_page2",
-        "camp_cast_5_page3"
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
       ],
       "box": [
         58,
@@ -69,7 +79,12 @@
       "also": [
         "camp_cast_5",
         "camp_cast_5_page1",
-        "camp_cast_5_page3"
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
       ],
       "box": [
         58,
@@ -84,7 +99,12 @@
       "also": [
         "camp_cast_5",
         "camp_cast_5_page1",
-        "camp_cast_5_page2"
+        "camp_cast_5_page2",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
       ],
       "box": [
         58,
@@ -94,6 +114,119 @@
       ],
       "example": "WISH-2/guards-measure3/1/shots/34-camp_cast_5_page3.png",
       "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_spell2": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_cast_5_spell5.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_spell3": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_cast_5_spell5.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_spell4": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_cast_5_spell5.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_spell5": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_cast_5_spell5.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_5_spell6": {
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_cast_5_spell6.png",
+      "sha256": "511311c596bbff95cdd629a75cb89f878fe0d71ec7503a67b7a3a9632f6ce6c2"
+    },
+    "camp_cast_target": {
+      "also": [
+        "camp_use_target"
+      ],
+      "box": [
+        74,
+        408,
+        365,
+        426
+      ],
+      "example": "amiga-grab-crops/wish2-use__camp_use_target.png",
+      "sha256": "f90727455ab039238e446191cb89e4a19b07ccb6c73208cbe21abd7930120c59"
     },
     "camp_items": {
       "also": [
@@ -617,17 +750,30 @@
       "example": "amiga-grab-crops/wish9-b1__19-camp_items_row7.png",
       "sha256": "a7fd993c7e37f356b00e179058557462515ca832937792258c4310eb8b75f189"
     },
-    "camp_magic": {
-      "also": [],
-      "box": [
-        58,
-        402,
-        698,
-        430
-      ],
-      "example": "WISH-2/guards-measure3/1/shots/14-camp_magic.png",
-      "sha256": "dbc4ae19a829c6f6ab6233c7aaef7d916b9ff1e47c75cba73133bbeb41cafd0a"
-    },
+    "camp_magic": [
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-2/guards-measure3/1/shots/14-camp_magic.png",
+        "sha256": "dbc4ae19a829c6f6ab6233c7aaef7d916b9ff1e47c75cba73133bbeb41cafd0a"
+      },
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-2/abagail1-prep/1/shots/21-camp_magic.png",
+        "sha256": "ad399c904b175eebb4580083a6d56ec047d37b2f30b38d87929ad0a73e9f9ff4"
+      }
+    ],
     "camp_memorize_5": {
       "also": [
         "camp_memorize_5_page1",
@@ -637,7 +783,12 @@
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -648,6 +799,17 @@
       "example": "WISH-2/guards-measure3/1/shots/15-camp_memorize_5.png",
       "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
     },
+    "camp_memorize_5_keep": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_keep.png",
+      "sha256": "de090d483c3f2ab65b0ab63cf735ba63d26d132c056a6ac2fc7c5910e66fc2f7"
+    },
     "camp_memorize_5_page1": {
       "also": [
         "camp_memorize_5",
@@ -657,7 +819,12 @@
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -677,7 +844,12 @@
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -697,7 +869,12 @@
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -717,7 +894,12 @@
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -737,7 +919,12 @@
         "camp_memorize_5_page4",
         "camp_memorize_5_page6",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -757,7 +944,12 @@
         "camp_memorize_5_page4",
         "camp_memorize_5_page5",
         "camp_memorize_5_page7",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -777,7 +969,12 @@
         "camp_memorize_5_page4",
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
-        "camp_memorize_5_page8"
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -797,7 +994,12 @@
         "camp_memorize_5_page4",
         "camp_memorize_5_page5",
         "camp_memorize_5_page6",
-        "camp_memorize_5_page7"
+        "camp_memorize_5_page7",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
       ],
       "box": [
         58,
@@ -806,6 +1008,131 @@
         430
       ],
       "example": "WISH-2/guards-measure3/1/shots/23-camp_memorize_5_page8.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_spell2": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_spell3": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_spell4": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_spell5": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell6"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3.png",
+      "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
+    },
+    "camp_memorize_5_spell6": {
+      "also": [
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5"
+      ],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3.png",
       "sha256": "64c145da189fb2db4d0ccc795c1a7b8e67836e267dc1fdb0927c9979f0f6e55f"
     },
     "camp_save_picker": [
@@ -1268,7 +1595,31 @@
       "sha256": "1fa8832ac9c1eda066ffe0e194bf9e99290d4582aa3fbaabb3fe94c5841600bf"
     },
     "camp_use_list": {
-      "also": [],
+      "also": [
+        "camp_cast_5",
+        "camp_cast_5_page1",
+        "camp_cast_5_page2",
+        "camp_cast_5_page3",
+        "camp_cast_5_spell2",
+        "camp_cast_5_spell3",
+        "camp_cast_5_spell4",
+        "camp_cast_5_spell5",
+        "camp_cast_5_spell6",
+        "camp_memorize_5",
+        "camp_memorize_5_page1",
+        "camp_memorize_5_page2",
+        "camp_memorize_5_page3",
+        "camp_memorize_5_page4",
+        "camp_memorize_5_page5",
+        "camp_memorize_5_page6",
+        "camp_memorize_5_page7",
+        "camp_memorize_5_page8",
+        "camp_memorize_5_spell2",
+        "camp_memorize_5_spell3",
+        "camp_memorize_5_spell4",
+        "camp_memorize_5_spell5",
+        "camp_memorize_5_spell6"
+      ],
       "box": [
         74,
         408,
@@ -1279,7 +1630,9 @@
       "sha256": "8daf7731c6bebb39b95fbde7222c5648f4a0cae5b58d2666b507dd671df44130"
     },
     "camp_use_target": {
-      "also": [],
+      "also": [
+        "camp_cast_target"
+      ],
       "box": [
         74,
         408,
@@ -1946,17 +2299,48 @@
     }
   },
   "identity": {
-    "camp_cast_5": {
-      "also": [],
-      "box": [
-        74,
-        46,
-        462,
-        62
-      ],
-      "example": "WISH-2/guards-measure3/1/shots/31-camp_cast_5.png",
-      "sha256": "9b10e94db1ee70eb329da4239434a1d0f86433bc61093341927aeac13aefc874"
-    },
+    "camp_cast_5": [
+      {
+        "also": [
+          "camp_cast_5_page1",
+          "camp_cast_5_page2",
+          "camp_cast_5_page3",
+          "camp_cast_5_spell2",
+          "camp_cast_5_spell3",
+          "camp_cast_5_spell4",
+          "camp_cast_5_spell5",
+          "camp_cast_5_spell6"
+        ],
+        "box": [
+          74,
+          46,
+          462,
+          62
+        ],
+        "example": "WISH-2/guards-measure3/1/shots/31-camp_cast_5.png",
+        "sha256": "9b10e94db1ee70eb329da4239434a1d0f86433bc61093341927aeac13aefc874"
+      },
+      {
+        "also": [
+          "camp_cast_5_page1",
+          "camp_cast_5_page2",
+          "camp_cast_5_page3",
+          "camp_cast_5_spell2",
+          "camp_cast_5_spell3",
+          "camp_cast_5_spell4",
+          "camp_cast_5_spell5",
+          "camp_cast_5_spell6"
+        ],
+        "box": [
+          74,
+          46,
+          494,
+          62
+        ],
+        "example": "amiga-grab-crops/wish2-abagail__camp_cast_5.png",
+        "sha256": "2d596fbeddc7c7b394e7276e1c8556af3af7c28e94b38c44570614bc4c9772b0"
+      }
+    ],
     "camp_items": [
       {
         "also": [],
@@ -2060,16 +2444,68 @@
       "example": "amiga-grab-crops/wish9-b1__34-camp_items_6.png",
       "sha256": "74fce2d07a0e624ff2c2afa566ebf6289c37e49efb71fa284a88760f0a073a31"
     },
-    "camp_memorize_5": {
+    "camp_memorize_5": [
+      {
+        "also": [
+          "camp_memorize_5_page1",
+          "camp_memorize_5_page2",
+          "camp_memorize_5_page3",
+          "camp_memorize_5_page4",
+          "camp_memorize_5_page5",
+          "camp_memorize_5_page6",
+          "camp_memorize_5_page7",
+          "camp_memorize_5_page8",
+          "camp_memorize_5_spell2",
+          "camp_memorize_5_spell3",
+          "camp_memorize_5_spell4",
+          "camp_memorize_5_spell5",
+          "camp_memorize_5_spell6"
+        ],
+        "box": [
+          74,
+          46,
+          494,
+          62
+        ],
+        "example": "WISH-2/guards-measure3/1/shots/15-camp_memorize_5.png",
+        "sha256": "4b4c7815a2506ded36bcbc71222b0329ca1536ae2b9a4a35b236c4ed60c764c5"
+      },
+      {
+        "also": [
+          "camp_memorize_5_page1",
+          "camp_memorize_5_page2",
+          "camp_memorize_5_page3",
+          "camp_memorize_5_page4",
+          "camp_memorize_5_page5",
+          "camp_memorize_5_page6",
+          "camp_memorize_5_page7",
+          "camp_memorize_5_page8",
+          "camp_memorize_5_spell2",
+          "camp_memorize_5_spell3",
+          "camp_memorize_5_spell4",
+          "camp_memorize_5_spell5",
+          "camp_memorize_5_spell6"
+        ],
+        "box": [
+          74,
+          46,
+          530,
+          62
+        ],
+        "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5.png",
+        "sha256": "eadf9f1f962f47b25ff3559f9dafd7aa3c92d1f80480f235327c8eecc2c2d079"
+      }
+    ],
+    "camp_memorize_5_keep": {
       "also": [],
       "box": [
         74,
         46,
-        494,
+        530,
         62
       ],
-      "example": "WISH-2/guards-measure3/1/shots/15-camp_memorize_5.png",
-      "sha256": "4b4c7815a2506ded36bcbc71222b0329ca1536ae2b9a4a35b236c4ed60c764c5"
+      "example": "amiga-grab-crops/wish2-abagail__camp_memorize_5_keep.png",
+      "sha256": "572c195b075be9522fdcf3885821760168b7317d1339471bc6ede7562891eff5"
     },
     "camp_sheet": [
       {
@@ -3021,6 +3457,33 @@
     "WISH-6/wish6-l1/measure2/shots/55-elminster_menu.png": [
       "elminster_menu"
     ],
+    "amiga-grab-crops/wish2-abagail__camp_cast_5-after.png": [
+      "camp_cast_5"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_cast_5.png": [
+      "camp_cast_5"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_cast_5_spell5.png": [
+      "camp_cast_5_spell5"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_cast_5_spell6.png": [
+      "camp_cast_5_spell6"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_memorize_5.png": [
+      "camp_memorize_5"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_memorize_5_keep-memorized.png": [
+      "camp_memorize_5_keep"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_memorize_5_keep.png": [
+      "camp_memorize_5_keep"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3-memorized.png": [
+      "camp_memorize_5_spell3"
+    ],
+    "amiga-grab-crops/wish2-abagail__camp_memorize_5_spell3.png": [
+      "camp_memorize_5_spell3"
+    ],
     "amiga-grab-crops/wish2-hilde__camp_items_5.png": [
       "camp_items_5"
     ],
@@ -3035,6 +3498,7 @@
       "camp_use_list"
     ],
     "amiga-grab-crops/wish2-use__camp_use_target.png": [
+      "camp_cast_target",
       "camp_use_target"
     ],
     "amiga-grab-crops/wish347-a3r3__intro_followers.png": [

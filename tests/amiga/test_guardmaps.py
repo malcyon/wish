@@ -1197,3 +1197,22 @@ def test_the_darkness_map_guards_every_strict_state_of_a_memorize_cast_and_row_w
         DARKNESS, ('memorize 5 8', 'cast 5 3', 'row 5 7'), 6, name='darkness')
     assert route_camp.MAGIC_MENU in route.strict
     assert route.strict <= spec['guards'].keys()
+
+
+def test_the_darkness_map_guards_every_strict_state_of_a_line_five_cast_and_memorize():
+    """`castspell 5 S` and `memorizespell 5 S` key every screen on a recognised one, up to spell 6."""
+    from tools.amiga import route_camp
+    from tools.amiga.route_darkness import DARKNESS
+
+    spec = guardmaps._load(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    tokens = ('castspell 5 6', 'memorizespell 5 6', 'memorizespell 5 1')
+    route = route_camp.camp_title(DARKNESS, tokens, 6, name='darkness')
+    assert {'camp_cast_target', 'camp_memorize_5_keep', 'camp_cast_5_spell6',
+            'camp_memorize_5_spell6'} <= route.strict
+    assert route.strict <= spec['guards'].keys()
+    # HILDE's and ABAGAIL's lists both say whose they are, and so does ABAGAIL's queue.
+    for state in ('camp_cast_5', 'camp_memorize_5'):
+        assert len(_rules(spec['identity'][state])) == 2, state
+    assert 'camp_memorize_5_keep' in spec['identity']
+    # A magic menu with Rest on its bar and one without are both the magic menu.
+    assert len(_rules(spec['guards'][route_camp.MAGIC_MENU])) == 2
