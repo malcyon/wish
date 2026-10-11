@@ -365,7 +365,16 @@ class Controller:
         for key, want in (expected.engine or {}).items():
             # On Pool's travel grid, the game prints global coordinates while
             # target.fix() deliberately returns the local map-window square.
-            if fix.get("outdoors") and key in ("x", "y", "facing"):
+            if fix.get("outdoors") and key in ("x", "y"):
+                continue
+            if fix.get("outdoors") and key == "facing":
+                # Travel headings use eight points; cardinal facings use four.
+                heading = fix.get("heading")
+                if heading is None:
+                    missing.append("engine heading")
+                elif heading != want * 2:
+                    return row("failed", expected=asdict(expected), observed=engine,
+                               reason=f"engine heading reads {heading}, expected {want * 2}")
                 continue
             if key not in fix:
                 missing.append(key)

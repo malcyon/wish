@@ -201,6 +201,34 @@ def test_a_declared_travel_window_coordinate_is_checked(tmp_path):
     assert "window x" in verdict["reason"]
 
 
+def test_a_declared_travel_direction_accepts_east_heading(tmp_path):
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(),
+        guards=object(), route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}}, clock=FakeClock())
+    reading = {"fix": {"x": 7, "y": 29, "outdoors": True,
+                       "facing": None, "heading": 2, "area": 26},
+               "geo_sha256": "a"}
+    verdict = controller._compare_checkpoint(
+        "loaded", Expected(engine={"facing": 1}, window={"x": 7, "y": 29}), reading)
+    assert verdict["status"] == "awaiting image review"
+
+
+def test_a_declared_travel_direction_rejects_missing_or_wrong_heading(tmp_path):
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(),
+        guards=object(), route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}}, clock=FakeClock())
+    for heading, status in ((None, "unproven"), (4, "failed")):
+        reading = {"fix": {"x": 7, "y": 29, "outdoors": True,
+                           "facing": None, "heading": heading, "area": 26},
+                   "geo_sha256": "a"}
+        verdict = controller._compare_checkpoint(
+            "loaded", Expected(engine={"facing": 1}, window={"x": 7, "y": 29}),
+            reading)
+        assert verdict["status"] == status
+
+
 def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypatch):
     clock = FakeClock()
     controller = winwishaccept.Controller(
