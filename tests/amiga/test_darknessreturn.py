@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 from types import SimpleNamespace
 
@@ -286,25 +287,60 @@ def test_checkpoint_receipt_is_private_relative_and_carries_screen_order(tmp_pat
     run = SimpleNamespace(events=[{"shot": 9, "time": 123, "screen": "world"}])
     receipt = {"holder": "proof", "phase": "p2", "staged_flag": {"after": "02"}}
     reading = driver._checkpoint(object(), directory, "pre-f", receipt, run,
-                                 disk_sha256="disk hash", slot_sha256="slot hash",
+                                 disk_sha256="disk hash", loaded_slot_sha256="slot hash",
                                  intervention={"before_image_sha256": "old",
                                                "after_image_sha256": "new"})
     entry = receipt["item_nodes"][0]
     assert entry["path"] == "run/item-nodes/pre-f.json"
     assert entry["file_sha256"] == hashlib.sha256((directory / "pre-f.json").read_bytes()).hexdigest()
     assert entry["order"] == 0 and entry["screenshot"] == run.events[0]
-    assert (entry["source_disk_sha256"], entry["saved_slot_sha256"]) == ("disk hash", "slot hash")
+    assert (entry["source_disk_sha256"], entry["loaded_slot_sha256"]) == ("disk hash", "slot hash")
+    assert "saved_slot_sha256" not in entry
     assert entry["media_intervention"] == {"before_image_sha256": "old",
                                             "after_image_sha256": "new"}
     assert "raw_hex" not in json.dumps(receipt) + json.dumps(reading)
 
 
-@pytest.mark.parametrize("step_fails, capture_fails", [(False, False), (True, False),
-                                                      (False, True)])
+def test_capture_directory_checks_real_owner_and_mode(tmp_path, monkeypatch):
+    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
+    directory = driver._capture_dir("first")
+    assert directory.stat().st_uid == os.getuid()
+    assert directory.stat().st_mode & 0o777 == 0o700
+
+    real_mkdir = pathlib.Path.mkdir
+
+    def wrong_mode(path, *args, **kwargs):
+        real_mkdir(path, *args, **kwargs)
+        if path.name == "item-nodes":
+            path.chmod(0o755)
+
+    monkeypatch.setattr(driver.pathlib.Path, "mkdir", wrong_mode)
+    with pytest.raises(RouteError, match="wrong owner or mode"):
+        driver._capture_dir("wrong-mode")
+    assert not list((tmp_path / ".cache/wish/acceptance/WISH-360/wrong-mode/item-nodes").iterdir())
+    monkeypatch.setattr(driver.pathlib.Path, "mkdir", real_mkdir)
+    monkeypatch.setattr(driver.os, "getuid", lambda: -1)
+    with pytest.raises(RouteError, match="wrong owner or mode"):
+        driver._capture_dir("wrong-owner")
+
+
+@pytest.mark.parametrize("step_fails, capture_fails, post_save_fails, disk_mismatch", [
+    (False, False, False, False), (True, False, False, False),
+    (False, True, False, False), (False, False, True, False),
+    (False, False, False, True),
+])
 def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
-        tmp_path, monkeypatch, step_fails, capture_fails):
+        tmp_path, monkeypatch, step_fails, capture_fails, post_save_fails, disk_mismatch):
     events = []
     capture_events = []
+    loaded_hashes = []
+    require_f = []
+    b_bytes = b"generated loaded B"
+    f_bytes = b"generated game-written F"
+    b_hash = hashlib.sha256(b_bytes).hexdigest()
+    f_hash = hashlib.sha256(f_bytes).hexdigest()
+    restored_path = tmp_path / "synthetic-restored.adf"
+    restored_path.write_bytes(b"wrong F" if disk_mismatch else f_bytes)
     holder = "proof"
     state = SimpleNamespace(load=lambda: {"on": False, "rows": []})
 
@@ -332,6 +368,7 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
 
         def press(self, *args):
             capture_events.append(("key", args[1]))
+            self.events.append({"key": args[1]})
 
     def adoption(*args):
         count = sum(event[0] == "adopt" for event in events)
@@ -349,7 +386,6 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
                 "loaded_letter": "G"}
     monkeypatch.setattr(driver, "_export_guards", lambda out: None)
     monkeypatch.setattr(driver, "_prepare_p2", lambda *args: (tmp_path / "manifest", manifest))
-    monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: object())
     monkeypatch.setattr(driver, "_library", lambda disk: b"library")
     monkeypatch.setattr(driver, "_row_from_library", lambda *args: b"original")
     monkeypatch.setattr(driver, "_boot", lambda *args: {"remotes": {}})
@@ -358,8 +394,11 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
     monkeypatch.setattr(driver, "_capture_dir", lambda run_id: tmp_path / "private")
     def checkpoint(target, directory, name, receipt, run, **kwargs):
         capture_events.append(("capture", name))
+        loaded_hashes.append(kwargs.get("loaded_slot_sha256", kwargs.get("slot_sha256")))
         if capture_fails and name == "pre-f":
             raise RouteError("injected private capture failure")
+        if post_save_fails and name == "post-save-quit":
+            raise RouteError("injected post-save capture failure")
         return {"party": []}
 
     monkeypatch.setattr(driver, "_checkpoint", checkpoint)
@@ -371,10 +410,17 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
     monkeypatch.setattr(driver, "_value", lambda reading, variable: 0)
     monkeypatch.setattr(driver, "restore_loaded_media", lambda *args: {})
     monkeypatch.setattr(driver, "_original_live", lambda *args: {})
-    monkeypatch.setattr(driver, "_halt", lambda *args: ({}, {}))
+    def halt(*args):
+        require_f.append(args[-1])
+        return {}, {"restored": {"path": str(restored_path)}, "slot_f_sha256": f_hash}
+
+    monkeypatch.setattr(driver, "_halt", halt)
     monkeypatch.setattr(driver, "_check_source", lambda: None)
     monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: SimpleNamespace(
-        read_file=lambda name: b"synthetic slot"))
+        read_file=lambda name: restored_path.read_bytes()
+        if str(path) == str(restored_path) else b_bytes))
+    monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
+        read_slot=route_darkness._darkness_read_slot))
     monkeypatch.setattr(driver.noencounters, "WinuaeState", lambda path: state)
     args = SimpleNamespace(previous_return_attempts=2, budget=1200, out=tmp_path / "p2",
                            run_id="proof", holder=holder, audio_proof=tmp_path / "audio")
@@ -386,12 +432,37 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
             driver.run_p2(args, guest=Guest())
         receipt = json.loads((args.out / "p2-receipt.json").read_text())
         assert receipt["checks"].get("save") is not True and receipt["cleanup"] == []
+    elif post_save_fails:
+        with pytest.raises(RouteError, match="injected post-save capture failure"):
+            driver.run_p2(args, guest=Guest())
+        receipt = json.loads((args.out / "p2-receipt.json").read_text())
+        assert receipt["checks"]["save_ui_acknowledged"] is True
+        assert receipt["checks"]["post_save_capture"] is False
+        assert receipt["checks"]["save"] is True
+        assert receipt["game_written_f_sha256"] == f_hash
+        assert receipt["screens"][-1]["key"] == "N"
+        assert receipt["success"] is False and receipt["cleanup"] == []
+        with pytest.raises(RouteError, match="post-save item capture"):
+            driver._restored_source(receipt)
+    elif disk_mismatch:
+        with pytest.raises(RouteError, match="independent slot read"):
+            driver.run_p2(args, guest=Guest())
+        receipt = json.loads((args.out / "p2-receipt.json").read_text())
+        assert receipt["checks"].get("save") is not True
+        assert "game_written_f_sha256" not in receipt
+        assert receipt["success"] is False
     else:
-        assert driver.run_p2(args, guest=Guest())["success"]
+        receipt = driver.run_p2(args, guest=Guest())
+        assert receipt["success"]
+        assert receipt["game_written_f_sha256"] == f_hash
+        assert receipt["checks"]["post_save_capture"] is True
+        assert b_hash != f_hash
     assert events == [("snapshot", "b0"), ("snapshot", "b1"), ("adopt", 0),
                        ("adopt", 1), ("snapshot", "p2-before-step"), ("step", "NP8"),
                        ("discard", "b0"), ("discard", "b1"),
                        ("discard", "p2-before-step")]
+    assert loaded_hashes == [b_hash] * len(loaded_hashes)
+    assert require_f == [not step_fails and not capture_fails]
     if step_fails:
         assert capture_events == [("capture", "before-staging"), ("capture", "post-return")]
     elif capture_fails:
@@ -407,6 +478,8 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
 
 def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch):
     events = []
+    loaded_hashes = []
+    f_hash = hashlib.sha256(b"generated saved F").hexdigest()
     previous = tmp_path / "p2.json"
     previous.write_text(json.dumps({"combined_deadline": driver.time.time() + 1100,
                                     "cumulative_return_attempts": 3,
@@ -421,7 +494,7 @@ def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch
     monkeypatch.setattr(driver, "_export_guards", lambda out: None)
     monkeypatch.setattr(driver.acceptance, "prepare", lambda *args, **kwargs: prepared)
     monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: SimpleNamespace(
-        read_file=lambda name: b"synthetic slot"))
+        read_file=lambda name: b"generated saved F"))
     monkeypatch.setattr(driver, "_library", lambda disk: b"synthetic library")
     monkeypatch.setattr(driver, "_row_from_library", lambda *args: b"original")
     monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
@@ -470,6 +543,7 @@ def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch
 
     def checkpoint(target, directory, name, receipt, run, **kwargs):
         events.append(name)
+        loaded_hashes.append(kwargs["loaded_slot_sha256"])
         return {"party": [{"name": "TURBO K"}], "moved": name == "post-step"}
 
     monkeypatch.setattr(driver, "GuardedRun", Run)
@@ -482,3 +556,4 @@ def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch
     assert driver.run_reload(args, guest=Guest())["success"]
     assert events == ["load", "f-loaded", "snapshot", "on", "NP8", "world", "post-step",
                       "off", "discard", "halt"]
+    assert loaded_hashes == [f_hash, f_hash]

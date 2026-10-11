@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -337,12 +338,15 @@ def _capture_dir(run_id: str) -> pathlib.Path:
              "the capture run ID must be one path component")
     directory = pathlib.Path.home() / ".cache/wish/acceptance/WISH-360" / run_id / "item-nodes"
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    actual = directory.stat()
+    _require(actual.st_uid == os.getuid() and stat.S_IMODE(actual.st_mode) == 0o700,
+             "the private node directory has the wrong owner or mode")
     return directory
 
 
 def _checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, checkpoint: str,
-                receipt: dict, run: GuardedRun, *, disk_sha256: str,
-                slot_sha256: str, intervention: dict | None = None) -> dict:
+                 receipt: dict, run: GuardedRun, *, disk_sha256: str,
+                 loaded_slot_sha256: str, intervention: dict | None = None) -> dict:
     path = directory / f"{checkpoint}.json"
     reading = _live_read(target, capture=path)
     proof = reading.pop("capture")
@@ -352,7 +356,7 @@ def _checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, checkpoint: 
         "file_sha256": proof["file_sha256"], "order": len(receipt.get("item_nodes", [])),
         "time": time.time(), "holder": receipt["holder"], "phase": receipt["phase"],
         "title": TITLE, "source_disk_sha256": disk_sha256,
-        "saved_slot_sha256": slot_sha256, "staged_flag": receipt.get("staged_flag"),
+        "loaded_slot_sha256": loaded_slot_sha256, "staged_flag": receipt.get("staged_flag"),
         "media_intervention": None if intervention is None else {
             "before_image_sha256": intervention["before_image_sha256"],
             "after_image_sha256": intervention["after_image_sha256"]},
@@ -588,7 +592,10 @@ def _step_under_switch(holder: str, target: amiga.AmigaTarget, guest: WinGuest,
 
 def _restored_source(receipt: dict) -> pathlib.Path:
     checks = receipt.get("checks", {})
-    required = {"legs", "step", "save", "ram_restored", "disk_restored", "source_unchanged"}
+    _require(not checks.get("save_ui_acknowledged") or checks.get("post_save_capture") is True,
+             "P2 post-save item capture is missing or failed")
+    required = {"legs", "step", "save", "post_save_capture", "ram_restored",
+                "disk_restored", "source_unchanged"}
     _require(receipt.get("success") is True and required <= checks.keys()
              and all(checks[key] is True for key in required),
              "P2 has a failed or missing prerequisite check")
@@ -628,12 +635,12 @@ def _boot(guest: WinGuest, manifest_path: pathlib.Path, manifest: dict,
 
 
 def _halt(guest: WinGuest, holder: str, manifest_path: pathlib.Path,
-          command: list[str], intervention: dict | None,
-          output: pathlib.Path | None, success: bool) -> tuple[dict, dict | None]:
+           command: list[str], intervention: dict | None,
+           output: pathlib.Path | None, require_f: bool) -> tuple[dict, dict | None]:
     if intervention is not None and output is not None:
         remote = WinGuest.remote_path(route_darkness.DARKNESS.issue, holder, "disk3")
         wrapped = RestoringGuest(guest, holder, remote, intervention, output,
-                                 require_f=success)
+                                  require_f=require_f)
     else:
         wrapped = guest
     halted = acceptance.halt_lane(wrapped, holder, manifest_path=manifest_path,
@@ -660,12 +667,14 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                                "holder": args.holder, "previous_return_attempts": 2,
                                "cumulative_return_attempts": 3,
                                "began": began, "combined_deadline": deadline_wall,
-                               "checks": {}, "success": False, "cleanup": []}
+                               "checks": {"post_save_capture": False},
+                               "success": False, "cleanup": []}
     manifest_path = None
     manifest = None
     capture_dir = None
     booted = False
     target = None
+    run = None
     state = noencounters.WinuaeState(noencounters.winuae_state_path(args.holder))
     snapshots: list[str] = []
     guest = guest or WinGuest()
@@ -690,7 +699,7 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         run.load(manifest, boot["remotes"])
         target = _target(args.holder)
         before = _checkpoint(target, capture_dir, "before-staging", receipt, run,
-                             disk_sha256=disk_hash, slot_sha256=slot_hash,
+                             disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
                              intervention=intervention)
         _require_world(before, manifest["names_a"], area=AREA, cell=EXPECTED_START)
         receipt["before"] = before
@@ -708,7 +717,7 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         run.see("world", 60)
         target = _target(args.holder)
         returned = _checkpoint(target, capture_dir, "post-return", receipt, run,
-                               disk_sha256=disk_hash, slot_sha256=slot_hash,
+                               disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
                                intervention=intervention)
         _require_world(returned, manifest["names_a"], area=AREA, cell=EXPECTED_START)
         receipt["returned"] = returned
@@ -720,7 +729,7 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                                                        state, original)
         run.see("world", 60)
         stepped = _checkpoint(target, capture_dir, "post-step", receipt, run,
-                              disk_sha256=disk_hash, slot_sha256=slot_hash,
+                              disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
                               intervention=intervention)
         _require_world(stepped, manifest["names_a"], area=AREA)
         _require((_value(stepped, 0x25), _value(stepped, 0x26)) != EXPECTED_START,
@@ -736,18 +745,21 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         _require(not state.load()["on"] and not state.load()["rows"],
                   "the encounter journal is not off before F")
         _checkpoint(target, capture_dir, "pre-f", receipt, run,
-                    disk_sha256=disk_hash, slot_sha256=slot_hash,
+                    disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
                     intervention=intervention)
         run.press("camp_save_picker", SAVE_LETTER, "exit_game")
         run.press("exit_game", "N", "camp")
+        receipt["checks"]["save_ui_acknowledged"] = True
         _checkpoint(target, capture_dir, "post-save-quit", receipt, run,
-                    disk_sha256=disk_hash, slot_sha256=slot_hash,
+                    disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
                     intervention=intervention)
-        receipt["checks"]["save"] = True
+        receipt["checks"]["post_save_capture"] = True
         receipt["screens"] = run.events
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
+        if run is not None:
+            receipt["screens"] = run.events
         if booted and target is not None:
             try:
                 needs_restore = state.load().get("on")
@@ -770,10 +782,18 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                 halted, restored = _halt(
                     guest, args.holder, manifest_path, command,
                     manifest["encounter_media"], out / "disk3-restored.adf",
-                    receipt["checks"].get("save", False))
+                    receipt["checks"].get("save_ui_acknowledged", False))
                 receipt["halt"] = halted
                 receipt["disk_restoration"] = restored
                 receipt["checks"]["disk_restored"] = restored is not None
+                if receipt["checks"].get("save_ui_acknowledged") and restored is not None:
+                    slot_f_hash = restored["slot_f_sha256"]
+                    saved_disk = amiga_adf.AmigaDisk.open(restored["restored"]["path"])
+                    saved_reading = route_darkness.DARKNESS.read_slot(saved_disk, SAVE_LETTER)
+                    _require(slot_f_hash is not None and saved_reading.get("sha256") == slot_f_hash,
+                             "the restored game-written F does not match its independent slot read")
+                    receipt["game_written_f_sha256"] = slot_f_hash
+                    receipt["checks"]["save"] = True
             except Exception as exc:  # noqa: BLE001
                 receipt["cleanup"].append(f"halt and restore: {exc}")
         try:
@@ -783,7 +803,7 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
             receipt["cleanup"].append(f"source hash: {exc}")
         receipt["success"] = ("error" not in receipt and not receipt["cleanup"] and
                               all(receipt["checks"].get(key) is True for key in
-                                  ("legs", "step", "save", "ram_restored",
+                                  ("legs", "step", "save", "post_save_capture", "ram_restored",
                                    "disk_restored", "source_unchanged")))
         _write_json(out / "p2-receipt.json", receipt)
     if not receipt["success"]:
@@ -848,7 +868,7 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
         run.load(manifest, boot["remotes"], view_sheet=True)
         target = _target(args.holder)
         before = _checkpoint(target, capture_dir, "f-loaded", receipt, run,
-                             disk_sha256=disk_hash, slot_sha256=slot_hash)
+                             disk_sha256=disk_hash, loaded_slot_sha256=slot_hash)
         _require_world(before, reading["names"], area=AREA, cell=saved_cell)
         receipt["loaded"] = before
         receipt["checks"]["load"] = True
@@ -864,7 +884,7 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
         receipt["step_command"] = response
         run.see("world", 60)
         after = _checkpoint(target, capture_dir, "post-step", receipt, run,
-                            disk_sha256=disk_hash, slot_sha256=slot_hash)
+                            disk_sha256=disk_hash, loaded_slot_sha256=slot_hash)
         _require_world(after, reading["names"], area=AREA)
         _require((_value(after, 0x25), _value(after, 0x26)) != saved_cell,
                  "reload NP8 did not move the wilderness marker")
