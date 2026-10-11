@@ -477,6 +477,261 @@ def test_bundle_head_never_claims_complete_inventory(tmp_path):
     assert report["preservation_established"] is False
 
 
+class _BundleMemory:
+    """Generated Exec MemHeader and separately allocated item nodes."""
+
+    def __init__(self, heads, children):
+        self.memory = ((0, driver.amiga.EXEC_PAGE),)
+        self.bytes = bytearray(driver.amiga.EXEC_PAGE)
+        self.put(0x1000 + driver.amiga.EXEC_CHK_BASE,
+                 (~0x1000 & 0xffffffff).to_bytes(4, "big"))
+        self.put(0x1000 + driver.amiga.EXEC_MEM_LIST, (0x1100).to_bytes(4, "big"))
+        self.put(0x1100, (0x1000 + driver.amiga.EXEC_MEM_LIST + 4).to_bytes(4, "big"))
+        self.put(0x1100 + driver.amiga.MEM_LOWER, (0).to_bytes(4, "big"))
+        self.put(0x1100 + driver.amiga.MEM_UPPER, driver.amiga.EXEC_PAGE.to_bytes(4, "big"))
+        self.bytes[driver.amiga.EXEC_BASE_AT:driver.amiga.EXEC_BASE_AT + 4] = (
+            0x1000).to_bytes(4, "big")
+        for address, raw in heads + children:
+            self.put(address, raw)
+
+    def put(self, address, raw):
+        self.bytes[address:address + len(raw)] = raw
+
+    def read(self, address, count):
+        return bytes(self.bytes[address:address + count])
+
+
+def test_public_live_read_captures_full_bundle_head_without_f(tmp_path, monkeypatch):
+    heads, nodes = [], []
+    for index in range(5):
+        address = 0x2000 + index * 0x100
+        full = bytearray(70)
+        full[0x2e] = 0x49 if index == 0 else 0x12
+        full[0x3a] = 0
+        heads.append((address, bytes(full)))
+        nodes.append(SimpleNamespace(address=address, raw=bytes(full[:66])))
+    member = SimpleNamespace(slot=0, name="TURBO K", item_nodes=tuple(nodes), hp=1, hp_max=1,
+                             items=lambda: tuple((n.address, n.raw) for n in nodes),
+                             effects=lambda: ())
+    calls = []
+    monkeypatch.setattr(driver.amigaparty, "read_party", lambda target: (
+        calls.append(target), (member,))[1])
+    monkeypatch.setattr(driver.fasttravelrun, "_reading", lambda *args: {})
+    monkeypatch.setattr(driver.amigavars, "read_variables", lambda *args: [])
+    path = tmp_path / "full-head.json"
+    target = _BundleMemory(heads, [])
+    reading = driver._live_read(target, capture=path)
+    artifact = json.loads(path.read_text())
+    assert calls == [target]
+    assert reading["capture"]["bundle_coverage"] == "complete"
+    assert len(artifact["items"]) == 5
+    assert len(bytes.fromhex(artifact["bundle"]["nodes"][0]["raw_hex"])) == 70
+    assert artifact["bundle"]["nodes"][0]["children"] == []
+
+
+def _bundled_fixture(tmp_path):
+    saved = bytearray(amiga_savegame.POD_SAVEGAME_SIZE)
+    struct.pack_into(">H", saved, amiga_savegame.POD_COUNT_AT, 1)
+    name = b"TURBO K"
+    at = amiga_savegame.POD_PARTY_AT
+    saved[at + amiga_savegame.POD_NAME_AT:at + amiga_savegame.POD_NAME_AT + len(name)] = name
+    struct.pack_into(">I", saved, at + amiga_savegame.POD_ITEM_COUNT_AT, 5)
+    tails = [bytearray(20) for _ in range(5)]
+    for index, tail in enumerate(tails):
+        tail[0], tail[1], tail[13], tail[16] = 0x12, index + 3, index + 7, index + 11
+    tails[1][0], tails[1][0x0c] = 0x49, 2
+    child_tails = [bytes([0x32 + i, 9 + i, *range(2, 20)]) for i in range(2)]
+    cursor = at + amiga_savegame.POD_RECORD_BYTES
+    for index, tail in enumerate(tails):
+        saved[cursor:cursor + 20] = tail
+        cursor += 20
+        if index == 1:
+            for child in child_tails:
+                saved[cursor:cursor + 20] = child
+                cursor += 20
+    disk = SimpleNamespace(read_file=lambda name: bytes(saved))
+    root = tmp_path / "bundles"
+    root.mkdir()
+    entries, readings = [], []
+    for phase in range(2):
+        base = 0x2000 + phase * 0x1000
+        heads, children, nodes = [], [], []
+        for index, tail in enumerate(tails):
+            address = base + index * 0x100
+            full = bytearray(70)
+            full[0] = phase + 1
+            full[0x2a:0x2e] = (base + (index + 1) * 0x100 if index < 4 else 0).to_bytes(4, "big")
+            full[0x2e:0x42] = tail
+            if index == 1:
+                full[0x42:0x46] = (base + 0x700).to_bytes(4, "big")
+            heads.append((address, bytes(full)))
+            nodes.append(SimpleNamespace(address=address, raw=bytes(full[:66])))
+        for ordinal, tail in enumerate(child_tails):
+            address = base + 0x700 + ordinal * 0x100
+            full = bytearray(70)
+            full[0x2a:0x2e] = (0x55667788).to_bytes(4, "big")  # Stale JOIN metadata.
+            full[0x2e:0x42] = tail
+            full[0x42:0x46] = (address + 0x100 if ordinal == 0 else 0).to_bytes(4, "big")
+            children.append((address, bytes(full)))
+        target = _BundleMemory(heads, children)
+        member = SimpleNamespace(slot=0, name="TURBO K", item_nodes=tuple(nodes),
+                                 items=lambda nodes=nodes: tuple((n.address, n.raw) for n in nodes),
+                                 effects=lambda: (), hp=1, hp_max=1)
+        reading = {"party": [{"slot": 0, "name": "TURBO K", "items": [
+            hashlib.sha256(node.raw).hexdigest() for node in nodes]}]}
+        path = root / f"{phase}.json"
+        proof = driver._capture_nodes(path, (member,), reading, target)
+        entries.append({"path": path.name, **proof})
+        readings.append(reading)
+    return root, entries, readings, disk
+
+
+def test_bundle_capture_aligns_two_ordered_children_and_preserves_stale_join_link(tmp_path):
+    root, entries, readings, disk = _bundled_fixture(tmp_path)
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert report["bundle_coverage"] == "complete"
+    assert len(report["bundle_children"]) == 2
+    assert report["all_payloads_match_f"] and not report["bundle_inventory_incomplete"]
+    assert report["bundle_children"][0]["payload_matches_f"]
+    assert report["bundle_heads"][0]["bundle_link_offsets"]
+    assert report["preservation_established"] is False
+    assert report["independently_authenticated"] is False
+    artifact = json.loads((root / "0.json").read_text())
+    assert artifact["bundle"]["nodes"][0]["children"][0]["raw_hex"][0x2a * 2:0x2e * 2] == "55667788"
+    assert "raw_hex" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("damage, category", [
+    ("unsupported", "bundle_range_unsupported"), ("short", "bundle_short_read"),
+    ("odd", "bundle_pointer"), ("overlap", "bundle_overlap"),
+    ("cycle", "bundle_overlap"),
+    ("null", "bundle_null"), ("extra", "bundle_quantity"),
+    ("bounds", "bundle_bounds"), ("stale", "bundle_stale"),
+])
+def test_bundle_capture_fails_without_publishing_private_artifact(tmp_path, damage, category):
+    root, entries, readings, _ = _bundled_fixture(tmp_path)
+    artifact = json.loads((root / "0.json").read_text())
+    head = artifact["bundle"]["nodes"][0]
+    heads = [(item["address"], bytes.fromhex(item["raw_hex"]) + b"\0" * 4)
+             for item in artifact["items"]]
+    children = [(child["address"], bytes.fromhex(child["raw_hex"]))
+                for child in head["children"]]
+    target = _BundleMemory(heads, children)
+    target.put(head["address"] + 0x42, children[0][0].to_bytes(4, "big"))
+    if damage == "unsupported":
+        target.put(0x1000 + driver.amiga.EXEC_CHK_BASE, b"\0" * 4)
+    elif damage in ("odd", "overlap", "null", "extra"):
+        pointer = {"odd": children[0][0] + 1, "overlap": heads[0][0],
+                   "null": 0, "extra": children[0][0]}[damage]
+        target.put(head["address"] + 0x42, pointer.to_bytes(4, "big"))
+        if damage == "extra":
+            target.put(head["address"] + 0x3a, b"\0")
+    elif damage == "bounds":
+        target.put(head["address"] + 0x3a, bytes([121]))
+    elif damage == "cycle":
+        target.put(children[0][0] + 0x42, children[0][0].to_bytes(4, "big"))
+    elif damage == "stale":
+        target.put(head["address"], b"\x77")
+    else:
+        original_read = target.read
+        target.read = lambda address, size: (b"\0" * 69 if address == children[0][0]
+                                             and size == 70 else original_read(address, size))
+    nodes = tuple(SimpleNamespace(address=item["address"], raw=(
+        target.read(item["address"], 66) if damage in ("extra", "bounds")
+        and item["address"] == head["address"] else bytes.fromhex(item["raw_hex"])))
+        for item in artifact["items"])
+    if damage in ("extra", "bounds"):
+        readings[0]["party"][0]["items"] = [hashlib.sha256(node.raw).hexdigest()
+                                            for node in nodes]
+    member = SimpleNamespace(slot=0, name="TURBO K", item_nodes=nodes)
+    path = tmp_path / "failed.json"
+    with pytest.raises(RouteError, match=category):
+        driver._capture_nodes(path, (member,), readings[0], target)
+    assert not path.exists()
+
+
+def test_bundle_comparator_reports_child_payload_and_saved_quantity_damage(tmp_path):
+    root, entries, readings, disk = _bundled_fixture(tmp_path)
+    saved = bytearray(disk.read_file("F"))
+    bundle_at = amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_RECORD_BYTES + 20
+    saved[bundle_at + 20 + 0x13] ^= 1
+    altered = SimpleNamespace(read_file=lambda name: bytes(saved))
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], altered, root)
+    assert report["evidence_status"] == "payload_mismatch"
+    assert not report["bundle_children"][0]["payload_matches_f"]
+    saved[bundle_at + 20 + 0x13] ^= 1
+    saved[bundle_at + 20 + 1] ^= 1  # Unknown saved child byte.
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1],
+                                   SimpleNamespace(read_file=lambda name: bytes(saved)), root)
+    assert 0x2f in report["bundle_children"][0]["differing_unnamed_saved_offsets"]
+    assert not report["all_payloads_match_f"]
+    saved[bundle_at + 0x0c] = 1
+    with pytest.raises(RouteError, match="bundle_quantity"):
+        driver._compare_nodes(entries[0], readings[0], entries[1], readings[1],
+                              SimpleNamespace(read_file=lambda name: bytes(saved)), root)
+
+
+def test_zero_bundle_f_reports_coverage_not_exercised(tmp_path):
+    root, entries, readings, disk = _comparison_fixture(tmp_path)
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert report["bundle_coverage"] == "not_exercised"
+
+
+def test_bundle_alignment_requires_the_specific_game_written_f_digest(tmp_path):
+    root, entries, readings, disk = _bundled_fixture(tmp_path)
+    with pytest.raises(RouteError, match="bundle_f_alignment"):
+        driver._compare_nodes(entries[0], readings[0], entries[1], readings[1],
+                              disk, root, "0" * 64)
+
+
+def test_bundle_child_old_head_link_is_compared_not_used_as_child_link(tmp_path):
+    root, entries, readings, disk = _bundled_fixture(tmp_path)
+    path = root / "1.json"
+    artifact = json.loads(path.read_text())
+    child = artifact["bundle"]["nodes"][0]["children"][1]
+    raw = bytearray.fromhex(child["raw_hex"])
+    raw[0x2a] ^= 1
+    child["raw_hex"] = raw.hex()
+    child["sha256"] = hashlib.sha256(raw).hexdigest()
+    path.write_text(json.dumps(artifact))
+    entries[1]["file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert 0x2a in report["bundle_children"][1]["differing_offsets"]
+    assert report["all_payloads_match_f"]
+    assert report["preservation_established"] is False
+
+
+def test_bundle_capture_marks_end_of_checkpoint_mutation_stale(tmp_path):
+    root, _, readings, _ = _bundled_fixture(tmp_path)
+    artifact = json.loads((root / "0.json").read_text())
+    head = artifact["bundle"]["nodes"][0]
+    heads = [(item["address"], bytes.fromhex(item["raw_hex"]) + b"\0" * 4)
+             for item in artifact["items"]]
+    children = [(child["address"], bytes.fromhex(child["raw_hex"]))
+                for child in head["children"]]
+    target = _BundleMemory(heads, children)
+    target.put(head["address"] + 0x42, children[0][0].to_bytes(4, "big"))
+    original = target.read
+    count = 0
+
+    def moving(address, size):
+        nonlocal count
+        if address == children[0][0] and size == 70:
+            count += 1
+            if count == 2:
+                return b"\x99" + original(address + 1, size - 1)
+        return original(address, size)
+
+    target.read = moving
+    nodes = tuple(SimpleNamespace(address=item["address"], raw=bytes.fromhex(item["raw_hex"]))
+                  for item in artifact["items"])
+    member = SimpleNamespace(slot=0, name="TURBO K", item_nodes=nodes)
+    path = tmp_path / "stale.json"
+    with pytest.raises(RouteError, match="bundle_stale"):
+        driver._capture_nodes(path, (member,), readings[0], target)
+    assert not path.exists()
+
+
 def test_payload_mismatch_takes_reporting_priority_over_incomplete_bundle(tmp_path):
     root, entries, readings, disk = _comparison_fixture(tmp_path, bundle=True)
     saved = bytearray(disk.read_file("F"))

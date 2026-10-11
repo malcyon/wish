@@ -287,7 +287,126 @@ def _check_source() -> None:
     _require(sha256(SOURCE) == SOURCE_HASH, "the pinned source changed during the run")
 
 
-def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict) -> dict:
+def _measured_regions(target: amiga.AmigaTarget, *, check_target: bool = True
+                      ) -> tuple[tuple[int, int], ...]:
+    """Validate Exec's actual MemHeader list; configured MEMORY is not a measurement."""
+    def exact(address: int, size: int) -> bytes:
+        data = target.read(address, size)
+        _require(len(data) == size, "bundle_range_unsupported: short memory-region read")
+        return data
+
+    page = exact(0, amiga.EXEC_PAGE)
+    base = int.from_bytes(page[amiga.EXEC_BASE_AT:amiga.EXEC_BASE_AT + 4], "big")
+    _require(amiga._pointer(base), "bundle_range_unsupported: no valid ExecBase")
+    complement = int.from_bytes(exact(base + amiga.EXEC_CHK_BASE, 4), "big")
+    _require(complement == (~base & 0xffffffff),
+             "bundle_range_unsupported: ExecBase complement differs")
+    sentinel = base + amiga.EXEC_MEM_LIST + 4
+    node = int.from_bytes(exact(base + amiga.EXEC_MEM_LIST, 4), "big")
+    regions = []
+    seen = set()
+    for _ in range(amiga.MEM_NODES):
+        if node == sentinel:
+            break
+        _require(amiga._pointer(node) and node not in seen,
+                 "bundle_range_unsupported: invalid MemHeader link")
+        seen.add(node)
+        head = exact(node, amiga.MEM_UPPER + 4)
+        lower = int.from_bytes(head[amiga.MEM_LOWER:amiga.MEM_LOWER + 4], "big")
+        upper = int.from_bytes(head[amiga.MEM_UPPER:amiga.MEM_UPPER + 4], "big")
+        _require(lower < upper <= 0x1000000,
+                 "bundle_range_unsupported: invalid MemHeader bounds")
+        regions.append((lower, upper - lower))
+        node = int.from_bytes(head[:4], "big")
+    else:
+        raise RouteError("bundle_range_unsupported: MemHeader list exceeds bound")
+    _require(regions and sum(size for _, size in regions) <= 0x1000000,
+             "bundle_range_unsupported: empty or oversized memory regions")
+    ordered = sorted(set(regions), reverse=True)
+    _require(len(ordered) == len(regions) and
+             all(a + size <= b or b + length <= a
+                 for i, (a, size) in enumerate(ordered)
+                 for b, length in ordered[i + 1:]),
+             "bundle_range_unsupported: overlapping memory regions")
+    if check_target:
+        _require(tuple(ordered) == tuple(target.memory),
+                 "bundle_range_unsupported: target ranges differ from measured regions")
+    return tuple(ordered)
+
+
+def _bundle_nodes(target: amiga.AmigaTarget, members: tuple) -> dict:
+    """Read only checked 70-byte allocations and retain exact ordered child payloads."""
+    _require(len(members) <= 8 and all(len(m.item_nodes) <= 64 for m in members),
+             "bundle_bounds: party members or head count exceeds limit")
+    heads = [(m.slot, index, node) for m in members
+             for index, node in enumerate(m.item_nodes)]
+    _require(len(heads) <= 448, "bundle_bounds: pool head count exceeds limit")
+    bundles = [(slot, index, node) for slot, index, node in heads
+               if len(node.raw) == 0x42 and node.raw[0x2e] == 0x49]
+    if not bundles:
+        return {"coverage": "not_exercised", "nodes": []}
+    regions = _measured_regions(target)
+    allocations: list[tuple[int, int]] = []
+
+    def checked(address: int) -> bytes:
+        _require(isinstance(address, int) and address >= 0x100 and not address & 1,
+                 "bundle_pointer: odd or invalid node address")
+        end = address + 0x46
+        _require(any(base <= address and end <= base + size for base, size in regions),
+                 "bundle_range_unsupported: node outside measured memory")
+        _require(all(end <= start or address >= stop for start, stop in allocations),
+                 "bundle_overlap: repeated or overlapping allocation")
+        allocations.append((address, end))
+        data = target.read(address, 0x46)
+        _require(len(data) == 0x46, "bundle_short_read: node is not 70 bytes")
+        return data
+
+    # Reserve every main head's allocation before traversing any child.
+    for _, _, node in heads:
+        _require(isinstance(node.address, int) and node.address >= 0x100
+                 and not node.address & 1, "bundle_pointer: invalid main head address")
+        end = node.address + 0x46
+        _require(any(base <= node.address and end <= base + size for base, size in regions),
+                 "bundle_range_unsupported: main head outside measured memory")
+        _require(all(end <= start or node.address >= stop for start, stop in allocations),
+                 "bundle_overlap: overlapping main heads")
+        allocations.append((node.address, end))
+    result = []
+    children_total = 0
+    for slot, index, node in bundles:
+        full = target.read(node.address, 0x46)
+        _require(len(full) == 0x46, "bundle_short_read: head is not 70 bytes")
+        _require(full[:0x42] == node.raw, "bundle_stale: head changed since party read")
+        quantity = full[0x3a]
+        children_total += quantity
+        _require(children_total <= 120 and len(heads) + children_total <= 448,
+                 "bundle_bounds: child quantity or pool exceeds limit")
+        pointer = int.from_bytes(full[0x42:0x46], "big")
+        children = []
+        for ordinal in range(quantity):
+            _require(pointer != 0, "bundle_null: missing required child")
+            child = checked(pointer)
+            children.append({"ordinal": ordinal, "address": pointer,
+                             "raw_hex": child.hex(),
+                             "sha256": hashlib.sha256(child).hexdigest()})
+            pointer = int.from_bytes(child[0x42:0x46], "big")
+        _require(pointer == 0, "bundle_quantity: non-NULL final child link")
+        result.append({"slot": slot, "chain_index": index, "address": node.address,
+                       "raw_hex": full.hex(), "sha256": hashlib.sha256(full).hexdigest(),
+                       "children": children})
+    for record in result:
+        for node in (record, *record["children"]):
+            raw = bytes.fromhex(node["raw_hex"])
+            _require(target.read(node["address"], 0x46) == raw,
+                     "bundle_stale: node changed before checkpoint ended")
+    for _, _, node in heads:
+        _require(target.read(node.address, 0x42) == node.raw,
+                 "bundle_stale: main head changed before checkpoint ended")
+    return {"coverage": "complete", "nodes": result}
+
+
+def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict,
+                   target: amiga.AmigaTarget | None = None) -> dict:
     """Keep exact live nodes private and verify them against this read's hashes."""
     _require(bool(members) and members[0].name == "TURBO K" and members[0].slot == 0,
              "the capture's first member is not TURBO K in slot 0")
@@ -309,7 +428,9 @@ def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict) -> dict:
                           "length": len(node.raw), "raw_hex": node.raw.hex(),
                           "sha256": digest,
                           "tail20_sha256": hashlib.sha256(node.raw[0x2e:0x42]).hexdigest()})
-    payload = (json.dumps({"items": saved}, indent=2, sort_keys=True) + "\n").encode()
+    bundle = (_bundle_nodes(target, members) if target is not None else
+              {"coverage": "legacy", "nodes": []})
+    payload = (json.dumps({"items": saved, "bundle": bundle}, indent=2, sort_keys=True) + "\n").encode()
     temp = path.with_name(path.name + ".tmp")
     try:
         with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as file:
@@ -319,14 +440,21 @@ def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict) -> dict:
                  "the private node file did not read back")
     finally:
         temp.unlink(missing_ok=True)
-    return {"file_sha256": hashlib.sha256(payload).hexdigest()}
+    return {"file_sha256": hashlib.sha256(payload).hexdigest(),
+            "bundle_coverage": bundle["coverage"],
+            "bundle_heads": len(bundle["nodes"]),
+            "bundle_children": sum(len(node["children"]) for node in bundle["nodes"])}
 
 
 def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
-                   after_reading: dict, disk: amiga_adf.AmigaDisk,
-                   root: pathlib.Path) -> dict:
+                    after_reading: dict, disk: amiga_adf.AmigaDisk,
+                    root: pathlib.Path, expected_f_sha256: str | None = None) -> dict:
     """Classify two private same-read captures against a game-written F."""
-    saved = amiga_savegame.pod_parse(amiga_savegame.pod_read_slot(disk, SAVE_LETTER))
+    slot_bytes = amiga_savegame.pod_read_slot(disk, SAVE_LETTER)
+    saved = amiga_savegame.pod_parse(slot_bytes)
+    f_digest = hashlib.sha256(slot_bytes).hexdigest()
+    _require(expected_f_sha256 is None or expected_f_sha256 == f_digest,
+             "bundle_f_alignment: game-written F digest differs")
 
     def load(entry: dict, reading: dict) -> dict:
         relative = pathlib.PurePosixPath(entry["path"])
@@ -337,7 +465,8 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
         data = path.read_bytes()
         _require(hashlib.sha256(data).hexdigest() == entry["file_sha256"],
                  "the private node capture hash differs")
-        records = json.loads(data)["items"]
+        artifact = json.loads(data)
+        records = artifact["items"]
         _require(len(reading["party"]) == saved.count,
                  "the captured party count differs from game-written F")
         expected = [(member["slot"], member["name"], index, digest)
@@ -371,14 +500,52 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
                          "a captured item chain has a malformed link")
                 _require(identity not in result, "a captured item identity repeats")
                 result[identity] = raw
-        return result
+        return result, artifact.get("bundle", {"coverage": "legacy", "nodes": []})
 
-    earlier = load(before_entry, before_reading)
-    later = load(after_entry, after_reading)
+    earlier, earlier_bundle = load(before_entry, before_reading)
+    later, later_bundle = load(after_entry, after_reading)
     _require(earlier.keys() == later.keys(), "the captured item identities changed")
     differences = []
     all_payloads_match = True
     bundle = False
+    bundle_head_differences = []
+    bundle_differences = []
+    bundle_complete = (earlier_bundle.get("coverage") == "complete"
+                       and later_bundle.get("coverage") == "complete")
+    bundle_seen = 0
+    expected_bundles = {}
+    for phase_bundle, phase_heads in ((earlier_bundle, earlier), (later_bundle, later)):
+        if phase_bundle.get("coverage") == "complete":
+            _require(phase_bundle.get("f_sha256") in (None, f_digest),
+                     "bundle_f_alignment: saved F digest differs")
+            _require(isinstance(phase_bundle.get("nodes"), list),
+                     "bundle_capture: missing ordered bundle nodes")
+            found = {}
+            for node in phase_bundle["nodes"]:
+                identity = (node["slot"], next(
+                    m["name"] for m in before_reading["party"] if m["slot"] == node["slot"]),
+                    node["chain_index"])
+                _require(identity in phase_heads and identity not in found,
+                         "bundle_capture: unexpected or repeated bundle identity")
+                head = bytes.fromhex(node["raw_hex"])
+                _require(len(head) == 0x46 and node["address"] > 0
+                         and hashlib.sha256(head).hexdigest() == node["sha256"]
+                         and head[:0x42] == phase_heads[identity]
+                         and head[0x2e] == 0x49,
+                         "bundle_capture: head bytes or hash differ")
+                pointer = int.from_bytes(head[0x42:0x46], "big")
+                _require(len(node["children"]) == head[0x3a],
+                         "bundle_quantity: captured child count differs")
+                for ordinal, child in enumerate(node["children"]):
+                    raw = bytes.fromhex(child["raw_hex"])
+                    _require(len(raw) == 0x46 and child["ordinal"] == ordinal
+                             and child["address"] == pointer and pointer != 0
+                             and hashlib.sha256(raw).hexdigest() == child["sha256"],
+                             "bundle_capture: child link, bytes or hash differ")
+                    pointer = int.from_bytes(raw[0x42:0x46], "big")
+                _require(pointer == 0, "bundle_quantity: child chain did not end at NULL")
+                found[identity] = node
+            expected_bundles[id(phase_bundle)] = found
     for member_index, block in enumerate(saved.characters):
         member = before_reading["party"][member_index]
         _require(member["name"] == block.name and
@@ -396,7 +563,48 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
             _require(len(saved_tail) == 20, "a game-written F item is short")
             at += 20
             if saved_tail[0] == amiga_savegame.POD_BUNDLE_ID:
-                at += 20 * saved_tail[amiga_savegame.POD_BUNDLE_COUNT]
+                quantity = saved_tail[amiga_savegame.POD_BUNDLE_COUNT]
+                if bundle_complete:
+                    for capture in (earlier_bundle, later_bundle):
+                        captured = expected_bundles[id(capture)].get(identity)
+                        _require(captured is not None and
+                                 len(captured["children"]) == quantity,
+                                 "bundle_quantity: saved and captured quantities differ")
+                child_tails = [saved.data[at + 20 * n:at + 20 * (n + 1)]
+                               for n in range(quantity)]
+                _require(all(len(tail) == 20 for tail in child_tails),
+                         "bundle_f_alignment: saved child is short")
+                at += 20 * quantity
+                bundle_seen += 1
+                if bundle_complete:
+                    first_bundle = expected_bundles[id(earlier_bundle)].get(identity)
+                    second_bundle = expected_bundles[id(later_bundle)].get(identity)
+                    _require(first_bundle is not None and second_bundle is not None,
+                             "bundle_capture: saved bundle lacks live head")
+                    first_full = bytes.fromhex(first_bundle["raw_hex"])
+                    second_full = bytes.fromhex(second_bundle["raw_hex"])
+                    bundle_head_differences.append({
+                        "slot": identity[0], "name": identity[1], "chain_index": index,
+                        "differing_offsets": [i for i in range(0x46)
+                                              if first_full[i] != second_full[i]],
+                        "bundle_link_offsets": [i for i in range(0x42, 0x46)
+                                                if first_full[i] != second_full[i]]})
+                    for ordinal, saved_child in enumerate(child_tails):
+                        first_child = bytes.fromhex(first_bundle["children"][ordinal]["raw_hex"])
+                        second_child = bytes.fromhex(second_bundle["children"][ordinal]["raw_hex"])
+                        offsets = [i for i in range(0x46)
+                                   if first_child[i] != second_child[i]]
+                        match = (first_child[0x2e:0x42] == saved_child
+                                 == second_child[0x2e:0x42])
+                        all_payloads_match &= match
+                        bundle_differences.append({"slot": identity[0], "name": identity[1],
+                                                   "chain_index": index, "child_index": ordinal,
+                                                   "differing_offsets": offsets,
+                                                   "payload_matches_f": match,
+                                                   "differing_unnamed_saved_offsets": [i for i in
+                                                       (0x2f, 0x3b, 0x3e) if
+                                                       len({first_child[i], second_child[i],
+                                                            saved_child[i - 0x2e]}) > 1]})
             decoded = [amiga_pod.PodItem.from_bytes(tail) for tail in
                        (first[0x2e:0x42], second[0x2e:0x42], saved_tail)]
             changed_fields = [field for field in amiga_pod.ITEM_FIELDS
@@ -415,18 +623,30 @@ def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
                                 "differing_unnamed_saved_offsets": [i for i in
                                     (0x2f, 0x3b, 0x3e) if
                                     len({first[i], second[i], saved_tail[i - 0x2e]}) > 1]})
+    if bundle_complete:
+        _require(len(expected_bundles[id(earlier_bundle)]) == bundle_seen
+                 and len(expected_bundles[id(later_bundle)]) == bundle_seen,
+                 "bundle_f_alignment: bundle head count differs from F")
+    bundle_incomplete = bundle and not bundle_complete
     if not all_payloads_match:
         status = "payload_mismatch"
-    elif bundle:
+    elif bundle_incomplete:
         status = "bundle_inventory_incomplete"
-    elif any(row["differing_offsets"] for row in differences):
+    elif any(row["differing_offsets"] for row in
+             differences + bundle_head_differences + bundle_differences):
         status = "captured_metadata_differs"
     else:
         status = "captured_heads_equal"
-    return {"items": differences, "all_payloads_match_f": all_payloads_match,
-             "bundle_inventory_incomplete": bundle,
-             "full_match": all_payloads_match and not bundle
-             and all(not row["differing_offsets"] for row in differences),
+    return {"items": differences, "bundle_heads": bundle_head_differences,
+              "bundle_children": bundle_differences,
+              "bundle_coverage": ("complete" if bundle and bundle_complete else
+                                  "incomplete" if bundle else "not_exercised"),
+              "saved_f_sha256": f_digest,
+              "all_payloads_match_f": all_payloads_match,
+              "bundle_inventory_incomplete": bundle_incomplete,
+              "full_match": all_payloads_match and not bundle_incomplete
+              and all(not row["differing_offsets"] for row in
+                      differences + bundle_head_differences + bundle_differences),
              "evidence_status": status,
              "provenance": "receipt_artifact_consistency_only",
              "independently_authenticated": False,
@@ -445,7 +665,7 @@ def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None
                  "effects": [hashlib.sha256(node).hexdigest() for _, node in m.effects()]}
                  for m in members]}
     if capture is not None:
-        reading["capture"] = _capture_nodes(capture, members, reading)
+        reading["capture"] = _capture_nodes(capture, members, reading, target)
     return reading
 
 
@@ -475,6 +695,9 @@ def _checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, checkpoint: 
     receipt.setdefault("item_nodes", []).append({
         "checkpoint": checkpoint, "path": path.relative_to(directory.parent.parent).as_posix(),
         "file_sha256": proof["file_sha256"], "order": len(receipt.get("item_nodes", [])),
+        "bundle_coverage": proof["bundle_coverage"],
+        "bundle_heads": proof["bundle_heads"],
+        "bundle_children": proof["bundle_children"],
         "time": time.time(), "holder": receipt["holder"], "phase": receipt["phase"],
         "title": TITLE, "source_disk_sha256": disk_sha256,
         "loaded_slot_sha256": loaded_slot_sha256, "staged_flag": receipt.get("staged_flag"),
@@ -741,7 +964,7 @@ def _prepare_p2(run_id: str, out: pathlib.Path) -> tuple[pathlib.Path, dict]:
 
 def _target(holder: str) -> amiga.AmigaTarget:
     target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), amiga.MACHINES[TITLE])
-    target.locate()
+    target.locate(memory=_measured_regions(target, check_target=False))
     return target
 
 
@@ -939,7 +1162,7 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                         receipt["item_comparison"] = _compare_nodes(
                             entries["pre-f"], receipt["pre_f"],
                             entries["post-save-quit"], receipt["post_save"], saved_disk,
-                            capture_dir.parent.parent)
+                            capture_dir.parent.parent, slot_f_hash)
             except Exception as exc:  # noqa: BLE001
                 receipt["cleanup"].append(f"halt and restore: {exc}")
         try:
@@ -1020,7 +1243,7 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
         prior = {entry["checkpoint"]: entry for entry in p2["item_nodes"]}
         receipt["item_comparison"] = _compare_nodes(
             prior["pre-f"], p2["pre_f"], receipt["item_nodes"][0], before,
-            prepared, capture_dir.parent.parent)
+            prepared, capture_dir.parent.parent, p2.get("game_written_f_sha256"))
         receipt["checks"]["load"] = True
         guest.snapshot("reload-before-step", args.holder)
         snapshots.append("reload-before-step")
