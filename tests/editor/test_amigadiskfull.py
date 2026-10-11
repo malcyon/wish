@@ -12,6 +12,7 @@ from __future__ import annotations
 import errno
 import os
 import pathlib
+import shutil
 import struct
 
 import pytest
@@ -313,3 +314,13 @@ def test_a_conversion_that_fails_for_another_reason_keeps_its_own_text(
     out, boxes, disk = _convert_pod(window, monkeypatch, tmp_path,
                                     errno.EACCES)
     assert boxes == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)]
+
+
+def test_an_error_with_no_errno_is_not_out_of_space_even_without_edquot(
+        monkeypatch):
+    from editor import files
+
+    monkeypatch.delattr(errno, "EDQUOT", raising=False)
+    assert not files.out_of_space(OSError("copy failed"))
+    assert not files.out_of_space(shutil.Error("copy failed"))
+    assert files.out_of_space(OSError(errno.ENOSPC, "full"))

@@ -67,8 +67,10 @@ class TargetNotEmpty(RuntimeError):
 def out_of_space(exc: BaseException) -> bool:
     """Whether `exc` is the operating system saying the drive or the player's
     quota has no room left for a write."""
-    return (isinstance(exc, OSError)
-            and exc.errno in (errno.ENOSPC, getattr(errno, "EDQUOT", None)))
+    codes = {errno.ENOSPC}
+    if hasattr(errno, "EDQUOT"):
+        codes.add(errno.EDQUOT)
+    return isinstance(exc, OSError) and exc.errno in codes
 
 
 def _no_backup_folder(name: str) -> NoBackupFolder:
