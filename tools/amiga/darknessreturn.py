@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import signal
 import subprocess
@@ -285,17 +286,81 @@ def _check_source() -> None:
     _require(sha256(SOURCE) == SOURCE_HASH, "the pinned source changed during the run")
 
 
-def _live_read(target: amiga.AmigaTarget) -> dict:
+def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict) -> dict:
+    """Keep exact live nodes private and verify them against this read's hashes."""
+    _require(bool(members) and members[0].name == "TURBO K" and members[0].slot == 0,
+             "the capture's first member is not TURBO K in slot 0")
+    nodes = members[0].item_nodes
+    _require(len(nodes) > 4, "the capture is missing first-member items 3 or 4")
+    saved = []
+    for index in (3, 4):
+        node = nodes[index]
+        _require(len(node.raw) == 0x42, "the capture item node is not 66 bytes")
+        digest = hashlib.sha256(node.raw).hexdigest()
+        _require(digest == reading["party"][0]["items"][index],
+                 "the captured node differs from the ordinary live receipt")
+        saved.append({"slot": members[0].slot, "name": members[0].name,
+                      "chain_index": index, "address": node.address, "length": len(node.raw),
+                      "raw_hex": node.raw.hex(), "sha256": digest,
+                      "tail20_sha256": hashlib.sha256(node.raw[0x2e:0x42]).hexdigest()})
+    payload = (json.dumps({"items": saved}, indent=2, sort_keys=True) + "\n").encode()
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as file:
+            file.write(payload)
+        temp.replace(path)
+        _require(hashlib.sha256(path.read_bytes()).hexdigest() == hashlib.sha256(payload).hexdigest(),
+                 "the private node file did not read back")
+    finally:
+        temp.unlink(missing_ok=True)
+    return {"file_sha256": hashlib.sha256(payload).hexdigest()}
+
+
+def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None) -> dict:
     row = amigatrip.row_for(TITLE)
     members = amigaparty.read_party(target)
-    return {"trip": fasttravelrun._reading(target, row),
+    reading = {"trip": fasttravelrun._reading(target, row),
             "variables": [v.as_log() for v in amigavars.read_variables(
                 target, TITLE, (0x25, 0x26, 0x34, 0x35, 0x129, 0xC1, 0xBF))],
             "party": None if members is None else [
                 {"name": m.name, "slot": m.slot, "hp": m.hp, "hp_max": m.hp_max,
                  "items": [hashlib.sha256(node).hexdigest() for _, node in m.items()],
                  "effects": [hashlib.sha256(node).hexdigest() for _, node in m.effects()]}
-                for m in members]}
+                 for m in members]}
+    if capture is not None:
+        reading["capture"] = _capture_nodes(capture, members, reading)
+    return reading
+
+
+def _capture_dir(run_id: str) -> pathlib.Path:
+    _require(run_id not in ("", ".", "..") and pathlib.Path(run_id).name == run_id,
+             "the capture run ID must be one path component")
+    directory = pathlib.Path.home() / ".cache/wish/acceptance/WISH-360" / run_id / "item-nodes"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    return directory
+
+
+def _checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, checkpoint: str,
+                receipt: dict, run: GuardedRun, *, disk_sha256: str,
+                slot_sha256: str, intervention: dict | None = None) -> dict:
+    path = directory / f"{checkpoint}.json"
+    reading = _live_read(target, capture=path)
+    proof = reading.pop("capture")
+    _require(path.is_file(), "the private node capture is missing")
+    receipt.setdefault("item_nodes", []).append({
+        "checkpoint": checkpoint, "path": str(path.relative_to(directory.parent.parent)),
+        "file_sha256": proof["file_sha256"], "order": len(receipt.get("item_nodes", [])),
+        "time": time.time(), "holder": receipt["holder"], "phase": receipt["phase"],
+        "title": TITLE, "source_disk_sha256": disk_sha256,
+        "saved_slot_sha256": slot_sha256, "staged_flag": receipt.get("staged_flag"),
+        "media_intervention": None if intervention is None else {
+            "before_image_sha256": intervention["before_image_sha256"],
+            "after_image_sha256": intervention["after_image_sha256"]},
+        "screenshot": None if not run.events else {
+            "shot": run.events[-1]["shot"], "time": run.events[-1]["time"],
+            "screen": run.events[-1]["screen"]},
+    })
+    return reading
 
 
 def _value(reading: dict, variable: int) -> int:
@@ -598,6 +663,7 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                                "checks": {}, "success": False, "cleanup": []}
     manifest_path = None
     manifest = None
+    capture_dir = None
     booted = False
     target = None
     state = noencounters.WinuaeState(noencounters.winuae_state_path(args.holder))
@@ -609,6 +675,11 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         guards = _export_guards(out)
         manifest_path, manifest = _prepare_p2(args.run_id, out)
         intervention = manifest["encounter_media"]
+        capture_dir = _capture_dir(args.run_id)
+        disk_hash = SOURCE_HASH
+        slot_hash = hashlib.sha256(amiga_adf.AmigaDisk.open(
+            manifest["disks"]["disk3"]["path"]).read_file(
+                f"/SAVE/savgam{manifest['loaded_letter']}.pty")).hexdigest()
         original = _row_from_library(_library(amiga_adf.AmigaDisk.open(
             intervention["prepared_image"])), 0x08)
         boot = _boot(guest, manifest_path, manifest, args.holder, args.audio_proof,
@@ -618,7 +689,9 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         run = GuardedRun(guest, args.holder, out / "screens", guards, deadline)
         run.load(manifest, boot["remotes"])
         target = _target(args.holder)
-        before = _live_read(target)
+        before = _checkpoint(target, capture_dir, "before-staging", receipt, run,
+                             disk_sha256=disk_hash, slot_sha256=slot_hash,
+                             intervention=intervention)
         _require_world(before, manifest["names_a"], area=AREA, cell=EXPECTED_START)
         receipt["before"] = before
         guest.snapshot("b0", args.holder)
@@ -634,7 +707,9 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         receipt["checks"]["legs"] = True
         run.see("world", 60)
         target = _target(args.holder)
-        returned = _live_read(target)
+        returned = _checkpoint(target, capture_dir, "post-return", receipt, run,
+                               disk_sha256=disk_hash, slot_sha256=slot_hash,
+                               intervention=intervention)
         _require_world(returned, manifest["names_a"], area=AREA, cell=EXPECTED_START)
         receipt["returned"] = returned
         receipt["post_return_adoption"] = adopt_loaded_media(args.holder, target,
@@ -644,7 +719,9 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         receipt["step_command"] = _step_under_switch(args.holder, target, guest,
                                                        state, original)
         run.see("world", 60)
-        stepped = _live_read(target)
+        stepped = _checkpoint(target, capture_dir, "post-step", receipt, run,
+                              disk_sha256=disk_hash, slot_sha256=slot_hash,
+                              intervention=intervention)
         _require_world(stepped, manifest["names_a"], area=AREA)
         _require((_value(stepped, 0x25), _value(stepped, 0x26)) != EXPECTED_START,
                  "NP8 did not move the wilderness marker")
@@ -657,9 +734,15 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         run.press("camp", "S", "camp_save_picker")
         receipt["pre_save_gate"] = _original_live(target, original)
         _require(not state.load()["on"] and not state.load()["rows"],
-                 "the encounter journal is not off before F")
+                  "the encounter journal is not off before F")
+        _checkpoint(target, capture_dir, "pre-f", receipt, run,
+                    disk_sha256=disk_hash, slot_sha256=slot_hash,
+                    intervention=intervention)
         run.press("camp_save_picker", SAVE_LETTER, "exit_game")
         run.press("exit_game", "N", "camp")
+        _checkpoint(target, capture_dir, "post-save-quit", receipt, run,
+                    disk_sha256=disk_hash, slot_sha256=slot_hash,
+                    intervention=intervention)
         receipt["checks"]["save"] = True
         receipt["screens"] = run.events
     except BaseException as exc:
@@ -732,6 +815,7 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
     booted = False
     target = None
     snapshots: list[str] = []
+    capture_dir = None
     command = [str(pathlib.Path(__file__)), "reload", "--run-id", args.run_id,
                "--holder", args.holder]
     try:
@@ -740,6 +824,11 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
                                            substitute=source, substitute_letter=SAVE_LETTER,
                                            issue="360")
         manifest = json.loads(manifest_path.read_text())
+        capture_dir = _capture_dir(args.run_id)
+        disk_hash = sha256(source)
+        slot_hash = hashlib.sha256(amiga_adf.AmigaDisk.open(
+            manifest["disks"]["disk3"]["path"]).read_file(
+                f"/SAVE/savgam{manifest['loaded_letter']}.pty")).hexdigest()
         prepared = amiga_adf.AmigaDisk.open(manifest["disks"]["disk3"]["path"])
         original = _row_from_library(_library(prepared), 0x08)
         reading = route_darkness.DARKNESS.read_slot(prepared, manifest["loaded_letter"])
@@ -758,7 +847,8 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
         run = GuardedRun(guest, args.holder, out / "screens", guards, deadline)
         run.load(manifest, boot["remotes"], view_sheet=True)
         target = _target(args.holder)
-        before = _live_read(target)
+        before = _checkpoint(target, capture_dir, "f-loaded", receipt, run,
+                             disk_sha256=disk_hash, slot_sha256=slot_hash)
         _require_world(before, reading["names"], area=AREA, cell=saved_cell)
         receipt["loaded"] = before
         receipt["checks"]["load"] = True
@@ -773,7 +863,8 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
                  and "stopped" not in response, "reload NP8 did not land")
         receipt["step_command"] = response
         run.see("world", 60)
-        after = _live_read(target)
+        after = _checkpoint(target, capture_dir, "post-step", receipt, run,
+                            disk_sha256=disk_hash, slot_sha256=slot_hash)
         _require_world(after, reading["names"], area=AREA)
         _require((_value(after, 0x25), _value(after, 0x26)) != saved_cell,
                  "reload NP8 did not move the wilderness marker")
@@ -854,4 +945,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
