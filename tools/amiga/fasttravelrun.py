@@ -26,7 +26,9 @@ the screen differs from the one kept at the previous press, with the same window
 restarted from that press, so a key the game ignores ends the sequence and the
 leg stays unsettled. A key goes only after the
 screen has held unchanged for a full screenshot poll with the gate shut, so a
-slow arrival that keeps redrawing is not answered; the `arrival_answer` event
+slow arrival that keeps redrawing is not answered, unless the title's `continue`
+pixel guard (`guards_*.json`) matches the frame, because a picture animated
+beside the PRESS RETURN bar never holds still; the `arrival_answer` event
 records the gate and the count of unchanged polls. A leg whose last area equals
 its start area (A to B to A) gets no arrival key.
 `--back` makes `apply_back` once the trip has finished.
@@ -212,6 +214,46 @@ class _Screen:
         return changed
 
 
+#: The `guards_*.json` file of each title's pixel guards, by `amiga.MACHINES` key.
+GUARD_FILES = {"pool-of-radiance": "pool", "curse-of-the-azure-bonds": "curse",
+               "pools-of-darkness": "darkness", "secret-of-the-silver-blades": "silver_blades"}
+
+
+def continue_guard(title: str | None, out: pathlib.Path,
+                   maps: pathlib.Path | None = None) -> Callable[[bytes], bool] | None:
+    """Whether a screenshot's bytes show the title's PRESS RETURN bar, by its `continue` guard.
+
+    None when the title has no such guard. Bytes that are no Amiga frame do not
+    match. The animated picture beside the bar never settles, so a frame that
+    shows the bar is answerable without holding still.
+    """
+    from tools.amiga import screens  # noqa: PLC0415
+
+    name = GUARD_FILES.get(title or "")
+    path = (maps or pathlib.Path(__file__).parent) / f"guards_{name}.json"
+    if name is None or not path.exists():
+        return None
+    rule = json.loads(path.read_text())["guards"].get("continue")
+    if rule is None:
+        return None
+    rules = out / "continue-guard.json"
+    rules.write_text(json.dumps({"continue": rule}))
+    guards = screens.PixelGuards(rules)
+
+    def shows_bar(data: bytes) -> bool:
+        raw, crop = out / "continue-raw.png", out / "continue-crop.png"
+        raw.write_bytes(data)
+        try:
+            screens.canonical_file(raw, crop)
+            return guards("continue", crop)
+        except Exception:  # noqa: BLE001 - a frame that cannot be read is not the bar
+            return False
+        finally:
+            raw.unlink(missing_ok=True)
+            crop.unlink(missing_ok=True)
+    return shows_bar
+
+
 def _names(party, target) -> list[str] | None:
     """The party's names, or None when no reader is given or the list does not decode."""
     members = party(target) if party is not None else None
@@ -253,7 +295,8 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
              clock: Callable[[], float] = time.monotonic,
              budget: float = BUDGET_SECONDS, party: Callable | None = None,
              peek_vars=(), title: str | None = None,
-             arrival_answer: str | Sequence[str] | None = None) -> dict:
+             arrival_answer: str | Sequence[str] | None = None,
+             at_continue: Callable[[bytes], bool] | None = None) -> dict:
     """One trip, or the way back, driven as the window's timer drives it.
 
     Returns `{"result": ..., "outcomes": [...], "answered": bool, "settled": bool, ...}`
@@ -267,6 +310,8 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     that differs from the one at the previous press, if the game is asking
     something in the destination while the menu gate stays shut;
     `arrival_answered` records that one went and `arrival_keys` which.
+    `at_continue` tells whether a screenshot shows the PRESS RETURN bar; such a
+    screen is answered although its picture keeps changing.
     """
     arrival_keys = (arrival_answer,) if isinstance(arrival_answer, str) else tuple(arrival_answer or ())
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
@@ -365,12 +410,14 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
             held = 0 if screen.take("arrival") else held + 1
             why = tripprobe._unanswered(
                 {"key_taken": True, "area_changed": False}, kept, screen.last)
-            if why is None and held < 1:
+            bar = bool(at_continue and screen.last is not None and at_continue(screen.last))
+            if why is None and held < 1 and not bar:
                 why = "the screen was still changing"
             if why is None:
                 key = arrival_keys[len(summary["arrival_keys"])]
                 log("arrival_answer", key=key,
-                    gate=bool(amigatrip.gate(target, row)), unchanged_polls=held)
+                    gate=bool(amigatrip.gate(target, row)), unchanged_polls=held,
+                    at_continue=bar)
                 press(key)
                 summary["arrival_keys"].append(key)
                 summary["arrival_answered"] = True
@@ -500,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results = []
     leg = 0
+    at_continue = continue_guard(args.title, out)
 
     def terminated(*_: object) -> None:
         raise SystemExit(143)
@@ -525,7 +573,8 @@ def main(argv: list[str] | None = None) -> int:
                                           answer=args.answer, budget=args.budget,
                                           arrival_answer=arrival_answer,
                                           party=amigaparty.read_party,
-                                          peek_vars=peek_vars, title=args.title))
+                                          peek_vars=peek_vars, title=args.title,
+                                          at_continue=at_continue))
                     if args.back and results and results[0]["result"] == "idle" \
                             and not results[0]["settled"]:
                         finished({"result": "skipped", "reason": "leg 1 never became ready"})
@@ -536,7 +585,8 @@ def main(argv: list[str] | None = None) -> int:
                                           answer=args.answer,
                                           arrival_answer=arrival_answer,
                                           party=amigaparty.read_party,
-                                          peek_vars=peek_vars, title=args.title))
+                                          peek_vars=peek_vars, title=args.title,
+                                          at_continue=at_continue))
             except BaseException as exc:
                 log("interrupted", error=type(exc).__name__, leg=leg)
                 raise

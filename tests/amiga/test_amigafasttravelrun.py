@@ -311,6 +311,73 @@ def test_a_screen_that_keeps_changing_gets_no_arrival_key_and_the_gate_opens_alo
                for e in world.events())
 
 
+def _redrawing_with(world, monkeypatch, prefix):
+    """The gate stays shut while the screen differs on every poll, as an animated picture does."""
+    _arriving(world, monkeypatch)
+    redraws = iter(range(10_000))
+
+    def gate(target, row):
+        world.screen = b"%s %d" % (prefix, next(redraws))
+        return world.pressed != [] or world.clock.now >= 1000.0 + 60.0
+    monkeypatch.setattr(amigatrip, "gate", gate)
+
+
+def test_a_changing_screen_that_shows_the_continue_bar_gets_the_arrival_key(world, monkeypatch):
+    _redrawing_with(world, monkeypatch, b"bar")
+    got = world.drive(_Arrives(polls=1), arrival_answer="RET",
+                      at_continue=lambda data: data.startswith(b"bar"))
+    assert world.pressed == ["RET"] and got["arrival_answered"] and got["settled"]
+    (event,) = [e for e in world.events() if e["event"] == "arrival_answer"]
+    assert event["at_continue"] is True and event["unchanged_polls"] == 0
+
+
+def test_a_changing_screen_that_is_not_the_continue_bar_still_waits(world, monkeypatch):
+    _redrawing_with(world, monkeypatch, b"redraw")
+    got = world.drive(_Arrives(polls=1), arrival_answer="RET",
+                      at_continue=lambda data: data.startswith(b"bar"))
+    assert world.pressed == [] and not got["arrival_answered"]
+    assert any(e["event"] == "arrival_answer_held" and "changing" in e["reason"]
+               for e in world.events())
+
+
+def _frame(colour):
+    import io  # noqa: PLC0415
+
+    from PIL import Image  # noqa: PLC0415
+
+    image = Image.new("RGB", (720, 568), (0, 0, 0))
+    for x in range(54, 634):
+        image.putpixel((x, 420), colour)
+    data = io.BytesIO()
+    image.save(data, "PNG")
+    return data.getvalue()
+
+
+def test_the_continue_guard_matches_the_bar_and_nothing_else(tmp_path):
+    import json as jsonlib  # noqa: PLC0415
+
+    from tools.amiga import screens  # noqa: PLC0415
+
+    bar = tmp_path / "bar.png"
+    bar.write_bytes(_frame((1, 2, 3)))
+    rule = screens.guard_rule(bar, [54, 418, 634, 432])
+    maps = tmp_path / "maps"
+    maps.mkdir()
+    (maps / "guards_pool.json").write_text(jsonlib.dumps({"guards": {"continue": rule}}))
+    work = tmp_path / "work"
+    work.mkdir()
+    shows = ftr.continue_guard("pool-of-radiance", work, maps)
+    assert shows(_frame((1, 2, 3))) is True
+    assert shows(_frame((9, 9, 9))) is False
+    assert shows(b"world") is False
+
+
+def test_a_title_with_no_continue_guard_gets_none(tmp_path):
+    assert ftr.continue_guard("no-such-title", tmp_path) is None
+    assert ftr.continue_guard("pool-of-radiance", tmp_path, tmp_path) is None
+    assert ftr.continue_guard("pools-of-darkness", tmp_path) is not None
+
+
 def test_the_arrival_press_logs_the_gate_and_the_unchanged_polls(world, monkeypatch):
     _arriving(world, monkeypatch)
     world.drive(_Arrives(polls=1), arrival_answer="y")
