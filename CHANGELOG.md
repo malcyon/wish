@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Character Editor shows a companion's treasure share in the terms used by the open game's platform.
+
+### Changed
+
+- Fast Travel goes straight to its destination when an exit would only detour the party, while still handling exits where a companion leaves or a quest advances.
+
+### Fixed
+
+- Saving a folder keeps the original character files intact if a full drive interrupts the save.
+- Save and Save As report "Disk is out of space." when a full drive prevents writing the save.
+- On Linux, Character Editor opens and converts DOS save files regardless of filename case, and warns when two names differ only in case.
+- Editing an ability in Curse of the Azure Bonds or Secret of the Silver Blades now changes the permanent score too, so the game keeps the edit when it rebuilds abilities.
+- Save As converts a Pool of Radiance party with a joined game companion without stopping at that companion's portrait.
+- Save As turns a zombie player character into a living, player-controlled character on the destination platform while leaving a zombie companion a zombie.
+- A converted Pool of Radiance companion's name keeps the spaces the Amiga game needs to recognize that companion at the Kobold Caves exit.
+- The leave-behind window names items and scroll spells from DOS or Amiga game files when no C64 disks are set.
+- A Silver Blades party with too many joined scrolls for an Amiga save can choose further items to leave behind instead of stopping Save As.
+- Choosing items to leave behind from a large Silver Blades pack responds faster.
+- Joined Silver Blades scrolls keep their weight and readied state when converted to the C64 or Amiga.
+- Pressing the Save As shortcut twice quickly no longer opens the menu inside itself.
+- Character Editor dropdowns show their full Size, Control and Abilities altered choices on Windows at 100% scale.
+- Character Editor identifies unsupported Gateway, Krynn and Treasures of the Savage Frontier saves instead of showing a Python error or opening them as another title.
+- Fast Travel and Return ask questions for the attached Curse or Silver Blades game, and Back names the area that party reached.
+- Pool of Radiance Fast Travel uses the correct exits from Valjevo Castle, Lizardman Keep and Yarash's Pyramid, and can depart New Phlan through the dock.
+- Fast Travel from the Pool of Radiance wilderness grid completes its trip, and a trip into Phlan City Hall lands in the lobby.
+- Fast Travel into Tilverton streets in Curse of the Azure Bonds no longer replays the opening scene.
+- Silver Blades Fast Travel lands in the Well of Knowledge and the Frost giant village as a walked arrival would, shows the new area's coordinates, and Return reaches its normal entrance.
+- Fast Travel no longer offers title-screen demo areas or Silver Blades mine levels that cannot be reached by a trip.
+- Fast Travel is unavailable in the Kobold Caves, where a walk-out trip could stop before reaching its destination; Return stays available.
+- Preferences recognizes a Curse of the Azure Bonds DOS game folder on the Game disks tab.
+- Character Editor keeps the missing-game-disks note visible after switching tabs and updates the Add item tooltip when disks become available.
+- Greyed-out Automapper controls no longer show tooltips for actions that are unavailable.
+
 ## [0.1.5] - 2026-10-04
 
 ### Added
