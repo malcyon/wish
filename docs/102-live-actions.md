@@ -292,31 +292,37 @@ is where the bytes are: `automap/amigaparty.py` walks the party's linked list of
 heap records ([the party in memory](96-live-memory-automapper.md#the-party-in-memory))
 and the title's `PartyRow` says which field each action writes.
 
-**One gate per action, title and emulator.** `legality` is enabled only when all
-of these hold, and otherwise the verdict holds one reason:
+**One gate per action, title and emulator.** The window attaches the action
+target only when `WISH_EXPERIMENTAL_AMIGA_ACTIONS` is enabled; `legality` then
+allows each action only when all of these hold, and otherwise the verdict holds
+one reason:
 
 | condition | where it comes from |
 |---|---|
 | the title has a party row and the action is in its `confirmed` set | `amigaparty.ROWS`: the field was written, seen on the game's own screen and kept across a step |
 | the row's `measured` set has what the action needs | Heal needs `hp_max`; on Curse every action also needs `combat_value`, because Curse's fight value is from the code only (`REQUIRES`, `FIGHT_VALUE_FROM_CODE`) |
 | the target can write, except Save spells, which only reads | `AmigaTarget.can_write`: `M` packets through the FS-UAE helper, `DBG W` lines through the WinUAE pipe |
-| the mode byte reads | `amigaparty.mode`, one byte per title; it is 5 in a fight (Curse's value is from the code only) |
+| the mode byte reads | `amigaparty.mode`, one byte per title; it is 5 in a fight (Curse's value is measured and appears in the code) |
 | the mode is not a fight, unless the row lists the action in `combat_legal` | no row lists any |
 
 A button that fails any of these is greyed and shows no tooltip; a click that
 reaches it anyway reports `ERROR: Action unsupported on <title> (Amiga).`, or
-the C64's no-emulator sentence with no emulator attached. Today **Heal is enabled on Pools of Darkness only; Save spells,
-Restore spells and Identify on Pool of Radiance, Silver Blades and Pools of
-Darkness; Quickfight off on no title** (its field is not `confirmed` anywhere);
-and every button on Curse is off. Level up is off on every Amiga title, because
-no Amiga trainer is wired in. [The per-title table](212-the-live-tab-per-title.md#7-the-same-tab-on-the-amiga)
-has the reason for each cell.
+the C64's no-emulator sentence with no emulator attached. With
+`WISH_EXPERIMENTAL_AMIGA_ACTIONS` enabled, a writable attached title outside
+combat offers Heal, Save spells, Restore spells and Identify on all four titles;
+Pool of Radiance, Curse and Silver Blades also offer Quickfight off. Pools of
+Darkness does not confirm Quickfight off: its game resets that flag at the next
+fight. A ready member's Level up button is offered on all four titles through
+`automap/amigalevelup.py` and the window's Amiga handler. These are code gates,
+not proof of all four titles' Wish-tab, game-sheet and reload acceptance.
+[The per-title table](212-the-live-tab-per-title.md#7-the-same-tab-on-the-amiga)
+separates availability from acceptance.
 
 **Spell lists never cross platforms.** Store and Restore keep each character's
 raw memorised span under `amiga/<amiga.MACHINES key>`, so a list stored on the C64
 is never written into an Amiga record. `QuickfightWatcher` has an Amiga twin
-that reads the mode from `amigaparty.mode`; it writes nothing while Quickfight
-off is not enabled.
+that reads the mode from `amigaparty.mode`; its fight-end write is gated by
+Quickfight off's legality and the watcher's opt-in setting.
 
 **A write shows when the game next redraws the row or the sheet**, not when
 the byte changes: Heal's new hit points appeared on opening VIEW. A write is

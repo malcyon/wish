@@ -270,7 +270,11 @@ The four Amiga titles behind `WISH_EXPERIMENTAL_AMIGA_FSUAE` (FS-UAE, Linux) and
 not supported. The mechanism is [`96`](96-live-memory-automapper.md) and the
 buttons' gate is [`102`](102-live-actions.md#on-the-amiga). Each cell below is
 what the code does at this commit; a cell with a result is graded by how it was
-seen.
+seen. Action and Level up availability below requires
+`WISH_EXPERIMENTAL_AMIGA_ACTIONS`, the matching attached writable title and a
+non-combat mode; Level up also requires an eligible member. Availability is
+not four-title acceptance of a press in Wish's own WinUAE tab followed by a
+game-sheet check and reload.
 
 | | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
 |---|---|---|---|---|
@@ -279,10 +283,10 @@ seen.
 | Area name | named | named | named | the map file only: no area table exists |
 | Outdoors | the wilderness page, drawn from the Amiga disks, followed across the three windows by the test driver | a world-map fix with node and destination, followed by the test driver; no route page with only Amiga disks | none: The Ruins is an ordinary area | blank tab, area strip and status line on the overland |
 | Party cards | name, hit points and quickfight flag; class, level, experience and armour class are stand-ins | same | same | same |
-| Heal | off: maximum hit points not measured | off | off: maximum not read again after a step | on |
-| Save spells, Restore spells, Identify | on | off: fight value from the code only | on | on |
-| Quickfight off | off: writing 0 did not restore the turn menu | off | off | off: never written |
-| Level up | off | off | off | off |
+| Heal | offered: maximum confirmed by a game's heal and subsequent step | offered: maximum seen again after a journey leg | offered: maximum seen again after two steps | offered |
+| Save spells, Restore spells, Identify | offered | offered: fight-value gate measured | offered | offered |
+| Quickfight off | offered: next-fight turn menu returned after writing 0 | offered: written and unwritten next-fight controls differed | offered: next-fight turn menu returned after writing 0 | off: the game rewrites the flag at fight start; the effect is not confirmed |
+| Level up | offered to eligible members; hall/write and game-save reload proof | offered to eligible members; hall/write and game-save reload proof | offered to eligible members; earlier tab check does not prove current four-title acceptance | offered to eligible members; Wish-tab sheet/save acceptance outstanding |
 | Fast Travel | held behind the weak menu gate | every area except Tilverton | not offered: row unconfirmed, a trip to area 4 hung | no area list: "No areas are known for Pools of Darkness." |
 | Return | held | held | held | held |
 

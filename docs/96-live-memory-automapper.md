@@ -482,7 +482,7 @@ is exactly when the pointer may move.
 | `_blocked_step` | `automap/state.py` | requires **both** fixes to come from the status line, so it never fires on a backend whose every fix is `"memory"` |
 | `_running`'s cheap proof | `automap/state.py` | a status line proves a Gold Box game for free on the C64; on the Amiga only the resident map block can, which costs two round trips |
 | `RESIDENT_EVERY`, `PROVEN_FOR`, the 200 ms timer | `automap/state.py`, `automap/window.py` | tuned to a poll costing 14 ms of emulated time |
-| the live party tab, the Action buttons, Level up, Fast Travel | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses. An Amiga gets `automap/amigaparty.py`, `automap/amigaactions.py` and `automap/amigafasttravel.py` instead; Level up is off on every Amiga title |
+| the live party tab, the Action buttons, Level up, Fast Travel | `automap/live.py`, `automap/actions.py` | the C64 save image at `Game.save_load_address`, and writes to C64 addresses. An Amiga gets `automap/amigaparty.py`, `automap/amigaactions.py`, `automap/amigalevelup.py` and `automap/amigafasttravel.py` instead; Amiga actions and Level up need their experimental flag and title/member gates |
 | combat, the combat log, the roll reader | `combat.py`, `combatlog.py`, `rolls.py`, `screen.py` | all read the C64 text screen |
 | the map loader | `automap/maps.py` | walks a D64 directory for `GEO*` files first, and reads Amiga disk images only when it finds none |
 
@@ -533,7 +533,7 @@ succeed and decode the game's own unrelated bytes. So `AutomapBinding._refresh_r
 never hands such a target to them: it calls `_refresh_amiga`, which gives the
 buttons the `automap/amigaactions.py` classes, the cards `amigaparty.read_party`
 and the Fast Travel row `automap/amigafasttravel.py`. `poll_battle` reads no
-fight from it and the window's Level up handler returns at once. A layout with
+fight from it; the window has a separate gated Amiga Level up handler. A layout with
 no row of its own, or a machine that is not running the title the window was set
 up for, leaves every button greyed. `automap.busguard`'s `BusGuard.clear` reads
 the attribute too: it returns True before any read for such a target, so a
@@ -686,14 +686,15 @@ record without following its item or effect lists, so a stray pointer in a
 monster cannot hide the party, and `read_party` drops it. CONFIRMED on
 Silver Blades (the demo fight), Pool of Radiance (three kobolds, slot byte 8)
 and Pools of Darkness (23 monsters with slot bytes 8 to 11, one byte per kind
-of monster); Curse has not been seen in a fight.
+of monster); Curse's fight-mode and Quickfight controls were subsequently
+observed, but its monster-list traversal is not established here.
 
 **The mode byte**, CONFIRMED live where a value is given:
 
 | Title | Byte | Values read | In a fight |
 |---|---|---|---|
 | Pool of Radiance | `h32+0xBA` | 3 on the travel grid | 5 |
-| Curse | `g3d56` | 0 at the party menu, 4 walking, 3 on the world map | not reached; 5 from the code (PROBABLE) |
+| Curse | `g3d56` | 0 at the party menu, 4 walking, 3 on the world map | 5: confirmed by a live fight; the code also reads 5 |
 | Silver Blades | `g525c` | 0 at the party menu, 2 at the journal prompt, 4 walking | 5 (the demo's fight, and griffons and a hill giant met by walking) |
 | Pools of Darkness | `g5b12` | 0 at the party menu, 2 once loaded, 4 after a fight | 5 |
 
@@ -707,25 +708,30 @@ step. Its `measured` set names the facts the Action gate asks for besides:
 `hp_max`, the maximum seen on the sheet and kept across a step, which Heal
 needs, and `combat_value`, the mode byte read in a fight, which every action
 on Curse needs because Curse's fight value is otherwise from the code.
-Measured with the `session` driver's `poke` (#37 (Automap the Amiga version,
-not just the C64), the R2, R3 and gap-run comments):
+Established by the title-specific live writes, on-screen checks and follow-up
+steps recorded in `automap/amigaparty.py:ROWS`; these row gates do not prove
+the complete action route through Wish's own tab:
 
-| Title | `confirmed` | `measured` | Measured but not confirmed |
+| Title | `confirmed` | `measured` | Remaining qualification |
 |---|---|---|---|
-| Pool of Radiance | heal (`0x11D`), store and restore spells (`0x17`, 21 bytes), identify (item `+0x35`, mask 7; `+0x36` and `+0x37` did nothing) | `combat_value` | quickfight `0x111`: QUICK sets it, but writing 0 did not bring the character's turn menu back in a fight; `hp_max`: the sheet shows no maximum |
-| Curse | heal (`0x1A9`), spells (`0x1E`, 84 bytes), identify (`+0x36`, mask 7; `+0x35` did nothing) | none | the fight value: no fight reached in three boots; `hp_max` (`0x78`): seen on the sheet, not read again after a step |
-| Silver Blades | heal (`0x152`), spells (`0x1E`, 75 bytes), identify (`+0x36`, mask 7) | `combat_value` | `hp_max` (`0x70`): seen on the sheet, not read again after a step |
-| Pools of Darkness | heal (`0x191`), spells (`0xCC`, 141 bytes), identify (`+0x36`, mask 7) | `hp_max` (`0x81`), `combat_value` | quickfight `0x185`: never written |
+| Pool of Radiance | heal (`0x11D`), store and restore spells (`0x17`, 21 bytes), identify (item `+0x35`, mask 7), quickfight off (`0x111`), Level up | `hp_max`, `combat_value` | the sheet omits the maximum; a game's heal stopped there and persisted after a step |
+| Curse | heal (`0x1A9`), spells (`0x1E`, 84 bytes), identify (`+0x36`, mask 7), quickfight off (`0x19D`), Level up | `hp_max`, `combat_value` | fight-value gate must be measured even though the engine gives its value |
+| Silver Blades | heal (`0x152`), spells (`0x1E`, 75 bytes), identify (`+0x36`, mask 7), quickfight off (`0x146`), Level up | `hp_max`, `combat_value` |  |
+| Pools of Darkness | heal (`0x191`), spells (`0xCC`, 141 bytes), identify (`+0x36`, mask 7), Level up | `hp_max`, `combat_value` | quickfight `0x185`: the game rewrites it at fight start; a zero write did not establish the requested difference |
 
-So with a writable emulator and no fight, a player would see Heal enabled on
-Pools of Darkness only, Save spells, Restore spells and Identify on Pool of
-Radiance, Silver Blades and Pools of Darkness, Quickfight off on none, and
-nothing on Curse until a Curse fight is read. A button that is not enabled
-is greyed and shows no tooltip; a stale click reports the "Action unsupported"
-sentence with the title and "(Amiga)" added (`amigaactions.unsupported`), and a title or backend that cannot write
-(`AmigaTarget.can_write` false) enables Save spells only. Level up is off on
-every Amiga title (`roster.set_levelling(False)`), and Heal needs `hp_max`
-measured. `docs/212-the-live-tab-per-title.md` has the per-title result.
+With `WISH_EXPERIMENTAL_AMIGA_ACTIONS` enabled, a matching writable emulator
+outside combat offers Heal, Save spells, Restore spells and Identify on all
+four titles, plus Quickfight off on Pool, Curse and Silver Blades. Level up is
+offered for eligible members on all four, using `window._amiga_trainable` and
+`_press_level_up_amiga`. The `roster.set_levelling(False)` reset precedes the
+member-specific card refresh; it is not a permanent disable. Without the flag,
+the action buttons and Level up remain off. A button that is not enabled is
+greyed with no tooltip; a stale click reports the "Action unsupported"
+sentence with the title and "(Amiga)" added (`amigaactions.unsupported`). A
+non-writable backend cannot offer the writing actions; Save spells can still
+read when the other gates pass. These offers do not prove complete four-title
+Wish-tab game-sheet/reload acceptance. `docs/212-the-live-tab-per-title.md`
+has the per-title result.
 
 **The party cards read only the name, the hit points and the quickfight flag.**
 `window.amiga_snapshot` leaves class, level, experience, armour class and THAC0
