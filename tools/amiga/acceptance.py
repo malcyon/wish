@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
+import dataclasses
 import datetime
 import functools
 import hashlib
@@ -41,6 +42,7 @@ from typing import Any, Callable, NamedTuple
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from automap import amiga, amigaparty  # noqa: E402
 from goldbox import (  # noqa: E402
     amiga_adf,
     amiga_savegame,
@@ -51,6 +53,7 @@ from goldbox import (  # noqa: E402
 )
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
+    amigatarget,
     route_camp,
     route_curse,
     route_silver_blades,
@@ -75,6 +78,7 @@ from tools.amiga.route_darkness import (  # noqa: E402
     DARKNESS_DISK1_SHA256,
     DARKNESS_DISK2_SHA256,
     DARKNESS_DISK3_SHA256,
+    DARKNESS_INTRO,
     DARKNESS_LIMBO,
     DARKNESS_RELOAD,
     DARKNESS_RELOAD_LOADED,
@@ -150,6 +154,78 @@ from tools.amiga.winuaesession import (  # noqa: E402
 from tools.registry import evidence, resumerecord, scratch, specimens  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+OBSERVE_MANIFEST = (pathlib.Path.home() / ".cache/wish/acceptance/WISH-359/m1qf-pod/prepare.json")
+OBSERVE_SLOT_SHA256 = "08671b3190d655f54eec2d98aa7c1d012867a92cf0e749b085b1dd72ce9a2415"
+OBSERVE_ENGINE_SHA256 = "6f8fee2dd8ea035b156cb0eb1c1d16e9172aa450a4f2b9e54e6d0018cf65c4d4"
+OBSERVE_KEYS = ("P", "L", "P", "B", (0, "disk2", "SPACE"),
+                "V", "E", "B", "X", "RET")
+
+
+def _observe_preclaim(manifest_path: pathlib.Path, guard: Any, identity: Any) -> dict:
+    if manifest_path.resolve() != OBSERVE_MANIFEST.resolve():
+        raise RouteError("observe-load needs the pinned original B manifest")
+    manifest = json.loads(manifest_path.read_text())
+    if (manifest.get("title") != "darkness" or manifest.get("loaded_letter") != "B"
+            or manifest.get("state_a") != {"area": 2, "x": 1, "y": 2, "facing": 1}
+            or manifest.get("mode") or manifest.get("camp") or manifest.get("encounter")
+            or manifest.get("names_a") is None or len(manifest["names_a"]) != 6):
+        raise RouteError("observe-load manifest is not the pinned original B place and party")
+    disks, _, letter = _title_inputs(manifest, DARKNESS)
+    if set(manifest["disks"]) != {"disk1", "disk2", "disk3"}:
+        raise RouteError("observe-load needs exactly three working images")
+    pins = {"disk1": DARKNESS_DISK1_SHA256, "disk2": DARKNESS_DISK2_SHA256,
+            "disk3": DARKNESS_DISK3_SHA256}
+    for key, pin in pins.items():
+        if manifest["disks"][key]["sha256"] != pin or sha256(disks[key]) != pin:
+            raise RouteError(f"observe-load {key} does not match the pinned working image")
+    reading = DARKNESS.read_slot(_verified_disk(disks["disk3"]), letter)
+    if (reading.get("sha256") != OBSERVE_SLOT_SHA256
+            or reading.get("names") != manifest["names_a"]
+            or reading.get("place") != manifest["state_a"]):
+        raise RouteError("observe-load working disk 3 has the wrong native B party")
+    engine = amigatarget.executable(disks["disk1"], amiga.MACHINES["pools-of-darkness"])
+    if hashlib.sha256(engine).hexdigest() != OBSERVE_ENGINE_SHA256:
+        raise RouteError("observe-load disk 1 has the wrong previously booted engine")
+    if problems := amigatarget.verify(amiga.MACHINES["pools-of-darkness"], disks["disk1"]):
+        raise RouteError(f"observe-load engine layout differs: {problems}")
+    required = ("title", "party_menu", "load_from", "load_picker", "disk2_prompt",
+                "loaded_menu", "sheet", "journal", "journal_answer", "world", "intro")
+    if missing := [state for state in required if not _has_rule(guard, state)]:
+        raise RouteError(f"observe-load guard map lacks {missing}")
+    if missing := [state for state in ("loaded_menu", "sheet")
+                   if not _has_rule(identity, state)]:
+        raise RouteError(f"observe-load identity map lacks {missing}")
+    return manifest
+
+
+def _observe_world(holder: str, manifest: dict, disk3: pathlib.Path,
+                   guard: Any, crop: pathlib.Path) -> dict[str, Any]:
+    """Identify the resident GEO by exact bytes, never by the saved dungeon word."""
+    for state in ("yes_no", "continue", "encounter", "journal"):
+        if _has_rule(guard, state) and guard(state, crop):
+            raise RouteError(f"observe-load world also matches {state}")
+    target = amigatarget.connect_pipe(holder, amiga.MACHINES["pools-of-darkness"], fresh=True)
+    mode = amigaparty.mode(target)
+    party = amigaparty.read_party(target)
+    if mode != 2 or party is None or len(party) != 6 or sorted(m.slot for m in party) != list(range(6)) \
+            or [m.name.strip() for m in party] != manifest["names_a"]:
+        raise RouteError("observe-load live mode or party differs from original B")
+    fix = target.fix()
+    if fix is None or (fix.x, fix.y, fix.facing) != (1, 2, 1) or fix.world_map:
+        raise RouteError("observe-load live fix differs from original B")
+    raw_word = target.read(target.data_base + 0x5F2C, 2)
+    pointer = target.resident_geo_address()
+    resident = target.geo() if pointer is not None else None
+    if pointer is None or resident is None or len(resident) != 1024:
+        raise RouteError("observe-load has no complete resident GEO")
+    matches = sorted(name for name, block in amiga.load_maps(disk3).items()
+                     if block.to_bytes() == resident)
+    observation = {"mode": mode, "names": [m.name for m in party],
+                   "slots": [m.slot for m in party], "fix": [fix.x, fix.y, fix.facing],
+                   "dungeon_map_raw": raw_word.hex(), "geo_pointer": pointer,
+                   "geo_sha256": hashlib.sha256(resident).hexdigest(), "geo_matches": matches,
+                   "geo_id": matches[0] if len(matches) == 1 else None}
+    return observation
 PUBLISHED_ISSUE = "677"
 #: A run folder's ticket: a bare number, or a Plane `WISH-N`. The source pins of
 #: `PUBLISHED_SOURCES_BY_ISSUE` are keyed by the number alone.
@@ -1736,7 +1812,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
               walk_retry: int = 0, camp_in_place: bool = False, encounters: Any = None,
               cli_title: str | None = None, resume_from: pathlib.Path | None = None,
               at_step: int | None = None, reads: Sequence[ReadAt] = (),
-              reader: Any = None) -> dict[str, Any]:
+               reader: Any = None, observe_load: bool = False) -> dict[str, Any]:
     """Walk the route, stopping at the first unrecognised state, and fetch both disks.
 
     A guarded state is found by polling single grabs until its static box
@@ -1838,6 +1914,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
     `{"disks": {key: {path, sha256}}, "registered": {key: {path, sha256}},
     "loaded_letter", "state_a", "names_a"}` and optionally `"expected_after"`.
     """
+    if observe_load:
+        if not measure or accept or reload or title is None or guest is None:
+            raise RouteError("observe-load is a measured original B title route only")
+        _observe_preclaim(pathlib.Path(manifest_path), guard, identity)
+        if tuple(step[0] for step in title.measure_route) != OBSERVE_KEYS or (
+                title.interstitials != (DARKNESS_INTRO,) or title.measure_loose
+                or encounters is not None or resume_from is not None or at_step is not None
+                or reads or marks or walk_retry or camp_in_place or published_disk_one):
+            raise RouteError("observe-load options or route differ from the guarded prefix")
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
     if encounters is not None and (reload or diagnose):
@@ -1939,6 +2024,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             if action[0] == "insert" and action[1] == 0 and not _guards(guard, screen):
                 raise RouteError(f"screen guard map lacks {screen!r}: a DF0 insert needs a "
                                  f"guard on the prompt")
+    if observe_load:
+        missing = [s for _, s, _ in title.measure_route if not _guards(guard, s)]
+        if missing:
+            raise RouteError(f"observe-load screen guard map lacks {missing}")
     if accept and journal_python is not None and (
             title is None or published_disk_one or _substitute_mode(manifest_path)):
         (preflight or journal_preflight)(journal_python)
@@ -2755,11 +2844,24 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         crop = shots / f"{name}.png"
         stale = False
         wrong: dict[str, Any] = {"error": None, "digest": None, "count": 0}
+        first_unknown = False
         while True:
             digest = capture(name, check=False, settle=False)
             if digest:
                 look_for_messages(crop, name)
                 hit = recognise(state, crop, done)
+                if (observe_load and name[:2].isdigit() and not hit and not first_unknown
+                        and "first_unknown" not in result):
+                    raw = shots / f"{name}.raw.png"
+                    kept_raw = shots / f"{name}-first-unknown.raw.png"
+                    kept_crop = shots / f"{name}-first-unknown.png"
+                    shutil.copyfile(raw, kept_raw)
+                    shutil.copyfile(crop, kept_crop)
+                    result.setdefault("first_unknown", []).append({
+                        "step": int(name[:2]), "state": state, "raw": str(kept_raw),
+                        "raw_sha256": sha256(kept_raw), "crop": str(kept_crop),
+                        "crop_sha256": sha256(kept_crop)})
+                    first_unknown = True
                 if digest != unchanged_from:
                     stale = False
                 if not hit:
@@ -3306,6 +3408,11 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     digest = capture(name, check=False)
                     guarded = False
                 read_after(n, state, guarded)
+                if observe_load and n == 10:
+                    result["observation"] = _observe_world(
+                        holder, manifest, disks["disk3"], guard, shots / f"{name}.png")
+                    if result["observation"]["geo_id"] is None:
+                        raise RouteError("observe-load resident GEO has no unique full-byte match")
                 if digest == previous:
                     result["events"].append({"unchanged": key, "step": n})
                     if title is None or state not in title.measure_loose:
@@ -3490,7 +3597,7 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                 capture("failure", check=False, cleanup=True)
             except BaseException as shot_error:
                 result["failure_capture_error"] = f"{type(shot_error).__name__}: {shot_error}"
-        if start_attempted and isinstance(exc, GuardMissed):
+        if start_attempted and isinstance(exc, GuardMissed) and not observe_load:
             if exc.resume_step is None:
                 result["resumable"] = False
                 result["resume_why_not"] = ("the missed screen is not the one a route step's own "
@@ -3661,6 +3768,15 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         elif not preserve_specimen:
             _read_title(title, manifest, result, out, disks, registered,
                         kept_before, letter, accept, measure, steps, reload)
+        if observe_load:
+            result["success"] = bool(
+                result["success"] and result.get("completed")
+                and result.get("observation", {}).get("geo_id")
+                and not result["unguarded"] and stopped and result.get("release")
+                and set(result["fetched"]) == {"disk1", "disk2", "disk3"}
+                and all(result["disks_unchanged"].values())
+                and all(result["working_unchanged"].values())
+                and not any(k.endswith("_error") for k in result))
         if preserve_specimen and title is None:
             try:
                 if result["success"] and "release_error" not in result:
@@ -5294,7 +5410,12 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--write-keys", help="Silver Blades only: comma-separated keys that write; default B")
     m.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
     m.add_argument("--read-at", action="append", type=_read_at_arg, metavar="STEP:ADDR:LEN",
-                   help=READ_AT_HELP)
+                    help=READ_AT_HELP)
+    o = sub.add_parser("observe-load", help="guarded original B load and read-only resident map observation")
+    common(o, emulator=False)
+    o.set_defaults(deadline=1500)
+    o.add_argument("--guards", required=True, type=pathlib.Path)
+    o.add_argument("--identity", required=True, type=pathlib.Path)
     a = sub.add_parser("accept", help="guarded load, sheet, two saves around a walk and the read-back")
     common(a)
     a.add_argument("--guards", required=True, type=pathlib.Path)
@@ -5346,6 +5467,29 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--guards", required=True, type=pathlib.Path)
     d.add_argument("--boot-limit", type=float, default=300)
     args = parser.parse_args(argv)
+    if args.command == "observe-load":
+        if args.title != "darkness" or args.published_disk_one or not 300 < args.deadline <= 1500:
+            parser.error("observe-load requires original darkness and a deadline through 1500 seconds")
+        if args.audio_proof is None or args.holder is None or args.attempt is None:
+            parser.error("observe-load requires --audio-proof, --holder and --attempt")
+        try:
+            guard, identity = PixelGuards(args.guards), PixelGuards(args.identity)
+            manifest = _observe_preclaim(args.manifest, guard, identity)
+            title = dataclasses.replace(
+                DARKNESS, measure_route=DARKNESS.measure_route[:10],
+                interstitials=(DARKNESS_INTRO,), interstitial_letters=(),
+                move_again_after=frozenset())
+            with terminating():
+                result = run_recon(
+                    args.manifest, guest=WinGuest(), guard=guard, identity=identity,
+                    holder=args.holder, audio_proof=args.audio_proof, attempt=args.attempt,
+                    deadline_seconds=args.deadline, title=title, measure=True,
+                    wait_lane=args.wait_lane, cli_title="darkness", observe_load=True)
+        except (RouteError, OSError, ValueError, KeyError) as exc:
+            print(f"acceptance: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=1, sort_keys=True))
+        return 0 if result["success"] else 2
     if args.command in ("boot", "halt"):
         command = ["tools/amiga/acceptance.py", *(sys.argv[1:] if argv is None else argv)]
         try:

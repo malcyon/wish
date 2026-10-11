@@ -12,6 +12,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -1057,6 +1058,212 @@ def test_darkness_measure_ends_at_the_camp_save_picker_and_writes_nothing(tmp_pa
              if c[0] in ("press", "insert")]
     assert order == "P L P B insert SPACE V E B X RET NP8 E S".split()
     assert not {"F", "G", "I", "J", "Y"} & set(_keys(guest))
+
+
+def _observe_fixture(tmp_path, monkeypatch):
+    names = ["ALPHA", "BETA", "GAMMA", "DELTA", "EPSILON", "ZETA"]
+    slot_b = _slot(DARK_START, names)
+    disks = {key: _adf(tmp_path / f"{key}.adf", volume, slots)
+             for key, volume, slots in (
+                 ("disk1", "POD 1", ()), ("disk2", "POD 2", ()),
+                 ("disk3", "POD 3", [("B", slot_b)]))}
+    save_disk = AmigaDisk.open(str(tmp_path / "disk3.adf"))
+    assert _letters(save_disk) == ["B"]
+    assert _files(save_disk, "B") == {"savgamB.sav": slot_b}
+
+    def observed_slot_files(disk, letter):
+        return _files(disk, letter) if letter in _letters(disk) else {}
+
+    manifest = {"title": "darkness", "disks": disks, "registered": {},
+                "loaded_letter": "B", "names_a": names, "state_a": DARK_START}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(foundation, "OBSERVE_MANIFEST", path)
+    for key in disks:
+        monkeypatch.setattr(foundation, f"DARKNESS_{key.upper()}_SHA256", disks[key]["sha256"])
+    monkeypatch.setattr(foundation, "OBSERVE_SLOT_SHA256",
+                        hashlib.sha256(AmigaDisk.open(str(tmp_path / "disk3.adf"))
+                                       .read_file("/SAVE/savgamB.sav")).hexdigest())
+    monkeypatch.setattr(foundation.amigatarget, "executable", lambda *args: b"generated engine")
+    monkeypatch.setattr(foundation.amigatarget, "verify", lambda *args: [])
+    monkeypatch.setattr(foundation, "OBSERVE_ENGINE_SHA256",
+                        hashlib.sha256(b"generated engine").hexdigest())
+    monkeypatch.setattr(foundation, "DARKNESS", _dark_title())
+    title = dataclasses.replace(_dark_title(), measure_route=_dark_title().measure_route[:10],
+                                slot_files=observed_slot_files,
+                                interstitials=(route_darkness.DARKNESS_INTRO,),
+                                interstitial_letters=(), move_again_after=frozenset())
+    guard = MapGuard(states=(*DARK_STATES, "intro"),
+                     on={"title": lambda crop: crop.stem.startswith("00-boot")})
+    return path, title, guard, names
+
+
+class ObserveGuest(DarkGuest):
+    """The observation fake records release and returns the lane's successful receipt."""
+
+    def release(self, holder, timeout=None):
+        super().release(holder, timeout=timeout)
+        return "ok released"
+
+
+def _observe_run(path, title, guard, clock, *, guest=None, identity=None):
+    guest = guest or ObserveGuest(clock, save_key="disk3")
+    guest.place = dict(DARK_START)
+    result = foundation.run_recon(
+        path, guest=guest, guard=guard,
+        identity=_IdentityMap() if identity is None else identity,
+        holder="wish359-test", audio_proof=_audio_proof(path.parent), title=title,
+        measure=True, observe_load=True, deadline_seconds=1500)
+    return guest, result
+
+
+def test_observe_load_has_exact_guarded_ten_key_prefix_and_unchanged_disks(
+        tmp_path, monkeypatch, clock):
+    path, title, guard, names = _observe_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(foundation, "_observe_world", lambda *args: {"geo_id": "GEO21"})
+    guest, result = _observe_run(path, title, guard, clock)
+    assert result["success"] is True
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [(c[0], c[2] if c[0] == "press" else c[1]) for c in guest.calls
+            if c[0] in ("press", "insert")][3:6] == [
+                ("press", "B"), ("insert", 0), ("press", "SPACE")]
+    assert result["disks_unchanged"] == dict.fromkeys(("disk1", "disk2", "disk3"), True)
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+def test_observe_load_missing_release_receipt_is_not_success(tmp_path, monkeypatch, clock):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(foundation, "_observe_world", lambda *args: {"geo_id": "GEO21"})
+    guest, result = _observe_run(path, title, guard, clock,
+                                 guest=DarkGuest(clock, save_key="disk3"))
+    assert result["completed"] and result["observation"]["geo_id"] == "GEO21"
+    assert result["release"] is None and result["success"] is False
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+def test_observe_load_release_error_is_not_success(tmp_path, monkeypatch, clock):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(foundation, "_observe_world", lambda *args: {"geo_id": "GEO21"})
+
+    class ReleaseFails(ObserveGuest):
+        def release(self, holder, timeout=None):
+            super().release(holder, timeout=timeout)
+            raise RuntimeError("synthetic release failed")
+
+    guest, result = _observe_run(path, title, guard, clock,
+                                 guest=ReleaseFails(clock, save_key="disk3"))
+    assert result["completed"] and result["observation"]["geo_id"] == "GEO21"
+    assert result["release_error"] == "RuntimeError: synthetic release failed"
+    assert result["success"] is False
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+@pytest.mark.parametrize("damage", ["disk1", "disk2", "disk3", "slot", "engine", "identity"])
+def test_observe_load_fails_closed_before_claim_on_wrong_media_or_identity(
+        tmp_path, monkeypatch, clock, damage):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+    guest = DarkGuest(clock, save_key="disk3")
+    if damage.startswith("disk"):
+        (tmp_path / f"{damage}.adf").write_bytes(b"wrong disk")
+    elif damage == "slot":
+        monkeypatch.setattr(foundation, "OBSERVE_SLOT_SHA256", "0" * 64)
+    elif damage == "engine":
+        monkeypatch.setattr(foundation, "OBSERVE_ENGINE_SHA256", "0" * 64)
+    with pytest.raises(winuaesession.RouteError):
+        _observe_run(path, title, guard, clock, guest=guest,
+                     identity=(_IdentityMap() if damage != "identity" else {}))
+    assert not any(c[0] == "claim" for c in guest.calls)
+
+
+def test_observe_load_wrong_sheet_identity_stops_before_the_next_key(
+        tmp_path, monkeypatch, clock):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+    guest, result = _observe_run(path, title, guard, clock,
+                                 identity=_IdentityMap(fail=("sheet",)))
+    assert result["success"] is False
+    assert result["error"] == "RouteError: sheet shows another member"
+    assert _keys(guest) == "P L P B SPACE V".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+def test_observe_load_wrong_live_identity_stops_without_another_key(
+        tmp_path, monkeypatch, clock):
+    path, title, guard, names = _observe_fixture(tmp_path, monkeypatch)
+    members = [SimpleNamespace(slot=i, name=name) for i, name in enumerate(names)]
+    members[3].name = "WRONG MEMBER"
+    monkeypatch.setattr(foundation.amigatarget, "connect_pipe",
+                        lambda *args, **kwargs: object())
+    monkeypatch.setattr(foundation.amigaparty, "mode", lambda target: 2)
+    monkeypatch.setattr(foundation.amigaparty, "read_party", lambda target: tuple(members))
+    guest, result = _observe_run(path, title, guard, clock)
+    assert result["success"] is False
+    assert result["error"] == "RouteError: observe-load live mode or party differs from original B"
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+def test_observe_load_observer_failure_still_stops_fetches_and_releases(
+        tmp_path, monkeypatch, clock):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+
+    def failed(*args):
+        raise RuntimeError("synthetic observer failed")
+
+    monkeypatch.setattr(foundation, "_observe_world", failed)
+    guest, result = _observe_run(path, title, guard, clock)
+    assert result["success"] is False and "synthetic observer failed" in result["error"]
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
+        "stop", "get", "get", "get", "release"]
+
+
+def test_observe_load_keeps_first_unknown_pair_and_never_answers_it(
+        tmp_path, monkeypatch, clock):
+    path, title, base, _ = _observe_fixture(tmp_path, monkeypatch)
+
+    class UnknownGuard(MapGuard):
+        def __call__(self, state, crop):
+            if state == "world":
+                return False
+            return super().__call__(state, crop)
+
+    guard = UnknownGuard(states=base.states, on=base.on)
+    guest, result = _observe_run(path, title, guard, clock)
+    assert result["success"] is False and "not recognized" in result["error"]
+    assert _keys(guest) == "P L P B SPACE V E B X RET".split()
+    assert len(result["first_unknown"]) == 1
+    first = result["first_unknown"][0]
+    assert first["step"] == 10 and first["state"] == "world"
+    assert pathlib.Path(first["raw"]).read_bytes().startswith(b"grab ")
+    assert pathlib.Path(first["crop"]).read_bytes() == b"frame 10"
+    assert hashlib.sha256(pathlib.Path(first["raw"]).read_bytes()).hexdigest() == first["raw_sha256"]
+    assert hashlib.sha256(pathlib.Path(first["crop"]).read_bytes()).hexdigest() == first["crop_sha256"]
+    assert pathlib.Path(result["events"][-1].get("crop", first["crop"])).exists()
+    assert guest.calls.count(("grab", "10-world")) > 1
+
+
+def test_observe_load_rejects_other_routes_and_cli_options(tmp_path, monkeypatch, clock):
+    path, title, guard, _ = _observe_fixture(tmp_path, monkeypatch)
+    for alteration in (
+            {"measure_route": title.measure_route + (("NP8", "world", "move"),)},
+            {"interstitials": (route_darkness.DARKNESS_INTRO,
+                               ("continue", ("keys", "RET"), frozenset({"world"}), 1))},
+            {"measure_loose": frozenset({"world"})}):
+        guest = DarkGuest(clock, save_key="disk3")
+        with pytest.raises(winuaesession.RouteError, match="options or route"):
+            _observe_run(path, dataclasses.replace(title, **alteration), guard, clock, guest=guest)
+        assert not any(c[0] == "claim" for c in guest.calls)
+    with pytest.raises(SystemExit):
+        foundation.main(["observe-load", "--title", "darkness", "--manifest", str(path),
+                         "--guards", "g", "--identity", "i", "--holder", "h",
+                         "--attempt", "a", "--audio-proof", "p", "--route", "NP8:world"])
 
 
 def test_darkness_route_and_measure_route_are_pinned_and_write_only_f_and_g():

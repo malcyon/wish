@@ -22,6 +22,50 @@ from tools.amiga import (
 )
 
 
+def test_observe_world_requires_unique_full_geo_and_original_party(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from automap import amiga
+
+    disk3 = tmp_path / "synthetic.adf"
+    disk3.write_bytes(b"generated")
+    crop = tmp_path / "world.png"
+    crop.write_bytes(b"generated world")
+    names = [f"MEMBER {n}" for n in range(6)]
+    members = [SimpleNamespace(name=name, slot=n) for n, name in enumerate(names)]
+    target = SimpleNamespace(data_base=0x1000, fix=lambda: SimpleNamespace(
+        x=1, y=2, facing=1, world_map=False),
+        read=lambda address, length: b"\x00\x02",
+        resident_geo_address=lambda: 0x2000, geo=lambda: b"x" * 1024)
+    monkeypatch.setattr(acceptance.amigatarget, "connect_pipe", lambda *a, **k: target)
+    monkeypatch.setattr(acceptance.amigaparty, "mode", lambda t: 2)
+    monkeypatch.setattr(acceptance.amigaparty, "read_party", lambda t: members)
+    monkeypatch.setattr(amiga, "load_maps", lambda p: {
+        "GEO21": SimpleNamespace(to_bytes=lambda: b"x" * 1024),
+        "GEO02": SimpleNamespace(to_bytes=lambda: b"y" * 1024)})
+    def guard(state, path):
+        return False
+    result = acceptance._observe_world("holder", {"names_a": names}, disk3, guard, crop)
+    assert result["dungeon_map_raw"] == "0002" and result["geo_id"] == "GEO21"
+    assert result["geo_pointer"] == 0x2000 and result["geo_matches"] == ["GEO21"]
+    monkeypatch.setattr(target, "resident_geo_address", lambda: None)
+    with pytest.raises(winuaesession.RouteError, match="no complete resident GEO"):
+        acceptance._observe_world("holder", {"names_a": names}, disk3, guard, crop)
+    monkeypatch.setattr(target, "resident_geo_address", lambda: 0x2000)
+    monkeypatch.setattr(amiga, "load_maps", lambda p: {
+        "GEO21": SimpleNamespace(to_bytes=lambda: b"x" * 1024),
+        "GEO33": SimpleNamespace(to_bytes=lambda: b"x" * 1024)})
+    ambiguous = acceptance._observe_world("holder", {"names_a": names}, disk3, guard, crop)
+    assert ambiguous["geo_id"] is None and ambiguous["geo_matches"] == ["GEO21", "GEO33"]
+    monkeypatch.setattr(acceptance.amigaparty, "read_party", lambda t: members[:-1])
+    with pytest.raises(winuaesession.RouteError, match="party differs"):
+        acceptance._observe_world("holder", {"names_a": names}, disk3, guard, crop)
+    monkeypatch.setattr(acceptance.amigaparty, "read_party", lambda t: members)
+    monkeypatch.setattr(target, "fix", lambda: None)
+    with pytest.raises(winuaesession.RouteError, match="fix differs"):
+        acceptance._observe_world("holder", {"names_a": names}, disk3, guard, crop)
+
+
 @pytest.fixture
 def clock(monkeypatch):
     class Clock:
@@ -725,5 +769,3 @@ def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_blocked(
     shot = _image(tmp_path / "shot.png", (0, 51, 102))
     with pytest.raises(winuaesession.RouteError, match="invalid crop box"):
         screens.guard_rule(shot, box)
-
-
