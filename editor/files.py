@@ -234,25 +234,33 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
         touched: list[pathlib.Path] = []
         try:
             for path in changed:
-                touched.append(path)
-                if path.exists():
+                if os.path.lexists(path):
                     # Renamed, not copied: restoring it later costs no space.
                     keep = path.with_name(
                         f".{path.name}.{uuid.uuid4().hex}.orig")
                     os.rename(path, keep)
                     held[path] = keep
+                touched.append(path)    # only once its original is aside
                 replacement = temporary.get(path)
                 if replacement is not None:
                     os.replace(replacement, path)
                     del temporary[path]
         except BaseException:
             for path in reversed(touched):
-                path.unlink(missing_ok=True)
-                if path in held:
-                    os.rename(held[path], path)
+                try:
+                    path.unlink(missing_ok=True)
+                    if path in held:
+                        os.rename(held[path], path)
+                except OSError:
+                    _log.exception("restoring %s failed; its original is %s",
+                                   path, held.get(path))
             raise
         for keep in held.values():
-            keep.unlink(missing_ok=True)
+            try:
+                keep.unlink(missing_ok=True)
+            except OSError:
+                _log.warning("could not remove %s after saving", keep,
+                             exc_info=True)
     finally:
         for path in temporary.values():
             path.unlink(missing_ok=True)

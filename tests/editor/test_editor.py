@@ -488,6 +488,80 @@ def test_a_save_folder_that_fails_part_way_restores_every_original_on_a_full_dri
         "A.CHR", "B.CHR", "backups"]
 
 
+def _folder_of_two(tmp_path):
+    first, second = tmp_path / "A.CHR", tmp_path / "B.CHR"
+    first.write_bytes(b"first original")
+    second.write_bytes(b"second original")
+    return first, second, {first: b"first new, longer",
+                           second: b"second new, longer"}
+
+
+def test_a_save_folder_whose_first_rename_fails_leaves_everything_as_it_was(
+        tmp_path, monkeypatch):
+    import errno
+
+    from editor import files
+
+    first, second, written = _folder_of_two(tmp_path)
+
+    def locked(src, dst):
+        raise OSError(errno.EACCES, "locked")
+
+    monkeypatch.setattr(files.os, "rename", locked)
+    with pytest.raises(OSError) as raised:
+        files.save_folder(written, tmp_path / "backups")
+    assert raised.value.errno == errno.EACCES
+    assert first.read_bytes() == b"first original"
+    assert second.read_bytes() == b"second original"
+
+
+def test_a_save_folder_rollback_goes_on_after_one_restore_fails(
+        tmp_path, monkeypatch):
+    import errno
+    import os
+
+    from editor import files
+
+    first, second, written = _folder_of_two(tmp_path)
+    real_replace, real_rename = os.replace, os.rename
+    moves, restores = [], []
+
+    def replace(src, dst):
+        moves.append(dst)
+        if len(moves) == 2:
+            raise OSError(errno.EIO, "second move")
+        return real_replace(src, dst)
+
+    def rename(src, dst):
+        if str(dst) in (str(first), str(second)):
+            restores.append(dst)
+            if len(restores) == 1:
+                raise OSError(errno.EACCES, "restore")
+        return real_rename(src, dst)
+
+    monkeypatch.setattr(files.os, "replace", replace)
+    monkeypatch.setattr(files.os, "rename", rename)
+    with pytest.raises(OSError) as raised:
+        files.save_folder(written, tmp_path / "backups")
+    assert raised.value.errno == errno.EIO
+    assert len(restores) == 2
+    assert first.read_bytes() == b"first original"
+    # The one that could not be renamed back is still held under its aside name.
+    assert [p.read_bytes() for p in tmp_path.glob(".B.CHR.*.orig")] == [
+        b"second original"]
+
+
+def test_a_save_folder_sets_aside_and_restores_a_dangling_symlink(tmp_path):
+    from editor import files
+
+    link = tmp_path / "A.CHR"
+    link.symlink_to(tmp_path / "missing")
+    other = tmp_path / "B.CHR"
+    other.write_bytes(b"x")
+    files.save_folder({link: b"new", other: None}, tmp_path / "backups")
+    assert not link.is_symlink() and link.read_bytes() == b"new"
+
+
 def test_a_backup_is_made_and_the_original_is_unchanged(tmp_path):
     f = tmp_path / "x.d64"
     f.write_bytes(b"before")
