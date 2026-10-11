@@ -211,19 +211,19 @@ def test_b_every_field_the_c64_writer_takes_has_a_boundary(game):
 
 
 def test_b_a_later_title_copy_without_a_boundary_is_caught(monkeypatch):
-    """A new Curse-only copy cannot borrow Pool's scalar coverage."""
-    curse = "curse-of-the-azure-bonds"
+    """A new Silver Blades copy cannot borrow another title's scalar coverage."""
+    silver = "secret-of-the-silver-blades"
     original = c64_codec.field_disposition
 
     def with_unmeasured_copy(game=None):
         disposition = original(game)
-        if game == curse:
+        if game == silver:
             disposition["creature_type"] = "copied to a newly mapped byte"
         return disposition
 
     monkeypatch.setattr(c64_codec, "field_disposition", with_unmeasured_copy)
     with pytest.raises(AssertionError) as caught:
-        test_b_every_field_the_c64_writer_takes_has_a_boundary(curse)
+        test_b_every_field_the_c64_writer_takes_has_a_boundary(silver)
     assert "creature_type" in str(caught.value)
 
 

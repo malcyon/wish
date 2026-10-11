@@ -8684,10 +8684,26 @@ def test_a_repeated_record_offset_keeps_the_last_value(tmp_path):
 
 
 def test_read_slot_gives_none_for_a_byte_a_title_has_not_mapped(tmp_path):
-    (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(13149))
-    (tmp_path / "CHRDATJ1.SAV").write_bytes(_curse_record())
+    (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(5469))
+    record = bytearray(439)
+    record[0], record[1:6] = 5, b"GUARD"
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(record)
     out = da.read_slot(tmp_path, "J")["characters"][0]
     assert out["creature_type"] is None
+    assert out["status_bytes"] == [0, 0, 0, 0]
+    assert (out["turn_class"], out["movement"]) == (0, 0)
+
+
+def test_read_slot_reports_curse_creature_type(tmp_path):
+    from goldbox import dos_port
+
+    (tmp_path / "SAVGAMJ.DAT").write_bytes(bytes(13149))
+    record = bytearray(_curse_record())
+    field = dos_port.FIELDS_BY_NAME_FOR["curse-of-the-azure-bonds"]["creature_type"]
+    record[field.offset] = 4
+    (tmp_path / "CHRDATJ1.SAV").write_bytes(record)
+    out = da.read_slot(tmp_path, "J")["characters"][0]
+    assert out["creature_type"] == 4
     assert out["status_bytes"] == [0, 0, 0, 0]
     assert (out["turn_class"], out["movement"]) == (0, 0)
 
