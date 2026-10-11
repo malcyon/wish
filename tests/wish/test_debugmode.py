@@ -692,14 +692,16 @@ def test_the_row_follows_the_title_when_the_disks_change(app):
     row.set_title(c64_port.SECRET_OF_THE_SILVER_BLADES.title,
                   c64_port.SECRET_OF_THE_SILVER_BLADES)
     assert row.fasttravel.game is c64_port.SECRET_OF_THE_SILVER_BLADES
-    # Silver Blades has a table now -- twenty-two areas, two of them (the mine
-    # levels, which a trip cannot enter) not offered, fourteen of them
+    # Silver Blades has a table now -- twenty-two areas, three of them (the mine
+    # levels, which a trip cannot enter, and the title screen's demo, area 4)
+    # not offered, fourteen of them
     # driven into on a running machine (`#20 (Build an area table for Silver
     # Blades)`) -- and `automap/config.py` gives it no default ticks, so the
     # dropdown is empty because nothing is chosen rather than because there is
     # nothing to choose. `all_rows` is the table and `rows` is the ticks.
     assert row.rows == ()
-    assert len(row.all_rows) == 20
+    assert len(row.all_rows) == 19
+    assert 0x04 not in [r.id for r in row.all_rows]
     assert "No areas ticked" in row.combo.itemText(0)
     row.set_title(c64_port.POOL_OF_RADIANCE.title, c64_port.POOL_OF_RADIANCE)
     assert row.fasttravel.game is c64_port.POOL_OF_RADIANCE
