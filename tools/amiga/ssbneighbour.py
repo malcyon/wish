@@ -39,6 +39,11 @@ from tools.amiga.winuaesession import (  # noqa: E402
 TITLE = "secret-of-the-silver-blades"
 GUARDS = pathlib.Path(__file__).with_name("guards_silver_blades.json")
 VARIABLES = {0x4C62, 0x4C2A, 0x4CFD, 0x4CFE, 0x4C6C, 0x4C6D}
+WELL_PENDING_STDERR = (
+    "Leg 1 (the trip) never became ready for Fast Travel.\n"
+    "The leg reached area 33 and the game is still waiting on its screen; "
+    "give its keys with --arrival-answer (repeat it for several screens).\n"
+)
 
 
 def require(ok: bool, reason: str) -> None:
@@ -229,16 +234,29 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
                 stdout, stderr = proc.communicate(timeout=10)
         (out / "stdout.txt").write_text(stdout)
         (out / "stderr.txt").write_text(stderr)
-    require(proc.returncode == 0, f"trip child stopped with {proc.returncode}: {stderr[-500:]}")
     rows = [json.loads(line) for line in stdout.splitlines() if line.startswith("{")]
-    require(len(rows) == 1 and rows[0].get("result") == "idle" and rows[0].get("settled") is True,
+    pending_well = (start == 16 and end == 33 and arguments == ["--to", "33"]
+                    and proc.returncode == 1 and stderr == WELL_PENDING_STDERR
+                    and len(rows) == 1 and rows[0].get("result") == "idle"
+                    and rows[0].get("settled") is False
+                    and rows[0].get("areas_seen") == [16, 33]
+                    and rows[0].get("arrival_keys") == []
+                    and rows[0].get("arrival_answered") is False
+                    and isinstance(rows[0].get("party_before"), list)
+                    and len(rows[0]["party_before"]) == 6
+                    and all(isinstance(name, str) and name for name in rows[0]["party_before"])
+                    and rows[0].get("party_before") == rows[0].get("party_after"))
+    require(proc.returncode == 0 or pending_well,
+            f"trip child stopped with {proc.returncode}: {stderr[-500:]}")
+    require(len(rows) == 1 and rows[0].get("result") == "idle"
+            and (rows[0].get("settled") is True or pending_well),
             f"trip did not settle: {rows}")
     leg = rows[0]
     require(leg.get("areas_seen") == [start, end] and leg.get("arrival_keys") == []
             and leg.get("party_before") == leg.get("party_after"),
             f"trip diverged from {start} to {end}: {leg}")
-    return {"command": command, "result": leg, "stdout": str(out / "stdout.txt"),
-            "stderr": str(out / "stderr.txt")}
+    return {"command": command, "result": leg, "pending_well": pending_well,
+            "stdout": str(out / "stdout.txt"), "stderr": str(out / "stderr.txt")}
 
 
 def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
@@ -281,8 +299,9 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         guard_file = args.out / "guards.json"
         write_json(guard_file, json.loads(GUARDS.read_text())["guards"])
         guards = guards or PixelGuards(guard_file)
-        require({"title", "party_menu", "load_picker", "loaded_menu", "journal", "world"}
-                <= guards.rules.keys(), "Silver Blades load guards are missing")
+        require({"title", "party_menu", "load_picker", "loaded_menu", "journal", "world",
+                 "well_entry_continue"}
+                 <= guards.rules.keys(), "Silver Blades load guards are missing")
         proof = args.out / "mute.json"
         output = guest._run("ssh", acceptance.MUTE_READBACK, timeout=min(60, deadline - time.monotonic()))
         write_json(proof, json.loads(output[output.index("{"):]))
@@ -365,10 +384,19 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
                 observed("restored", 16, (3, 7, 2))
             if number in (2, 4):
                 snapshot(f"source-{source}")
-            receipt["trips"].append(executor(run_guard, disks, args.out / f"trip-{number}",
-                                             flags, source, destination))
+            leg = executor(run_guard, disks, args.out / f"trip-{number}",
+                           flags, source, destination)
+            receipt["trips"].append(leg)
             if number == 1:
-                observed("33", 33, (3, 3, 1))
+                if leg.get("pending_well"):
+                    prompt = reader(args.holder)
+                    check(prompt, names, 33, (1, 1, 2))
+                    receipt["reads"]["well_prompt"] = logged(prompt)
+                    run_guard.press("well_entry_continue", "RET")
+                    run_guard.see("world", 60)
+                    require(amigatrip.gate(reader(args.holder)["target"], amigatrip.row_for(TITLE)),
+                            "the Well world gate is still shut after Return")
+                observed("33", 33, (1, 1, 2))
             elif number == 2:
                 observed("52", 52, (2, 15, 3), {0x4C62: 5})
                 snapshot("destination-52")

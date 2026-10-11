@@ -7,9 +7,11 @@ import pathlib
 import subprocess
 
 import pytest
+from PIL import Image
 
 from automap import gamedisks
 from tools.amiga import ssbneighbour as neighbour
+from tools.amiga.screens import PixelGuards, guard_rule
 from tools.amiga.winuaesession import RouteError, ShotTimedOut
 
 
@@ -174,7 +176,7 @@ def test_journal_preflight_with_time_remaining_creates_no_output(tmp_path, monke
     (False, "child_timeout"),
 ])
 def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch,
-                                                             unknown_picker, failure):
+                                                             unknown_picker, failure, well_case=None):
     source = tmp_path / "inputs"
     source.mkdir()
     inputs = {}
@@ -209,11 +211,13 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
             if failure == "shot_timeout":
                 raise ShotTimedOut("winvm ssh exceeded its 20.0s limit")
             raw.write_bytes(b"synthetic raw")
-            crop.write_bytes(b"synthetic cropped")
+            crop.write_bytes(b"synthetic cropped " + (well_case or "normal").encode())
             return True
 
         def press(self, holder, key, timeout):
             events.append(("press", key))
+            if key == "RET" and well_case == "wrong_after":
+                current["square"] = (3, 3, 1)
 
         def snapshot(self, name, holder):
             if failure == "snapshot_before_create":
@@ -234,12 +238,17 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
 
     class Guards:
         rules = dict.fromkeys(("title", "party_menu", "load_picker", "loaded_menu",
-                              "journal", "world"))
+                               "journal", "world", "well_entry_continue"))
 
         def __contains__(self, name):
             return name in self.rules
 
         def __call__(self, state, crop):
+            if state == "well_entry_continue":
+                return well_case not in ("bar_only", "changed_story")
+            if state == "world" and well_case == "shut_world" and ("RET",) in [
+                    event[1:] for event in events if event[0] == "press"]:
+                return True
             return state != "journal" and not (unknown_picker and state == "load_picker")
 
     class State:
@@ -283,14 +292,17 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
         out.mkdir()
         (out / "stdout.txt").write_text(f"{start} -> {end}\n")
         (out / "stderr.txt").write_text("")
-        positions = {33: (3, 3, 1), 52: (2, 15, 3), 82: (1, 11, 1), 81: (15, 6, 3)}
+        positions = {33: (1, 1, 2), 52: (2, 15, 3), 82: (1, 11, 1), 81: (15, 6, 3)}
         current.update(area=end, square=positions[end])
+        if end == 33 and well_case == "wrong_prompt":
+            current["square"] = (3, 3, 1)
         if end == 52:
             current["variables"] = {"4C62": 5, "4C2A": 0}
         if end == 81:
             current["variables"] = dict.fromkeys(("4CFD", "4C6C"), 64) | dict.fromkeys(("4CFE", "4C6D"), 85)
-        return {"command": flags, "result": {"areas_seen": [start, end], "result": "idle",
-                                           "settled": True, "arrival_keys": [],
+        return {"command": flags, "pending_well": end == 33 and well_case is not None,
+                "result": {"areas_seen": [start, end], "result": "idle",
+                                           "settled": not (end == 33 and well_case is not None), "arrival_keys": [],
                                            "party_before": names, "party_after": names},
                 "stdout": str(out / "stdout.txt"), "stderr": str(out / "stderr.txt")}
 
@@ -302,17 +314,23 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
     monkeypatch.setattr(neighbour.acceptance, "halt_lane", halt)
     monkeypatch.setattr(neighbour.noencounters, "WinuaeState", lambda path: State())
     monkeypatch.setattr(neighbour.noencounters, "winuae_state_path", lambda holder: tmp_path / "gate.json")
+    monkeypatch.setattr(neighbour.amigatrip, "gate", lambda target, row: well_case != "shut_world")
     args = argparse.Namespace(manifest=original, holder="fake-holder", out=tmp_path / "result",
                               budget=3600, wait_lane=0, retry_of=None)
     options = dict(guest=Guest(), guards=Guards(), reader=lambda holder: current.copy(),
                    executor=execute, switch_factory=Switch)
-    if unknown_picker or failure:
+    if unknown_picker or failure or well_case in ("bar_only", "changed_story", "wrong_prompt",
+                                                  "wrong_after", "shut_world"):
         reason = "load_picker" if unknown_picker else {
             "snapshot_lost": "snapshot response lost",
             "snapshot_before_create": "snapshot creation stopped",
             "shot_timeout": "exceeded its",
             "child_timeout": "trip child exceeded its deadline",
-        }[failure]
+        }[failure] if failure else {
+            "bar_only": "well_entry_continue", "changed_story": "well_entry_continue",
+            "wrong_prompt": "square in 33", "wrong_after": "square in 33",
+            "shut_world": "world gate is still shut",
+        }[well_case]
         with pytest.raises(RouteError, match=reason):
             neighbour.run(args, **options)
     else:
@@ -335,9 +353,19 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
         assert [v[1] for v in events if v[0] == "switch"] == ["on", "NP8", "off"] * 2
     assert [v[1] for v in events if v[0] == "press"] == (
         [] if failure == "shot_timeout" else
-        ["P", "L"] if unknown_picker else ["P", "L", "D", "B"])
+        ["P", "L"] if unknown_picker else ["P", "L", "D", "B"] +
+        (["RET"] if well_case not in (None, "bar_only", "changed_story", "wrong_prompt") else []))
     if unknown_picker:
         assert not any(v[0] == "trip" for v in events)
+    if well_case is not None:
+        assert len([v for v in events if v[0] == "trip"]) == (
+            4 if well_case == "pending" else 1)
+        if well_case not in ("wrong_prompt", "bar_only", "changed_story"):
+            assert ("press", "RET") in events
+            assert events.index(("trip", 16, 33, ("--to", "33"),
+                                 str(args.out / "trip-1"), str(source))) < events.index(("press", "RET"))
+        else:
+            assert ("press", "RET") not in events
     if failure in ("snapshot_lost", "snapshot_before_create"):
         assert ("discard", "s0") in events
         assert not any(v[0] == "trip" for v in events)
@@ -350,7 +378,8 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
     assert all(hashlib.sha256((source / f"{key}.adf").read_bytes()).hexdigest() == inputs[key]["sha256"]
                for key in inputs)
     saved = json.loads((args.out / "receipt.json").read_text())
-    assert saved["success"] is (not unknown_picker and failure is None)
+    assert saved["success"] is (not unknown_picker and failure is None and
+                                well_case in (None, "pending"))
     assert saved["retryable"] is (failure == "shot_timeout")
     if failure in ("snapshot_lost", "snapshot_before_create"):
         assert saved["snapshots"] == ["s0"]
@@ -362,6 +391,112 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
         assert saved["halt"]["fetched"] == {"df0": {}, "df1": {}}
     if unknown_picker:
         assert list((args.out / "screens").glob("*-load_picker-raw.png"))
+    if well_case is not None:
+        if well_case == "wrong_prompt":
+            assert "well_prompt" not in saved["reads"]
+        else:
+            assert saved["reads"]["well_prompt"]["square"] == [1, 1, 2]
+        assert {"discard": "s0"} in saved["cleanup"]
+        assert saved["halt"]["fetched"] == {"df0": {}, "df1": {}}
+        if well_case in ("bar_only", "changed_story"):
+            assert list((args.out / "screens").glob("*-well_entry_continue-raw.png"))
+
+
+@pytest.mark.parametrize("well_case", ["pending", "bar_only", "changed_story",
+                                         "wrong_prompt", "wrong_after", "shut_world"])
+def test_well_page_allows_only_one_guarded_return_before_the_next_leg(tmp_path, monkeypatch,
+                                                                       well_case):
+    test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch, False, None,
+                                                            well_case)
+
+
+@pytest.mark.parametrize("change", [None, "stderr", "extra_error", "wrong_area", "wrong_names",
+                                    "already_answered", "wrong_flags", "wrong_leg", "extra_row",
+                                    "wrong_result", "empty_name", "wrong_code"])
+def test_child_only_admits_the_exact_pending_well_outcome(tmp_path, monkeypatch, change):
+    names = [f"Member {n}" for n in range(6)]
+    summary = {"result": "idle", "settled": False, "areas_seen": [16, 33],
+               "arrival_keys": [], "arrival_answered": False,
+               "party_before": names, "party_after": names.copy()}
+    stderr = neighbour.WELL_PENDING_STDERR
+    flags, start, end, code = ["--to", "33"], 16, 33, 1
+    if change == "stderr":
+        stderr = "Leg 1 never became ready.\n"
+    elif change == "extra_error":
+        stderr += "Another child error.\n"
+    elif change == "wrong_area":
+        summary["areas_seen"] = [16, 52]
+    elif change == "wrong_names":
+        summary["party_after"][-1] = "Different"
+    elif change == "already_answered":
+        summary["arrival_answered"] = True
+    elif change == "wrong_flags":
+        flags = ["--to", "33", "--arrival-answer", "RET"]
+    elif change == "wrong_leg":
+        start = 33
+    elif change == "wrong_result":
+        summary["result"] = "failed"
+    elif change == "empty_name":
+        summary["party_before"][-1] = summary["party_after"][-1] = ""
+    elif change == "wrong_code":
+        code = 2
+    stdout = json.dumps(summary) + "\n"
+    if change == "extra_row":
+        stdout += json.dumps(summary) + "\n"
+
+    class Child:
+        returncode = code
+
+        def communicate(self, timeout):
+            return stdout, stderr
+
+        def poll(self):
+            return self.returncode
+
+    class Run:
+        holder = "fake-holder"
+
+        def left(self, cap):
+            return cap
+
+    monkeypatch.setattr(neighbour.subprocess, "Popen", lambda *a, **k: Child())
+    out = tmp_path / "child"
+    if change is None:
+        leg = neighbour.trip(Run(), tmp_path, out, flags, start, end)
+        assert leg["pending_well"] is True
+        assert leg["result"] == summary
+    else:
+        with pytest.raises(RouteError):
+            neighbour.trip(Run(), tmp_path, out, flags, start, end)
+    assert (out / "stdout.txt").read_text() == stdout
+    assert (out / "stderr.txt").read_text() == stderr
+
+
+def test_well_guard_requires_both_independent_boxes_on_one_screen(tmp_path):
+    declared = json.loads(neighbour.GUARDS.read_text())["guards"]
+    well = declared["well_entry_continue"]
+    assert well["box"] == [88, 302, 700, 360]
+    assert well["sha256"] == "c1297615077eee8f4a32bce0d85770fcf1b7893fad3b49194d8edba9b1c3954b"
+    assert well["and"] == [{key: declared["continue"][key] for key in ("box", "sha256")}]
+    assert well["example"] == "WISH-367/amiga-neighbour/normal2/well-entry-canonical.png"
+    complete = tmp_path / "complete.png"
+    frame = Image.new("RGB", (720, 568), "black")
+    frame.paste("blue", tuple(well["box"]))
+    frame.paste("white", tuple(well["and"][0]["box"]))
+    frame.save(complete)
+    rule = guard_rule(complete, well["box"])
+    rule["and"] = [guard_rule(complete, well["and"][0]["box"])]
+    file = tmp_path / "synthetic-guards.json"
+    file.write_text(json.dumps({"well": rule}))
+    guards = PixelGuards(file)
+    assert guards("well", complete)
+    for label, box in (("changed_story", well["box"]),
+                       ("bar_only", well["box"]), ("changed_bar", well["and"][0]["box"])):
+        altered = frame.copy()
+        altered.paste("red" if label != "bar_only" else "black", tuple(box))
+        shot = tmp_path / f"{label}.png"
+        altered.save(shot)
+        assert not guards("well", shot)
 
 
 def test_an_overrunning_child_is_stopped_and_keeps_its_logs(tmp_path, monkeypatch):

@@ -1785,6 +1785,20 @@
       "example": "640/ssb2/accept2/shots/11-world.png",
       "sha256": "605efa442147026c8e87487103e1fd24cfd16f148e522f6cbc0cbe83e8620367"
     },
+    "well_entry_continue": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [186, 404, 586, 426],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [88, 302, 700, 360],
+      "example": "WISH-367/amiga-neighbour/normal2/well-entry-canonical.png",
+      "sha256": "c1297615077eee8f4a32bce0d85770fcf1b7893fad3b49194d8edba9b1c3954b"
+    },
     "world": {
       "also": [],
       "box": [
