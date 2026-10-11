@@ -104,14 +104,6 @@ player can reach this" is an answer, and a guess is not. Present one decision
 at a time, in conversation, with the options framed by what the player would
 see. A decision presented without this has not been presented.
 
-## Caveman lite is the default, in every session
-
-Use **`/caveman lite`** from the start of each session until Donald says
-"stop caveman" or "normal mode". Cut filler and hedging, but keep articles
-and complete sentences; clarity wins. **This governs terminal replies only.**
-Commit messages, issues, documentation, code comments and subagent briefs use
-normal prose.
-
 ## What must never enter this repository
 
 This project documents a game it does not ship. **Never commit, in any form:**
