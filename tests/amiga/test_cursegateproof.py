@@ -773,3 +773,111 @@ def test_failed_release_and_status_leave_holder_unresolved(cleanup_run, monkeypa
     assert "release receipt lost" in str(report["cleanup"])
     assert "status lost" in str(report["cleanup"])
     assert report["verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize("failure", ["restore", "readback", "journal"])
+def test_unverified_snapshot_is_retained_while_owned_lane_stops(
+        cleanup_run, monkeypatch, failure):
+    now, scenario, lane, run = cleanup_run
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        report["snapshot_attempted"] = {"holder": holder, "name": proof.SNAPSHOT}
+        report["snapshot"] = guest.snapshot(proof.SNAPSHOT, holder)
+        report["snapshot_taken"] = True
+        now[0] = 1700.0
+
+    monkeypatch.setattr(proof, "proof", route)
+    if failure == "restore":
+        scenario.guest.restore = lambda name, holder: scenario.guest.calls.append(
+            "restore") or (_ for _ in ()).throw(RouteError("state file missing"))
+    elif failure == "readback":
+        original_pinned = proof.pinned
+        counts = [0]
+
+        def failed_readback(target, expected):
+            counts[0] += 1
+            if counts[0] == 2:
+                raise RouteError("original statement readback lost")
+            return original_pinned(target, expected)
+
+        monkeypatch.setattr(proof, "pinned", failed_readback)
+    else:
+        original_load = scenario.journal.load
+        counts = [0]
+
+        def failed_journal():
+            counts[0] += 1
+            if counts[0] == 4:
+                raise RouteError("journal readback lost")
+            return original_load()
+
+        monkeypatch.setattr(scenario.journal, "load", failed_journal)
+    report = run()
+    assert scenario.guest.calls == ["snapshot", "restore"]
+    assert report["snapshot_unresolved"] == {
+        "holder": "wish365-ecl01", "name": proof.SNAPSHOT,
+        "exists": None, "discard_attempted": False}
+    assert [event[0] for event in lane if isinstance(event, tuple)] == [
+        "stop", "get", "get", "release"]
+    assert any("snapshot_error" in event for event in report["cleanup"])
+    assert report["verdict"] == "inconclusive"
+
+
+FOUR_CLAIMS = ("lanes = 4\nclaim = none\nclaim 2 = other since 2026-10-11\n"
+               "claim 3 = none\nclaim 4 = none")
+
+
+@pytest.mark.parametrize("reply", [
+    "", "no claims", "claim = none", "lanes = 3\n" + FOUR_CLAIMS,
+    FOUR_CLAIMS.replace("claim 4 = none", ""),
+    FOUR_CLAIMS + "\nclaim 4 = none",
+    FOUR_CLAIMS.replace("claim 3 = none", "claim 3 = none since yesterday"),
+    FOUR_CLAIMS.replace("claim 3 = none", "claim 3 = other"),
+    FOUR_CLAIMS.replace("claim 3 = none", "claim 5 = none"),
+])
+def test_lost_release_with_incomplete_guest_status_cannot_resolve_holder(
+        cleanup_run, monkeypatch, reply):
+    now, scenario, lane, run = cleanup_run
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        now[0] = 1760.0
+        raise RouteError("route fault")
+
+    monkeypatch.setattr(proof, "proof", route)
+    scenario.guest.release = lambda holder, timeout: (_ for _ in ()).throw(
+        RouteError("release reply lost"))
+    scenario.guest.status = lambda timeout: reply
+    report = run()
+    assert report["error"].endswith("route fault")
+    assert report["holder_status"] == reply
+    assert report["holder_unresolved"] is True
+    assert any("status_error" in item for item in report["cleanup"])
+    assert report["verdict"] == "inconclusive"
+
+
+@pytest.mark.parametrize("held", [False, True])
+def test_complete_status_checks_exact_claim_not_unrelated_diagnostics(
+        cleanup_run, monkeypatch, held):
+    now, scenario, lane, run = cleanup_run
+
+    def route(shots, target, switch, state, guest, holder, guard, report):
+        scenario.square = (4, 14, 1)
+        now[0] = 1760.0
+        raise RouteError("route fault")
+
+    monkeypatch.setattr(proof, "proof", route)
+    scenario.guest.release = lambda holder, timeout: (_ for _ in ()).throw(
+        RouteError("release reply lost"))
+    status = FOUR_CLAIMS.replace("claim 3 = none", (
+        "claim 3 = wish365-ecl01 since yesterday" if held else "claim 3 = none"))
+    if not held:
+        status += "\nrun = wish365-ecl01 appears only in diagnostics"
+    scenario.guest.status = lambda timeout: status
+    report = run()
+    assert report["holder_status"] == status
+    assert report["holder_unresolved"] is held
+    assert not any("status_error" in item for item in report["cleanup"])
+    assert any("halt_error" in item for item in report["cleanup"])
+    assert report["verdict"] == "inconclusive"

@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import json
 import pathlib
+import re
 import shutil
 import signal
 import sys
@@ -23,7 +24,13 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap import amiga, amigaparty, amigatrip, amigavars  # noqa: E402
-from tools.amiga import acceptance, noencounters, route_curse, screens  # noqa: E402
+from tools.amiga import (  # noqa: E402
+    acceptance,
+    noencounters,
+    route_curse,
+    screens,
+    winvmguest,
+)
 from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
@@ -71,6 +78,31 @@ def record(path: pathlib.Path, report: dict) -> None:
 def receipt_of(value: Any) -> Any:
     """Keep a pipe receipt in JSON without discarding its diagnostic fields."""
     return value.as_dict() if hasattr(value, "as_dict") else value
+
+
+def complete_claims(status: str) -> dict[int, tuple[str | None, str]]:
+    """Accept only a complete four-lane guest reply before inferring absent ownership."""
+    lines = [line.strip() for line in status.splitlines()]
+    require(lines.count("lanes = 4") == 1
+            and not any(re.match(r"^lanes\s*=", line) and line != "lanes = 4"
+                        for line in lines), "guest status has no unique four-lane count")
+    claims: dict[int, tuple[str | None, str]] = {}
+    for line in lines:
+        if not re.match(r"^claim(?:\s|=|$)", line):
+            continue
+        match = re.fullmatch(r"claim(?:\s+([1-4]))?\s*=\s*([A-Za-z0-9._-]+)"
+                             r"(?:\s+since\s+(.+))?", line)
+        require(match is not None, f"malformed guest claim: {line}")
+        lane = int(match[1] or 1)
+        require(lane not in claims, f"duplicate guest claim for lane {lane}")
+        holder, since = match[2], (match[3] or "").strip()
+        require((holder == "none" and not since) or (holder != "none" and bool(since)),
+                f"invalid guest claim for lane {lane}")
+        claims[lane] = (None if holder == "none" else holder, since)
+    require(set(claims) == {1, 2, 3, 4}, "guest status has incomplete claims")
+    parsed = winvmguest.parse_status(status)
+    require(parsed.driver and parsed.lanes == claims, "parsed guest claims differ")
+    return claims
 
 
 @contextlib.contextmanager
@@ -618,15 +650,21 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
                     except BaseException as exc:
                         report["cleanup"].append({"snapshot_error":
                                                   f"{type(exc).__name__}: {exc}"})
-                try:
-                    with bounded_until(snapshot_deadline):
-                        report["cleanup"].append({"discard": receipt_of(
-                            guest.discard(SNAPSHOT, args.holder))})
-                    if not restored:
+                else:
+                    report["cleanup"].append({"snapshot_error":
+                                              "snapshot creation has no verified receipt"})
+                if restored or not report.get("snapshot_taken"):
+                    try:
+                        with bounded_until(snapshot_deadline):
+                            report["cleanup"].append({"discard": receipt_of(
+                                guest.discard(SNAPSHOT, args.holder))})
+                    except BaseException as exc:
                         report["cleanup"].append({"snapshot_error":
-                                                  "restore was not verified; snapshot identity retained"})
-                except BaseException as exc:
-                    report["cleanup"].append({"snapshot_error": f"{type(exc).__name__}: {exc}"})
+                                                  f"{type(exc).__name__}: {exc}"})
+                if report.get("snapshot_taken") and not restored:
+                    report["snapshot_unresolved"] = {
+                        "holder": args.holder, "name": SNAPSHOT,
+                        "exists": None, "discard_attempted": False}
             if report.get("snapshot_attempted") and not off_ok:
                 report["cleanup"].append({"snapshot_skipped": "off was not verified"})
             remaining = total_end - time.monotonic()
@@ -655,7 +693,9 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
                         with bounded_until(total_end):
                             status = guest.status(timeout=total_end - time.monotonic())
                         report["holder_status"] = status
-                        report["holder_unresolved"] = args.holder in status
+                        claims = complete_claims(status)
+                        report["holder_unresolved"] = any(
+                            holder == args.holder for holder, _ in claims.values())
                     except BaseException as exc:
                         report["holder_unresolved"] = True
                         report["cleanup"].append({"status_error": f"{type(exc).__name__}: {exc}"})
