@@ -661,6 +661,9 @@ class Controller:
             if not staged_party:
                 raise AcceptanceStop("the staged party is not readable")
             context["baseline"] = [self._member_record(member) for member in staged_party]
+            if action.kind == "levelup":
+                staged_member = next(member for member in staged_party if member.slot == choice.slot)
+                context["levelup_effects"] = [node.raw.hex() for node in staged_member.effect_nodes]
             self._verify_staging(action.kind, context, party)
             return context
         finally:
@@ -731,16 +734,55 @@ class Controller:
                     raw[row_.memorised.offset + context["spell_index"]] = 0
             elif kind == "levelup":
                 if slot == context["slot"]:
-                    old_levels = amigalevelup.summary(raw, self.route.game_key)["levels"]
-                    new_levels = amigalevelup.summary(bytes.fromhex(new["raw"]), self.route.game_key)["levels"]
+                    import random  # noqa: PLC0415
+                    from types import SimpleNamespace  # noqa: PLC0415
+
+                    if "levelup_effects" not in context:
+                        raise AcceptanceStop("Level up has no staged effect-node readback")
+                    member = SimpleNamespace(
+                        raw=bytes(raw),
+                        item_nodes=[SimpleNamespace(raw=bytes.fromhex(data)) for _, data in items],
+                        effect_nodes=[SimpleNamespace(raw=bytes.fromhex(data))
+                                      for data in context["levelup_effects"]])
+
+                    class Die:
+                        def __init__(self, high):
+                            self.high = high
+
+                        def randint(self, low, high):
+                            return high if self.high else low
+
+                    try:
+                        fixed = amigalevelup.plan_member(member, self.route.game_key,
+                                                        rng=random.Random(0))
+                        minimum = amigalevelup.plan_member(member, self.route.game_key,
+                                                          rng=Die(False))
+                        maximum = amigalevelup.plan_member(member, self.route.game_key,
+                                                          rng=Die(True))
+                    except amigalevelup.CannotLevel as exc:
+                        raise AcceptanceStop(f"Level up plan cannot verify: {exc}") from exc
                     ready = amigalevelup.ready_classes(raw, self.route.game_key)
-                    if not ready or any(new_levels[i] != level + (name in ready)
-                                        for i, (name, level) in enumerate(zip(amigalevelup.POD_SLOTS, old_levels))):
-                        raise AcceptanceStop("Level up did not raise exactly the ready classes")
-                    # Level up also rolls hit points and writes derived fields.
-                    if new["name"] != old["name"] or new["items"] != items:
-                        raise AcceptanceStop("Level up changed the selected member's items or name")
-                    continue
+                    if fixed.classes != ready or fixed.added_effects:
+                        raise AcceptanceStop("Level up classes or effect-node writes cannot be verified")
+                    hp_rolled = amigalevelup._POD_HP_ROLLED
+                    hp_max = amigalevelup._POD_HP_MAX
+                    hp_current = amigalevelup._POD_HP_CURRENT
+                    observed = bytes.fromhex(new["raw"])
+                    rolled = (observed[hp_rolled] - raw[hp_rolled]) & 0xff
+                    low = (amigalevelup.apply_to(raw, minimum)[hp_rolled] - raw[hp_rolled]) & 0xff
+                    high = (amigalevelup.apply_to(raw, maximum)[hp_rolled] - raw[hp_rolled]) & 0xff
+                    if not low <= rolled <= high:
+                        raise AcceptanceStop("Level up rolled hit points outside the trainer's dice")
+                    predicted = bytearray(amigalevelup.apply_to(raw, fixed))
+                    if any(at <= hp_rolled < at + len(data) for at, data in fixed.writes):
+                        fixed_roll = (predicted[hp_rolled] - raw[hp_rolled]) & 0xff
+                        bonus = (predicted[hp_max] - raw[hp_max] - fixed_roll) & 0xff
+                        damage = (raw[hp_max] - raw[hp_current]) & 0xff
+                        predicted[hp_rolled] = observed[hp_rolled]
+                        predicted[hp_max] = (raw[hp_max] + bonus + rolled) & 0xff
+                        predicted[hp_current] = (0 if damage > predicted[hp_max]
+                                                 else predicted[hp_max] - damage)
+                    raw = predicted
             if new["name"] != old["name"] or new["raw"] != raw.hex() or new["items"] != items:
                 raise AcceptanceStop(f"{kind} changed unexpected bytes for {old['name']}")
 
@@ -762,10 +804,16 @@ class Controller:
             if context["member"] not in matches[0]:
                 raise AcceptanceStop(f"Level up card does not name {context['member']}; kept {path}")
         self._count(action=True)
-        winwish.ui(self.guest, self.args.holder, "click", (() if label is None else (label,)),
-                   automation_id=automation_id)
-        event = {"control": label or automation_id, "listing": str(path)}
+        event = {"control": label or automation_id, "listing": str(path),
+                 "acknowledged": False}
         context["clicks"].append(event)
+        self.log("action_click_attempt", **event)
+        try:
+            winwish.ui(self.guest, self.args.holder, "click", (() if label is None else (label,)),
+                       automation_id=automation_id)
+        except Exception as exc:
+            raise AcceptanceStop(f"action click returned no acknowledgement: {exc}") from exc
+        event["acknowledged"] = True
         self.log("action_click", **event)
 
     def _action_readback(self) -> list[dict[str, Any]]:
@@ -779,9 +827,14 @@ class Controller:
         namespace = f"{action.kind}.{label}"
         context["visit_checkpoints"] = set()
         before = set(self.checkpoints)
-        self.run_phase(action.show, context, namespace=namespace)
-        self.run_phase(action.back, context, namespace=namespace)
-        context["evidence"].extend(name for name in self.checkpoints if name not in before)
+        frames_before = set(self.out.glob("game-*.raw.png"))
+        try:
+            self.run_phase(action.show, context, namespace=namespace)
+            self.run_phase(action.back, context, namespace=namespace)
+        finally:
+            context["evidence"].extend(name for name in self.checkpoints if name not in before)
+            context["evidence"].extend(str(path) for path in sorted(
+                set(self.out.glob("game-*.raw.png")) - frames_before))
 
     def run_actions(self) -> None:
         labels = {"heal": "Heal party", "identify": "Identify",
@@ -805,6 +858,7 @@ class Controller:
                 self._map_section()
                 if action.kind == "spells":
                     self._unique_action("Save spells", context=context)
+                    self._game_section()
                     context["saved"] = self._action_readback()
                     self._verify_action("spells", context, context["saved"])
                     self._game_section()

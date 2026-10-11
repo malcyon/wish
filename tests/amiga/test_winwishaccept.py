@@ -551,6 +551,121 @@ def test_staging_preserves_every_other_member_and_item(tmp_path):
         controller._verify_staging("heal", context, party)
 
 
+def test_save_spells_releases_the_pipe_before_readback(tmp_path, monkeypatch):
+    controller, _game = _action_controller(tmp_path, monkeypatch)
+    controller.route.actions[0].kind = "spells"
+    controller.summary["actions"]["spells"] = controller.summary["actions"].pop("heal")
+    controller.action_limit = winwishaccept._action_budget(controller.route)
+    controller.pipe_released = False
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "spell_index": 0, "before": [], "baseline": []})
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    monkeypatch.setattr(controller, "_action_readback", lambda: (
+        pytest.fail("readback while Wish owns the pipe") if not controller.pipe_released else []))
+    monkeypatch.setattr(controller, "_game_section", lambda: setattr(controller, "pipe_released", True))
+    monkeypatch.setattr(controller, "_map_section", lambda: setattr(controller, "pipe_released", False))
+    monkeypatch.setattr(controller, "_fresh_party", lambda: (
+        SimpleNamespace(write=lambda *args: None, close=lambda: None),
+        [SimpleNamespace(slot=0, address=100,
+                         row=SimpleNamespace(memorised=SimpleNamespace(offset=5)))]))
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args, **kwargs: [
+        "Button|Save spells|save|enabled=True",
+        "Button|Restore spells|restore|enabled=True"])
+    controller.run_actions()
+    assert controller.summary["actions"]["spells"]["status"] == "awaiting image review"
+
+
+def test_dispatched_click_without_acknowledgement_keeps_uncertain_attempt(tmp_path, monkeypatch):
+    controller, _game = _action_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "before": [], "baseline": []})
+    monkeypatch.setattr(controller, "_action_readback", lambda: [])
+    attempts = []
+
+    def ui(*args, **kwargs):
+        if args[2] == "click":
+            attempts.append(args[3])
+            raise RuntimeError("response lost after dispatch")
+        return ["Button|Heal party|heal|enabled=True"]
+
+    monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="no acknowledgement"):
+        controller.run_actions()
+    entry = controller.summary["actions"]["heal"]
+    assert entry["status"] == "unproven"
+    assert attempts == [("Heal party",)]
+    assert len(entry["observed"]["clicks"]) == 1
+    click = entry["observed"]["clicks"][0]
+    assert click["control"] == "Heal party"
+    assert pathlib.Path(click["listing"]).is_file()
+    assert click["acknowledged"] is False
+
+
+def test_failed_action_after_view_retains_before_checkpoint_and_failed_frame(tmp_path, monkeypatch):
+    controller, _game = _action_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "before": [], "baseline": []})
+    monkeypatch.setattr(controller, "_action_readback", lambda: [])
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    count = 0
+
+    def guard(state, path):
+        nonlocal count
+        if state == "sheet":
+            count += 1
+            return count <= 2
+        return True
+
+    controller.guards = guard
+    with pytest.raises(winwishaccept.AcceptanceStop):
+        controller.run_actions()
+    entry = controller.summary["actions"]["heal"]
+    assert entry["status"] == "unproven"
+    assert "heal.before.view" in entry["evidence"]
+    assert "heal.after.view" not in entry["evidence"]
+    assert str(sorted(tmp_path.glob("game-*.raw.png"))[-1]) in entry["evidence"]
+    assert entry["observed"]["clicks"][0]["acknowledged"] is True
+
+
+def test_levelup_checks_every_selected_record_byte_and_hit_point_arithmetic(tmp_path):
+    from automap import amigalevelup as levelup
+    from automap import amigaparty
+
+    route = _route()
+    route.title, route.game_key = "darkness", levelup.POOLS_OF_DARKNESS
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    row = amigaparty.ROWS[route.game_key]
+    raw = bytearray(row.record_size)
+    raw[0x58], raw[0x79], raw[0x9D + 2] = 5, 18, 8
+    raw[0x44:0x48] = levelup.pod_threshold(2, 9).to_bytes(4, "big")
+    raw[0x81], raw[0x191] = 80, 50
+    item = [[900, bytes(row.items.size).hex()]]
+    baseline = {"slot": 0, "name": "A", "address": 100, "raw": raw.hex(), "items": item}
+    context = {"slot": 0, "baseline": [baseline], "levelup_effects": []}
+
+    class Dice:
+        def randint(self, low, high):
+            return 9
+
+    trained = bytearray(levelup.apply_to(
+        raw, levelup.plan(raw, route.game_key, rng=Dice(),
+                          items=[bytes.fromhex(item[0][1])])))
+    valid = {**baseline, "raw": trained.hex()}
+    controller._verify_action("levelup", context, [valid])
+    unrelated = bytearray(trained)
+    unrelated[0x10] ^= 1
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, [{**valid, "raw": unrelated.hex()}])
+    wrong_hp = bytearray(trained)
+    wrong_hp[0x81] += 1
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, [{**valid, "raw": wrong_hp.hex()}])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, [{**valid, "items": []}])
+
+
 def _packed_map(raw):
     """Encode a synthetic DAX block with literal runs in reverse read order."""
     bits = []
