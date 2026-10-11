@@ -6,11 +6,12 @@ import hashlib
 import json
 import os
 import pathlib
+import struct
 from types import SimpleNamespace
 
 import pytest
 
-from goldbox import amiga_adf
+from goldbox import amiga_adf, amiga_savegame, dos_savegame
 from tools.amiga import darknessreturn as driver
 from tools.amiga import noencounters, route_darkness
 from tools.amiga.staging import sha256
@@ -230,6 +231,39 @@ def _synthetic_members(*, name="TURBO K", slot=0, count=5, short=False):
     return (member,)
 
 
+def _synthetic_f(*, damage=None):
+    """Build a six-member saved slot from the documented container layout."""
+    names = [f"WHO{number}" for number in range(6)]
+    data = bytearray(amiga_savegame.POD_SAVEGAME_SIZE)
+    for variable, value in ((dos_savegame.POD_PARTY_COUNT, 6),
+                            (dos_savegame.POD_WILDERNESS_X, 22),
+                            (dos_savegame.POD_WILDERNESS_Y, 3), (0x129, 2)):
+        data[variable - 1] = value
+    data[amiga_savegame.POD_SQUARE_AT:amiga_savegame.POD_SQUARE_AT + 6] = bytes((7, 15, 0, 0, 0, 0))
+    data[amiga_savegame.POD_PREVIOUS_MODE_AT] = dos_savegame.POD_MODE_WILDERNESS
+    data[amiga_savegame.POD_MODE_AT] = 2
+    struct.pack_into(">H", data, amiga_savegame.POD_COUNT_AT, len(names))
+    for index, name in enumerate(names):
+        at = (amiga_savegame.POD_PARTY_AT + index * amiga_savegame.POD_RECORD_BYTES
+              + amiga_savegame.POD_NAME_AT)
+        data[at:at + len(name)] = name.encode("ascii")
+    if damage == "wrong-name":
+        data[amiga_savegame.POD_PARTY_AT + amiga_savegame.POD_NAME_AT] = ord("X")
+    elif damage == "wrong-cell":
+        data[dos_savegame.POD_WILDERNESS_X - 1] = 21
+    elif damage == "wrong-square":
+        data[amiga_savegame.POD_SQUARE_AT] = 8
+    elif damage == "wrong-facing":
+        data[amiga_savegame.POD_SQUARE_AT + 2] = dos_savegame.FACING_SCALE
+    elif damage == "wrong-flag":
+        data[0x129 - 1] = 0
+    elif damage == "dungeon":
+        data[dos_savegame.POD_IN_DUNGEON - 1] = 1
+    elif damage == "short":
+        return bytes(data[:-1])
+    return bytes(data)
+
+
 def test_live_capture_uses_one_read_and_matches_ordinary_hashes(tmp_path, monkeypatch):
     members = _synthetic_members()
     calls = []
@@ -324,23 +358,27 @@ def test_capture_directory_checks_real_owner_and_mode(tmp_path, monkeypatch):
         driver._capture_dir("wrong-owner")
 
 
-@pytest.mark.parametrize("step_fails, capture_fails, post_save_fails, disk_mismatch", [
-    (False, False, False, False), (True, False, False, False),
-    (False, True, False, False), (False, False, True, False),
-    (False, False, False, True),
+@pytest.mark.parametrize("step_fails, capture_fails, post_save_fails, disk_mismatch, damage", [
+    (False, False, False, False, None), (True, False, False, False, None),
+    (False, True, False, False, None), (False, False, True, False, None),
+    (False, False, False, True, None),
+    *[(False, False, False, False, kind) for kind in
+      ("short", "wrong-name", "wrong-cell", "wrong-square", "wrong-facing",
+       "wrong-flag", "dungeon", "missing")],
 ])
 def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
-        tmp_path, monkeypatch, step_fails, capture_fails, post_save_fails, disk_mismatch):
+        tmp_path, monkeypatch, step_fails, capture_fails, post_save_fails, disk_mismatch, damage):
     events = []
     capture_events = []
     loaded_hashes = []
     require_f = []
     b_bytes = b"generated loaded B"
-    f_bytes = b"generated game-written F"
+    f_bytes = _synthetic_f()
+    restored_bytes = _synthetic_f(damage=damage) if damage else f_bytes
     b_hash = hashlib.sha256(b_bytes).hexdigest()
-    f_hash = hashlib.sha256(f_bytes).hexdigest()
+    f_hash = hashlib.sha256(restored_bytes).hexdigest() if damage else hashlib.sha256(f_bytes).hexdigest()
     restored_path = tmp_path / "synthetic-restored.adf"
-    restored_path.write_bytes(b"wrong F" if disk_mismatch else f_bytes)
+    restored_path.write_bytes(b"wrong F" if disk_mismatch else restored_bytes)
     holder = "proof"
     state = SimpleNamespace(load=lambda: {"on": False, "rows": []})
 
@@ -399,15 +437,17 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
             raise RouteError("injected private capture failure")
         if post_save_fails and name == "post-save-quit":
             raise RouteError("injected post-save capture failure")
-        return {"party": []}
+        return {"party": [{"name": f"WHO{i}"} for i in range(6)],
+                "trip": {"square": [7, 15, 0]},
+                "variables": [{"var": f"${variable:04X}", "value": value}
+                              for variable, value in ((0x25, 22), (0x26, 3), (0x129, 2))]}
 
     monkeypatch.setattr(driver, "_checkpoint", checkpoint)
     monkeypatch.setattr(driver, "_require_world", lambda *args, **kwargs: None)
-    monkeypatch.setattr(driver, "_stage_flag", lambda target: {})
+    monkeypatch.setattr(driver, "_stage_flag", lambda target: {"after": "02"})
     monkeypatch.setattr(driver, "adopt_loaded_media", adoption)
     monkeypatch.setattr(driver, "_trip", lambda *args: [])
     monkeypatch.setattr(driver, "_step_under_switch", step)
-    monkeypatch.setattr(driver, "_value", lambda reading, variable: 0)
     monkeypatch.setattr(driver, "restore_loaded_media", lambda *args: {})
     monkeypatch.setattr(driver, "_original_live", lambda *args: {})
     def halt(*args):
@@ -417,8 +457,9 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
     monkeypatch.setattr(driver, "_halt", halt)
     monkeypatch.setattr(driver, "_check_source", lambda: None)
     monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: SimpleNamespace(
-        read_file=lambda name: restored_path.read_bytes()
-        if str(path) == str(restored_path) else b_bytes))
+        read_file=lambda name: (_ for _ in ()).throw(amiga_adf.AmigaDiskError("missing F"))
+        if damage == "missing" and str(path) == str(restored_path)
+        else (restored_path.read_bytes() if str(path) == str(restored_path) else b_bytes)))
     monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
         read_slot=route_darkness._darkness_read_slot))
     monkeypatch.setattr(driver.noencounters, "WinuaeState", lambda path: state)
@@ -451,7 +492,24 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
         assert receipt["checks"].get("save") is not True
         assert "game_written_f_sha256" not in receipt
         assert receipt["success"] is False
+    elif damage:
+        with pytest.raises(RouteError, match="game-written F"):
+            driver.run_p2(args, guest=Guest())
+        receipt = json.loads((args.out / "p2-receipt.json").read_text())
+        assert receipt["checks"]["save_ui_acknowledged"] is True
+        assert receipt["disk_restoration"]["slot_f_sha256"] == f_hash
+        assert receipt["checks"]["post_save_capture"] is True
+        assert receipt["checks"].get("save") is not True
+        assert "game_written_f_sha256" not in receipt
+        assert receipt["success"] is False and receipt["cleanup"]
     else:
+        saved = route_darkness._darkness_read_slot(
+            SimpleNamespace(read_file=lambda name: restored_bytes), "F")
+        assert len(restored_bytes) == amiga_savegame.POD_SAVEGAME_SIZE == 10828
+        assert saved["names"] == [f"WHO{i}" for i in range(6)]
+        assert saved["in_dungeon"] is False and saved["wilderness_square"] == [22, 3]
+        assert saved["place"] == {"area": 0, "x": 7, "y": 15, "facing": 0}
+        assert amiga_savegame.pod_parse(restored_bytes).var(0x129) == 2
         receipt = driver.run_p2(args, guest=Guest())
         assert receipt["success"]
         assert receipt["game_written_f_sha256"] == f_hash

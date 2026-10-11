@@ -792,6 +792,25 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                     saved_reading = route_darkness.DARKNESS.read_slot(saved_disk, SAVE_LETTER)
                     _require(slot_f_hash is not None and saved_reading.get("sha256") == slot_f_hash,
                              "the restored game-written F does not match its independent slot read")
+                    _require(not saved_reading.get("missing") and not saved_reading.get("decode_error"),
+                             f"the restored game-written F does not decode: {saved_reading.get('decode_error')}")
+                    stepped = receipt["stepped"]
+                    names = [member["name"] for member in stepped["party"]]
+                    _require(len(names) == 6 and saved_reading.get("names") == names,
+                             "the restored game-written F does not hold the stepped party")
+                    _require(saved_reading.get("in_dungeon") is False and
+                             tuple(saved_reading.get("wilderness_square") or ()) ==
+                             (_value(stepped, 0x25), _value(stepped, 0x26)),
+                             "the restored game-written F is not at the stepped outdoor cell")
+                    place = saved_reading.get("place") or {}
+                    _require(tuple(place.get(field) for field in ("x", "y", "facing")) ==
+                             tuple(stepped["trip"]["square"]),
+                             "the restored game-written F has another square or facing")
+                    saved_flag = amiga_savegame.pod_parse(
+                        amiga_savegame.pod_read_slot(saved_disk, SAVE_LETTER)).var(0x129)
+                    _require(saved_flag == _value(stepped, 0x129) ==
+                             int(receipt["staged_flag"]["after"], 16),
+                             "the restored game-written F lost the staged flag")
                     receipt["game_written_f_sha256"] = slot_f_hash
                     receipt["checks"]["save"] = True
             except Exception as exc:  # noqa: BLE001
