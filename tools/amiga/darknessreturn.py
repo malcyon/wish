@@ -19,7 +19,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from automap import amiga, amigaparty, amigatrip, amigavars  # noqa: E402
-from goldbox import amiga_adf, amiga_savegame  # noqa: E402
+from goldbox import amiga_adf, amiga_pod, amiga_savegame  # noqa: E402
 from tools.amiga import (  # noqa: E402
     acceptance,
     fasttravelrun,
@@ -294,16 +294,21 @@ def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict) -> dict:
     nodes = members[0].item_nodes
     _require(len(nodes) > 4, "the capture is missing first-member items 3 or 4")
     saved = []
-    for index in (3, 4):
-        node = nodes[index]
-        _require(len(node.raw) == 0x42, "the capture item node is not 66 bytes")
-        digest = hashlib.sha256(node.raw).hexdigest()
-        _require(digest == reading["party"][0]["items"][index],
-                 "the captured node differs from the ordinary live receipt")
-        saved.append({"slot": members[0].slot, "name": members[0].name,
-                      "chain_index": index, "address": node.address, "length": len(node.raw),
-                      "raw_hex": node.raw.hex(), "sha256": digest,
-                      "tail20_sha256": hashlib.sha256(node.raw[0x2e:0x42]).hexdigest()})
+    _require(len(members) == len(reading["party"]), "the live member count changed during capture")
+    for member, summary in zip(members, reading["party"]):
+        _require((member.slot, member.name) == (summary["slot"], summary["name"])
+                 and len(member.item_nodes) == len(summary["items"]),
+                 "the live member identity or item count changed during capture")
+        for index, node in enumerate(member.item_nodes):
+            _require(len(node.raw) == 0x42, "the capture item node is not 66 bytes")
+            digest = hashlib.sha256(node.raw).hexdigest()
+            _require(digest == summary["items"][index],
+                     "the captured node differs from the ordinary live receipt")
+            saved.append({"slot": member.slot, "name": member.name,
+                          "chain_index": index, "address": node.address,
+                          "length": len(node.raw), "raw_hex": node.raw.hex(),
+                          "sha256": digest,
+                          "tail20_sha256": hashlib.sha256(node.raw[0x2e:0x42]).hexdigest()})
     payload = (json.dumps({"items": saved}, indent=2, sort_keys=True) + "\n").encode()
     temp = path.with_name(path.name + ".tmp")
     try:
@@ -315,6 +320,105 @@ def _capture_nodes(path: pathlib.Path, members: tuple, reading: dict) -> dict:
     finally:
         temp.unlink(missing_ok=True)
     return {"file_sha256": hashlib.sha256(payload).hexdigest()}
+
+
+def _compare_nodes(before_entry: dict, before_reading: dict, after_entry: dict,
+                   after_reading: dict, disk: amiga_adf.AmigaDisk,
+                   root: pathlib.Path) -> dict:
+    """Classify two private same-read captures against a game-written F."""
+    saved = amiga_savegame.pod_parse(amiga_savegame.pod_read_slot(disk, SAVE_LETTER))
+
+    def load(entry: dict, reading: dict) -> dict:
+        relative = pathlib.PurePosixPath(entry["path"])
+        _require(not relative.is_absolute() and ".." not in relative.parts,
+                 "the private node reference leaves its capture root")
+        path = root.joinpath(*relative.parts)
+        _require(path.is_file(), "a private node capture is missing")
+        data = path.read_bytes()
+        _require(hashlib.sha256(data).hexdigest() == entry["file_sha256"],
+                 "the private node capture hash differs")
+        records = json.loads(data)["items"]
+        _require(len(reading["party"]) == saved.count,
+                 "the captured party count differs from game-written F")
+        expected = [(member["slot"], member["name"], index, digest)
+                    for member in reading["party"]
+                    for index, digest in enumerate(member["items"])]
+        _require(len(records) == len(expected), "a captured item is missing")
+        groups = {member["slot"]: [] for member in reading["party"]}
+        _require(len(groups) == len(reading["party"]), "a captured member slot repeats")
+        for record, (slot, name, index, digest) in zip(records, expected):
+            identity = (slot, name, index)
+            _require((record["slot"], record["name"], record["chain_index"],
+                      record["sha256"]) == (*identity, digest),
+                     "a captured item identity or receipt hash differs")
+            raw = bytes.fromhex(record["raw_hex"])
+            _require(record["length"] == len(raw) == 0x42
+                     and hashlib.sha256(raw).hexdigest() == digest
+                     and hashlib.sha256(raw[0x2e:0x42]).hexdigest() == record["tail20_sha256"],
+                     "a captured item is short or its hash differs")
+            _require(isinstance(record["address"], int) and record["address"] > 0,
+                     "a captured item address is invalid")
+            groups[slot].append((identity, record["address"], raw))
+        _require(len(groups) == len(reading["party"]), "a captured member is missing")
+        result = {}
+        addresses = set()
+        for nodes in groups.values():
+            for position, (identity, address, raw) in enumerate(nodes):
+                _require(address not in addresses, "a captured item address repeats")
+                addresses.add(address)
+                next_address = nodes[position + 1][1] if position + 1 < len(nodes) else 0
+                _require(int.from_bytes(raw[0x2a:0x2e], "big") == next_address,
+                         "a captured item chain has a malformed link")
+                _require(identity not in result, "a captured item identity repeats")
+                result[identity] = raw
+        return result
+
+    earlier = load(before_entry, before_reading)
+    later = load(after_entry, after_reading)
+    _require(earlier.keys() == later.keys(), "the captured item identities changed")
+    differences = []
+    all_payloads_match = True
+    bundle = False
+    for member_index, block in enumerate(saved.characters):
+        member = before_reading["party"][member_index]
+        _require(member["name"] == block.name and
+                 after_reading["party"][member_index]["name"] == block.name and
+                 len(member["items"]) == block.items and
+                 len(after_reading["party"][member_index]["items"]) == block.items,
+                 "the game-written F item count or member identity differs")
+        at = block.at + amiga_savegame.POD_RECORD_BYTES
+        for index in range(block.items):
+            identity = (member["slot"], member["name"], index)
+            _require(identity in earlier and identity in later,
+                     "the captured item identity is missing")
+            first, second = earlier[identity], later[identity]
+            saved_tail = saved.data[at:at + amiga_savegame.POD_ITEM_BYTES]
+            _require(len(saved_tail) == 20, "a game-written F item is short")
+            at += 20
+            if saved_tail[0] == amiga_savegame.POD_BUNDLE_ID:
+                at += 20 * saved_tail[amiga_savegame.POD_BUNDLE_COUNT]
+            decoded = [amiga_pod.PodItem.from_bytes(tail) for tail in
+                       (first[0x2e:0x42], second[0x2e:0x42], saved_tail)]
+            changed_fields = [field for field in amiga_pod.ITEM_FIELDS
+                              if len({item.get(field) for item in decoded}) > 1]
+            offsets = [offset for offset in range(0x42) if first[offset] != second[offset]]
+            payload_match = first[0x2e:0x42] == second[0x2e:0x42] == saved_tail
+            all_payloads_match &= payload_match
+            bundle |= 0x49 in (first[0x2e], second[0x2e], saved_tail[0])
+            differences.append({"slot": identity[0], "name": identity[1],
+                                "chain_index": index, "differing_offsets": offsets,
+                                "display_offsets": [i for i in offsets if i < 0x2a],
+                                "link_offsets": [i for i in offsets if 0x2a <= i < 0x2e],
+                                "payload_offsets": [i for i in offsets if i >= 0x2e],
+                                "payload_matches_f": payload_match,
+                                "differing_named_fields": changed_fields,
+                                "differing_unnamed_saved_offsets": [i for i in
+                                    (0x2f, 0x3b, 0x3e) if
+                                    len({first[i], second[i], saved_tail[i - 0x2e]}) > 1]})
+    return {"items": differences, "all_payloads_match_f": all_payloads_match,
+            "bundle_inventory_incomplete": bundle,
+            "full_match": all_payloads_match and not bundle
+            and all(not row["differing_offsets"] for row in differences)}
 
 
 def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None) -> dict:
@@ -749,15 +853,15 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
         receipt["pre_save_gate"] = _original_live(target, original)
         _require(not state.load()["on"] and not state.load()["rows"],
                   "the encounter journal is not off before F")
-        _checkpoint(target, capture_dir, "pre-f", receipt, run,
-                    disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
-                    intervention=intervention)
+        receipt["pre_f"] = _checkpoint(target, capture_dir, "pre-f", receipt, run,
+                                       disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
+                                       intervention=intervention)
         run.press("camp_save_picker", SAVE_LETTER, "exit_game")
         run.press("exit_game", "N", "camp")
         receipt["checks"]["save_ui_acknowledged"] = True
-        _checkpoint(target, capture_dir, "post-save-quit", receipt, run,
-                    disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
-                    intervention=intervention)
+        receipt["post_save"] = _checkpoint(target, capture_dir, "post-save-quit", receipt, run,
+                                           disk_sha256=disk_hash, loaded_slot_sha256=slot_hash,
+                                           intervention=intervention)
         receipt["checks"]["post_save_capture"] = True
         receipt["screens"] = run.events
     except BaseException as exc:
@@ -818,6 +922,12 @@ def run_p2(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
                              "the restored game-written F lost the staged flag")
                     receipt["game_written_f_sha256"] = slot_f_hash
                     receipt["checks"]["save"] = True
+                    if receipt["checks"]["post_save_capture"]:
+                        entries = {entry["checkpoint"]: entry for entry in receipt["item_nodes"]}
+                        receipt["item_comparison"] = _compare_nodes(
+                            entries["pre-f"], receipt["pre_f"],
+                            entries["post-save-quit"], receipt["post_save"], saved_disk,
+                            capture_dir.parent.parent)
             except Exception as exc:  # noqa: BLE001
                 receipt["cleanup"].append(f"halt and restore: {exc}")
         try:
@@ -895,6 +1005,10 @@ def run_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> di
                              disk_sha256=disk_hash, loaded_slot_sha256=slot_hash)
         _require_world(before, reading["names"], area=AREA, cell=saved_cell)
         receipt["loaded"] = before
+        prior = {entry["checkpoint"]: entry for entry in p2["item_nodes"]}
+        receipt["item_comparison"] = _compare_nodes(
+            prior["pre-f"], p2["pre_f"], receipt["item_nodes"][0], before,
+            prepared, capture_dir.parent.parent)
         receipt["checks"]["load"] = True
         guest.snapshot("reload-before-step", args.holder)
         snapshots.append("reload-before-step")

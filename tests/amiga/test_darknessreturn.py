@@ -288,8 +288,8 @@ def test_live_capture_uses_one_read_and_matches_ordinary_hashes(tmp_path, monkey
     if os.name == "posix":
         assert path.stat().st_mode & 0o777 == 0o600
     items = json.loads(path.read_text())["items"]
-    assert [item["chain_index"] for item in items] == [3, 4]
-    assert [item["address"] for item in items] == [members[0].item_nodes[i].address for i in (3, 4)]
+    assert [item["chain_index"] for item in items] == list(range(5))
+    assert [item["address"] for item in items] == [n.address for n in members[0].item_nodes]
     assert items[0]["raw_hex"] != items[1]["raw_hex"]
     for item in items:
         raw = bytes.fromhex(item["raw_hex"])
@@ -310,6 +310,123 @@ def test_capture_blocks_missing_identity_or_nodes(tmp_path, monkeypatch, member)
     with pytest.raises(RouteError):
         driver._live_read(object(), capture=path)
     assert not path.exists()
+
+
+def _comparison_fixture(tmp_path, *, bundle=False):
+    """Generate two members, relocated valid links and a parsed synthetic F."""
+    groups = []
+    for slot, (name, count) in enumerate((("TURBO K", 5), ("WHO1", 2))):
+        tails = []
+        for index in range(count):
+            tail = bytearray(20)
+            tail[0] = 0x49 if bundle and slot == 1 and index == 0 else 0x12
+            tail[1], tail[13], tail[16] = 7 + index, 11 + index, 19 + index
+            tails.append(bytes(tail))
+        groups.append((slot, name, tails))
+    saved = bytearray(amiga_savegame.POD_SAVEGAME_SIZE)
+    struct.pack_into(">H", saved, amiga_savegame.POD_COUNT_AT, 2)
+    at = amiga_savegame.POD_PARTY_AT
+    for slot, name, tails in groups:
+        saved[at + amiga_savegame.POD_NAME_AT:at + amiga_savegame.POD_NAME_AT + len(name)] = name.encode()
+        struct.pack_into(">I", saved, at + amiga_savegame.POD_ITEM_COUNT_AT, len(tails))
+        at += amiga_savegame.POD_RECORD_BYTES
+        for tail in tails:
+            saved[at:at + 20] = tail
+            at += 20
+    assert amiga_savegame.pod_parse(bytes(saved)).characters[1].name == "WHO1"
+    disk = SimpleNamespace(read_file=lambda name: bytes(saved))
+    root = tmp_path / "captures"
+    root.mkdir()
+    entries = []
+    readings = []
+    for phase in range(2):
+        members = []
+        for slot, name, tails in groups:
+            nodes = []
+            for index, tail in enumerate(tails):
+                address = 0xC10000 + phase * 0x1000 + slot * 0x200 + index * 0x46
+                following = address + 0x46 if index + 1 < len(tails) else 0
+                raw = bytearray(66)
+                raw[0] = phase + 1
+                raw[0x2a:0x2e] = following.to_bytes(4, "big")
+                raw[0x2e:0x42] = tail
+                nodes.append(SimpleNamespace(address=address, raw=bytes(raw)))
+            members.append(SimpleNamespace(slot=slot, name=name, item_nodes=nodes,
+                                            items=lambda nodes=nodes: tuple(
+                                                (n.address, n.raw) for n in nodes),
+                                            effects=lambda: (), hp=1, hp_max=1))
+        reading = {"party": [{"slot": m.slot, "name": m.name,
+                              "items": [hashlib.sha256(n.raw).hexdigest()
+                                        for n in m.item_nodes]} for m in members]}
+        path = root / f"{phase}.json"
+        proof = driver._capture_nodes(path, tuple(members), reading)
+        entries.append({"path": path.name, **proof})
+        readings.append(reading)
+    return root, entries, readings, disk
+
+
+def test_comparison_classifies_display_and_relocated_links_without_losing_saved_bytes(tmp_path):
+    root, entries, readings, disk = _comparison_fixture(tmp_path)
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert len(report["items"]) == 7 and report["all_payloads_match_f"]
+    assert not report["full_match"] and not report["bundle_inventory_incomplete"]
+    assert report["items"][0]["display_offsets"] == [0]
+    assert report["items"][0]["link_offsets"] == [0x2c]
+    assert not report["items"][0]["payload_offsets"]
+    assert "raw_hex" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("damage", ["missing", "short", "hash", "identity", "link"])
+def test_comparison_fails_closed_on_damaged_private_capture(tmp_path, damage):
+    root, entries, readings, disk = _comparison_fixture(tmp_path)
+    path = root / "1.json"
+    if damage == "missing":
+        path.unlink()
+    else:
+        payload = json.loads(path.read_text())
+        node = payload["items"][-1]
+        if damage == "short":
+            node["raw_hex"] = node["raw_hex"][:-2]
+        elif damage == "hash":
+            node["sha256"] = "0" * 64
+        elif damage == "identity":
+            node["name"] = "OTHER"
+        else:
+            node = payload["items"][0]
+            raw = bytearray.fromhex(node["raw_hex"])
+            raw[0x2d] = 1
+            node["raw_hex"] = raw.hex()
+            node["sha256"] = hashlib.sha256(raw).hexdigest()
+            readings[1]["party"][0]["items"][0] = node["sha256"]
+        path.write_text(json.dumps(payload))
+        entries[1]["file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(RouteError):
+        driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+
+
+@pytest.mark.parametrize("offset", [0x2f, 0x3b, 0x3e, 0x40])
+def test_saved_payload_difference_never_matches_f(tmp_path, offset):
+    root, entries, readings, disk = _comparison_fixture(tmp_path)
+    path = root / "1.json"
+    payload = json.loads(path.read_text())
+    node = payload["items"][0]
+    raw = bytearray.fromhex(node["raw_hex"])
+    raw[offset] ^= 1
+    node["raw_hex"] = raw.hex()
+    node["sha256"] = hashlib.sha256(raw).hexdigest()
+    node["tail20_sha256"] = hashlib.sha256(raw[0x2e:0x42]).hexdigest()
+    readings[1]["party"][0]["items"][0] = node["sha256"]
+    path.write_text(json.dumps(payload))
+    entries[1]["file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert not report["all_payloads_match_f"] and not report["full_match"]
+    assert offset in report["items"][0]["payload_offsets"]
+
+
+def test_bundle_head_never_claims_complete_inventory(tmp_path):
+    root, entries, readings, disk = _comparison_fixture(tmp_path, bundle=True)
+    report = driver._compare_nodes(entries[0], readings[0], entries[1], readings[1], disk, root)
+    assert report["bundle_inventory_incomplete"] and not report["full_match"]
 
 
 def test_capture_write_failure_retains_no_published_file(tmp_path, monkeypatch):
@@ -491,6 +608,7 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
     monkeypatch.setattr(driver, "_capture_dir", lambda run_id: tmp_path / "private")
     def checkpoint(target, directory, name, receipt, run, **kwargs):
         capture_events.append(("capture", name))
+        receipt.setdefault("item_nodes", []).append({"checkpoint": name})
         loaded_hashes.append(kwargs.get("loaded_slot_sha256", kwargs.get("slot_sha256")))
         if capture_fails and name == "pre-f":
             raise RouteError("injected private capture failure")
@@ -502,6 +620,7 @@ def test_p2_owns_snapshot_after_return_adoption_before_step_and_discards_it(
                               for variable, value in ((0x25, 22), (0x26, 3), (0x129, 2))]}
 
     monkeypatch.setattr(driver, "_checkpoint", checkpoint)
+    monkeypatch.setattr(driver, "_compare_nodes", lambda *args: {"full_match": True})
     monkeypatch.setattr(driver, "_require_world", lambda *args, **kwargs: None)
     monkeypatch.setattr(driver, "_stage_flag", lambda target: {"after": "02"})
     monkeypatch.setattr(driver, "adopt_loaded_media", adoption)
@@ -599,8 +718,10 @@ def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch
     f_hash = hashlib.sha256(b"generated saved F").hexdigest()
     previous = tmp_path / "p2.json"
     previous.write_text(json.dumps({"combined_deadline": driver.time.time() + 1100,
-                                    "cumulative_return_attempts": 3,
-                                    "stepped": {"party": [{"name": "TURBO K"}]}}))
+                                     "cumulative_return_attempts": 3,
+                                     "item_nodes": [{"checkpoint": "pre-f"}],
+                                     "pre_f": {"party": [{"name": "TURBO K"}]},
+                                     "stepped": {"party": [{"name": "TURBO K"}]}}))
     manifest = {"disks": {"disk3": {"path": "unused", "sha256": "synthetic"}},
                 "loaded_letter": "F"}
     prepared = tmp_path / "prepare.json"
@@ -660,12 +781,14 @@ def test_reload_captures_loaded_and_stepped_before_cleanup(tmp_path, monkeypatch
 
     def checkpoint(target, directory, name, receipt, run, **kwargs):
         events.append(name)
+        receipt.setdefault("item_nodes", []).append({"checkpoint": name})
         loaded_hashes.append(kwargs["loaded_slot_sha256"])
         return {"party": [{"name": "TURBO K"}], "moved": name == "post-step"}
 
     monkeypatch.setattr(driver, "GuardedRun", Run)
     monkeypatch.setattr(driver, "_switch", lambda *args: Switch())
     monkeypatch.setattr(driver, "_checkpoint", checkpoint)
+    monkeypatch.setattr(driver, "_compare_nodes", lambda *args: {"full_match": True})
     monkeypatch.setattr(driver.acceptance, "halt_lane", lambda *args, **kwargs: events.append(
         "halt") or {})
     args = SimpleNamespace(receipt=previous, budget=1000, out=tmp_path / "reload",
