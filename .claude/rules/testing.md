@@ -18,6 +18,12 @@ that does not fit the screen is what the user hits.
 test go red, put the fix back. A test written against a bug that is already
 fixed is a guess until you have seen it fail.
 
+**In OpenCode, the parent submits and relays the worker's focused request**
+under `.opencode/references/subagent-protocol.md`. The worker returns test
+arguments and dependency paths, freezes those files and receives results
+through parent continuation rather than sibling messaging. This replaces
+only request delivery, not launcher execution or test requirements.
+
 **On a managed host, a test runs through the launcher.** `pytest` run directly
 stops before collection (`/etc/wish/test-runner.json` exists with
 `enabled: true`). Request the run with `.venv/bin/python

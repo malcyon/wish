@@ -149,6 +149,14 @@ acceptance.
 one, say so in a message to the agent, and prefer a targeted edit -- putting
 back the one hunk you changed -- to restoring the whole file you remember.
 
+**OpenCode exception:** Workers return focused test arguments, dependency
+paths and existing request records to the parent, rather than submitting a
+new request or messaging a sibling. The parent submits once with actual
+worker and root session IDs, continues the single reusable native test-runner,
+then returns its result through worker continuation. Follow
+`.opencode/references/subagent-protocol.md` for that relay; the serialization,
+file freeze, required checks and stop rules below still apply.
+
 **Tell the agent to request the tests its change affects, not the suite, and
 not to run `pytest` itself.** On a managed host direct `pytest` stops before
 collection. The agent submits a request with `tools/suite/testrun.py submit`

@@ -73,6 +73,12 @@ skips there. When a change touches code those tests cover, run them locally
 as part of the focused check; they are a focused check, not a second full-suite
 run.
 
+**OpenCode request delivery uses the parent relay** in
+`.opencode/references/subagent-protocol.md`, not sibling messages. Workers
+return test specifications; the parent submits with actual session IDs and
+continues its reusable test-runner. All local checks, file freezes and the
+exact-SHA CI gate remain required.
+
 **Local tests go through the launcher, one command at a time.** On a managed
 host (`/etc/wish/test-runner.json` exists with `enabled: true`), `pytest` run
 directly stops before collection and prints the launcher command. Local tests
