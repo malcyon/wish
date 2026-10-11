@@ -18,8 +18,14 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap import amiga, amigaparty, amigatrip, amigavars  # noqa: E402
-from goldbox import amiga_adf, amiga_pod, amiga_savegame  # noqa: E402
+from automap import (  # noqa: E402
+    amiga,
+    amigafasttravel,
+    amigaparty,
+    amigatrip,
+    amigavars,
+)
+from goldbox import amiga_adf, amiga_pod, amiga_savegame, areas  # noqa: E402
 from tools.amiga import (  # noqa: E402
     acceptance,
     fasttravelrun,
@@ -71,6 +77,11 @@ BUNDLE_GUARD_VARIANTS = {"title": 0, "party_menu": 0, "load_from": 0,
 BUNDLE_IDENTITY_VARIANTS = {"loaded_menu": 6, "sheet": 6,
                             "camp_sheet_items_5": 1, "camp_items_5": 1}
 BUNDLE_IDENTITY_STATES = tuple(BUNDLE_IDENTITY_VARIANTS)
+
+ORIGIN_SPECIMEN = "wish360-w4d-source01-fg-disk3"
+ORIGIN_IMAGE_SHA256 = "903b7a7cc4dbe4172733ce98187c38fcb3f3878f7acbd2b390e970d36e28b9be"
+ORIGIN_G_SHA256 = "fd6b8f00f6f342316ace7d33b34e96c09a820a7017aff379ff352c2da712f328"
+ORIGIN_PREPARED_SHA256 = "de70cca6e178026d60f406c9e64bee3cd87a1da5d8bd2da2e067451919da127f"
 
 
 def _require(condition: bool, reason: str) -> None:
@@ -901,6 +912,122 @@ def _source_contract(manifest_path: pathlib.Path, manifest: dict) -> tuple[pathl
     return source, disk_hash
 
 
+def _origin_source() -> pathlib.Path:
+    entry = specimens._one_entry(ORIGIN_SPECIMEN, specimens.tree_root())
+    source = pathlib.Path(entry["_provenance"]).parent / "fetched-disk3.adf"
+    _require(entry["sha256"].get(source.name) == ORIGIN_IMAGE_SHA256
+             and sha256(source) == ORIGIN_IMAGE_SHA256,
+             "origin_source: preserved game-written image digest differs")
+    original = amiga_adf.AmigaDisk.open(source)
+    _require(not original.verify(), "origin_source: preserved ADF verification failed")
+    try:
+        _source_slot(original, "G", ORIGIN_G_SHA256)
+    except RouteError as exc:
+        raise RouteError(f"origin_source: saved G differs: {exc}") from exc
+    _require(route_darkness.DARKNESS.read_slot(original, "G").get("place") == BUNDLE_PLACE,
+             "origin_source: saved G place differs")
+    _require(hashlib.sha256(original.read_file(LIBRARY)).hexdigest() == LIBRARY_HASH,
+             "origin_source: ECL library digest differs")
+    return source
+
+
+def prepare_origin(run_id: str) -> pathlib.Path:
+    """Stage a fresh, owner-only B copy of the separately pinned engine-written G."""
+    _require(os.name == "posix", "origin_privacy: POSIX owner checks are required")
+    source = _origin_source()
+    old_umask = os.umask(0o077)
+    try:
+        manifest_path = acceptance.prepare(route_darkness.DARKNESS, run_id,
+                                           substitute=source, substitute_letter="G", issue="360")
+    finally:
+        os.umask(old_umask)
+    _require(_private_directory(manifest_path.parent.stat(), os.getuid()),
+             "origin_privacy: fresh preparation is not owner/0700")
+    _origin_contract(manifest_path, json.loads(manifest_path.read_text()))
+    return manifest_path
+
+
+def _origin_contract(manifest_path: pathlib.Path, manifest: dict) -> tuple[pathlib.Path, str]:
+    """Check the independently prepared B against source-01 G and registered media."""
+    source = _origin_source()
+    _require(manifest_path.is_file() and manifest_path.stat().st_uid == os.getuid()
+             and stat.S_IMODE(manifest_path.stat().st_mode) == 0o600,
+             "origin_privacy: prepared manifest is not owner/0600")
+    _require(manifest.get("title") == "darkness" and manifest.get("loaded_letter") == "B"
+             and manifest.get("names_a") == list(BUNDLE_NAMES)
+             and manifest.get("state_a") == BUNDLE_PLACE
+             and manifest.get("substitute") == {"path": str(source),
+                                                "sha256": ORIGIN_IMAGE_SHA256, "letter": "G"},
+             "origin_manifest: B was not made from pinned G")
+    for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                     ("disk2", route_darkness.DARKNESS_DISK2_SHA256)):
+        row = manifest["disks"][key]
+        path = pathlib.Path(row["path"])
+        _require(path.resolve().parent == manifest_path.parent.resolve()
+                 and path.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(path.stat().st_mode) == 0o600
+                 and row["sha256"] == sha256(path) == pin,
+                 f"origin_manifest: {key} is not a private registered copy")
+    disk1 = amiga_adf.AmigaDisk.open(manifest["disks"]["disk1"]["path"])
+    _require(hashlib.sha256(disk1.read_file("/Pools of Darkness")).hexdigest() ==
+             BUNDLE_EXEC_SHA256, "origin_manifest: executable differs")
+    _require(sha256(pathlib.Path(__file__).with_name("goldbox-a500.uae")) ==
+             BUNDLE_CONFIG_SHA256, "origin_manifest: boot configuration differs")
+    prepared = manifest["disks"]["disk3"]
+    path = pathlib.Path(prepared["path"])
+    _require(path.resolve().parent == manifest_path.parent.resolve()
+             and path.stat().st_uid == os.getuid()
+             and stat.S_IMODE(path.stat().st_mode) == 0o600,
+             "origin_privacy: prepared disk 3 is not owner/0600")
+    digest = sha256(path)
+    _require(prepared["sha256"] == digest == ORIGIN_PREPARED_SHA256
+             and digest != ORIGIN_IMAGE_SHA256,
+             "origin_manifest: independently prepared disk 3 digest differs")
+    disk = amiga_adf.AmigaDisk.open(path)
+    _require(not disk.verify() and not {"F", "G"} & set(route_darkness.DARKNESS.slot_letters(disk)),
+             "origin_manifest: B disk is damaged or F/G is occupied")
+    _require(hashlib.sha256(disk.read_file(LIBRARY)).hexdigest() == LIBRARY_HASH,
+             "origin_manifest: prepared ECL library digest differs")
+    try:
+        prepared_b, _ = _source_slot(disk, "B", ORIGIN_G_SHA256)
+    except RouteError as exc:
+        raise RouteError(f"origin_manifest: saved B differs: {exc}") from exc
+    original = amiga_adf.AmigaDisk.open(source)
+    _require(prepared_b == amiga_savegame.pod_read_slot(original, "G")
+             and route_darkness.DARKNESS.read_slot(disk, "B").get("place") == BUNDLE_PLACE,
+             "origin_manifest: prepared B is not source G")
+    return source, digest
+
+
+def _origin_controls(path: pathlib.Path, source_manifest: pathlib.Path, disk_hash: str
+                     ) -> tuple[PixelGuards, PixelGuards, dict]:
+    """Use the source-01 selected rules without treating them as G-world measurements."""
+    _require(disk_hash == ORIGIN_PREPARED_SHA256
+             and source_manifest.is_file()
+             and sha256(source_manifest) == BUNDLE_MANIFEST_SHA256,
+             "origin_controls: source-01 controls or prepared disk differ")
+    return _source_controls(path, source_manifest, BUNDLE_PREPARED_SHA256)
+
+
+def _observe_origin(target: amiga.AmigaTarget, *, saved_area: int, disks: pathlib.Path
+                    ) -> dict:
+    """Read the loaded area and the one requested destination's ordinary eligibility."""
+    row = amigatrip.row_for(TITLE)
+    _require(row.area == 0x7A0A, "origin_reader: loaded area address differs")
+    live = amigatrip.area_id(target, row)
+    _require(live is not None, "origin_reader: live area is unreadable")
+    gate = bool(amigatrip.gate(target, row))
+    destination = areas.area_in(22, row.title)
+    _require(destination is not None and destination.id == 22,
+             "origin_reader: target 22 is missing")
+    verdict = amigafasttravel.AmigaFastTravel(TITLE, disks=disks).legality(target, destination)
+    after = amigatrip.area_id(target, row)
+    _require(after == live,
+             f"origin_reader: live area changed during target-22 legality ({live} to {after})")
+    return {"saved_area": saved_area, "live_area": live, "gate": gate,
+            "target_area": 22, "offered": bool(verdict), "reason": verdict.reason}
+
+
 def _source_controls(path: pathlib.Path, manifest_path: pathlib.Path, disk_hash: str
                      ) -> tuple[PixelGuards, PixelGuards, dict]:
     """Require an offline preparer's explicitly selected current-reader screen rules."""
@@ -1574,6 +1701,154 @@ def run_bundle_source(args: argparse.Namespace, *, guest: WinGuest | None = None
     return receipt
 
 
+def _origin_party(target: amiga.AmigaTarget) -> dict:
+    members = amigaparty.read_party(target)
+    _source_members(members)
+    return {"names": [member.name for member in members],
+            "heads": list(BUNDLE_HEADS), "case": {"member": 4, "head": 2,
+                                                   "saved_children": 4}}
+
+
+def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
+    """Observe source-G's loaded area and one legality verdict; never arm travel or save."""
+    _require(os.name == "posix", "origin_privacy: POSIX owner checks are required")
+    _require(900 < args.budget <= 1500,
+             "origin_deadline: one boot must leave 300 seconds for cleanup")
+    _require(not args.out.exists(), "origin_privacy: output must be fresh")
+    root = pathlib.Path.home() / ".cache/wish/acceptance/360" / args.run_id
+    _require(args.run_id not in ("", ".", "..") and pathlib.Path(args.run_id).name == args.run_id
+             and args.out.parent.resolve() == root.resolve()
+             and args.manifest.parent.resolve() == root.resolve(),
+             "origin_privacy: output and fresh G preparation must share one private run")
+    _require(_private_directory(root.stat(), os.getuid()),
+             "origin_privacy: prepared run is not owner/0700")
+    args.out.mkdir(mode=0o700)
+    _require(_private_directory(args.out.stat(), os.getuid()),
+             "origin_privacy: output is not owner/0700")
+    began = time.time()
+    deadline = time.monotonic() + args.budget
+    action_end = deadline - 300
+    receipt: dict[str, Any] = {"phase": "origin-observe", "run_id": args.run_id,
+                               "holder": args.holder, "began": began,
+                               "combined_deadline": began + args.budget,
+                               "source_image_sha256": ORIGIN_IMAGE_SHA256,
+                               "source_g_sha256": ORIGIN_G_SHA256,
+                               "checks": {}, "cleanup": [], "success": False,
+                               "independently_authenticated": False,
+                               "preservation_established": False}
+    guest = SourcePrivateGuest(guest or WinGuest(), root)
+    command = [str(pathlib.Path(__file__)), "origin-observe", "--run-id", args.run_id,
+               "--holder", args.holder]
+    booted = False
+    run = None
+    manifest = None
+    source = None
+    disk_hash = None
+    manifest_hash = None
+
+    def action_left(cap: float) -> float:
+        left = min(cap, action_end - time.monotonic())
+        _require(left > 0, "origin_deadline: boot action expired; cleanup reserved")
+        return left
+
+    try:
+        manifest = json.loads(args.manifest.read_text())
+        source, disk_hash = _origin_contract(args.manifest, manifest)
+        manifest_hash = sha256(args.manifest)
+        guards, identity, controls = _origin_controls(
+            args.controls, args.source_manifest, disk_hash)
+        receipt["prepared_disk_sha256"] = disk_hash
+        receipt["manifest_sha256"] = manifest_hash
+        receipt["source_controls_sha256"] = sha256(args.controls)
+        receipt["selected_guard_sha256"] = controls["guards"]["sha256"]
+        receipt["selected_identity_sha256"] = controls["identity"]["sha256"]
+        receipt["checks"]["preflight"] = True
+        boot = _boot(SourceBootGuest(guest, action_end, deadline), args.manifest, manifest,
+                     args.holder, args.audio_proof,
+                     time.monotonic() + action_left(1200), command)
+        booted = True
+        receipt["boot"] = {key: boot[key] for key in ("holder", "claim", "start")}
+        run = SourceGuardedRun(guest, args.holder, args.out / "screens", guards, action_end,
+                               identity=identity)
+        run.title()
+        run.press("title", "P", "party_menu")
+        run.press("party_menu", "L", "load_from")
+        run.press("load_from", "P", "load_picker")
+        run.press("load_picker", "B", "disk2_prompt")
+        guest.insert(args.holder, 0, boot["remotes"]["disk2"], timeout=action_left(60),
+                     sha256=manifest["disks"]["disk2"]["sha256"])
+        run.press("disk2_prompt", "SPACE", "loaded_menu")
+        run.press("loaded_menu", "B", "journal")
+        run.press("journal", "X", "journal_answer")
+        run.press("journal_answer", "RET", "world")
+        receipt["checks"]["world_guarded"] = True
+        target = _target(args.holder)
+        receipt["party"] = _origin_party(target)
+        receipt["checks"]["seven_members"] = True
+        receipt["observation"] = _observe_origin(
+            target, saved_area=BUNDLE_PLACE["area"],
+            disks=pathlib.Path(manifest["disks"]["disk3"]["path"]).parent)
+        receipt["checks"]["single_target_observed"] = True
+        observation = receipt["observation"]
+        receipt["route_status"] = ("gate_blocked" if not observation["gate"] else
+                                   "saved_area_5" if observation["live_area"] == 5 else
+                                   "forward_held" if not observation["offered"] else
+                                   "forward_offered_return_unmeasured")
+    except BaseException as exc:
+        receipt["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if run is not None:
+            receipt["screens"] = [{**event, **({"crop": pathlib.Path(event["crop"])
+                                  .relative_to(root).as_posix()} if "crop" in event else {})}
+                                  for event in run.events]
+        if booted:
+            try:
+                left = min(30.0, max(1.0, deadline - time.monotonic()))
+                if deadline - time.monotonic() <= 0:
+                    receipt["cleanup"].append("origin_deadline: cleanup allowance expired")
+                receipt["halt"] = acceptance.halt_lane(
+                    guest, args.holder, timeout=left, manifest_path=args.manifest,
+                    command=command)
+                receipt["checks"]["halt"] = True
+            except Exception as exc:  # noqa: BLE001 - retain cleanup failure
+                receipt["cleanup"].append(f"halt: {exc}")
+        try:
+            _require(sha256(_origin_source()) == ORIGIN_IMAGE_SHA256,
+                     "origin_source: preserved original changed")
+            receipt["checks"]["source_unchanged"] = True
+        except Exception as exc:  # noqa: BLE001
+            receipt["cleanup"].append(f"source hash: {exc}")
+        if disk_hash is not None and manifest is not None and manifest_hash is not None:
+            try:
+                _require(sha256(args.manifest) == manifest_hash and
+                         sha256(pathlib.Path(manifest["disks"]["disk3"]["path"])) == disk_hash
+                         and all(sha256(pathlib.Path(manifest["disks"][key]["path"])) == pin
+                                 for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                                                  ("disk2", route_darkness.DARKNESS_DISK2_SHA256))),
+                         "origin_manifest: prepared originals changed")
+                receipt["checks"]["prepared_unchanged"] = True
+            except Exception as exc:  # noqa: BLE001
+                receipt["cleanup"].append(f"prepared hash: {exc}")
+        if "halt" in receipt:
+            for file in receipt["halt"].get("fetched", {}).values():
+                if "path" in file:
+                    path = pathlib.Path(file["path"])
+                    if not path.resolve().is_relative_to(root.resolve()):
+                        receipt["cleanup"].append("origin_privacy: fetched path escapes private run")
+                        file.pop("path")
+                    else:
+                        file["path"] = path.relative_to(root).as_posix()
+        receipt["success"] = ("error" not in receipt and not receipt["cleanup"] and
+                              all(receipt["checks"].get(key) is True for key in
+                                  ("preflight", "world_guarded", "seven_members",
+                                   "single_target_observed", "halt", "source_unchanged",
+                                   "prepared_unchanged")))
+        _write_source_receipt(args.out / "origin-observe-receipt.json", receipt)
+    if not receipt["success"]:
+        raise RouteError(receipt.get("error") or "; ".join(receipt["cleanup"]))
+    return receipt
+
+
 def _write_source_receipt(path: pathlib.Path, receipt: dict) -> None:
     """Publish a private, read-back checked report without game payloads."""
     _require("raw_hex" not in json.dumps(receipt),
@@ -2117,15 +2392,41 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--controls", type=pathlib.Path, required=True)
     source.add_argument("--out", type=pathlib.Path, required=True)
     source.add_argument("--budget", type=float, required=True)
+    origin_prepare = phases.add_parser("origin-prepare")
+    origin_prepare.add_argument("--run-id", required=True)
+    origin = phases.add_parser("origin-observe")
+    origin.add_argument("--run-id", required=True)
+    origin.add_argument("--holder", required=True)
+    origin.add_argument("--audio-proof", type=pathlib.Path, required=True)
+    origin.add_argument("--manifest", type=pathlib.Path, required=True)
+    origin.add_argument("--source-manifest", type=pathlib.Path, required=True)
+    origin.add_argument("--controls", type=pathlib.Path, required=True)
+    origin.add_argument("--out", type=pathlib.Path, required=True)
+    origin.add_argument("--budget", type=float, required=True)
     args = parser.parse_args(argv)
     try:
+        if args.phase == "origin-prepare":
+            manifest = prepare_origin(args.run_id)
+            print(json.dumps({"prepared_manifest": str(manifest),
+                              "prepared_disk_sha256": ORIGIN_PREPARED_SHA256,
+                              "source_g_sha256": ORIGIN_G_SHA256}, sort_keys=True))
+            return 0
         with terminating():
-            result = (run_bundle_source(args) if args.phase == "bundle-source" else
+            result = (run_origin_observe(args) if args.phase == "origin-observe" else
+                      run_bundle_source(args) if args.phase == "bundle-source" else
                       run_p2(args) if args.phase == "p2" else run_reload(args))
     except (RouteError, OSError, ValueError, KeyError) as exc:
-        print(f"{'Bundle source' if args.phase == 'bundle-source' else 'darknessreturn'}: {exc}",
+        print(f"{'Origin observer' if args.phase.startswith('origin-') else 'Bundle source' if args.phase == 'bundle-source' else 'darknessreturn'}: {exc}",
               file=sys.stderr)
         return 2
+    if args.phase == "origin-observe":
+        print(json.dumps({"success": result["success"],
+                          "receipt": str(args.out / "origin-observe-receipt.json"),
+                          "observation": result["observation"],
+                          "route_status": result["route_status"],
+                          "independently_authenticated": False,
+                          "preservation_established": False}, indent=2, sort_keys=True))
+        return 0
     print(json.dumps({"success": True, "receipt": ("bundle-source-receipt.json"
                                                    if args.phase == "bundle-source" else
                                                    str(args.out / f"{args.phase}-receipt.json")),

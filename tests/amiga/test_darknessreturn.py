@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from automap.actions import Verdict
 from goldbox import amiga_adf, amiga_savegame, dos_savegame
 from tools.amiga import darknessreturn as driver
 from tools.amiga import noencounters, route_darkness
@@ -1913,3 +1914,363 @@ def test_source_unsupported_platform_fails_before_output_or_game_keys(tmp_path, 
     with pytest.raises(RouteError, match="POSIX owner checks are required"):
         driver.run_bundle_source(args, guest=NoKeys())
     assert not args.out.exists()
+
+
+def test_origin_observer_pins_the_separate_game_written_g_not_the_selected_f():
+    assert driver.ORIGIN_IMAGE_SHA256 == (
+        "903b7a7cc4dbe4172733ce98187c38fcb3f3878f7acbd2b390e970d36e28b9be")
+    assert driver.ORIGIN_G_SHA256 == (
+        "fd6b8f00f6f342316ace7d33b34e96c09a820a7017aff379ff352c2da712f328")
+    assert driver.ORIGIN_IMAGE_SHA256 != driver.BUNDLE_IMAGE_SHA256
+    assert driver.ORIGIN_G_SHA256 != driver.BUNDLE_SOURCE_F_SHA256
+
+
+@pytest.mark.parametrize("damage", [None, "source-hash", "g-hash", "manifest-letter",
+                                      "b-mismatch", "occupied-f", "working-hash"])
+def test_origin_observer_contract_reads_pinned_g_and_independent_b_without_modifying_media(
+        tmp_path, monkeypatch, damage):
+    generated = _seven_source(tmp_path, monkeypatch)
+    root = tmp_path / "private-origin"
+    root.mkdir(mode=0o700)
+    source = root / "fetched-disk3.adf"
+    source.write_bytes(b"Generated source disk marker")
+    source.chmod(0o600)
+    image_hash = sha256(source)
+    g_hash = hashlib.sha256(generated.saved).hexdigest()
+    monkeypatch.setattr(driver, "ORIGIN_IMAGE_SHA256", image_hash, raising=False)
+    monkeypatch.setattr(driver, "ORIGIN_G_SHA256", g_hash, raising=False)
+    monkeypatch.setattr(driver.specimens, "_one_entry", lambda *args: {
+        "_provenance": str(root / "provenance.toml"),
+        "sha256": {source.name: image_hash}})
+    paths = {key: root / f"{key}.adf" for key in ("disk1", "disk2", "disk3")}
+    for key, path in paths.items():
+        path.write_bytes(f"Generated working {key} marker".encode())
+        path.chmod(0o600)
+    monkeypatch.setattr(driver, "ORIGIN_PREPARED_SHA256", sha256(paths["disk3"]),
+                        raising=False)
+    for key in ("disk1", "disk2"):
+        monkeypatch.setattr(driver.route_darkness, f"DARKNESS_{key.upper()}_SHA256",
+                            sha256(paths[key]))
+    executable = b"Generated executable marker"
+    monkeypatch.setattr(driver, "BUNDLE_EXEC_SHA256", hashlib.sha256(executable).hexdigest())
+    library = b"Generated English library marker"
+    monkeypatch.setattr(driver, "LIBRARY_HASH", hashlib.sha256(library).hexdigest())
+    slots = {"source": {"G": generated.saved}, "working": {"B": generated.saved}}
+    if damage == "b-mismatch":
+        changed = bytearray(generated.saved)
+        changed[-1] ^= 1
+        slots["working"]["B"] = bytes(changed)
+    if damage == "g-hash":
+        changed = bytearray(generated.saved)
+        changed[-1] ^= 1
+        slots["source"]["G"] = bytes(changed)
+
+    class Disk:
+        def __init__(self, kind):
+            self.kind = kind
+
+        def verify(self):
+            return []
+
+        def read_file(self, name):
+            if name == "/Pools of Darkness":
+                return executable
+            if name == driver.LIBRARY:
+                return library
+            return slots[self.kind][name[-5]]
+
+    monkeypatch.setattr(driver.amiga_adf.AmigaDisk, "open", lambda path: Disk(
+        "source" if pathlib.Path(path) == source else "working"))
+    monkeypatch.setattr(driver.amiga_savegame, "pod_read_slot", lambda disk, letter: (
+        slots[disk.kind][letter]))
+    monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
+        slot_letters=lambda disk: ["F"] if damage == "occupied-f" and disk.kind == "working"
+        else ["G"] if disk.kind == "source" else ["B"],
+        read_slot=lambda disk, letter: {"place": driver.BUNDLE_PLACE}))
+    manifest_path = root / "prepare.json"
+    manifest = {"title": "darkness", "loaded_letter": "B", "names_a": list(driver.BUNDLE_NAMES),
+                "state_a": driver.BUNDLE_PLACE,
+                "substitute": {"path": str(source), "sha256": image_hash,
+                               "letter": "F" if damage == "manifest-letter" else "G"},
+                "disks": {key: {"path": str(path), "sha256": sha256(path)}
+                          for key, path in paths.items()}}
+    if damage == "working-hash":
+        manifest["disks"]["disk3"]["sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest))
+    manifest_path.chmod(0o600)
+    if damage == "source-hash":
+        source.write_bytes(b"Changed generated source disk marker")
+    originals = {path: sha256(path) for path in (source, *paths.values(), manifest_path)}
+    if damage:
+        with pytest.raises(RouteError, match="origin_"):
+            driver._origin_contract(manifest_path, manifest)
+    else:
+        original, disk_hash = driver._origin_contract(manifest_path, manifest)
+        assert (original, disk_hash) == (source, sha256(paths["disk3"]))
+        assert slots["source"]["G"] == slots["working"]["B"]
+    assert {path: sha256(path) for path in originals} == originals
+
+
+def test_origin_observer_controls_reuse_the_exact_source_rules_not_a_g_guess(
+        tmp_path, monkeypatch):
+    original_manifest = tmp_path / "source-prepare.json"
+    original_manifest.write_text("Generated source manifest")
+    monkeypatch.setattr(driver, "BUNDLE_MANIFEST_SHA256", sha256(original_manifest))
+    monkeypatch.setattr(driver, "ORIGIN_PREPARED_SHA256", "origin prepared digest")
+    calls = []
+
+    def selected(path, manifest, disk_hash):
+        calls.append((path, manifest, disk_hash))
+        return object(), object(), {"guards": {"sha256": "generated"},
+                                    "identity": {"sha256": "generated"}}
+
+    monkeypatch.setattr(driver, "_source_controls", selected)
+    selected_file = tmp_path / "source-controls.json"
+    got = driver._origin_controls(selected_file, original_manifest, "origin prepared digest")
+    assert got[2]["guards"]["sha256"] == "generated"
+    assert calls == [(selected_file, original_manifest, driver.BUNDLE_PREPARED_SHA256)]
+    with pytest.raises(RouteError, match="origin_controls"):
+        driver._origin_controls(selected_file, original_manifest, "another prepared disk")
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("live,gate,offered", [
+    (5, True, False), (22, True, False), (17, True, True), (17, False, False),
+])
+def test_origin_observer_reads_live_area_and_only_target_22_without_action(
+        tmp_path, monkeypatch, live, gate, offered):
+    row = driver.amigatrip.row_for(driver.TITLE)
+    events = []
+
+    class Target:
+        data_base = 0x1000
+
+        def read(self, address, length):
+            events.append(("read", address, length))
+            assert (address, length) == (self.data_base + 0x7A0A, 1)
+            return bytes([live])
+
+        def write(self, *args, **kwargs):
+            pytest.fail("A read-only origin observer wrote live RAM")
+
+    monkeypatch.setattr(driver.amigatrip, "gate", lambda target, got: (
+        events.append(("gate", got)) or gate))
+
+    class FastTravel:
+        def __init__(self, key, disks):
+            events.append(("construct", key, disks))
+
+        def legality(self, target, area):
+            events.append(("legality", area.id))
+            assert area.id == 22
+            return Verdict(offered, "held" if not offered else "")
+
+        def apply(self, *args, **kwargs):
+            pytest.fail("The origin observer attempted Fast Travel")
+
+        def apply_back(self, *args, **kwargs):
+            pytest.fail("The origin observer attempted Return")
+
+    monkeypatch.setattr(driver.amigafasttravel, "AmigaFastTravel", FastTravel)
+    monkeypatch.setattr(driver.fasttravelrun, "candidate_areas", lambda *a: pytest.fail(
+        "An origin observer enumerated all title areas"))
+    monkeypatch.setattr(driver.fasttravelrun, "legality_report", lambda *a: pytest.fail(
+        "An origin observer ran the all-area legality report"))
+    report = driver._observe_origin(Target(), saved_area=5, disks=tmp_path)
+    assert report["saved_area"] == 5
+    assert report["live_area"] == live
+    assert report["gate"] is gate
+    assert report["target_area"] == 22
+    assert report["offered"] is offered
+    assert report["reason"] == ("held" if not offered else "")
+    assert events.count(("read", 0x1000 + row.area, 1)) >= 1
+    assert events.count(("gate", row)) == 1
+    assert events.count(("legality", 22)) == 1
+    assert all(event[0] in {"read", "gate", "construct", "legality"} for event in events)
+
+
+def _origin_observer_coordinator(tmp_path, monkeypatch, *, fail=None, live=5, offered=False):
+    private_path = _synthetic_private_files(monkeypatch, tmp_path)
+    root = private_path(tmp_path / ".cache/wish/acceptance/360/synthetic-origin")
+    root.mkdir(parents=True, mode=0o700)
+    original = root / "immutable-source.adf"
+    original.write_bytes(b"Generated immutable source marker")
+    original.chmod(0o600)
+    disks = {}
+    for key in ("disk1", "disk2", "disk3"):
+        path = root / f"{key}.adf"
+        path.write_bytes(f"Generated {key} marker".encode())
+        path.chmod(0o600)
+        disks[key] = {"path": str(path), "sha256": sha256(path)}
+    manifest = root / "prepare.json"
+    manifest.write_text(json.dumps({"title": "darkness", "loaded_letter": "B",
+                                    "names_a": list(driver.BUNDLE_NAMES), "disks": disks}))
+    manifest.chmod(0o600)
+    controls = root / "source-controls.json"
+    controls.write_text("{}")
+    controls.chmod(0o600)
+    source_manifest = root / "source-prepare.json"
+    source_manifest.write_text("{}")
+    source_manifest.chmod(0o600)
+    events = []
+    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: private_path(tmp_path))
+
+    def contract(manifest_path, data):
+        events.append(("contract", manifest_path))
+        if fail == "hash":
+            raise RouteError("origin source image digest differs")
+        return original, disks["disk3"]["sha256"]
+
+    def selected(path, original_manifest, disk_hash):
+        events.append(("controls", path, original_manifest, disk_hash))
+        if fail == "controls":
+            raise RouteError("origin selected guard digest differs")
+        return None, None, {"guards": {"sha256": "generated"},
+                            "identity": {"sha256": "generated"}}
+
+    class Guest:
+        def insert(self, holder, drive, remote, timeout, sha256):
+            events.append(("insert", drive))
+
+        def press(self, *args, **kwargs):
+            pytest.fail("The observer bypassed its guarded run")
+
+    class Run:
+        def __init__(self, *args, **kwargs):
+            self.events = []
+
+        def see(self, state, limit=None):
+            events.append(("screen", state))
+            if fail == "unknown-loaded-menu" and state == "loaded_menu":
+                raise RouteError("origin loaded_menu has no matching G guard")
+            if fail == "unknown-world" and state == "world":
+                raise RouteError("origin world has no matching G guard")
+            self.events.append({"screen": state, "shot": len(self.events) + 1, "time": 1.0})
+
+        def title(self):
+            self.see("title")
+
+        def press(self, state, key, following=None):
+            self.see(state)
+            events.append(("key", key))
+            self.events.append({"key": key, "from": state, "time": 1.0})
+            if following is not None:
+                self.see(following)
+
+    def boot(guest, manifest_path, data, holder, proof, deadline, command):
+        events.append(("boot", holder))
+        return {"holder": holder, "claim": "ok", "start": "ok",
+                "remotes": {"disk2": "remote-disk2", "disk3": "remote-disk3"}}
+
+    def observe(target, *, saved_area, disks):
+        events.append(("observe", saved_area))
+        return {"saved_area": saved_area, "live_area": live, "gate": True,
+                "target_area": 22, "offered": offered,
+                "reason": "" if offered else "held"}
+
+    def party(target):
+        events.append(("party", "read"))
+        if fail == "names":
+            raise RouteError("origin party names differ")
+        return {"names": list(driver.BUNDLE_NAMES), "heads": list(driver.BUNDLE_HEADS)}
+
+    def halt(guest, holder, **kwargs):
+        events.append(("halt", holder))
+        return {"fetched": {"disk3": {"path": str(disks["disk3"]["path"]),
+                                     "sha256": disks["disk3"]["sha256"]}}}
+
+    monkeypatch.setattr(driver, "_origin_contract", contract, raising=False)
+    monkeypatch.setattr(driver, "_origin_controls", selected, raising=False)
+    monkeypatch.setattr(driver, "_observe_origin", observe, raising=False)
+    monkeypatch.setattr(driver, "_origin_party", party, raising=False)
+    monkeypatch.setattr(driver, "_origin_source", lambda: original, raising=False)
+    monkeypatch.setattr(driver, "ORIGIN_IMAGE_SHA256", sha256(original), raising=False)
+    monkeypatch.setattr(driver, "ORIGIN_PREPARED_SHA256", disks["disk3"]["sha256"],
+                        raising=False)
+    for key in ("disk1", "disk2"):
+        monkeypatch.setattr(driver.route_darkness, f"DARKNESS_{key.upper()}_SHA256",
+                            disks[key]["sha256"])
+    monkeypatch.setattr(driver, "_target", lambda holder: object())
+    monkeypatch.setattr(driver, "_boot", boot)
+    monkeypatch.setattr(driver, "SourceGuardedRun", Run)
+    monkeypatch.setattr(driver.acceptance, "halt_lane", halt)
+    args = SimpleNamespace(run_id="synthetic-origin", holder="generated-holder", budget=1500,
+                           out=root / "origin-output", manifest=manifest, controls=controls,
+                           source_manifest=source_manifest, audio_proof=root / "audio.json")
+    return args, Guest(), events, original, disks
+
+
+@pytest.mark.parametrize("failure", [None, "hash", "controls", "unknown-loaded-menu",
+                                      "unknown-world", "names"])
+def test_origin_observer_persists_diagnostics_and_stops_before_any_travel_or_save(
+        tmp_path, monkeypatch, failure):
+    args, guest, events, original, disks = _origin_observer_coordinator(
+        tmp_path, monkeypatch, fail=failure)
+    originals = {path: sha256(path) for path in
+                 (original, *(pathlib.Path(item["path"]) for item in disks.values()))}
+    if failure:
+        with pytest.raises(RouteError):
+            driver.run_origin_observe(args, guest=guest)
+    else:
+        report = driver.run_origin_observe(args, guest=guest)
+        assert report["observation"] == {"saved_area": 5, "live_area": 5,
+                                          "gate": True, "target_area": 22,
+                                          "offered": False, "reason": "held"}
+        assert report["success"] is True
+    path = args.out / "origin-observe-receipt.json"
+    assert path.is_file()
+    receipt = json.loads(path.read_text())
+    assert receipt["phase"] == "origin-observe"
+    assert receipt["independently_authenticated"] is False
+    assert receipt["preservation_established"] is False
+    assert receipt["success"] is (failure is None)
+    assert "raw_hex" not in path.read_text()
+    assert all(sha256(p) == digest for p, digest in originals.items())
+    assert (("boot", args.holder) in events) is (failure not in ("hash", "controls"))
+    assert (("halt", args.holder) in events) is (failure not in ("hash", "controls"))
+    assert any(x[0] == "observe" for x in events) is (failure is None)
+    assert events.count(("key", "B")) == (
+        0 if failure in ("hash", "controls") else
+        1 if failure == "unknown-loaded-menu" else 2)
+    assert all(e[1] not in {"S", "F", "G", "U", "J", "NP8", "NP2"}
+               for e in events if e[0] == "key")
+
+
+def test_origin_observer_reports_different_live_origin_without_travelling(tmp_path, monkeypatch):
+    args, guest, events, _, _ = _origin_observer_coordinator(
+        tmp_path, monkeypatch, live=17, offered=True)
+    result = driver.run_origin_observe(args, guest=guest)
+    assert result["observation"]["saved_area"] == 5
+    assert result["observation"]["live_area"] == 17
+    assert result["observation"]["offered"] is True
+    assert result["preservation_established"] is False
+    assert len([event for event in events if event[0] == "observe"]) == 1
+    assert all(e[1] not in {"S", "F", "G", "U", "J", "NP8", "NP2"}
+               for e in events if e[0] == "key")
+
+
+def test_origin_observer_cli_is_opt_in_and_does_not_invoke_p2(tmp_path, monkeypatch, capsys):
+    output = tmp_path / "origin-output"
+    called = []
+
+    def observe(args):
+        called.append((args.phase, args.budget, args.source_manifest))
+        return {"success": True, "checks": {}, "observation": {
+            "saved_area": 5, "live_area": 17, "gate": True, "target_area": 22,
+            "offered": True, "reason": ""},
+            "route_status": "forward_offered_return_unmeasured"}
+
+    monkeypatch.setattr(driver, "run_origin_observe", observe)
+    monkeypatch.setattr(driver, "run_p2", lambda *args: pytest.fail("Origin used P2"))
+    monkeypatch.setattr(driver, "run_bundle_source", lambda *args: pytest.fail("Origin saved F/G"))
+    monkeypatch.setattr(driver, "terminating", nullcontext)
+    source_manifest = tmp_path / "source-prepare.json"
+    command = ["origin-observe", "--run-id", "generated-origin", "--holder", "generated-holder",
+               "--audio-proof", str(tmp_path / "audio.json"), "--manifest", str(tmp_path / "prepare.json"),
+               "--source-manifest", str(source_manifest), "--controls", str(tmp_path / "controls.json"),
+               "--out", str(output), "--budget", "1500"]
+    assert driver.main(command) == 0
+    assert called == [("origin-observe", 1500.0, source_manifest)]
+    report = json.loads(capsys.readouterr().out)
+    assert report["receipt"] == str(output / "origin-observe-receipt.json")
+    assert report["preservation_established"] is False
