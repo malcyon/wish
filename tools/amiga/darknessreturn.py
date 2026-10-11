@@ -333,13 +333,18 @@ def _live_read(target: amiga.AmigaTarget, *, capture: pathlib.Path | None = None
     return reading
 
 
+def _private_directory(actual: os.stat_result, owner: int) -> bool:
+    return actual.st_uid == owner and stat.S_IMODE(actual.st_mode) == 0o700
+
+
 def _capture_dir(run_id: str) -> pathlib.Path:
     _require(run_id not in ("", ".", "..") and pathlib.Path(run_id).name == run_id,
              "the capture run ID must be one path component")
+    _require(os.name == "posix", "private node capture requires POSIX owner and mode checks")
     directory = pathlib.Path.home() / ".cache/wish/acceptance/WISH-360" / run_id / "item-nodes"
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     actual = directory.stat()
-    _require(actual.st_uid == os.getuid() and stat.S_IMODE(actual.st_mode) == 0o700,
+    _require(_private_directory(actual, os.getuid()),
              "the private node directory has the wrong owner or mode")
     return directory
 
@@ -352,7 +357,7 @@ def _checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, checkpoint: 
     proof = reading.pop("capture")
     _require(path.is_file(), "the private node capture is missing")
     receipt.setdefault("item_nodes", []).append({
-        "checkpoint": checkpoint, "path": str(path.relative_to(directory.parent.parent)),
+        "checkpoint": checkpoint, "path": path.relative_to(directory.parent.parent).as_posix(),
         "file_sha256": proof["file_sha256"], "order": len(receipt.get("item_nodes", [])),
         "time": time.time(), "holder": receipt["holder"], "phase": receipt["phase"],
         "title": TITLE, "source_disk_sha256": disk_sha256,

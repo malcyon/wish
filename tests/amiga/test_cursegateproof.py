@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from argparse import Namespace
 from pathlib import Path
@@ -16,6 +17,38 @@ from tools.amiga.winuaesession import RouteError
 
 ENTRY_BYTES = bytes(range(20))  # Generated, not a game script or specimen.
 ORIGINAL = bytes((8, 0, 100, 1, 121, 127))
+
+
+class SyntheticAlarm:
+    """Test-only Windows stand-in for the driver's POSIX alarm API."""
+
+    SIGALRM = 14
+    ITIMER_REAL = 0
+
+    def __init__(self):
+        self.handler = None
+        self.timers = []
+
+    def getsignal(self, signum):
+        assert signum == self.SIGALRM
+        return self.handler
+
+    def signal(self, signum, handler):
+        assert signum == self.SIGALRM
+        previous, self.handler = self.handler, handler
+        return previous
+
+    def setitimer(self, which, seconds):
+        assert which == self.ITIMER_REAL and seconds >= 0
+        self.timers.append(seconds)
+
+
+def _windows_alarm(monkeypatch):
+    if os.name == "nt":
+        alarm = SyntheticAlarm()
+        monkeypatch.setattr(proof, "signal", alarm)
+        return alarm
+    return None
 
 
 class Pipe:
@@ -512,6 +545,7 @@ def test_guard_miss_with_mode_five_saves_unknown_not_combat(tmp_path, monkeypatc
 ])
 def test_run_halts_only_its_holder_and_checks_media_before_verdict(
         scenario, monkeypatch, tmp_path, fight_at, fail_off, want, restores):
+    alarm = _windows_alarm(monkeypatch)
     scenario.fight_at = fight_at
     scenario.switch.fail_off = fail_off
     source = tmp_path / "source"
@@ -572,6 +606,10 @@ def test_run_halts_only_its_holder_and_checks_media_before_verdict(
     assert json.loads((out / "summary.json").read_text())["branch_witness_reason"] \
         == report["branch_witness_reason"]
     assert report["candidate"] is False
+    if alarm is not None:
+        assert alarm.handler is None
+        assert any(seconds > 0 for seconds in alarm.timers)
+        assert alarm.timers[-1] == 0
     assert report.get("diagnostic_pair", False) is (fight_at == 3)
     assert command_calls == [("boot", args.holder), ("halt", args.holder)]
     assert scenario.guest.calls.count("snapshot") == 1
@@ -620,7 +658,10 @@ def cleanup_run(tmp_path, monkeypatch, scenario):
     """Synthetic clock, media and lane with the real halt ordering."""
     now = [1000.0]
     monkeypatch.setattr(proof.time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(proof.signal, "setitimer", lambda *args: None)
+    alarm = _windows_alarm(monkeypatch)
+    if alarm is None:
+        monkeypatch.setattr(proof.signal, "setitimer", lambda *args: None)
+    scenario.alarm = alarm
     source = tmp_path / "source"
     source.mkdir()
     out = tmp_path / "private"
@@ -687,6 +728,10 @@ def test_cleanup_off_timeout_retains_journal_and_releases_owned_lane(cleanup_run
         now.__setitem__(0, 1751.0) or {"error": "off timed out"})
     report = run()
     assert report["error"].endswith("route expired while row held")
+    if scenario.alarm is not None:
+        assert scenario.alarm.handler is None
+        assert any(seconds > 0 for seconds in scenario.alarm.timers)
+        assert scenario.alarm.timers[-1] == 0
     assert scenario.switch.calls[-1] == "off"
     assert scenario.guest.calls == ["snapshot"]
     assert [event[0] for event in lane if isinstance(event, tuple)] == ["stop", "release"]

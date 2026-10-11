@@ -271,10 +271,22 @@ def test_live_capture_uses_one_read_and_matches_ordinary_hashes(tmp_path, monkey
     monkeypatch.setattr(driver.fasttravelrun, "_reading", lambda *args: {})
     monkeypatch.setattr(driver.amigavars, "read_variables", lambda *args: [])
     path = tmp_path / "nodes.json"
+    original_open = os.open
+    requested = []
+
+    def capture_open(file, flags, mode=0o777):
+        requested.append((flags, mode))
+        return original_open(file, flags, mode)
+
+    monkeypatch.setattr(driver.os, "open", capture_open)
     reading = driver._live_read(object(), capture=path)
     assert len(calls) == 1
     assert hashlib.sha256(path.read_bytes()).hexdigest() == reading["capture"]["file_sha256"]
-    assert path.stat().st_mode & 0o777 == 0o600
+    assert len(requested) == 1
+    assert requested[0][0] & (os.O_CREAT | os.O_EXCL) == os.O_CREAT | os.O_EXCL
+    assert requested[0][1] == 0o600
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
     items = json.loads(path.read_text())["items"]
     assert [item["chain_index"] for item in items] == [3, 4]
     assert [item["address"] for item in items] == [members[0].item_nodes[i].address for i in (3, 4)]
@@ -336,6 +348,12 @@ def test_checkpoint_receipt_is_private_relative_and_carries_screen_order(tmp_pat
 
 
 def test_capture_directory_checks_real_owner_and_mode(tmp_path, monkeypatch):
+    if os.name != "posix":
+        monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
+        with pytest.raises(RouteError, match="requires POSIX"):
+            driver._capture_dir("first")
+        assert not (tmp_path / ".cache/wish/acceptance/WISH-360/first/item-nodes").exists()
+        return
     monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
     directory = driver._capture_dir("first")
     assert directory.stat().st_uid == os.getuid()
@@ -356,6 +374,47 @@ def test_capture_directory_checks_real_owner_and_mode(tmp_path, monkeypatch):
     monkeypatch.setattr(driver.os, "getuid", lambda: -1)
     with pytest.raises(RouteError, match="wrong owner or mode"):
         driver._capture_dir("wrong-owner")
+
+
+@pytest.mark.parametrize("owner,mode,private", [
+    (100, 0o700, True), (101, 0o700, False), (100, 0o755, False),
+])
+def test_private_directory_predicate_checks_owner_and_mode(owner, mode, private):
+    assert driver._private_directory(SimpleNamespace(st_uid=owner, st_mode=mode), 100) is private
+
+
+def test_non_posix_capture_stops_before_creating_node_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(driver, "os", SimpleNamespace(name="nt"))
+    with pytest.raises(RouteError, match="requires POSIX"):
+        driver._capture_dir("first")
+    assert not (tmp_path / ".cache/wish/acceptance/WISH-360/first/item-nodes").exists()
+
+
+@pytest.mark.parametrize("phase", ["p2", "reload"])
+def test_non_posix_run_stops_before_boot_or_creating_nodes(tmp_path, monkeypatch, phase):
+    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(driver, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(driver, "_check_source", lambda: None)
+    monkeypatch.setattr(driver, "_export_guards", lambda out: None)
+    monkeypatch.setattr(driver, "_boot", lambda *args: pytest.fail("booted without private capture"))
+    monkeypatch.setattr(driver, "_prepare_p2", lambda *args: (
+        tmp_path / "manifest", {"encounter_media": {}}))
+    monkeypatch.setattr(driver.acceptance, "prepare", lambda *args, **kwargs: tmp_path / "manifest")
+    (tmp_path / "manifest").write_text("{}")
+    monkeypatch.setattr(driver, "_restored_source", lambda p2: tmp_path / "source")
+    receipt = tmp_path / "prior.json"
+    receipt.write_text(json.dumps({"combined_deadline": driver.time.time() + 1100,
+                                   "cumulative_return_attempts": 3}))
+    args = SimpleNamespace(previous_return_attempts=2, budget=1000,
+                           out=tmp_path / phase, run_id="first", holder="proof",
+                           audio_proof=tmp_path / "audio", receipt=receipt)
+    with pytest.raises(RouteError, match="requires POSIX"):
+        if phase == "p2":
+            driver.run_p2(args, guest=object())
+        else:
+            driver.run_reload(args, guest=object())
+    assert not (tmp_path / ".cache/wish/acceptance/WISH-360/first/item-nodes").exists()
 
 
 @pytest.mark.parametrize("step_fails, capture_fails, post_save_fails, disk_mismatch, damage", [
