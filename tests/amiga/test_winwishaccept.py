@@ -1663,3 +1663,245 @@ def test_opening_preflight_requires_independent_two_box_rule_and_pins(tmp_path, 
         result = winwishaccept.preflight(args, guest=guest, route_for=lambda *args: route,
                                          driver_sha=SHA)
         assert result[3]["provenance"]["approved_media_sha256"] == pins
+
+
+@pytest.mark.parametrize("mode", ["ssb-opening-second", "ssb-opening-after-second"])
+@pytest.mark.parametrize("fault", [None, "missing", "prose", "footer"])
+def test_second_page_preflight_requires_both_independent_boxes_before_artifact(
+        tmp_path, monkeypatch, mode, fault):
+    from tools.amiga import maproute, route_silver_blades
+
+    args = _discovery_args(tmp_path)
+    args.discover = mode
+    args.manifest.write_text('{"title":"ssb","opening_scene":true,"substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for key in ("df0", "df1"):
+        (tmp_path / f"{key}.adf").write_bytes(key.encode())
+    route = _discovery_route(tmp_path)
+    pins = {"df0": winwishaccept.DISCOVERY_DF0_SHA256,
+            "df1": route_silver_blades.DISK_B_SHA256}
+    route.media = tuple(SimpleNamespace(key=m.key, path=m.path, sha256=pins[m.key])
+                        for m in route.media)
+    original_digest = winwishaccept.digest
+    monkeypatch.setattr(winwishaccept, "digest", lambda path: pins[path.stem]
+                        if path.suffix == ".adf" else original_digest(path))
+    route.guard_path.write_text("{}")
+    monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda argv: (
+        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    second = json.loads(json.dumps(winwishaccept.OPENING_SECOND_RULE))
+    if fault == "prose":
+        second["sha256"] = "0" * 64
+    elif fault == "footer":
+        second["and"][0]["sha256"] = "0" * 64
+    phase = maproute._load("ssb", "D")
+    states = {"title", *(step.state for step in phase.steps[:6])}
+    monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
+        rules={**{state: True for state in states},
+               "ssb_opening_first": winwishaccept.OPENING_FIRST_RULE,
+               **({} if fault == "missing" else {"ssb_opening_second": second})}))
+    zip_path = tmp_path / "artifact.zip"
+    zip_path.write_bytes(b"build")
+    (tmp_path / winwishaccept.winwish.COMMIT_FILE).write_text(SHA)
+    fetches = []
+    monkeypatch.setattr(winwishaccept.winwish, "fetch", lambda *argv: (
+        fetches.append(argv) or zip_path))
+    monkeypatch.setattr(winwishaccept.winwish, "pick_run", lambda *argv: 17)
+    monkeypatch.setattr(winwishaccept.winwish, "check_zip_commit", lambda *argv: None)
+    guest = SimpleNamespace(gh=lambda *argv: "[]")
+    if fault:
+        with pytest.raises(winwishaccept.AcceptanceStop,
+                           match="measured guards" if fault == "missing" else "second opening discovery"):
+            winwishaccept.preflight(args, guest=guest, route_for=lambda *argv: route,
+                                    driver_sha=SHA)
+        assert not fetches
+    else:
+        assert winwishaccept.preflight(args, guest=guest, route_for=lambda *argv: route,
+                                       driver_sha=SHA)[0] is route
+        assert len(fetches) == 1
+
+
+def _second_controller(tmp_path, monkeypatch, mode, frames):
+    controller, game, clock, snapshots, calls = _opening_controller(tmp_path, monkeypatch)
+    controller.args.discover = mode
+    previous = game.grab
+    seen = iter(frames)
+
+    def grab(state, raw, crop, timeout):
+        exact = previous(state, raw, crop, timeout)
+        if state in ("ssb_opening_unknown", "ssb_opening_after_second_unknown"):
+            pathlib.Path(crop).write_bytes(next(seen))
+        elif state == "ssb_opening_second":
+            pathlib.Path(crop).write_bytes(b"second")
+        return exact
+
+    game.grab = grab
+    class Guards:
+        rules = {"ssb_opening_first": winwishaccept.OPENING_FIRST_RULE,
+                 "ssb_opening_second": winwishaccept.OPENING_SECOND_RULE}
+
+        def __call__(self, state, crop):
+            return state != "ssb_opening_second" or pathlib.Path(crop).read_bytes() == b"second"
+
+    controller.guards = Guards()
+    return controller, game, clock, snapshots, calls
+
+
+@pytest.mark.parametrize("mode,keys,frames", [
+    ("ssb-opening-second", 1, (b"partial", b"second")),
+    ("ssb-opening-after-second", 2, (b"partial", b"second", b"unknown", b"unknown", b"unknown"))])
+def test_second_page_modes_stop_at_first_match_or_send_only_one_more_guarded_return(
+        tmp_path, monkeypatch, mode, keys, frames):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, snapshots, calls = _second_controller(tmp_path, monkeypatch, mode, frames)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    result = controller.run_opening_second()
+    assert result["failure"] is None
+    assert game.keys == ["P", "L", "D", "V", "E", "B"] + ["RET"] * keys
+    assert controller.mapping_commands == 6 + keys
+    assert result["completed_sequence"] == ["opening_menu"]
+    assert result["challenge_key_count"] is None
+    assert result["challenge_key_count_verified"] is False
+    assert len(result["discovery"]["evidence"]) == len(frames)
+    assert result["checkpoints"]["ssb_opening_second"]["game"] is result["discovery"]["evidence"][1]
+    assert ("ssb_opening_after_second" in result["checkpoints"]) is (keys == 2)
+    assert snapshots == [] and ("down",) in calls
+    assert all(result["mapping"][name]["status"] == "unproven"
+               for name in ("load", "stationary", "walk", "transition", "reload", "reopen"))
+
+
+@pytest.mark.parametrize("frames", [(b"partial", b"partial", b"partial"),
+                                     (b"partial", b"partial", b"second")])
+def test_second_page_mismatch_or_late_match_preserves_frames_without_extra_return(
+        tmp_path, monkeypatch, frames):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-after-second", frames)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    if frames[-1] == b"second":
+        original = game.grab
+        count = 0
+        def late(state, raw, crop, timeout):
+            nonlocal count
+            exact = original(state, raw, crop, timeout)
+            if state == "ssb_opening_unknown":
+                count += 1
+                if count == 3:
+                    clock.now += 5.25
+            return exact
+        game.grab = late
+    result = controller.run_opening_second()
+    assert result["failure"] and result["discovery"]["status"] == "failed"
+    assert len(result["discovery"]["evidence"]) == 3
+    assert all(pathlib.Path(frame["raw"]).is_file() for frame in result["discovery"]["evidence"])
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET"]
+    assert "ssb_opening_second" not in result["checkpoints"] and ("down",) in calls
+
+
+def test_second_page_reconfirmation_blocks_later_return_and_unreadable_fix_keeps_pair(
+        tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-after-second", (b"second",))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    previous = controller._await
+    def await_state(state, **kwargs):
+        if state == "ssb_opening_second":
+            raise winwishaccept.AcceptanceStop("second page changed before Return")
+        return previous(state, **kwargs)
+    monkeypatch.setattr(controller, "_await", await_state)
+    result = controller.run_opening_second()
+    assert "second page changed" in result["failure"]
+    assert game.keys[-1:] == ["RET"]
+    assert set(result["checkpoints"]) == {"load_sheet", "ssb_opening_second"}
+    assert result["checkpoints"]["ssb_opening_second"]["game"] is result["discovery"]["evidence"][0]
+    assert ("down",) in calls
+
+    other = tmp_path / "missing-fix"
+    other.mkdir()
+    controller, game, _, _, _ = _second_controller(
+        other, monkeypatch, "ssb-opening-after-second", (b"second",))
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame:
+                        controller.checkpoints.update({name: {"observed": {"fix": None}, "game": frame}}))
+    result = controller.run_opening_second()
+    assert "game fix was not readable" in result["failure"]
+    assert result["checkpoints"]["ssb_opening_second"]["game"] is result["discovery"]["evidence"][0]
+    assert game.keys[-1:] == ["RET"]
+
+
+@pytest.mark.parametrize("fault", ["partial", "receipt", "no_exact"])
+def test_second_page_capture_failure_preserves_evidence_and_never_sends_later_return(
+        tmp_path, monkeypatch, fault):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-after-second",
+        (b"partial", b"second", b"partial"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    previous = game.grab
+    count = 0
+    def grab(state, raw, crop, timeout):
+        nonlocal count
+        if state == "ssb_opening_unknown":
+            count += 1
+            if fault == "partial" and count == 2:
+                pathlib.Path(raw).write_bytes(b"partial")
+                raise RuntimeError("pipe shot failed")
+        prior_receipt = game.last_shot
+        exact = previous(state, raw, crop, timeout)
+        if state == "ssb_opening_unknown" and count == 2:
+            if fault == "receipt":
+                # A reused receipt object is not evidence of a new shot.
+                game.last_shot = prior_receipt
+            elif fault == "no_exact":
+                pathlib.Path(crop).unlink()
+                return False
+        return exact
+    game.grab = grab
+    result = controller.run_opening_second()
+    assert result["failure"] and result["discovery"]["status"] == "failed"
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET"]
+    assert len(result["discovery"]["evidence"]) >= 2
+    assert all(pathlib.Path(frame["raw"]).is_file() for frame in result["discovery"]["evidence"])
+    assert "ssb_opening_second" not in result["checkpoints"] and ("down",) in calls
+    if fault == "partial":
+        assert result["discovery"]["evidence"][1]["error"] == "RuntimeError: pipe shot failed"
+    if fault == "receipt":
+        assert "fresh valid pipe shot provenance" in result["failure"]
+
+
+@pytest.mark.parametrize("readable", [False, True])
+def test_second_page_real_checkpoint_retains_delayed_nonatomic_wish_pair(
+        tmp_path, monkeypatch, readable):
+    from automap import amigaparty
+    from tools.amiga import amigatarget, route_silver_blades
+
+    controller, game, _, _, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-second", (b"second",))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame:
+                        winwishaccept.Controller._checkpoint(controller, name, expected, frame))
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: None)
+    fix = SimpleNamespace(x=7, y=13, facing=0, outdoors=False, world_map=False,
+                          window=None, heading=None) if readable else None
+    target = SimpleNamespace(fix=lambda: fix, geo=lambda: None, close=lambda: None)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: target)
+    def shot(guest, holder, kind, path):
+        pathlib.Path(path).write_bytes(b"wish")
+        pathlib.Path(str(path) + ".json").write_text("{}")
+    monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    result = controller.run_opening_second()
+    pair = result["checkpoints"]["ssb_opening_second"]
+    assert pair["game"] is result["discovery"]["evidence"][0]
+    assert pair["pair_atomic"] is False and pathlib.Path(pair["wish_sidecar"]).is_file()
+    assert pathlib.Path(pair["wish"]).read_bytes() == b"wish"
+    assert pair["comparison"]["status"] == (
+        "awaiting image review" if readable else "unproven")
+    assert (result["failure"] is None) is readable
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET"] and ("down",) in calls

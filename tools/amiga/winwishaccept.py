@@ -42,6 +42,13 @@ OPENING_FIRST_RULE = {
     "and": [{"box": [186, 404, 586, 426],
              "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
 }
+OPENING_SECOND_RULE = {
+    "box": [88, 302, 700, 400],
+    "sha256": "b2853ef5783edfbc138ca70d86ffab72c097b43bb3598145fc4a050a5e460f57",
+    "and": [{"box": [186, 404, 586, 426],
+             "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
+}
+OPENING_MODES = ("ssb-opening-first", "ssb-opening-second", "ssb-opening-after-second")
 
 
 def _opening_first_phase(route: Any) -> Any:
@@ -205,8 +212,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     if not BUILD_SHA.fullmatch(args.sha):
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
     mode = getattr(args, "discover", None)
-    opening = mode == "ssb-opening-first"
-    discovery = mode in ("ssb-leave", "ssb-opening-first")
+    opening = mode in OPENING_MODES
+    discovery = mode == "ssb-leave" or opening
     maximum = DISCOVERY_SECONDS if discovery else MAX_SECONDS
     if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
@@ -269,6 +276,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         phase = _opening_first_phase(route)
         states = {phase.initial_state, *(step.state for step in phase.steps),
                   "ssb_opening_first"}
+        if mode != "ssb-opening-first":
+            states.add("ssb_opening_second")
     elif discovery:
         states = {"title"} | {state for phase in _discovery_phases(route).values()
                               for state in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -279,6 +288,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         raise AcceptanceStop("route has no measured guards for " + ", ".join(sorted(missing)))
     if opening and guards.rules["ssb_opening_first"] != OPENING_FIRST_RULE:
         raise AcceptanceStop("opening discovery needs the independent exact two-box guard")
+    if mode in OPENING_MODES[1:] and guards.rules["ssb_opening_second"] != OPENING_SECOND_RULE:
+        raise AcceptanceStop("second opening discovery needs the independent exact two-box guard")
     if not route.loaded_slot or len(route.loaded_slot) != 1:
         raise AcceptanceStop("the manifest has no single prepared load slot")
     if not driver_sha:
@@ -324,7 +335,7 @@ class Controller:
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         self.action_limit = _action_budget(route)
-        self.discovery = getattr(args, "discover", None) in ("ssb-leave", "ssb-opening-first")
+        self.discovery = getattr(args, "discover", None) in ("ssb-leave", *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
         self.encounters_on = False
@@ -507,7 +518,8 @@ class Controller:
     def _compare_checkpoint(self, name: str, expected: Any,
                             engine: dict[str, Any]) -> dict[str, Any]:
         if expected is None:
-            if name in ("ssb_leave_terminal", "ssb_opening_after_first") and engine.get("fix") is None:
+            if name in ("ssb_leave_terminal", "ssb_opening_after_first",
+                        "ssb_opening_second", "ssb_opening_after_second") and engine.get("fix") is None:
                 return row("unproven", observed=engine, reason="the game fix was not readable")
             return row("awaiting image review", observed=engine)
         fix = engine.get("fix")
@@ -1258,7 +1270,8 @@ class Controller:
             discovery["status"] = "failed"
             discovery["reason"] = self.summary["failure"]
 
-    def _capture_unknown_frames(self, state: str, prefix: str, end: float) -> dict[str, Any]:
+    def _capture_unknown_frames(self, state: str, prefix: str, end: float,
+                                *, stop_guard: str | None = None) -> dict[str, Any]:
         frames = self.summary["discovery"]["evidence"]
         for number in range(3):
             remaining = end - self.clock()
@@ -1291,12 +1304,69 @@ class Controller:
                           or type(source.get("pid")) is not int or source["pid"] <= 0
                           or type(source.get("counter")) is not int or source["counter"] <= 0):
                 raise AcceptanceStop("exact terminal crop has no fresh valid pipe shot provenance")
+            if exact and self.clock() <= end and stop_guard and self.guards(stop_guard, crop):
+                return frame
         if not frames or self.clock() > end:
             raise AcceptanceStop("terminal pipe frames exceeded five seconds")
         exact_frames = [frame for frame in frames if frame["crop"] is not None]
         if not exact_frames:
             raise AcceptanceStop("no exact terminal crop; raw pipe frames retained")
+        if stop_guard:
+            raise AcceptanceStop(f"{stop_guard} was not recognized within three fresh pipe frames")
         return exact_frames[-1]
+
+    def run_opening_second(self) -> dict[str, Any]:
+        """Stop on the second page, or observe one more Return in the later mode."""
+        self.summary["discovery"] = row()
+        self.summary["challenge_key_count"] = None
+        self.summary["challenge_key_count_verified"] = False
+        try:
+            phase = _opening_first_phase(self.route)
+            mode = getattr(self.args, "discover", None)
+            if mode not in OPENING_MODES[1:]:
+                raise AcceptanceStop("second opening discovery mode is required")
+            if (getattr(self.guards, "rules", {}).get("ssb_opening_first") != OPENING_FIRST_RULE
+                    or self.guards.rules.get("ssb_opening_second") != OPENING_SECOND_RULE):
+                raise AcceptanceStop("opening discovery needs both independent exact two-box guards")
+            self._up()
+            self._game_section()
+            title = self._await("title", limit=300)
+            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            self.run_phase(phase)
+            self._answer_journal()
+            self._await("ssb_opening_first", limit=300)
+            first_start = self.clock()
+            self._press("RET")
+            second = self._capture_unknown_frames(
+                "ssb_opening_unknown", "opening", min(first_start + 5, self.route_end),
+                stop_guard="ssb_opening_second")
+            self._checkpoint("ssb_opening_second", None, second)
+            if self.checkpoints.get("ssb_opening_second", {}).get(
+                    "observed", {}).get("fix") is None:
+                raise AcceptanceStop("the game fix was not readable")
+            if mode == "ssb-opening-after-second":
+                # Reconfirm the page after the delayed, non-atomic Wish checkpoint.
+                self._await("ssb_opening_second", limit=30)
+                second_start = self.clock()
+                self._press("RET")
+                following = self._capture_unknown_frames(
+                    "ssb_opening_after_second_unknown", "after-second",
+                    min(second_start + 5, self.route_end))
+                self._checkpoint("ssb_opening_after_second", None, following)
+                if self.checkpoints.get("ssb_opening_after_second", {}).get(
+                        "observed", {}).get("fix") is None:
+                    raise AcceptanceStop("the game fix was not readable")
+            self.summary["discovery"]["status"] = "awaiting image review"
+            self.summary["discovery"]["reason"] = "Opening image identification and mapping remain unproven"
+        except BaseException as exc:
+            self.summary["failure"] = f"{type(exc).__name__}: {exc}"
+            self.log("failure", error=self.summary["failure"])
+            self.summary["discovery"]["status"] = "failed"
+            self.summary["discovery"]["reason"] = self.summary["failure"]
+        finally:
+            self._cleanup()
+            (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
+        return self.summary
 
     def run_opening_first(self) -> dict[str, Any]:
         """Stop after one RETURN on the independently pinned first opening page."""
@@ -1427,7 +1497,7 @@ class Controller:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--title", choices=("pool", "curse", "ssb", "darkness"), required=True)
-    parser.add_argument("--discover", choices=("ssb-leave", "ssb-opening-first"))
+    parser.add_argument("--discover", choices=("ssb-leave", *OPENING_MODES))
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--holder", required=True)
@@ -1449,6 +1519,7 @@ def main(argv: list[str] | None = None) -> int:
         controller = Controller(args, guest=guest, lane=lane, game=game, guards=guards,
                                 route=route, zipped=zipped, info=info)
         result = (controller.run_opening_first() if args.discover == "ssb-opening-first"
+                  else controller.run_opening_second() if args.discover in OPENING_MODES[1:]
                   else controller.run_discovery() if args.discover else controller.run_title())
     except (AcceptanceStop, RouteError, winwish.WinwishError, OSError, ValueError) as exc:
         print(f"winwishaccept: {exc}", file=sys.stderr)

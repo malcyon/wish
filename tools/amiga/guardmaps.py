@@ -97,6 +97,19 @@ def _reload_square(path: pathlib.Path, summary: dict) -> str | None:
         return None
 
 
+def _contained_crop(root: pathlib.Path, relative: str) -> pathlib.Path | None:
+    """Accept only root-relative PNG paths whose resolved target stays under root."""
+    name = pathlib.PurePath(relative)
+    if name.is_absolute() or '..' in name.parts or name.suffix.lower() != '.png':
+        return None
+    try:
+        path = root / name
+        path.resolve().relative_to(root.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return path
+
+
 def scan_crops(root: pathlib.Path) -> list[Crop]:
     """Read eligible saved crops and their manifest ownership."""
     paths = sorted((*root.glob('*/*/*/shots/*.png'), *root.glob('amiga-grab-crops/*.png')))
@@ -111,6 +124,8 @@ def scan_crops(root: pathlib.Path) -> list[Crop]:
         if path.name.endswith('.raw.png'):
             continue
         relative = path.relative_to(root).as_posix()
+        if _contained_crop(root, relative) is None:
+            continue
         try:
             stat = path.stat()
         except OSError:
@@ -284,6 +299,16 @@ def _check(args, crops: list[Crop]) -> int:
              for value in spec[kind].values() for rule in screens.rules_of(value) for part in _parts(rule)}
     digests = cached_digests(args.root, crops, boxes)
     crops = [c for c in crops if c.relative in digests]
+    examples = {rule['example'] for spec in specs.values() for kind in ('guards', 'identity')
+                for value in spec[kind].values() for rule in screens.rules_of(value)
+                if rule['example'] is not None}
+    extra = []
+    for example in examples - digests.keys():
+        path = _contained_crop(args.root, example)
+        if path is not None and path.is_file():
+            extra.append(Crop(path, example, None, ()))
+    # Rule examples outside the normal scan are checked for staleness, not collisions.
+    digests.update(cached_digests(args.root, extra, boxes))
     for title in args.title or FILES:
         spec = specs[title]
         problems = 0

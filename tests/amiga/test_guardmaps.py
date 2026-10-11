@@ -101,6 +101,97 @@ def test_stale_example_fails_check(tmp_path, capsys):
     assert 'stale' in capsys.readouterr().out
 
 
+def test_unscanned_example_checks_both_boxes_without_joining_collision_scan(tmp_path, capsys):
+    from tools.amiga import screens
+
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    example = root / 'WISH-1' / 'opening' / 'opening-2.png'
+    _crop(example)
+    image = Image.open(example).copy()
+    image.paste('green', (30, 10, 40, 20))
+    image.save(example)
+    primary = screens.guard_rule(example, (10, 10, 20, 20))
+    footer = screens.guard_rule(example, (30, 10, 40, 20))
+    rule = {**primary, 'and': [footer], 'also': [],
+            'example': example.relative_to(root).as_posix()}
+    spec = {'labels': {}, 'guards': {'second_page': rule}, 'identity': {}}
+    (maps / 'guards_pool.json').write_text(json.dumps(spec))
+    argv = ['--root', str(root), '--maps', str(maps), 'check', '--title', 'pool']
+    assert guardmaps.main(argv) == 0
+    output = capsys.readouterr().out
+    assert 'second_page' in output and 'stale' not in output and 'collision' not in output
+    for box in ((10, 10, 20, 20), (30, 10, 40, 20)):
+        changed = Image.open(example).copy()
+        changed.paste('yellow', box)
+        changed.save(example)
+        assert guardmaps.main(argv) == 1
+        assert f'stale {rule["example"]}' in capsys.readouterr().out
+        _crop(example)
+        restored = Image.open(example).copy()
+        restored.paste('green', (30, 10, 40, 20))
+        restored.save(example)
+    example.unlink()
+    assert guardmaps.main(argv) == 1
+    assert f'stale {rule["example"]}' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('location', ['absolute', 'traversal', 'symlink'])
+def test_unscanned_example_outside_root_is_stale_and_never_opened(tmp_path, monkeypatch,
+                                                                   capsys, location):
+    from tools.amiga import screens
+
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    outside = tmp_path / 'outside.png'
+    _crop(outside)
+    if location == 'absolute':
+        example = str(outside)
+    elif location == 'traversal':
+        example = '../outside.png'
+    else:
+        link = root / 'WISH-1' / 'opening' / 'opening-2.png'
+        link.parent.mkdir(parents=True)
+        link.symlink_to(outside)
+        example = link.relative_to(root).as_posix()
+    rule = {**screens.guard_rule(outside, (10, 10, 20, 20)),
+            'example': example, 'also': []}
+    (maps / 'guards_pool.json').write_text(json.dumps(
+        {'labels': {}, 'guards': {'second_page': rule}, 'identity': {}}))
+    opened = []
+    real_open = Image.open
+    def tracked(path, *args, **kwargs):
+        opened.append(path)
+        return real_open(path, *args, **kwargs)
+    monkeypatch.setattr(Image, 'open', tracked)
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check',
+                           '--title', 'pool']) == 1
+    assert f'stale {example}' in capsys.readouterr().out
+    assert opened == []
+
+
+def test_scanned_symlink_escaping_root_is_not_opened_or_used_for_collisions(tmp_path,
+                                                                             monkeypatch, capsys):
+    root, maps = tmp_path / 'root', tmp_path / 'maps'
+    maps.mkdir()
+    outside = tmp_path / 'outside.png'
+    _crop(outside)
+    link = root / 'amiga-grab-crops' / 'outside.png'
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside)
+    (maps / 'guards_pool.json').write_text(json.dumps({'labels': {}, 'guards': {
+        'title': {**guardmaps.screens.guard_rule(outside, (10, 10, 20, 20)),
+                  'example': None, 'also': []}}, 'identity': {}}))
+    opened = []
+    real_open = Image.open
+    monkeypatch.setattr(Image, 'open', lambda path, *args, **kwargs:
+                        opened.append(path) or real_open(path, *args, **kwargs))
+    assert guardmaps.main(['--root', str(root), '--maps', str(maps), 'check',
+                           '--title', 'pool']) == 0
+    assert opened == []
+    assert 'collision' not in capsys.readouterr().out
+
+
 def test_untrusted_run_needs_a_label(tmp_path):
     root = tmp_path / 'root'
     shot = _run(root, '1', 'measure', 'pool', 'title')
@@ -553,6 +644,57 @@ def test_first_opening_guard_matches_33_kept_pages_and_no_38_earlier_frames(tmp_
     guards = screens.PixelGuards(out / 'guards.json')
     assert sum(guards('ssb_opening_first', crop) for crop in crops[38:]) == 33
     assert sum(guards('ssb_opening_first', crop) for crop in crops[:38]) == 0
+
+
+def test_second_opening_page_exports_both_independently_pinned_boxes(tmp_path):
+    from tools.amiga import screens, winwishaccept
+
+    maps = guardmaps.pathlib.Path(guardmaps.__file__).parent
+    rule = guardmaps._load(maps, 'ssb')['guards']['ssb_opening_second']
+    assert {key: rule[key] for key in ('box', 'sha256', 'and')} == (
+        winwishaccept.OPENING_SECOND_RULE)
+    assert rule['also'] == ['continue']
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'ssb',
+                           '--out', str(tmp_path / 'export')]) == 0
+    exported = json.loads((tmp_path / 'export' / 'guards.json').read_text())
+    assert exported['ssb_opening_second'] == winwishaccept.OPENING_SECOND_RULE
+    prose, footer = (10, 10, 20, 20), (30, 10, 40, 20)
+    matched = tmp_path / 'matched.png'
+    image = Image.new('RGB', (720, 568), 'black')
+    image.paste('red', prose)
+    image.paste('blue', footer)
+    image.save(matched)
+    rules = {'ssb_opening_second': {**screens.guard_rule(matched, prose),
+                                    'and': [screens.guard_rule(matched, footer)]}}
+    synthetic = tmp_path / 'synthetic.json'
+    synthetic.write_text(json.dumps(rules))
+    guards = screens.PixelGuards(synthetic)
+    assert guards('ssb_opening_second', matched)
+    for box in (prose, footer):
+        changed = image.copy()
+        changed.paste('green', box)
+        crop = tmp_path / f'changed-{box[0]}.png'
+        changed.save(crop)
+        assert not guards('ssb_opening_second', crop)
+
+
+def test_second_opening_guard_matches_only_complete_second_page(tmp_path):
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance') / 'WISH-1/ssb-opening-first1'
+    kept = {name: root / name for name in ('game-042.png', 'opening-0.png',
+                                          'opening-1.png', 'opening-2.png')}
+    if not all(crop.is_file() for crop in kept.values()):
+        pytest.skip('the four retained Silver Blades opening-page crops are not on this machine')
+    assert guardmaps.main(['export', '--title', 'ssb', '--out', str(tmp_path)]) == 0
+    guards = screens.PixelGuards(tmp_path / 'guards.json')
+    for name, crop in kept.items():
+        assert guards('ssb_opening_second', crop) is (name == 'opening-2.png'), name
+    assert guards('continue', kept['game-042.png'])
+    assert guards('continue', kept['opening-2.png'])
+    assert guards('ssb_opening_first', kept['game-042.png'])
+    assert not guards('ssb_opening_first', kept['opening-2.png'])
 
 
 def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_crops():

@@ -1694,6 +1694,30 @@
       "example": "amiga-grab-crops/wish1-ssb-opening-first__game-070.png",
       "sha256": "bfae49833516dc7b065f8121a4d5e6bd346cb091462c2b65baf334889eab7cfb"
     },
+    "ssb_opening_second": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [
+            186,
+            404,
+            586,
+            426
+          ],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [
+        88,
+        302,
+        700,
+        400
+      ],
+      "example": "WISH-1/ssb-opening-first1/opening-2.png",
+      "sha256": "b2853ef5783edfbc138ca70d86ffab72c097b43bb3598145fc4a050a5e460f57"
+    },
     "scrolls_dropped": {
       "also": [],
       "box": [
