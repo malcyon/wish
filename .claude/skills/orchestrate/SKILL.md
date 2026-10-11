@@ -97,4 +97,4 @@ when that update is disabled, report it and retain the actual Backlog state.
 
 ## Handing off
 
-A session runs until its list is done or everything left is waiting on Donald. A hook shows Donald one notice when the context passes 400k tokens; the orchestrator neither sees that notice nor acts on it. Claude Code compacts the context itself when the window fills.
+After a whole-queue pass accounting for every ticket's next step and shared active owner, end the run only when all remaining work has completed acceptance or every unfinished next step has an exact unavailable approval, access or Plane transition, an active shared owner, or another concrete hold with its remover and resume condition, and no authorized independent step can proceed. A hook shows Donald one notice when the context passes 400k tokens; the orchestrator neither sees that notice nor acts on it. Claude Code compacts the context itself when the window fills.

@@ -131,4 +131,4 @@ unless Donald authorizes another experiment.
 
 ## Handing off
 
-A session runs until its list is done or everything left is waiting on Donald. Codex compacts automatically and can compact manually; PreCompact and PostCompact hooks are available. The orchestrator still never judges its own context size and never stops early for it.
+After a whole-queue pass accounting for every ticket's next step and shared active owner, end the run only when all remaining work has completed acceptance or every unfinished next step has an exact unavailable approval, access or Plane transition, an active shared owner, or another concrete hold with its remover and resume condition, and no authorized independent step can proceed. Codex compacts automatically and can compact manually; PreCompact and PostCompact hooks are available. The orchestrator still never judges its own context size and never stops early for it.
