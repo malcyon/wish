@@ -1047,6 +1047,7 @@ def test_generated_observer_rejects_unsafe_memory(observer_memory, failure, matc
 
 @pytest.mark.parametrize("failure,match", [
     ("stale", "present before"),
+    ("stale_comparison", "present before"),
     ("no_displacement", "destination"),
     ("previous03", "previous"),
     ("comparison", "comparison"),
@@ -1066,6 +1067,8 @@ def test_rejected_candidate_has_distinct_negative_controls(
     frames = [True, True]
     if failure == "stale":
         before["direct"] = after["direct"]
+    elif failure == "stale_comparison":
+        before["direct"] = {**after["direct"], "comparison": bytes(7)}
     elif failure == "no_displacement":
         before["reading"] = after["reading"]
     elif failure == "previous03":
@@ -1125,6 +1128,9 @@ def test_observe_rejected_proof_never_activates_switch_or_replay(scenario, monke
                 "synthetic", lambda image: False, result, observe_rejected=True,
                 pinned_exe={"sha256": "generated"}, private=tmp_path)
     assert result["candidate_observation"]["status"] == "sampled rejected-chance candidate"
+    assert result["candidate_observation"]["allocation_qualified"] is False
+    assert "allocation ownership and sizes are unverified" in result[
+        "candidate_observation"]["allocation_limit"]
     assert result["candidate_observation"]["moves"][0]["valid"] is True
     assert result["candidate"] is False and result["branch_witness_verified"] is False
     assert result["verdict"] == "inconclusive"

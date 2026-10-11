@@ -242,8 +242,8 @@ def rejected_candidate(before: dict, captures: list[dict], index: int,
                       "menu": b"\x00\x01"}
     errors.extend(f"the EXIT {key} differs" for key, value in expected_bytes.items()
                   if direct[key] != value)
-    if all(before["direct"][key] == direct[key]
-           for key in ("pc", "opcode", "previous", "comparison", "caller")):
+    if all(before["direct"][key] == expected_bytes[key]
+           for key in ("pc", "opcode", "previous", "caller")):
         errors.append("the EXIT signature was present before the move")
     roll, limit = _u(baseline["pointed"]["roll_limit"][:2]), _u(
         baseline["pointed"]["roll_limit"][2:])
@@ -746,8 +746,11 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
                 "rejected observation cannot activate the switch or replay")
         require(not state.load()["on"] and state.load()["rows"] == [],
                 "rejected observation needs an empty, switched-off journal")
-        report["candidate_observation"] = {"status": "incomplete", "moves": [],
-                                            "read_order": []}
+        report["candidate_observation"] = {
+            "status": "incomplete", "moves": [], "read_order": [],
+            "allocation_qualified": False,
+            "allocation_limit": "Physical memory and selected span disjointness only; "
+                                "allocation ownership and sizes are unverified"}
         report["snapshot_attempted"] = {"holder": holder, "name": SNAPSHOT}
         shots.receipt()
         report["snapshot"] = receipt_of(guest.snapshot(SNAPSHOT, holder))
