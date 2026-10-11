@@ -145,7 +145,7 @@ consequence is what a player meets when the departure is skipped.
 
 | row | leaving | guard, then what the trip does | if skipped | evidence | enabled |
 |---|---|---|---|---|---|
-| P1 | Pool, Kobold Caves (13) | `PRINCESS FATIMA` in a slot: Fast Travel does not leave area 13; Return walks out through `(13, 27)` | she stays in the party and the save; no other script removes her | CONFIRMED live under the earlier code ([below](#visible-fast-travelling-out-of-the-kobold-caves-keeps-an-npc-the-game-meant-to-take-away)); live check L2 under the current code not run | C64, Amiga |
+| P1 | Pool, Kobold Caves (13) | `PRINCESS FATIMA` in a slot: Fast Travel does not leave area 13; Return walks out through `(13, 27)` | she stays in the party and the save; no other script removes her | CONFIRMED live under the earlier code ([below](#visible-fast-travelling-out-of-the-kobold-caves-keeps-an-npc-the-game-meant-to-take-away)); Amiga Return with her and YES passed (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276 and a59ab194); C64 current-code Return not run | C64, Amiga |
 | P2 | Pool, Lizardman Keep (16) | `$4A5D` >= 40 and `$4AB5` != 255: `$4AB5` = 254 (`ECL10 $9CBD`-`$9CCF`) | the City Hall clerk does not pay the lizardmen commission until the party walks back in and out | CONFIRMED (bytecode); Amiga trip 16 to 0 writes it, 3 of 3 guard cases | C64, Amiga |
 | P3 | Pool, Buccaneer Base (1) | `$4AA9` == 1: `$4AA9` = 254 (`ECL01 $9936`-`$993D`) | the Bivant heir reward is not paid until the party walks back in and out by the edge | CONFIRMED (bytecode); Amiga trips 1 to 0 and 1 to 25 write it, a walked control writes the same 0xFE, and a game-written save holds it | C64, Amiga |
 | P4 | Pool, Nomad Camp (17) | `$4A7C` & 5 non-zero and `$4AB7` != 255: `$4AB7` = 254 (`ECL11 $A1B9`-`$A1ED`) | the "nomads stopped" commission is not paid until the party walks back in and off an edge | CONFIRMED (bytecode); Amiga trip 17 to 0, 5 of 5 guard cases | C64, Amiga |
@@ -188,12 +188,19 @@ is, with nothing written. This holds only for a departure proven necessary, not
 for every exit script, and it does not justify a row where another ordinary
 route keeps the companion. Donald approved it in WISH-313 comment e6784958.
 
-Princess Fatima is the one row it applies to today: the trip walks the caves'
-own exit, so the player sees `DO YOU WANT TO LEAVE?`, and a `NO` lets the hop
-expire with nothing written (unit tests on both ports). The live yes path is
-L2, not run: `npc_party.d64`, trip 13 to 0 answering yes, expecting
-`areas_seen` [13, 27, 0] and seven names after a game-written save and reload,
-against a trip without her that goes [13, 0] with no question.
+Princess Fatima is the one row it applies to today. Forward Fast Travel from
+the Kobold Caves is now held; Return with her walks the caves' own exit, where
+the player sees `DO YOU WANT TO LEAVE?`. The Amiga Return with YES removed her,
+reached New Phlan at (15,1) W, and the seven-member party saved, reloaded and
+stepped (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276
+and a59ab194). The older forward-trip NO control stayed in area 13 with eight
+names and no Return armed; that is evidence for the old path, not a current-tab
+NO check. `areas_seen` omitted 27 because `continue_pending` read that area and
+armed the next hop before the driver's next area sample; its `continue` event
+establishes the intermediate area. The current Return NO path and C64
+current-code Return still need live checks. This replaces the unrun L2 claim
+because the Amiga YES Return and reload now have retained receipts, while the
+forward path has since been held.
 
 ### Curse, Silver Blades and Pools of Darkness
 
@@ -232,7 +239,7 @@ Each defaults to straight until its check settles it.
 
 | case | what is known | what would settle it |
 |---|---|---|
-| Return out of the Kobold Caves | `FastTravel.apply_back` and the Amiga `_back_by_door` consult `automap/departures.py`, so a Return out of the Kobold Caves with Princess Fatima walks her exit | a live Return out of the Kobold Caves |
+| Return out of the Kobold Caves | Amiga Return with Princess Fatima and YES walked her exit, removed her and reached New Phlan; the saved seven-member party reloaded and stepped (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276 and a59ab194) | Live Amiga Return with NO and current-code C64 Return; the earlier Amiga forward NO control does not settle either |
 | L1, C64 direct trips | not run under the current code | `tools/c64/fasttravelrun.py` from `WISH-SPEC-por-c64-party-l1-intown`: 0 to 18, 18 to 9, 9 to 18, 18 to 7, 7 to 0, 0 to 1, 1 to 25, 0 to 28, 28 to 25, 0 to 26; every leg `areas_seen` [here, to], no fight, 0 to 26 on the grid with no dock text |
 | Pool castle alarm, Stojanow Gate south exit | the exit clears `$4A64`; the alarm may lapse on its own | stage NEWSAVE1 at alarm 1 in area 9, trip to 18, rest 1, 6 and 24 hours, trip back, read `$4A64` after one step; 0 within a day means not needed |
 | Pool, camp interrupted in a window-25 cave | can leave for area 1 with `$4A9E` still 255 (SPECULATIVE, game behaviour) | the breakpoint run in 58caa381 |
@@ -356,14 +363,17 @@ two wall pieces unrelocated)`, and fixed there: `newecl_writes` writes
 
 ## Visible: fast travelling out of the Kobold Caves keeps an NPC the game meant to take away
 
-**What the player sees.** Princess Fatima is travelling with the party inside
-the Kobold Caves. Walk south out of the caves, answer `YES` to
-`DO YOU WANT TO LEAVE?`, read her farewell, and she is gone -- the party panel
-in the wilderness lists seven names instead of eight. Use Fast Travel to leave
-the caves instead and the panel still lists eight, with `PRINCESS FATIMA` on
-it, at AC 0 and 33 hit points. She stays for the rest of the session and goes
-into the save, and **no other script in the game removes her**: her name
-appears as a compare operand once in all thirty scripts.
+**What the player saw before the cave hold.** Princess Fatima was travelling
+with the party inside the Kobold Caves. Walking south out, answering `YES` to
+`DO YOU WANT TO LEAVE?` and reading her farewell left seven names on the party
+panel in the wilderness. The older direct Fast Travel path instead left eight,
+including `PRINCESS FATIMA` at AC 0 and 33 hit points, through the session and
+into the save; **no other script removes her** (her name appears as a compare
+operand once in all thirty scripts). Fast Travel from these caves is now held;
+the contrast explains why Return with her uses the exit rather than a direct
+trip. This changes the present-tense example because the direct path is no
+longer offered (`automap/amigatrip.py:held_starts` and
+`automap/actions.py:FastTravel.legality`).
 
 **Why.** `ECL0D` dispatches `GEO0D` square-attribute id 28 -- squares (6,15)
 and (10,15) -- to `$99C1`, which asks whether to leave, walks the eight party
@@ -408,11 +418,17 @@ Fatima](50-experiments.md#walking-out-of-the-kobold-caves-drops-princess-fatima-
 
 **What Fast Travel does about it now.** This is departure row P1: Fast Travel
 is held in the Kobold Caves, so only a Return out of the caves with her in a
-slot reaches it, and walks out through the caves' own exit, so the
-game asks its question and removes her the way it intends; without her the
-Return goes straight. On the C64 the walk is `automap.actions.reenter()`: the
-party is placed on the exit
-square and `DUNGEON` is re-entered at one of its own post-step points --
+slot reaches it and walks out through the caves' own exit. On the Amiga a
+converted companion needs the game's space character in her name for that
+exit to find her; the fixed-converter YES Return removed her and a game-written
+save reloaded with seven members (WISH-360 (Complete Amiga Fast Travel and
+Return), comments f1cb2d94 and d7f16276). A game save made *before* leaving
+strips that space in memory and the same exit keeps her instead (WISH-360
+(Complete Amiga Fast Travel and Return), comment f1cb2d94). This distinction
+replaces the unconditional claim that the
+exit always removes her. Without her the Return goes straight. On the C64 the
+walk is `automap.actions.reenter()`: the party is placed on the exit square and
+`DUNGEON` is re-entered at one of its own post-step points --
 `$0957` after a landed step, `$0A4C` then `$0978` for the forward key off a
 map edge -- with the stack rebuilt from `$03BF` first. That address is what
 makes the re-entry legal rather than a hack: `NEWECL`'s own tail (`$2034`,
@@ -430,9 +446,10 @@ skips it)` is closed; the mechanism is `#207 (Run an exit's own handler
 before Fast Travel warps out)`. On the Amiga the trip stands the party on the
 door, which is in `DOORS_PROVEN`, and sends one forward key.
 
-**Not yet shown under the current code.** The shipped path has one live sample,
-by its author, and it ran under the earlier door rule. Live check L2 is owed:
-see [The companion question](#the-companion-question).
+**The older direct-trip sample is not a current-path check.** The Amiga YES
+Return under the current departure rule has the live and reload receipts above;
+the C64 current-code Return and Amiga NO Return remain unmeasured. This
+replaces the old unrun-L2 note because the Amiga Return run now exists.
 
 **An area pair does not name a handler**, which is why the row tests the party
 and does not just name the door: `ECL0D` has two `NEWECL 27` statements,

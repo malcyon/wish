@@ -871,27 +871,33 @@ The three live runs, the static reading per title and the open design
 questions are the R5 comments on #37 (Automap the Amiga version, not just the
 C64).
 
-**What the window offers.** `automap/amigafasttravel.py` offers a trip only when
-the title's row in `automap/amigatrip.py` is `confirmed`, the target can write,
-the gate passes, the destination is `fasttravelable` and has a script on the
-player's disks, and the departing area's script has room for the trip and any
-departure statements (tier 1 or 2, or Pool of Radiance's init span in areas 1
-and 28). A trip goes straight to the destination unless a row of
-`automap/departures.py` applies ([`150`](150-departing-prologues.md), "How Fast
-Travel leaves an area"): a row that writes adds its guarded `SAVE`s ahead of
-the trip's statements, and the one door row, Princess Fatima at the Kobold
-Caves, walks out of a door in `DOORS_PROVEN`. A trip that behaves differently
-from the C64's stays held (`Difference.offered` False) and the button is greyed. Held today: Return on Pool of Radiance, Silver
-Blades and Pools of Darkness (`return_landing`), and a trip whose departing
-script has no room. Silver Blades' row is not confirmed, so it offers nothing.
-Pools of Darkness offers the rows of its own table, `AREAS_POOLS_OF_DARKNESS` in
-`goldbox/areas.py`, less those marked not `fasttravelable` (the areas with no
-map of their own among them); its gate also opens on an overland: mode 3, menu kind 4 and the menu text
-`Encamp`, CONFIRMED live (WISH-338 comment 5f95b787). This paragraph used to list Pool of
-Radiance's door holds and an empty Pools of Darkness list: the door chooser
-went with the straight-by-default rule, the gate below stopped needing
-`weak_gate`, the trip writes the grid prologue to leave the grid, and Pools of
-Darkness got its table.
+**What the window offers.** The Amiga Fast Travel row first requires
+`WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL`; the mapping backend's separate flag does
+not enable travel. `automap/window.py` also requires a confirmed title row in
+`automap/amigatrip.py`. Of the four titles, Pool of Radiance, Curse and Pools of
+Darkness have confirmed rows; Silver Blades remains `confirmed=False`, so its
+row is greyed even with the travel flag. `automap/amigafasttravel.py` then
+requires a writable target, the game's gate, a `fasttravelable` destination
+with a script on the player's disks, and room in the departing script for the
+trip and any departure statements (tier 1 or 2, or Pool of Radiance's init
+span in areas 1 and 28). A trip goes straight to the destination unless a row
+of `automap/departures.py` applies ([`150`](150-departing-prologues.md), "How
+Fast Travel leaves an area"): a write row adds guarded `SAVE`s, while Return
+out of the Kobold Caves with Princess Fatima walks its proven door. Forward
+Fast Travel from those caves is held; Return remains separately eligible. Pool
+and Pools of Darkness no longer have a blanket Return hold. Silver Blades
+retains `return_landing` and is still unconfirmed; individual departures also
+remain held where the script lacks room. Pools of Darkness offers rows from
+`AREAS_POOLS_OF_DARKNESS` in `goldbox/areas.py` except destinations marked not
+`fasttravelable`; its gate also opens on an overland (mode 3, menu kind 4,
+`Encamp`), CONFIRMED live (WISH-338 comment 5f95b787). This replaces the old
+blanket Return holds because the current title rows and live Pool and Pools of
+Darkness Return receipts establish narrower eligibility, not full acceptance:
+Pool's Fatima Return and the Pools of Darkness 22,4 Return, 22,3 saved step and
+22,2 reload step ran, but the four-title real-tab and whole-item checks remain
+open (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276,
+85511f41). The 73 matching saved item records do not explain two changed live
+node hashes across reload; the historical 66-byte nodes were not retained.
 
 ### Fast Travel's free bytes, init entries and gates, read from the code
 
