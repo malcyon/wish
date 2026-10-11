@@ -8691,3 +8691,87 @@ identical RNG values are allowed, stale state is not. Such samples could
 qualify rejected-chance persistence, not continuously empty queues, a fight,
 suppression success or conversion acceptance. No boot, test or driver verdict
 was produced by this static reading.
+
+## Pools of Darkness Quickfight: fight-start reset and the selected member’s next turn
+
+**Player situation.** A player selects QUICK for a party member in one fight,
+then starts another fight, or wants manual control of that same member before
+the current fight ends. **CONFIRMED from one engine's bytecode:** The next fight
+reassigns every combat member's Quickfight byte, so an earlier player's QUICK
+choice does not survive fight initialization. **PROBABLE, not observed live:**
+Clearing the member's byte during a different member's manual turn can restore
+the selected member's manual menu on its next eligible turn. The earlier
+between-fight observations do not establish this mid-fight result.
+
+**Evidence and address convention.** The registered Amiga Disk 1 archive's
+`/Pools of Darkness` executable has SHA-256
+`a572e95a7bc030b71217cb84ddc64bf6b005a1ffdaad2d5337cf998a10a806d6`
+(341,940 bytes). All addresses below are executable **file offsets**, not live
+addresses. The code hunk starts at `0x28`, the data hunk at `0x4D9C8`, and
+`gNNNN` denotes a data-hunk-relative global. The bounded static reading
+covered 1,540 disassembly rows, including overlapping fragments and tables,
+in at most 29 routine regions of this one engine. No other engine build or
+new live run was measured. `automap/amigaparty.py:302-337` names the
+`pools-of-darkness` party row and combat mode; `goldbox/amiga_pod.py:165-184,
+477-492` names the side, abilities and paladin class slot. The record offsets
+also appear in `docs/124-amiga-port.md` §1.17.
+
+**CONFIRMED fight-start reset.** Fight entry `0x00390A` sets mode 5 at
+`0x003916` (`g5B12`) and calls initializer `0x00C024` at `0x003924`. Its first
+pass walks every record in the `g57A4` linked list: side `+0x05F != 0`
+sets `+0x185` to 1 (`0x00C030`, `0x00C044`); side zero sets `+0x185` from
+NPC control `+0x093 & 0x80` (`0x00C036–0x00C03E`). The pass never reads the
+incoming Quickfight value. Side is friend/enemy identity, not a Quickfight
+preference: the QUICK helper compares sides before keeping a target
+(`0x004890–0x004898`). Ordinary player members thus start at zero regardless
+of what their Quickfight byte held between fights.
+
+**CONFIRMED second pass, not a player-preference restoration.** The initializer
+can clear an eligible, still-automatic friendly companion's `+0x185`: a living
+side-zero paladin leader with NPC control bit 7 clear and effective paladin
+level above zero (`0x00C056–0x00C07A`) pairs with a side-zero companion whose
+control bit 7 is set, status is zero, Quickfight is nonzero and current
+Intelligence `+0x073 > 3` (`0x00C084–0x00C0A6`). Each eligible pair rolls
+separately with the *leader's* current Charisma `+0x07B` (`0x00C0A8–0x00C0B4`,
+helper `0x00BF9C`). Thresholds for paladin levels 0, 1, 2 and above 2 are
+0, 20, 40 and 80; Charisma above 13 adds `5*Charisma-65`. Success requires
+the `1..100` roll to be **strictly less** than the threshold (`0x00C010–0x00C012`).
+Effective level reads current paladin slot `+0x0A0`; former slot `+0x0A7`
+is considered only under the old-class gate `0x03D020` (`0x03D046`), not as
+an unconditional maximum. A companion may therefore retain NPC control bit
+7 yet get Quickfight zero; the bit alone does not establish that companions
+can never receive manual turns. This does not prove normal companion
+reachability or change Wish's existing companion guard.
+
+**CONFIRMED record dispatch; PROBABLE visible outcome.** Initiative builder
+`0x003822` sorts pointers to the same heap records, not record copies
+(`0x0038BE`, `0x0038FC–0x0038FE`); the fight loop passes the chosen pointer to
+the turn routine (`0x0039C4`). After start-of-turn helpers and a positive
+combat-block turn budget, that routine tests the chosen record's `+0x185` at
+`0x003B78`: zero enters the manual routine at `0x003B8E`, nonzero calls AI at
+`0x003B82`. The manual path also requires active `+0x184 != 0` and no pending
+combat-block action (`0x003BC2–0x003BD0`). The menu builder is called at
+`0x003C1C`; its relocated command list at file `0x03815E` includes QUICK,
+whose switch case at `0x003CFC` calls the `+0x185=1` helper `0x004870` before
+AI. This confirms the actual QUICK command's setter, but no controlled
+single-byte mid-fight intervention has yet shown the selected player's menu.
+The retained six-member observation had all six at Quickfight 1 after the
+first fight and all six at zero after each subsequent branch; those branches
+met different encounters and showed different members' menus. It corroborates
+fight-start reset, not the same member's next turn.
+
+**Unsettled discriminator.** In one guarded, naturally encountered fight,
+select QUICK through the game's command for living ordinary PC A while
+distinct ordinary PC B waits at B's manual menu. From the *same* snapshot,
+compare A's next eligible turn without intervention with a restored branch
+that reacquires the list and combat pointers, verifies mode 5, member identity,
+side zero, NPC-control bit 7 clear, status zero, active nonzero, valid combat
+pointer and A's exact `+0x185=1`, then writes only `A+0x185: 01→00` and checks
+readback and unchanged other records. Use the same ordinary END/DELAY commands
+in both branches; **do not send Space**, whose AI escape path additionally
+writes combat-block `+4=0x0014` (`0x00744E–0x007460`). A's manual menu only
+in the changed branch would establish the visible result. A lost turn, changed
+control/status, pending action or ended fight is inconclusive. A lost transport
+write response is uncertain: do not resend; re-read and report what is known.
+This is an experiment proposal, not a boot, test, safe released action or
+authorization to enable a button. The separate GEO21/mapping guard remains.
