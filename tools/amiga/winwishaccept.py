@@ -35,6 +35,7 @@ CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
 DISCOVERY_SECONDS = 1800
 DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
+DISCOVERY_DF0_SHA256 = "068bc3e2bfd79e6014d427b5aef730d2bd52f0ba1cd28c3664fd9306a04a6948"
 
 
 def _discovery_phases(route: Any) -> dict[str, Any]:
@@ -212,6 +213,14 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     media = {item.key: item for item in route.media}
     if len(media) != len(route.media) or any(k not in media for k in route.mounted):
         raise AcceptanceStop("the route media keys are missing or repeated")
+    if discovery:
+        from tools.amiga import route_silver_blades  # noqa: PLC0415
+
+        pins = {"df0": DISCOVERY_DF0_SHA256,
+                "df1": route_silver_blades.DISK_B_SHA256}
+        if set(media) != set(pins) or any(media[key].sha256 != sha
+                                          for key, sha in pins.items()):
+            raise AcceptanceStop("discovery prepared media do not match the approved DF0/DF1 pins")
     for item in route.media:
         if not item.path.is_file() or digest(item.path) != item.sha256:
             raise AcceptanceStop(f"prepared medium {item.key} is missing or changed")
@@ -259,7 +268,9 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
             "release_artifact": {"path": str(zipped), "sha256": digest(zipped)},
             "loaded_slot": route.loaded_slot, "provenance": dict(route.provenance),
             "media": {key: {"source": str(item.path), "source_sha256": item.sha256}
-                      for key, item in media.items()}}
+                       for key, item in media.items()}}
+    if discovery:
+        info["provenance"]["approved_media_sha256"] = pins
     return route, guards, zipped, info
 
 
@@ -1036,49 +1047,16 @@ class Controller:
         self.log("up", receipt=receipt)
 
     def _cleanup(self) -> None:
+        if self.discovery:
+            self._cleanup_discovery()
+            return
         failures = []
-        if self.discovery and self.encounters is not None:
-            try:
-                persistent = self.encounters.state.load()
-                self.summary["cleanup"]["encounters_before"] = persistent
-                if persistent["on"] or persistent["rows"] or self.encounters_on:
-                    self._game_section()
-                    self._switch(False)
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"encounters: {exc}")
-        elif self.encounters_on:
+        if self.encounters_on:
             try:
                 self._game_section()
                 self._switch(False)
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"encounters: {exc}")
-        if self.discovery and self.discovery_snapshot and self.summary["failure"]:
-            try:
-                if self.encounters is not None:
-                    state = self.encounters.state.load()
-                    if state["on"] or state["rows"]:
-                        raise AcceptanceStop("cannot restore with encounter suppression outstanding")
-                self._game_section()
-                self.game.restore(DISCOVERY_SNAPSHOT, self.args.holder)
-                from automap import amiga  # noqa: PLC0415
-                from tools.amiga import amigatarget  # noqa: PLC0415
-
-                target = amigatarget.connect_pipe(self.args.holder,
-                                                   amiga.MACHINES[self.route.game_key])
-                try:
-                    fix = target.fix()
-                    geo = target.geo()
-                    area = self._area_of(geo) if geo is not None else None
-                    restored = {"area": area, "x": fix.x, "y": fix.y,
-                                "facing": fix.facing} if fix is not None else None
-                finally:
-                    target.close()
-                self.summary["cleanup"]["restored_fix"] = restored
-                if restored != {"area": 16, "x": 3, "y": 3, "facing": 2}:
-                    raise AcceptanceStop(f"restored fix is not 16,3,3,S: {restored}")
-                self.summary["cleanup"]["restored"] = True
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"restore: {exc}")
         if self.booted:
             try:
                 self._game_section()
@@ -1122,9 +1100,6 @@ class Controller:
         for medium in self.route.media:
             try:
                 self.info["media"][medium.key]["source_after_sha256"] = digest(medium.path)
-                if (self.discovery and self.info["media"][medium.key]["source_after_sha256"]
-                        != medium.sha256):
-                    failures.append(f"source medium {medium.key} changed")
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"source medium {medium.key}: {exc}")
         self.summary["cleanup"]["errors"] = failures
@@ -1132,8 +1107,118 @@ class Controller:
             self.log("cleanup", errors=failures)
         except OSError as exc:
             failures.append(f"event log: {exc}")
-        if self.discovery and self.clock() > self.total_end:
+
+    def _cleanup_discovery(self) -> None:
+        """Reserve teardown time before optional transfer of working media."""
+        failures = []
+        cleanup = self.summary["cleanup"]
+        if self.encounters is not None:
+            try:
+                persistent = self.encounters.state.load()
+                cleanup["encounters_before"] = persistent
+                if persistent["on"] or persistent["rows"] or self.encounters_on:
+                    self._game_section()
+                    self._switch(False)
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"encounters: {exc}")
+        if self.discovery_snapshot and self.summary["failure"]:
+            try:
+                if self.encounters is not None:
+                    state = self.encounters.state.load()
+                    if state["on"] or state["rows"]:
+                        raise AcceptanceStop("cannot restore with encounter suppression outstanding")
+                self._game_section()
+                self.game.restore(DISCOVERY_SNAPSHOT, self.args.holder)
+                from automap import amiga  # noqa: PLC0415
+                from tools.amiga import amigatarget  # noqa: PLC0415
+
+                target = amigatarget.connect_pipe(self.args.holder,
+                                                   amiga.MACHINES[self.route.game_key])
+                try:
+                    fix = target.fix()
+                    geo = target.geo()
+                    area = self._area_of(geo) if geo is not None else None
+                    restored = {"area": area, "x": fix.x, "y": fix.y,
+                                "facing": fix.facing} if fix is not None else None
+                finally:
+                    target.close()
+                cleanup["restored_fix"] = restored
+                if restored != {"area": 16, "x": 3, "y": 3, "facing": 2}:
+                    raise AcceptanceStop(f"restored fix is not 16,3,3,S: {restored}")
+                cleanup["restored"] = True
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"restore: {exc}")
+
+        def allowed(timeout: float, reserve: float = 0) -> float:
+            seconds = min(timeout, self.total_end - self.clock() - reserve)
+            if seconds <= 0:
+                raise RouteError("discovery cleanup has no time before the holder release reserve")
+            return seconds
+
+        if self.booted:
+            try:
+                self._game_section()
+                self.game._pipe = None
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"pipe: {exc}")
+
+            owner = self
+
+            class BoundedLane:
+                def stop(self, holder: str, timeout: float) -> Any:
+                    return owner.lane.stop(holder, allowed(timeout, 60))
+
+                def release(self, holder: str, timeout: float) -> Any:
+                    return owner.lane.release(holder, allowed(timeout))
+
+            bounded_guest = winwish.Guest(
+                run=lambda command, timeout: self.guest.run(command, allowed(timeout, 120)))
+            try:
+                cleanup["down"] = winwish.down(bounded_guest, BoundedLane(), self.args.holder)
+                self.down_done = True
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"down: {exc}")
+            try:
+                status = self.lane.status(allowed(30))
+                cleanup["lane_status"] = status
+                if self.args.holder in status:
+                    failures.append(f"holder {self.args.holder} remains in lane status")
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"lane status: {exc}")
+            if not self.down_done or "lane_status" not in cleanup or self.args.holder in cleanup["lane_status"]:
+                failures.append(f"holder {self.args.holder} release is unverified")
+            for medium in self.route.media:
+                if medium.key not in self.remotes:
+                    failures.append(f"working medium {medium.key}: no staged copy")
+                    continue
+                try:
+                    copied = self.out / f"working-{medium.key}.adf"
+                    self.game.get(self.remotes[medium.key], copied, timeout=allowed(60))
+                    self.info["media"][medium.key]["guest_working_sha256"] = digest(copied)
+                    self.info["media"][medium.key]["guest_working_copy"] = str(copied)
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"working medium {medium.key}: {exc}")
+        for medium in self.route.media:
+            try:
+                after = digest(medium.path)
+                self.info["media"][medium.key]["source_after_sha256"] = after
+                if after != medium.sha256:
+                    failures.append(f"source medium {medium.key} changed")
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"source medium {medium.key}: {exc}")
+        if self.clock() > self.total_end:
             failures.append("the 1800-second total budget was exceeded during cleanup")
+        try:
+            self.log("cleanup", errors=failures)
+        except OSError as exc:
+            failures.append(f"event log: {exc}")
+        cleanup["errors"] = failures
+        if failures:
+            if self.summary["failure"] is None:
+                self.summary["failure"] = "Cleanup: " + "; ".join(failures)
+            discovery = self.summary["discovery"]
+            discovery["status"] = "failed"
+            discovery["reason"] = self.summary["failure"]
 
     def run_discovery(self) -> dict[str, Any]:
         """Observe the first unknown leave-town frame without pressing its prompt."""
@@ -1161,7 +1246,8 @@ class Controller:
             terminal_start = self.clock()
             self._press("NP8")
             end = min(terminal_start + 5, self.route_end)
-            frames = []
+            discovery = self.summary["discovery"]
+            frames = discovery["evidence"]
             for number in range(3):
                 remaining = end - self.clock()
                 if remaining <= 0:
@@ -1170,18 +1256,36 @@ class Controller:
                     break
                 raw = self.out / f"leave-{number}.raw.png"
                 crop = self.out / f"leave-{number}.png"
-                exact = self.game.grab("ssb_leave_unknown", raw, crop, remaining)
+                previous = self.game.last_shot.copy() if isinstance(
+                    self.game.last_shot, dict) else self.game.last_shot
+                try:
+                    exact = self.game.grab("ssb_leave_unknown", raw, crop, remaining)
+                except Exception as exc:
+                    if raw.is_file():
+                        current = self.game.last_shot
+                        partial = {"raw": str(raw), "crop": None,
+                                   "shot_source": current if current != previous else None,
+                                   "error": f"{type(exc).__name__}: {exc}"}
+                        frames.append(partial)
+                        self.log("terminal_frame", **partial)
+                    raise
+                current = self.game.last_shot
                 frame = {"raw": str(raw), "crop": str(crop) if exact else None,
-                         "shot_source": self.game.last_shot}
+                         "shot_source": current if current != previous else None}
                 frames.append(frame)
                 self.log("terminal_frame", **frame)
             if not frames or self.clock() > end:
                 raise AcceptanceStop("terminal pipe frames exceeded five seconds")
-            self.summary["discovery"] = row("awaiting image review", evidence=frames,
-                                            reason="Prompt identification and mapping remain unproven")
+            exact_frames = [frame for frame in frames if frame["crop"] is not None]
+            if not exact_frames:
+                raise AcceptanceStop("no exact terminal crop; raw pipe frames retained")
+            self._checkpoint("ssb_leave_terminal", None, exact_frames[-1])
+            discovery["status"] = "awaiting image review"
+            discovery["reason"] = "Prompt identification and mapping remain unproven"
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
             self.log("failure", error=self.summary["failure"])
+            self.summary["discovery"]["status"] = "failed"
             self.summary["discovery"]["reason"] = self.summary["failure"]
         finally:
             self._cleanup()

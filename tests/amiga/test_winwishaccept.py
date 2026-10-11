@@ -801,6 +801,13 @@ def test_discovery_preflight_only_accepts_measured_prefix(tmp_path, monkeypatch)
     for key in ("df0", "df1"):
         (tmp_path / f"{key}.adf").write_bytes(key.encode())
     route = _discovery_route(tmp_path)
+    pinned = {"df0": winwishaccept.DISCOVERY_DF0_SHA256,
+              "df1": route_silver_blades.DISK_B_SHA256}
+    route.media = tuple(SimpleNamespace(key=m.key, path=m.path, sha256=pinned[m.key])
+                        for m in route.media)
+    original_digest = winwishaccept.digest
+    monkeypatch.setattr(winwishaccept, "digest", lambda path: pinned[path.stem]
+                        if path.suffix == ".adf" else original_digest(path))
     route.guard_path.write_text("{}")
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
@@ -820,10 +827,36 @@ def test_discovery_preflight_only_accepts_measured_prefix(tmp_path, monkeypatch)
                                       driver_sha=SHA)
     assert result[0] is route
     assert result[3]["media"]["df0"]["source_sha256"] == route.media[0].sha256
+    assert result[3]["provenance"]["approved_media_sha256"] == pinned
     ordinary = _args(tmp_path)
     ordinary.out = tmp_path / "ordinary"
     with pytest.raises(winwishaccept.AcceptanceStop, match="route incomplete"):
         winwishaccept.preflight(ordinary, guest=guest, route_for=lambda *args: route,
+                                driver_sha=SHA)
+
+
+@pytest.mark.parametrize("key", ["df0", "df1"])
+def test_discovery_self_hashed_replacement_media_stops_before_artifact(tmp_path, key,
+                                                                        monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    args = _discovery_args(tmp_path)
+    args.manifest.write_text('{"title":"ssb","substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for name in ("df0", "df1"):
+        (tmp_path / f"{name}.adf").write_bytes(name.encode())
+    route = _discovery_route(tmp_path)
+    pins = {"df0": winwishaccept.DISCOVERY_DF0_SHA256,
+            "df1": route_silver_blades.DISK_B_SHA256}
+    route.media = tuple(SimpleNamespace(key=m.key, path=m.path,
+                        sha256=m.sha256 if m.key == key else pins[m.key])
+                        for m in route.media)
+    monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda *args: None)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda *args: True)
+    monkeypatch.setattr(winwishaccept.winwish, "fetch",
+                        lambda *args: pytest.fail("artifact touched before media pin"))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="approved DF0/DF1 pins"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *args: route,
                                 driver_sha=SHA)
 
 
@@ -853,6 +886,8 @@ def test_discovery_rejects_wrong_prepared_route_before_guest(tmp_path, fault):
 
 
 def _discovery_controller(tmp_path, monkeypatch):
+    from tools.amiga import amigatarget
+
     route = _discovery_route(tmp_path) if all((tmp_path / f"{key}.adf").exists()
                                                for key in ("df0", "df1")) else None
     if route is None:
@@ -861,6 +896,13 @@ def _discovery_controller(tmp_path, monkeypatch):
         route = _discovery_route(tmp_path)
     clock, game = FakeClock(), FakeGame()
     game.last_shot = {"source": "winuae-pipe", "pid": 12, "counter": 3}
+    original_grab = game.grab
+    def advancing_grab(state, raw, crop, timeout):
+        exact = original_grab(state, raw, crop, timeout)
+        game.last_shot = {"source": "winuae-pipe", "pid": 12,
+                          "counter": game.last_shot["counter"] + 1}
+        return exact
+    game.grab = advancing_grab
     game.snapshot = lambda name, holder: snapshots.append(name)
     game.restore = lambda name, holder: snapshots.append("restore:" + name)
     game.get = lambda remote, path, timeout: pathlib.Path(path).write_bytes(b"working")
@@ -883,10 +925,15 @@ def _discovery_controller(tmp_path, monkeypatch):
         calls.append(("switch", enabled))
     monkeypatch.setattr(controller, "_switch", switch)
     monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame: (
-        controller.checkpoints.update({name: {"comparison": {"status": "awaiting image review"}}}),
+        controller.checkpoints.update({name: {"comparison": {"status": "awaiting image review"},
+                                              "game": frame}}),
         calls.append(("checkpoint", name))))
     monkeypatch.setattr(winwishaccept.winwish, "collect_log", lambda *args: [])
     monkeypatch.setattr(winwishaccept.winwish, "down", lambda *args: calls.append(("down",)) or {})
+    target = SimpleNamespace(fix=lambda: SimpleNamespace(x=3, y=3, facing=2),
+                             geo=lambda: b"synthetic", close=lambda: None)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: target)
+    monkeypatch.setattr(controller, "_area_of", lambda geo: 16)
     return controller, game, clock, snapshots, calls
 
 
@@ -906,7 +953,8 @@ def test_discovery_prefix_and_only_one_terminal_key_without_actions(tmp_path, mo
     assert result["challenge_key_count_verified"] is False
     assert snapshots == ["ssb_new_verdigris", "ssb_leave_terminal"]
     assert len(result["discovery"]["evidence"]) == 3
-    assert result["discovery"]["evidence"][0]["shot_source"]["counter"] == 3
+    assert result["discovery"]["evidence"][0]["shot_source"]["counter"] > 3
+    assert "ssb_leave_terminal" in controller.checkpoints
     assert all(result["mapping"][name]["status"] == "unproven"
                for name in ("transition", "reload", "reopen"))
     assert ("down",) in calls
@@ -952,6 +1000,167 @@ def test_discovery_pipe_capture_caps_frames_and_five_seconds(tmp_path, monkeypat
     assert "five seconds" in result["failure"] if seconds > 5 else count >= 1
     assert game.keys[-1] == "NP8"
     assert ("down",) in calls
+
+
+def test_discovery_keeps_first_frame_and_partial_raw_when_second_grab_raises(tmp_path,
+                                                                              monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    count = 0
+    def grab(state, raw, crop, timeout):
+        nonlocal count
+        if state == "ssb_leave_unknown":
+            count += 1
+            if count == 2:
+                pathlib.Path(raw).write_bytes(b"partial")
+                raise RuntimeError("second pipe grab failed")
+        return original(state, raw, crop, timeout)
+    game.grab = grab
+    result = controller.run_discovery()
+    frames = result["discovery"]["evidence"]
+    assert len(frames) == 2 and "second pipe grab failed" in result["failure"]
+    assert pathlib.Path(frames[0]["raw"]).is_file()
+    assert frames[0]["shot_source"]["counter"] > 3
+    assert pathlib.Path(frames[1]["raw"]).read_bytes() == b"partial"
+    assert frames[1]["crop"] is None and frames[1]["shot_source"] is None
+    assert frames[1]["error"] == "RuntimeError: second pipe grab failed"
+    assert "ssb_leave_terminal" not in controller.checkpoints
+    assert game.keys[-1] == "NP8"
+
+
+def test_discovery_keeps_frame_on_timeout_and_picks_last_exact_pair(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    def grab(state, raw, crop, timeout):
+        exact = original(state, raw, crop, timeout)
+        if state == "ssb_leave_unknown":
+            clock.now += 5.25
+        return exact
+    game.grab = grab
+    result = controller.run_discovery()
+    assert "five seconds" in result["failure"]
+    assert len(result["discovery"]["evidence"]) == 1
+    assert result["discovery"]["evidence"][0]["crop"] is not None
+    assert "ssb_leave_terminal" not in controller.checkpoints
+
+    other = tmp_path / "last-exact"
+    other.mkdir()
+    controller, game, _, _, calls = _discovery_controller(other, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    count = 0
+    def mixed(state, raw, crop, timeout):
+        nonlocal count
+        exact = original(state, raw, crop, timeout)
+        if state == "ssb_leave_unknown":
+            count += 1
+            if count == 3:
+                pathlib.Path(crop).unlink()
+                return False
+        return exact
+    game.grab = mixed
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert result["discovery"]["evidence"][-1]["crop"] is None
+    assert ("checkpoint", "ssb_leave_terminal") in calls
+    assert result["checkpoints"]["ssb_leave_terminal"]["game"] is (
+        result["discovery"]["evidence"][1])
+    assert result["checkpoints"]["ssb_leave_terminal"]["comparison"]["status"] == (
+        "awaiting image review")
+
+
+def test_discovery_without_exact_terminal_crop_fails_without_pair(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    def raw_only(state, raw, crop, timeout):
+        exact = original(state, raw, crop, timeout)
+        if state == "ssb_leave_unknown":
+            pathlib.Path(crop).unlink()
+            return False
+        return exact
+    game.grab = raw_only
+    result = controller.run_discovery()
+    assert "no exact terminal crop" in result["failure"]
+    assert len(result["discovery"]["evidence"]) == 3
+    assert all(frame["crop"] is None and pathlib.Path(frame["raw"]).is_file()
+               for frame in result["discovery"]["evidence"])
+    assert "ssb_leave_terminal" not in controller.checkpoints
+    assert game.keys[-1] == "NP8"
+
+
+def test_discovery_teardown_reserves_stop_release_then_bounded_transfers(tmp_path,
+                                                                          monkeypatch):
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    controller.booted = True
+    controller.remotes.update(df0="a", df1="b")
+    controller.summary["discovery"] = winwishaccept.row()
+    clock.now = controller.total_end - 300
+    requests = []
+    controller.guest = SimpleNamespace(run=lambda command, timeout: (
+        requests.append(("guest", timeout)) or (0, "ok")))
+    controller.lane = SimpleNamespace(
+        stop=lambda holder, timeout: requests.append(("stop", timeout)),
+        release=lambda holder, timeout: requests.append(("release", timeout)),
+        status=lambda timeout: requests.append(("status", timeout)) or "no claims")
+    game.get = lambda remote, path, timeout: (
+        requests.append(("get", timeout)) or pathlib.Path(path).write_bytes(b"working"))
+    def down(guest, lane, holder):
+        guest.run(["winvm", "ps"], 300)
+        lane.stop(holder, 300)
+        lane.release(holder, 300)
+        requests.append(("down",))
+        return {}
+    monkeypatch.setattr(winwishaccept.winwish, "down", down)
+    monkeypatch.setattr(winwishaccept.winwish, "collect_log",
+                        lambda *args: pytest.fail("optional logs before holder teardown"))
+    controller._cleanup_discovery()
+    assert [name for name, *_ in requests] == [
+        "guest", "stop", "release", "down", "status", "get", "get"]
+    assert requests[0][1] <= 180 and requests[1][1] <= 240
+    assert requests[2][1] <= 300
+    assert requests[4][1] <= 30 and all(item[1] <= 60 for item in requests[-2:])
+    assert controller.summary["cleanup"]["errors"] == []
+
+
+def test_discovery_low_time_still_attempts_release_and_marks_holder_unknown(tmp_path,
+                                                                              monkeypatch):
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    controller.booted = True
+    controller.remotes.update(df0="a", df1="b")
+    controller.summary["discovery"] = winwishaccept.row()
+    clock.now = controller.total_end - 1
+    requests = []
+    controller.guest = SimpleNamespace(run=lambda command, timeout:
+                                       pytest.fail("guest call spent release reserve"))
+    controller.lane = SimpleNamespace(
+        stop=lambda holder, timeout: pytest.fail("stop spent release reserve"),
+        release=lambda holder, timeout: requests.append(("release", timeout)),
+        status=lambda timeout: pytest.fail("status spent release reserve"))
+    game.get = lambda *args, **kwargs: pytest.fail("transfer spent release reserve")
+    def down(guest, lane, holder):
+        with pytest.raises(winwishaccept.RouteError):
+            guest.run(["winvm", "ps"], 300)
+        with pytest.raises(winwishaccept.RouteError):
+            lane.stop(holder, 300)
+        lane.release(holder, 300)
+        clock.now = controller.total_end
+        raise winwishaccept.RouteError("guest and stop unverified")
+    monkeypatch.setattr(winwishaccept.winwish, "down", down)
+    controller._cleanup_discovery()
+    assert len(requests) == 1 and requests[0][0] == "release"
+    assert "holder test-acw release is unverified" in controller.summary["cleanup"]["errors"]
+    assert any("working medium df0" in error for error in controller.summary["cleanup"]["errors"])
+    assert controller.summary["failure"].startswith("Cleanup:")
+    assert controller.summary["discovery"]["status"] == "failed"
 
 
 def test_discovery_wrong_fix_restores_before_down_and_sends_no_later_key(tmp_path,
@@ -1014,7 +1223,8 @@ def test_discovery_cleanup_overrun_is_failure_and_still_downs(tmp_path, monkeypa
         return {}
     monkeypatch.setattr(winwishaccept.winwish, "down", down)
     result = controller.run_discovery()
-    assert result["failure"] is None
+    assert "total budget" in result["failure"]
+    assert result["discovery"]["status"] == "failed"
     assert "total budget" in result["cleanup"]["errors"][-1]
     assert ("down",) in calls
 
