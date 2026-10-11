@@ -1909,6 +1909,8 @@
     "place_x11_y4_f2": {
       "also": [
         "camp",
+        "camp_cast_target",
+        "camp_magic",
         "camp_save_picker",
         "exit_game",
         "heal_whom",
@@ -3081,6 +3083,12 @@
     "WISH-2/abagail-pre/b1/shots/12-world.png": [
       "place_x11_y3_f2",
       "world"
+    ],
+    "WISH-2/abagail3-prep/1/shots/12-world.png": [
+      "place_x11_y3_f2"
+    ],
+    "WISH-2/abagail3-prep/1/shots/13-world.png": [
+      "place_x11_y4_f2"
     ],
     "WISH-2/l4-r6-control/control/shots/05-loaded_menu.png": [
       "loaded_menu"

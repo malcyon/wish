@@ -627,6 +627,9 @@ def _queue_problem(tokens: tuple[str, ...]) -> str | None:
                 return (f"{token!r}: after a rest, Memorize may open on line {line}'s queue or on "
                         f"its grimoire, and which one is not measured")
             queued[line] = "queued"
+        elif words[0] == "memorize" and queued.get(int(words[1])) == "unknown":
+            return (f"{token!r}: after a rest, Memorize may open on line {words[1]}'s queue, "
+                    f"and E there would clear it")
         elif words[0] == "memorize" and int(words[1]) in queued:
             return (f"{token!r}: Memorize opens on line {words[1]}'s queue after a castspell or "
                     f"memorizespell, and E there clears it")
@@ -707,10 +710,11 @@ def validate_steps(tokens: tuple[str, ...], party_size: int = PARTY_MAX,
     or `cast N P`, and leave it with nothing chosen (only for a title in `MAGIC_LIST_TITLES`).
     `castspell N S` casts spell S of line N's Cast list, counted from 1 past the level headings,
     on the caster at the target picker, and `memorizespell N S` memorizes spell S of line N's
-    grimoire and keeps the queue (only for a title in `SPELL_TITLES`). A spell that asks no target
-    stops the run at the picker's guard, after the cast. Once either step has queued a spell on a
-    line, Memorize opens there on the queue, whose `E` clears it before the grimoire is shown, so a
-    later `memorizespell` keeps only its own spell; a `memorize N [P]` on such a line, or a
+    grimoire and keeps the queue (only for a title in `SPELL_TITLES`). Their guards read the prompt
+    bar only, so spell S is not checked on screen. A spell that asks no target stops the run at the
+    picker's guard, after the cast. Once a cast has queued a spell on a line, Memorize opens there
+    on the queue, whose `E` clears it before the grimoire is shown; a second `memorizespell` on one
+    line is built the same way but is unmeasured. A `memorize N [P]` on such a line, or a
     `memorizespell` on it after a rest, is blocked.
     """
     view_lines, heal_lines = sheet_lines(name)
@@ -1071,14 +1075,15 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
 
     The camp states are not strict: a screen the guard map lacks is settled and
     marks the run as measuring, so one boot can capture them all, and the camp
-    save's own strict picker still stops the run before any write. The states of
-    an `items`, `join`, `ready`, `use`, `castspell` or `memorizespell` step are strict instead, the camp bar and each list JOIN
-    redraws included, so every key of those steps goes out on a screen its guard
-    recognised. A measure run settles on a screen no rule matches only in the states of the
-    steps in `NAVIGATION_VERBS`, which press keys that change no game state, except the camp bar
-    and the magic menu, whose recognition gates the keys that follow; `measure_blockers`
-    names the steps a measure run cannot drive, and the route's measure copy still holds them. A kept slot letter the rest menu uses as a key (`A`, for a source
-    loaded from slot D) becomes a simple key on the rest menu only.
+    save's own strict picker still stops the run before any write. The states of an `items`,
+    `join`, `ready`, `use`, `castspell` or `memorizespell` step are strict instead, the camp bar
+    and each list JOIN redraws included, so every key of those steps goes out on a screen its
+    guard recognised. A measure run settles on a screen no rule matches only in the states of
+    the steps in `NAVIGATION_VERBS`, which press keys that change no game state, except the camp
+    bar and the magic menu, whose recognition gates the keys that follow; `measure_blockers`
+    names the steps a measure run cannot drive, and the route's measure copy still holds them.
+    A kept slot letter the rest menu uses as a key (`A`, for a source loaded from slot D)
+    becomes a simple key on the rest menu only.
     """
     validate_steps(tokens, party_size, name=name)
     tokens, _ = split_machine_steps(tokens)
@@ -1112,7 +1117,7 @@ def camp_title(title: AmigaTitle, tokens: tuple[str, ...], party_size: int = PAR
                         if t.split()[0] in ("items", "row", "join", "ready", "use"))
     item_states = {state for _, state, _ in steps_for(item_tokens, name, party_size)}
     item_states |= {joined_after(state) for state in item_states if is_join(state)}
-    # A rest between two spell steps on one line is blocked where it would change their screens.
+    # Rests are left out: `_queue_problem` blocks every rest that would change these screens.
     spell_tokens = tuple(t for t in normalise(tokens) if t.split()[0] in SPELL_VERBS)
     item_states |= {state for _, state, _ in steps_for(spell_tokens, name, party_size)}
     strict = title.strict | ({CAMP} | item_states if item_states else set())

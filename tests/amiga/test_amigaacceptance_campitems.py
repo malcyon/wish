@@ -602,6 +602,7 @@ def test_memorizespell_opens_the_grimoire_or_after_a_cast_the_queue_it_clears_fi
     ("castspell 5 1;memorize 5", "Memorize opens on line 5's queue"),
     ("memorizespell 5 1;memorize 5 2", "Memorize opens on line 5's queue"),
     ("castspell 5 1;rest 1h;memorizespell 5 1", "after a rest, Memorize may open"),
+    ("castspell 5 1;rest 1h;memorize 5", "after a rest, Memorize may open"),
 ])
 def test_spell_steps_block_a_place_or_a_memorize_screen_they_cannot_tell(text, why):
     with pytest.raises(RouteError, match=why):
