@@ -505,6 +505,56 @@ def test_the_silver_blades_treasure_bar_and_world_guards_match_their_kept_crops(
             assert (digest == rule['sha256']) is (crop in crops), (state, crop)
 
 
+def test_first_opening_page_exports_both_boxes_and_neither_alone_admits_return(tmp_path):
+    from tools.amiga import screens, winwishaccept
+
+    maps = guardmaps.pathlib.Path(guardmaps.__file__).parent
+    spec = guardmaps._load(maps, 'ssb')
+    rule = spec['guards']['ssb_opening_first']
+    assert {key: rule[key] for key in ('box', 'sha256', 'and')} == (
+        winwishaccept.OPENING_FIRST_RULE)
+    assert rule['also'] == ['continue']
+    assert guardmaps.main(['--maps', str(maps), 'export', '--title', 'ssb',
+                           '--out', str(tmp_path / 'export')]) == 0
+    exported = json.loads((tmp_path / 'export' / 'guards.json').read_text())
+    assert exported['ssb_opening_first'] == winwishaccept.OPENING_FIRST_RULE
+    # Use synthetic rules and images: a footer or page box alone cannot admit a key.
+    page, footer = (10, 10, 20, 20), (30, 10, 40, 20)
+    both = tmp_path / 'both.png'
+    image = Image.new('RGB', (720, 568), 'black')
+    image.paste('red', page)
+    image.paste('blue', footer)
+    image.save(both)
+    first = screens.guard_rule(both, page)
+    second = screens.guard_rule(both, footer)
+    guard_path = tmp_path / 'synthetic.json'
+    guard_path.write_text(json.dumps({'page': {**first, 'and': [second]}}))
+    guards = screens.PixelGuards(guard_path)
+    assert guards('page', both)
+    for missing in (page, footer):
+        edited = image.copy()
+        edited.paste('green', missing)
+        path = tmp_path / f'missing-{missing[0]}.png'
+        edited.save(path)
+        assert not guards('page', path)
+
+
+def test_first_opening_guard_matches_33_kept_pages_and_no_38_earlier_frames(tmp_path):
+    from tools.amiga import screens
+    from tools.registry import scratch
+
+    root = scratch.cache_dir('acceptance')
+    shots = root / 'WISH-1/ssb-leave1'
+    crops = [shots / f'game-{number:03d}.png' for number in range(71)]
+    if not all(path.is_file() for path in crops):
+        pytest.skip('the 71 kept Silver Blades first-opening crops are not on this machine')
+    out = tmp_path / 'export'
+    assert guardmaps.main(['export', '--title', 'ssb', '--out', str(out)]) == 0
+    guards = screens.PixelGuards(out / 'guards.json')
+    assert sum(guards('ssb_opening_first', crop) for crop in crops[38:]) == 33
+    assert sum(guards('ssb_opening_first', crop) for crop in crops[:38]) == 0
+
+
 def test_the_silver_blades_camp_save_picker_guard_matches_only_the_camp_picker_crops():
     """Reads crops kept from live runs, so it skips on a machine without them."""
     from tools.amiga import screens

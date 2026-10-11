@@ -1670,6 +1670,30 @@
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/08-save_picker.png",
       "sha256": "19f7120a6acfdfb6049ed60ab0741a26c3714bc7a60c7b1051597f5d2cbed813"
     },
+    "ssb_opening_first": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [
+            186,
+            404,
+            586,
+            426
+          ],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [
+        88,
+        302,
+        700,
+        400
+      ],
+      "example": "amiga-grab-crops/wish1-ssb-opening-first__game-070.png",
+      "sha256": "bfae49833516dc7b065f8121a4d5e6bd346cb091462c2b65baf334889eab7cfb"
+    },
     "scrolls_dropped": {
       "also": [],
       "box": [
@@ -2551,6 +2575,10 @@
     }
   },
   "labels": {
+    "amiga-grab-crops/wish1-ssb-opening-first__game-070.png": [
+      "continue",
+      "ssb_opening_first"
+    ],
     "4/ssb-accept-c/accept5/shots/29-camp_items_2.png": [
       "camp_items_2"
     ],

@@ -36,6 +36,24 @@ MAX_MAPPING_COMMANDS = 40
 DISCOVERY_SECONDS = 1800
 DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
 DISCOVERY_DF0_SHA256 = "068bc3e2bfd79e6014d427b5aef730d2bd52f0ba1cd28c3664fd9306a04a6948"
+OPENING_FIRST_RULE = {
+    "box": [88, 302, 700, 400],
+    "sha256": "bfae49833516dc7b065f8121a4d5e6bd346cb091462c2b65baf334889eab7cfb",
+    "and": [{"box": [186, 404, 586, 426],
+             "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
+}
+
+
+def _opening_first_phase(route: Any) -> Any:
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    load = maproute._load("ssb", "D")
+    if (route.title != "ssb" or route.loaded_slot != "D"
+            or route.mounted != ("df0", "df1")
+            or not route.phases or route.phases[0] != load
+            or any(action.enabled for action in route.actions)):
+        raise AcceptanceStop("opening discovery needs the exact disabled Silver Blades load prefix")
+    return maproute.Phase("opening_menu", "title", load.steps[:6])
 
 
 def _discovery_phases(route: Any) -> dict[str, Any]:
@@ -186,7 +204,9 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     """Check every static dependency before a lane can be claimed."""
     if not BUILD_SHA.fullmatch(args.sha):
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
-    discovery = getattr(args, "discover", None) == "ssb-leave"
+    mode = getattr(args, "discover", None)
+    opening = mode == "ssb-opening-first"
+    discovery = mode in ("ssb-leave", "ssb-opening-first")
     maximum = DISCOVERY_SECONDS if discovery else MAX_SECONDS
     if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
@@ -200,7 +220,12 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
                 source, dict) or source.get("letter") != "A" or manifest.get("state_a") != {
                     "area": 16, "x": 3, "y": 3, "facing": 2}:
             raise AcceptanceStop("discovery needs source A imported into D at 16,3,3,S")
-        _discovery_phases(route)
+        if opening:
+            if manifest.get("opening_scene") is not True:
+                raise AcceptanceStop("opening discovery needs an approved opening scene")
+            _opening_first_phase(route)
+        else:
+            _discovery_phases(route)
         from tools.amiga import route_silver_blades  # noqa: PLC0415
 
         route_silver_blades.journal_preflight(sys.executable)
@@ -240,12 +265,20 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         raise AcceptanceStop(f"guard export failed with exit {rc}")
     exported = export_dir / "guards.json"
     guards = screens.PixelGuards(exported)
-    states = ({"title"} | {state for phase in _discovery_phases(route).values()
-                           for state in (phase.initial_state, *(s.state for s in phase.steps))}
-              if discovery else _states(route))
+    if opening:
+        phase = _opening_first_phase(route)
+        states = {phase.initial_state, *(step.state for step in phase.steps),
+                  "ssb_opening_first"}
+    elif discovery:
+        states = {"title"} | {state for phase in _discovery_phases(route).values()
+                              for state in (phase.initial_state, *(s.state for s in phase.steps))}
+    else:
+        states = _states(route)
     missing = states - guards.rules.keys()
     if missing:
         raise AcceptanceStop("route has no measured guards for " + ", ".join(sorted(missing)))
+    if opening and guards.rules["ssb_opening_first"] != OPENING_FIRST_RULE:
+        raise AcceptanceStop("opening discovery needs the independent exact two-box guard")
     if not route.loaded_slot or len(route.loaded_slot) != 1:
         raise AcceptanceStop("the manifest has no single prepared load slot")
     if not driver_sha:
@@ -291,7 +324,7 @@ class Controller:
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         self.action_limit = _action_budget(route)
-        self.discovery = getattr(args, "discover", None) == "ssb-leave"
+        self.discovery = getattr(args, "discover", None) in ("ssb-leave", "ssb-opening-first")
         self.discovery_snapshot = False
         self.encounters = None
         self.encounters_on = False
@@ -474,7 +507,7 @@ class Controller:
     def _compare_checkpoint(self, name: str, expected: Any,
                             engine: dict[str, Any]) -> dict[str, Any]:
         if expected is None:
-            if name == "ssb_leave_terminal" and engine.get("fix") is None:
+            if name in ("ssb_leave_terminal", "ssb_opening_after_first") and engine.get("fix") is None:
                 return row("unproven", observed=engine, reason="the game fix was not readable")
             return row("awaiting image review", observed=engine)
         fix = engine.get("fix")
@@ -579,6 +612,21 @@ class Controller:
             self.log("flags", mode=name, controls=controls, picture=str(picture))
         self._game_section()
 
+    def _answer_journal(self) -> None:
+        from tools.amiga import route_silver_blades  # noqa: PLC0415
+
+        if self.route.title != "ssb":
+            raise AcceptanceStop("journal answer is only defined for Silver Blades")
+        disk = next(m.path for m in self.route.media if m.key == self.route.mounted[0])
+        if self.discovery:
+            self.summary["challenge_key_count"] = None
+            self.summary["challenge_key_count_verified"] = False
+            self.log("journal_answer", challenge_key_count=None, verified=False)
+        code, answer = route_silver_blades.run_journal_answer(
+            sys.executable, self.args.holder, disk, self.left(60))
+        if code:
+            raise AcceptanceStop(f"journal was not answered: {answer}")
+
     def run_phase(self, phase: Any, action_context: Any = None,
                   namespace: str | None = None) -> None:
         if not phase.ready:
@@ -608,19 +656,7 @@ class Controller:
             elif kind == "encounters":
                 self._switch(step.encounters)
             elif kind == "answer":
-                from tools.amiga import route_silver_blades  # noqa: PLC0415
-
-                if self.route.title != "ssb":
-                    raise AcceptanceStop("journal answer is only defined for Silver Blades")
-                disk = next(m.path for m in self.route.media if m.key == self.route.mounted[0])
-                if self.discovery:
-                    self.summary["challenge_key_count"] = None
-                    self.summary["challenge_key_count_verified"] = False
-                    self.log("journal_answer", challenge_key_count=None, verified=False)
-                code, answer = route_silver_blades.run_journal_answer(
-                    sys.executable, self.args.holder, disk, self.left(60))
-                if code:
-                    raise AcceptanceStop(f"journal was not answered: {answer}")
+                self._answer_journal()
             elif kind == "select":
                 if action_context is None:
                     raise AcceptanceStop("member selection outside an action")
@@ -1222,6 +1258,78 @@ class Controller:
             discovery["status"] = "failed"
             discovery["reason"] = self.summary["failure"]
 
+    def _capture_unknown_frames(self, state: str, prefix: str, end: float) -> dict[str, Any]:
+        frames = self.summary["discovery"]["evidence"]
+        for number in range(3):
+            remaining = end - self.clock()
+            if remaining <= 0:
+                if not frames:
+                    raise AcceptanceStop("no terminal pipe frame within five seconds")
+                break
+            raw = self.out / f"{prefix}-{number}.raw.png"
+            crop = self.out / f"{prefix}-{number}.png"
+            previous = self.game.last_shot.copy() if isinstance(
+                self.game.last_shot, dict) else self.game.last_shot
+            try:
+                exact = self.game.grab(state, raw, crop, remaining)
+            except Exception as exc:
+                if raw.is_file():
+                    current = self.game.last_shot
+                    partial = {"raw": str(raw), "crop": None,
+                               "shot_source": current if current != previous else None,
+                               "error": f"{type(exc).__name__}: {exc}"}
+                    frames.append(partial)
+                    self.log("terminal_frame", **partial)
+                raise
+            current = self.game.last_shot
+            frame = {"raw": str(raw), "crop": str(crop) if exact else None,
+                     "shot_source": current if current != previous else None}
+            frames.append(frame)
+            self.log("terminal_frame", **frame)
+        if not frames or self.clock() > end:
+            raise AcceptanceStop("terminal pipe frames exceeded five seconds")
+        exact_frames = [frame for frame in frames if frame["crop"] is not None]
+        if not exact_frames:
+            raise AcceptanceStop("no exact terminal crop; raw pipe frames retained")
+        return exact_frames[-1]
+
+    def run_opening_first(self) -> dict[str, Any]:
+        """Stop after one RETURN on the independently pinned first opening page."""
+        self.summary["discovery"] = row()
+        self.summary["challenge_key_count"] = None
+        self.summary["challenge_key_count_verified"] = False
+        try:
+            phase = _opening_first_phase(self.route)
+            if getattr(self.args, "discover", None) != "ssb-opening-first":
+                raise AcceptanceStop("opening discovery mode is required")
+            if getattr(self.guards, "rules", {}).get("ssb_opening_first") != OPENING_FIRST_RULE:
+                raise AcceptanceStop("opening discovery needs the independent exact two-box guard")
+            self._up()
+            self._game_section()
+            title = self._await("title", limit=300)
+            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            self.run_phase(phase)
+            self._answer_journal()
+            self._await("ssb_opening_first", limit=300)
+            self._press("RET")
+            end = min(self.clock() + 5, self.route_end)
+            frame = self._capture_unknown_frames("ssb_opening_unknown", "opening", end)
+            self._checkpoint("ssb_opening_after_first", None, frame)
+            if self.checkpoints.get("ssb_opening_after_first", {}).get(
+                    "observed", {}).get("fix") is None:
+                raise AcceptanceStop("the game fix was not readable")
+            self.summary["discovery"]["status"] = "awaiting image review"
+            self.summary["discovery"]["reason"] = "Opening image identification and mapping remain unproven"
+        except BaseException as exc:
+            self.summary["failure"] = f"{type(exc).__name__}: {exc}"
+            self.log("failure", error=self.summary["failure"])
+            self.summary["discovery"]["status"] = "failed"
+            self.summary["discovery"]["reason"] = self.summary["failure"]
+        finally:
+            self._cleanup()
+            (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
+        return self.summary
+
     def run_discovery(self) -> dict[str, Any]:
         """Observe the first unknown leave-town frame without pressing its prompt."""
         self.summary["discovery"] = row()
@@ -1248,40 +1356,9 @@ class Controller:
             terminal_start = self.clock()
             self._press("NP8")
             end = min(terminal_start + 5, self.route_end)
+            frame = self._capture_unknown_frames("ssb_leave_unknown", "leave", end)
             discovery = self.summary["discovery"]
-            frames = discovery["evidence"]
-            for number in range(3):
-                remaining = end - self.clock()
-                if remaining <= 0:
-                    if not frames:
-                        raise AcceptanceStop("no terminal pipe frame within five seconds")
-                    break
-                raw = self.out / f"leave-{number}.raw.png"
-                crop = self.out / f"leave-{number}.png"
-                previous = self.game.last_shot.copy() if isinstance(
-                    self.game.last_shot, dict) else self.game.last_shot
-                try:
-                    exact = self.game.grab("ssb_leave_unknown", raw, crop, remaining)
-                except Exception as exc:
-                    if raw.is_file():
-                        current = self.game.last_shot
-                        partial = {"raw": str(raw), "crop": None,
-                                   "shot_source": current if current != previous else None,
-                                   "error": f"{type(exc).__name__}: {exc}"}
-                        frames.append(partial)
-                        self.log("terminal_frame", **partial)
-                    raise
-                current = self.game.last_shot
-                frame = {"raw": str(raw), "crop": str(crop) if exact else None,
-                         "shot_source": current if current != previous else None}
-                frames.append(frame)
-                self.log("terminal_frame", **frame)
-            if not frames or self.clock() > end:
-                raise AcceptanceStop("terminal pipe frames exceeded five seconds")
-            exact_frames = [frame for frame in frames if frame["crop"] is not None]
-            if not exact_frames:
-                raise AcceptanceStop("no exact terminal crop; raw pipe frames retained")
-            self._checkpoint("ssb_leave_terminal", None, exact_frames[-1])
+            self._checkpoint("ssb_leave_terminal", None, frame)
             discovery["status"] = "awaiting image review"
             discovery["reason"] = "Prompt identification and mapping remain unproven"
         except BaseException as exc:
@@ -1345,7 +1422,7 @@ class Controller:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--title", choices=("pool", "curse", "ssb", "darkness"), required=True)
-    parser.add_argument("--discover", choices=("ssb-leave",))
+    parser.add_argument("--discover", choices=("ssb-leave", "ssb-opening-first"))
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--holder", required=True)
@@ -1366,7 +1443,8 @@ def main(argv: list[str] | None = None) -> int:
         route, guards, zipped, info = preflight(args, guest=guest, route_for=route_for)
         controller = Controller(args, guest=guest, lane=lane, game=game, guards=guards,
                                 route=route, zipped=zipped, info=info)
-        result = controller.run_discovery() if args.discover else controller.run_title()
+        result = (controller.run_opening_first() if args.discover == "ssb-opening-first"
+                  else controller.run_discovery() if args.discover else controller.run_title())
     except (AcceptanceStop, RouteError, winwish.WinwishError, OSError, ValueError) as exc:
         print(f"winwishaccept: {exc}", file=sys.stderr)
         return 2
