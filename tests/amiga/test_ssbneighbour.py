@@ -517,12 +517,15 @@ def test_child_only_admits_the_exact_pending_well_outcome(tmp_path, monkeypatch,
 @pytest.mark.parametrize("change", [None, "stderr", "wrong_flags", "wrong_code", "wrong_area",
                                      "wrong_names", "empty_name", "answered", "arrival_key",
                                      "wrong_result", "settled", "extra_row", "nonobject",
-                                     "diagnostic_before", "diagnostic_after"])
+                                     "diagnostic_before", "diagnostic_after", "missing_outcomes",
+                                     "empty_outcomes", "nonlist_outcomes", "nondict_outcome",
+                                     "nonbool_ok", "failed_apply", "failed_continue"])
 def test_child_only_admits_the_exact_pending_temple_outcome(tmp_path, monkeypatch, change):
     names = [f"Member {n}" for n in range(6)]
     summary = {"result": "idle", "settled": False, "areas_seen": [33, 52],
                "arrival_keys": [], "arrival_answered": False,
-               "party_before": names, "party_after": names.copy()}
+               "party_before": names, "party_after": names.copy(),
+               "outcomes": [{"ok": True, "message": "applied"}]}
     flags = ["--waypoint", "52,7,3,2", "--back", "--peek-var", "4C62,4C2A,4CFD,4CFE"]
     stderr = ("Leg 1 (the trip) never became ready for Fast Travel.\n"
               "The leg reached area 52 and the game is still waiting on its screen; "
@@ -548,6 +551,20 @@ def test_child_only_admits_the_exact_pending_temple_outcome(tmp_path, monkeypatc
         summary["result"] = "failed"
     elif change == "settled":
         summary["settled"] = True
+    elif change == "missing_outcomes":
+        del summary["outcomes"]
+    elif change == "empty_outcomes":
+        summary["outcomes"] = []
+    elif change == "nonlist_outcomes":
+        summary["outcomes"] = {"ok": True}
+    elif change == "nondict_outcome":
+        summary["outcomes"].append(True)
+    elif change == "nonbool_ok":
+        summary["outcomes"][0]["ok"] = 1
+    elif change == "failed_apply":
+        summary["outcomes"][0]["ok"] = False
+    elif change == "failed_continue":
+        summary["outcomes"].append({"ok": False, "message": "continuation failed"})
     stdout = json.dumps(summary) + "\n"
     if change == "extra_row":
         stdout += json.dumps(summary) + "\n"
@@ -753,6 +770,7 @@ def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
                 current["variables"]["4C2A"] = 0
             pending = {"result": "idle", "settled": False, "areas_seen": [33, 52],
                        "arrival_keys": [], "arrival_answered": False,
+                       "outcomes": [{"ok": True, "message": "applied"}],
                        "party_before": names, "party_after": names.copy()}
 
             class Child:

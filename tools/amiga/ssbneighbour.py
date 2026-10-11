@@ -272,7 +272,11 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
                       and isinstance(rows[0].get("party_before"), list)
                       and len(rows[0]["party_before"]) == 6
                       and all(isinstance(name, str) and name for name in rows[0]["party_before"])
-                      and rows[0].get("party_before") == rows[0].get("party_after"))
+                      and rows[0].get("party_before") == rows[0].get("party_after")
+                      and isinstance(rows[0].get("outcomes"), list)
+                      and bool(rows[0]["outcomes"])
+                      and all(isinstance(outcome, dict) and outcome.get("ok") is True
+                              for outcome in rows[0]["outcomes"]))
     require(proc.returncode == 0 or pending_well or pending_temple,
             f"trip child stopped with {proc.returncode}: {stderr[-500:]}")
     require(len(rows) == 1 and rows[0].get("result") == "idle"
