@@ -1149,6 +1149,38 @@ def test_curse_area_30_is_not_fasttravelable():
     assert not pool[30].fasttravelable
 
 
+def test_silver_blades_area_4_is_not_fasttravelable():
+    """Silver Blades' `ECL04` is the title-screen demo script; it is marked
+    not fast-travelable like Curse's area 30, so no list can offer it."""
+    from goldbox import areas
+
+    rows = {a.id: a for a in areas.AREAS_SILVER_BLADES}
+    assert not rows[0x04].fasttravelable
+    assert all(a.fasttravelable for i, a in rows.items()
+               if i not in (0x04, 0x31, 0x32))
+
+
+def test_silver_blades_area_4_is_in_neither_preferences_nor_the_dropdown(
+        app, tmp_path, monkeypatch):
+    """Not in the Preferences table, and a saved tick for it is ignored by
+    the dropdown on load."""
+    from gamedata import make_root
+
+    from automap.actionbar import FastTravelBar
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    assert 4 not in [a.id for a in dialog.travel_rows[SILVER_BLADES.key]]
+    assert "Area 4" not in [
+        dialog.travel_tables[SILVER_BLADES.key].item(i, 0).text()
+        for i in range(dialog.travel_tables[SILVER_BLADES.key].rowCount())]
+
+    settings = Settings(fast_travel_targets={SILVER_BLADES.key: [4, 0x10]})
+    bar = FastTravelBar(make_root(), settings=settings,
+                        title=SILVER_BLADES.title, game=SILVER_BLADES)
+    assert [r.id for r in bar.rows] == [0x10]
+
+
 def test_a_row_with_no_approved_name_reads_area_and_its_number(
         app, tmp_path, monkeypatch):
     """Curse's area 30 has no approved name, and its script name (`ECL1E`) is

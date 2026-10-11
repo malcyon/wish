@@ -733,7 +733,7 @@ this dialog, one per title.
   without the title. A row with no approved name has no tooltip, because its
   label opens with the developer script name.
 * **A row with no approved name reads `Area N`**, the area's number in
-  decimal — Silver Blades' area 4 is `Area 4` — and not its script name,
+  decimal — Silver Blades' area 17 is `Area 17` — and not its script name,
   which is developer text. The row is ticked and unticked like any other.
   Unnamed rows sort after the named ones, in area-number order.
 * **New Phlan, The Slums and Sokol Keep are ticked on a fresh Pool of Radiance
@@ -771,6 +771,7 @@ this dialog, one per title.
   area 30 (`ECL1E`) is the same kind of script, not a place: the title screen
   starts it after sitting idle and no script transfers a party there. An earlier
   version of this page called it a different, visitable area; it is not.
+  Silver Blades' area 4 is the same: the title screen's demo script, not offered.
 * **The warning is a framed box, not a tooltip** — *"Fast travel to areas you
   haven't been to is dangerous and can break the game."*, Donald's wording, at
   the top of the section, above the tabs and not inside a page, in the

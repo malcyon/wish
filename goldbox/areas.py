@@ -594,7 +594,8 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     # rather than the 10,8 E its entry 4 reads as. So the UNKNOWN this comment
     # carried is answered; what is still unknown is whether the opening scene
     # leaves anything in a state a later area minds.
-    _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1), Confidence.CONFIRMED),
+    _s(0x04, 1, ("GEO10",), Arrival(10, 8, 1), Confidence.CONFIRMED,
+       fasttravelable=False),
     _s(0x10, 1, ("GEO10",), Arrival(15, 8, 3), Confidence.CONFIRMED,
        name="New Verdigris", arrival_from=0x20,
        arrival_elsewhere=Arrival(3, 0, 3)),
