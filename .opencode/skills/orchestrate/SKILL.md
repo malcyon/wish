@@ -89,6 +89,17 @@ repository implementation or run tests or emulators.
 The role IDs are the lowercase spellings in `.opencode/agents/`. Read the
 definition before writing its brief. Reuse a planner only for a related
 follow-up with current evidence; keep planner, builder and reviewer separate.
+Root owns blocker resolution: on a worker escape hatch, spent experiment
+budget, missing driver or specimen, missing evidence, unanswered engine
+behavior or repeated failed hypothesis, diagnose the remaining task and
+dispatch a fitting specialist rather than leaving the ticket idle. Route
+existing-code mechanism to senior-analyst, difficult approach or multi-agent
+staging to architect, bytes/screens/driver work to reverse-engineering, and
+an UNKNOWN or broken assumption not settled by more specimens to deep-research.
+Do not override a role's model to simulate escalation. Retain specialist
+results and stop repeating failed hypotheses; escalate further only with new
+evidence or a precise unresolved question suited to a higher tier, not an
+arbitrary number of planning passes.
 
 Every brief opens with owned files, the focused proof and the report that ends
 the task. Include authorization scope, excluded files, working directory,
@@ -141,6 +152,14 @@ interface wording or other player-facing behavior for him.
 Readiness belongs to the next authorized step, not the ticket's final proof.
 A missing plan calls for a planner; a missing acceptance driver calls for
 driver diagnosis or building; a ready driver calls for a bounded live run.
+Missing evidence is normally an investigation input, not a whole-ticket hold.
+An exhausted emulator budget bars blindly repeating the same experiment, not
+independent static diagnosis, planning or building. A revised plan does not
+renew boot, menu or key allowances or override Donald's hold. Record the
+current next-step obstacle separately from any final acceptance gap. Use an
+external hold only after a specialist establishes an unavailable dependency,
+Donald-only approval or access, or an exact unavailable runtime or Plane
+transition; record the owner and condition for resuming.
 Planning and preparation are ticket work and require the same confirmed start
 as building or acceptance. A busy emulator lane or overlapping integration
 does not block independent planning or worktree preparation. Record what can
@@ -176,8 +195,11 @@ work remains; classify the full live unfinished list instead.
 Dispatch all ready, independent work, aiming for eight workers when the queue
 and actual runtime capacity permit. Do not invent a concurrency limit or
 launch idle workers to meet a count. Record a concrete capacity, file, lane or
-authorization blocker. WinUAE has one lane; DOS and C64 use pool slots under
-`emulator.md`. Give emulator briefs the slot, existing driver, actions,
+authorization blocker. WinUAE has four lanes; DOS and C64 use pool slots under
+`emulator.md`. Four lanes are pool capacity, not four simultaneous Wish-controlled
+boots: `winwish.py` exclusively claims all four for Wish startup, then usually
+releases three after its emulator starts. Account for that exclusive startup
+when scheduling other WinUAE runs. Give emulator briefs the slot, existing driver, actions,
 captures, control, stop budget and cleanup. Driver building and the live
 experiment are separate assignments. Conversion acceptance also requires
 `conversions.md` and destination-game preservation evidence.
@@ -226,7 +248,10 @@ child may monitor CI without executing local tests.
 Follow `commits.md`: stage new files before the final repository checks,
 request affected tests including relevant private-data tests, ruff and the UI
 generation check, commit locally, obtain scoped independent code review,
-resolve or reject verified findings, then push. Inspect the staged paths and
+resolve or reject verified findings, then push coherent reviewed batches of
+approximately 5–11 commits when enough ready work exists. If a smaller push
+is necessary, explain why before pushing; never hold an otherwise ready batch
+merely to reach a count. Inspect the staged paths and
 do not commit unrelated work. At most two review passes does not waive
 unresolved findings or acceptance. Do not push on top of a pending pushed
 SHA, close tickets from a cached CI result or run the full suite locally as a
@@ -270,9 +295,12 @@ At startup, in this order:
    preparation work becomes a dispatch input, not the final result of the run.
    Preserve the runtime, approval and capacity boundaries above.
 
-On each completion, process evidence, reconcile live state and the cache,
-revisit eligible Backlog tickets, and dispatch newly ready independent work
-through the same confirmed transitions.
+On each blocked or completed report, record the exact remaining obstacle,
+evidence paths, current SHA, failed hypotheses and count of spent experiments.
+Confirm live In Progress state and shared ownership, process and post findings,
+then dispatch the next authorized specialist before yielding. Reconcile the
+cache and revisit eligible Backlog tickets; keep independent ready work running
+without sacrificial idle workers.
 
 OpenCode has no exposed `wait_agent` or self-scheduling loop here. Background
 completion notifications resume coordination; do not poll children, sleep,
@@ -282,7 +310,10 @@ stopping with no notifying child, finish the full unfinished-list pass and
 check for executable planning, driver preparation, acceptance, review and CI.
 For each remaining ticket, identify its shared owner, genuine hold or concrete
 unavailable operation; recheck historical waits against current evidence.
-Stop only when none of those authorized steps can proceed. A setup-only runner
+Before a no-notification handback, ensure every unresolved blocker has active
+specialist investigation or an evidenced external hold, not merely
+"needs evidence", "budget spent" or "lane needed". Stop only when none of
+those authorized steps can proceed. A setup-only runner
 or completed audit supplies no continuation. Donald can resume with
 `/orchestrate`. Never imply unattended continuation
 without an actual pending notification or supported trigger.
