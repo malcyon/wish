@@ -835,6 +835,9 @@ FOUR_CLAIMS = ("lanes = 4\nclaim = none\nclaim 2 = other since 2026-10-11\n"
     FOUR_CLAIMS.replace("claim 3 = none", "claim 3 = none since yesterday"),
     FOUR_CLAIMS.replace("claim 3 = none", "claim 3 = other"),
     FOUR_CLAIMS.replace("claim 3 = none", "claim 5 = none"),
+    FOUR_CLAIMS + "\nclaim: wish365-ecl01 since yesterday",
+    FOUR_CLAIMS + "\nclaims: wish365-ecl01 since yesterday",
+    FOUR_CLAIMS + "\nclaim? broken guest claim",
 ])
 def test_lost_release_with_incomplete_guest_status_cannot_resolve_holder(
         cleanup_run, monkeypatch, reply):

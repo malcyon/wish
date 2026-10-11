@@ -88,7 +88,7 @@ def complete_claims(status: str) -> dict[int, tuple[str | None, str]]:
                         for line in lines), "guest status has no unique four-lane count")
     claims: dict[int, tuple[str | None, str]] = {}
     for line in lines:
-        if not re.match(r"^claim(?:\s|=|$)", line):
+        if not line.startswith("claim"):
             continue
         match = re.fullmatch(r"claim(?:\s+([1-4]))?\s*=\s*([A-Za-z0-9._-]+)"
                              r"(?:\s+since\s+(.+))?", line)
