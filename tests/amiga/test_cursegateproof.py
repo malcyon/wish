@@ -204,8 +204,9 @@ def test_one_fight_is_replayed_on_exact_move_and_off_before_cleanup(
     result = {"verdict": "inconclusive"}
     proof.proof(scenario.shots, scenario.pipe, scenario.switch, scenario.journal,
                 scenario.guest, "synthetic", lambda image: True, result)
-    assert result["candidate"] is True
-    assert result["control"][-1]["outcome"] == "combat"
+    assert result["candidate"] is False
+    assert result["diagnostic_pair"] is True
+    assert result["control"][-1]["outcome"] == "combat_observation"
     assert all(step["outcome"] == "world" for step in result["replay"])
     assert scenario.shots.keys == ["L", "B", "V", "E", "B", *control_keys, *replay_keys]
     assert scenario.guest.calls == ["snapshot", "restore"]
@@ -224,6 +225,7 @@ def test_two_world_screens_never_authorize_replay(scenario):
     assert scenario.shots.keys[-3:] == ["NP2", "NP8", "NP8"]
     assert scenario.guest.calls == ["snapshot"]
     assert scenario.switch.calls == []
+    assert not result.get("candidate") and not result.get("diagnostic_pair")
 
 
 def test_unidentified_mode_five_is_unknown_and_cannot_replay(scenario, monkeypatch):
@@ -238,6 +240,7 @@ def test_unidentified_mode_five_is_unknown_and_cannot_replay(scenario, monkeypat
     assert result["verdict"] == "inconclusive: unclassified control screen"
     assert scenario.guest.calls == ["snapshot"]
     assert scenario.switch.calls == []
+    assert not result.get("candidate") and not result.get("diagnostic_pair")
 
 
 def test_stopped_ecl01_rejected_despite_stopped_other_area(scenario):
@@ -294,6 +297,7 @@ def test_unmeasured_control_never_becomes_combat(scenario):
     assert proof.classify(False, False, 5, prior, 1) == "unknown"
     assert proof.classify(False, True, 4, prior, 1) == "unknown"
     assert proof.classify(True, False, 4, prior, 1) == "world"
+    assert proof.classify(False, True, 5, prior, 1) == "combat_observation"
     with pytest.raises(RouteError, match="world and combat guards matched"):
         proof.classify(True, True, 5, prior, 1)
 
@@ -502,7 +506,7 @@ def test_guard_miss_with_mode_five_saves_unknown_not_combat(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("fight_at,fail_off,want,restores", [
-    (3, False, "paired suppression and restoration observed", 2),
+    (3, False, "inconclusive: diagnostic pair lacks verified branch witness", 2),
     (0, False, "inconclusive: no control fight in two moves", 1),
     (3, True, "inconclusive: final encounter journal is not clear", 1),
 ])
@@ -563,6 +567,12 @@ def test_run_halts_only_its_holder_and_checks_media_before_verdict(
                        switch_factory=switch_factory, guards=object(), identity=object(),
                        combat_guard=lambda crop: True)
     assert report["verdict"] == want
+    assert report["branch_witness_verified"] is False
+    assert report["branch_witness_reason"]
+    assert json.loads((out / "summary.json").read_text())["branch_witness_reason"] \
+        == report["branch_witness_reason"]
+    assert report["candidate"] is False
+    assert report.get("diagnostic_pair", False) is (fight_at == 3)
     assert command_calls == [("boot", args.holder), ("halt", args.holder)]
     assert scenario.guest.calls.count("snapshot") == 1
     assert scenario.guest.calls.count("restore") == restores
@@ -571,7 +581,7 @@ def test_run_halts_only_its_holder_and_checks_media_before_verdict(
         assert (source / f"{key}.adf").read_bytes() == original
         assert (out / f"{key}.adf").read_bytes() == original
     if fail_off:
-        assert report["candidate"] is True and "did not clear its journal" in report["error"]
+        assert "did not clear its journal" in report["error"]
         assert scenario.journal.load()["on"] is True
         assert report["journal_final"]["rows"] == [{
             "spec": proof.GATE, "original": "08", "changed": "09"}]
@@ -585,6 +595,24 @@ def test_run_halts_only_its_holder_and_checks_media_before_verdict(
             "off", "restore", "readback", "discard"]
         assert set(report["halt"]["fetched"]) == set(pins)
         assert proof.sha256(out / "summary.json")
+
+
+def test_cli_diagnostic_pair_cannot_exit_zero(monkeypatch, tmp_path, capsys):
+    from contextlib import nullcontext
+
+    report = {"verdict": "paired suppression and restoration observed",
+              "candidate": True, "diagnostic_pair": True,
+              "branch_witness_verified": False,
+              "branch_witness_reason": "no independent live ECL01 branch witness"}
+    monkeypatch.setattr(proof, "run", lambda args: report)
+    monkeypatch.setattr(proof, "terminating", nullcontext)
+    argv = [option for key in ("manifest", "guards", "identity", "audio-proof", "out", "holder")
+            for option in (f"--{key}", str(tmp_path / f"generated-{key}"))]
+    assert proof.main(argv) != 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["diagnostic_pair"] is True
+    assert printed["branch_witness_verified"] is False
+    assert printed["branch_witness_reason"] == report["branch_witness_reason"]
 
 
 @pytest.fixture

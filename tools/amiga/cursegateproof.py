@@ -348,8 +348,8 @@ class Screens:
 
 
 def classify(world: bool, combat: bool, mode: int | None,
-             prior: dict, index: int) -> str:
-    """Only an independently measured combat menu on an ordinary step is a control."""
+              prior: dict, index: int) -> str:
+    """A matched menu on an ordinary step identifies a screen, not its branch."""
     require(not (world and combat), "world and combat guards matched the same frame")
     if world and mode == 4:
         return "world"
@@ -359,7 +359,7 @@ def classify(world: bool, combat: bool, mode: int | None,
             and prior["square"] == ((4, 14, 3) if index == 1 else (3, 14, 3))
             and prior["fix"] == {"x": 5 - index, "y": 14, "facing": 3,
                                  "world_map": False}):
-        return "combat"
+        return "combat_observation"
     return "unknown"
 
 
@@ -377,7 +377,7 @@ def observe_step(shots: Screens, target, index: int, before: dict,
         combat = combat_guard(crop)
         outcome = classify(world, combat, reading["mode"], before, index)
         last = {"outcome": outcome, "reading": reading, "crop": str(crop)}
-        if outcome == "combat":
+        if outcome == "combat_observation":
             return outcome, last
         if outcome == "world":
             expected = (4 - index, 14, 3)
@@ -396,6 +396,7 @@ def observe_step(shots: Screens, target, index: int, before: dict,
 def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
           report: dict) -> None:
     """One off snapshot, up to two control moves, then only a matched replay."""
+    report["candidate"] = False
     shots.see("title", 250, opening=True)
     previous = "title"
     for key, screen in (("L", "load_picker"), ("B", "loaded_menu"), ("V", "sheet"),
@@ -436,7 +437,7 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
         if outcome == "unknown":
             report["verdict"] = "inconclusive: unclassified control screen"
             return
-        if outcome == "combat":
+        if outcome == "combat_observation":
             fight_index = index
             break
         prior = seen["reading"]
@@ -484,7 +485,7 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
                 report["verdict"] = f"inconclusive: replay move {index} was {outcome}"
                 return
             prior = seen["reading"]
-        report["candidate"] = True
+        report["diagnostic_pair"] = True
     finally:
         report["switch_off"] = off_checked(switch, state, target)
         report["journal_off"] = state.load()
@@ -505,6 +506,8 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
     prepared = private_media(manifest, args.out)
     record(local, prepared)
     report: dict[str, Any] = {"verdict": "inconclusive", "candidate": False,
+                              "branch_witness_verified": False,
+                              "branch_witness_reason": "no independent live ECL01 branch witness",
                               "holder": args.holder, "input": str(args.manifest),
                               "media": MEDIA, "cleanup": [],
                               "journal_path": str(state.path),
@@ -666,17 +669,19 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
             report["source_hashes"] = "unchanged"
         except BaseException as exc:
             report["cleanup"].append({"media_error": f"{type(exc).__name__}: {exc}"})
-        if report.get("candidate") and not report.get("error") and report.get("halt") \
+        clean_pair = not report.get("error") and report.get("halt") \
                 and "release" in report["halt"] and fetch \
                 and off_ok and report.get("snapshot_taken") \
                 and any("readback" in item for item in report["cleanup"]) \
                 and any("discard" in item for item in report["cleanup"]) \
                 and report.get("source_hashes") == "unchanged" \
                 and not any(any(k.endswith("_error") for k in item)
-                            for item in report["cleanup"]):
+                            for item in report["cleanup"])
+        if clean_pair and report.get("candidate") and report["branch_witness_verified"]:
             report["verdict"] = "paired suppression and restoration observed"
-        elif report.get("candidate"):
-            report["verdict"] = "inconclusive: cleanup or media check failed"
+        elif report.get("candidate") or report.get("diagnostic_pair"):
+            report["verdict"] = ("inconclusive: diagnostic pair lacks verified branch witness"
+                                 if clean_pair else "inconclusive: cleanup or media check failed")
         try:
             report["journal_final"] = state.load()
             require(report["journal_final"]["on"] is False
@@ -705,9 +710,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     with terminating():
         result = run(args)
-    print(json.dumps({k: result.get(k) for k in ("verdict", "error", "cleanup", "elapsed_seconds")},
-                     sort_keys=True))
-    return 0 if result["verdict"] == "paired suppression and restoration observed" else 1
+    print(json.dumps({k: result.get(k) for k in ("verdict", "error", "cleanup", "elapsed_seconds",
+                                                   "diagnostic_pair", "branch_witness_verified",
+                                                   "branch_witness_reason")},
+                      sort_keys=True))
+    return 1
 
 
 if __name__ == "__main__":
