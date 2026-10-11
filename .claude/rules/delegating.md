@@ -111,6 +111,19 @@ information or work for another role to the root, continue independent
 authorized work where possible, and return one compact report with evidence
 paths, the shortest decisive output, negative results, and limitations.
 
+**Codex only:** Set `fork_turns="none"` explicitly on every new agent launch,
+including planners, builders, reviewers, runners, support agents and
+replacements. Omitting it inherits the conversation even when the brief is
+short. Give the fresh agent a self-contained, targeted summary of task scope,
+owned and excluded files, required rules, relevant evidence paths or concise
+findings, acceptance criteria, and report and stop conditions. Never paste
+entire chat or ticket histories into a fresh brief. Reuse a relevant same-task
+agent with a compact update under the existing reuse rule. If conversation
+history is truly needed, report the precise missing context and obtain
+Donald's explicit authorization for that launch before using `"all"`; never
+silently substitute it. Claude Code delegation follows its existing
+instructions.
+
 **Give each agent its own files.** Several agents in one working tree will
 collide. Assign non-overlapping areas, and say which in the brief.
 

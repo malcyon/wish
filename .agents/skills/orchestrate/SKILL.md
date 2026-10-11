@@ -11,6 +11,10 @@ Two PreToolUse hooks in .codex/hooks.json guard this session: check-issue-reads.
 
 ## The agents, and when to use each
 
+**Every new Codex agent launch must explicitly set `fork_turns="none"`.**
+Follow `.claude/rules/delegating.md` for self-contained briefs and the
+specific-authorization exception for conversation inheritance.
+
 The definitions are .codex/agents/<name>.toml, each naming its own Codex model and kept in step with its .claude/agents/<name>.md by hand; a change to one is made to the other.
 
 - senior-analyst: an issue that names a goal and not its mechanism, when the code it touches already exists. Reads the issue and the code, posts a plan on the issue naming files, functions and tests, and says which agent builds it.

@@ -203,6 +203,11 @@ if relevant, and an escape hatch. If the work needs another role or a decision
 outside the brief, the agent stops and reports it. The root does not edit an
 assigned file without telling its owner.
 
+**Codex only:** Every new agent launch explicitly sets `fork_turns="none"`.
+Never omit the argument or use `"all"` unless Donald authorizes conversation
+inheritance for that specific launch. A short brief does not disable history
+inheritance. Claude Code delegation follows its existing instructions.
+
 Agent definitions are paired under `.claude/agents/<name>.md` and
 `.codex/agents/<name>.toml`; keep both current by hand. Read `delegating.md`
 for routing, briefs, review and push order. Its Claude Code vocabulary
