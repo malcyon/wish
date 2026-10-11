@@ -1550,7 +1550,7 @@ def _editor_tests():
         sys.path.append(here)
 
 
-def _pod_zombie_folder(root, control, cast=True, marked=True):
+def _pod_zombie_folder(root, control, cast=True, marked=True, down=False):
     """A synthetic Pools of Darkness DOS folder whose one character holds the
     bytes the cast writes (unless `cast` is false, which leaves the turning
     class a companion keeps), with marker bytes in the `field_83_87` window
@@ -1565,13 +1565,16 @@ def _pod_zombie_folder(root, control, cast=True, marked=True):
         if name in o and (cast or name != "turn"):
             raw[o[name]] = value
     raw[o["ctl"]] = control
+    if down:
+        # A zombie the cast left with no hit points and not active.
+        raw[o["hp"]] = raw[o["active"]] = 0
     if marked:
         raw[o["ctl"] + 2], raw[o["ctl"] + 3] = 0x11, 0x22
     (folder / "CHRDATA1.SAV").write_bytes(bytes(raw))
     return folder
 
 
-def _pod_save_as_amiga(monkeypatch, tmp_path, control, cast=True):
+def _pod_save_as_amiga(monkeypatch, tmp_path, control, cast=True, down=False):
     _editor_tests()
     from test_saveplan_pod import _disk_file, _disk_three, _flag, _to_amiga
 
@@ -1581,7 +1584,7 @@ def _pod_save_as_amiga(monkeypatch, tmp_path, control, cast=True):
     from goldbox.amiga_adf import AmigaDisk
 
     _flag(monkeypatch, "1")
-    folder = _pod_zombie_folder(tmp_path, control, cast)
+    folder = _pod_zombie_folder(tmp_path, control, cast, down=down)
     party = Party(convert.Source.detect(folder, slot="A"))
     plan = _to_amiga(party, tmp_path,
                      _disk_file(tmp_path, _disk_three("A")))
@@ -1621,12 +1624,12 @@ def test_a_pools_of_darkness_amiga_zombie_player_reads_back_living_on_dos(
 
     from test_podsave import _dos_source, _synthetic_disk_three
 
-    from editor import convert, saveplan
+    from editor import convert, podsheet, saveplan
     from editor.roster import Party
 
     (tmp_path / "src").mkdir()
     stage = tmp_path / "stage"
-    shutil.copytree(_pod_zombie_folder(tmp_path / "src", 0xB3, marked=False), stage)
+    shutil.copytree(_pod_zombie_folder(tmp_path / "src", 0xB3), stage)
     disk = _synthetic_disk_three("A")
     with monkeypatch.context() as patch:
         patch.setattr(c64_codec, "living_player", lambda char: char)
@@ -1637,4 +1640,16 @@ def test_a_pools_of_darkness_amiga_zombie_player_reads_back_living_on_dos(
     image.write_bytes(kept.disk)
     party = Party(convert.Source.detect(image, slot="A"))
     plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos-out")
-    assert plan.files
+    window = podsheet.TABLE["field_83_87"].offset
+    assert plan.files["CHRDATA1.SAV"][window:window + 4] \
+        == bytes((0, 0, 0x11, 0x22))
+
+
+def test_a_pools_of_darkness_zombie_with_no_hit_points_reads_back_living(
+        monkeypatch, tmp_path):
+    """`living_player` gives him 1 hit point and makes him active, which the
+    read-back expects instead of calling it a loss."""
+    _source, arrived, _plan = _pod_save_as_amiga(
+        monkeypatch, tmp_path, 0xB3, down=True)
+    assert arrived.get("hp_current") == 1
+    assert arrived.get("active") is True

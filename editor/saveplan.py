@@ -1746,6 +1746,10 @@ def pod_zombie_player_record(member, snapshot, destination: "Destination",
     flags = TABLE["field_10c_10f"].offset
     for at in (0, 2, 3):
         raw[flags + at] = 0
+    # `living_player` also makes him active and gives him at least 1 hit point.
+    raw[flags + 1] = 1
+    hp = TABLE["hp_current"].offset
+    raw[hp] = max(1, raw[hp])
     patched = type(record)(bytes(raw))
     if hasattr(record, "items"):
         patched.items = record.items
