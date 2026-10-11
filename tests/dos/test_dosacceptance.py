@@ -8708,6 +8708,198 @@ def test_read_slot_reports_curse_creature_type(tmp_path):
     assert (out["turn_class"], out["movement"]) == (0, 0)
 
 
+def _dead_curse_c(folder):
+    from goldbox import dos_savegame
+
+    save = bytearray(dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS.size)
+    dos_savegame.put_party_size(save, 6)
+    (folder / "SAVGAMC.DAT").write_bytes(save)
+    for n, name in enumerate((b"MATHEW", b"PHILIPPE", b"TRAVIS", b"LEDERA",
+                              b"SHARA", b"PHIL"), 1):
+        record = bytearray(_curse_record(name))
+        if n == 2:
+            record[0xF7], record[0x11A] = 0xB2, 0
+            record[0x195:0x199] = bytes((6, 1, 0, 0))
+        (folder / f"CHRDATC{n}.SAV").write_bytes(record)
+
+
+def test_dead_companion_c_source_requires_six_unique_members_and_exact_bytes(tmp_path):
+    _dead_curse_c(tmp_path)
+    got = da.dead_companion_source(tmp_path)
+    assert got["status_bytes"] == [6, 1, 0, 0]
+    assert (got["slot"], got["control"], got["creature_type"]) == ("C", 0xB2, 0)
+    assert got["nodes"] == []
+    record = tmp_path / "CHRDATC2.SAV"
+    original = record.read_bytes()
+    for offset, value in ((0x195, 0), (0x196, 0), (0xF7, 0), (0x11A, 4)):
+        changed = bytearray(original)
+        changed[offset] = value
+        record.write_bytes(changed)
+        with pytest.raises(da.StepFailed, match="C member 2"):
+            da.dead_companion_source(tmp_path)
+    record.write_bytes(original)
+    fx = tmp_path / "CHRDATC2.FX"
+    fx.write_bytes(bytes((32, 0, 0, 0, 0, 0, 0, 0, 0)))
+    with pytest.raises(da.StepFailed, match="C member 2"):
+        da.dead_companion_source(tmp_path)
+    fx.write_bytes(b"\x20")
+    with pytest.raises(da.StepFailed, match="effect nodes"):
+        da.dead_companion_source(tmp_path)
+    fx.unlink()
+    for name in (b"MATHEW", b"PHILIP", b"PHILIPPE"):
+        changed = bytearray(original)
+        changed[0] = len(name)
+        changed[1:1 + len(name)] = name
+        record.write_bytes(changed)
+        if name != b"PHILIPPE":
+            with pytest.raises(da.StepFailed, match="unique PHILIPPE"):
+                da.dead_companion_source(tmp_path)
+    record.write_bytes(original)
+    first = tmp_path / "CHRDATC1.SAV"
+    first.write_bytes(_curse_record(b"PHILIPPE"))
+    with pytest.raises(da.StepFailed, match="unique PHILIPPE"):
+        da.dead_companion_source(tmp_path)
+    first.write_bytes(_curse_record())
+    record.unlink()
+    with pytest.raises(da.StepFailed, match="exactly members"):
+        da.dead_companion_source(tmp_path)
+    record.write_bytes(b"bad")
+    with pytest.raises(da.StepFailed, match="cannot be verified"):
+        da.dead_companion_source(tmp_path)
+    record.write_bytes(original)
+    (tmp_path / "SAVGAMC.DAT").unlink()
+    with pytest.raises(da.StepFailed, match="cannot be verified"):
+        da.dead_companion_source(tmp_path)
+
+
+@pytest.mark.parametrize("header,status", [
+    ("PHILIPPE  (NPC)", "STATUS DEAD"),
+    ("PHILIPPE  (NPC)", "STATUS OKAY"),
+    ("PHILIPPE  (NPC)", ""),
+    ("PHILIPPE  (NPC)", "OTHER STATUS DEAD"),
+    ("PHILIPPE  (NPC)", "STATUS DEAD AGAIN"),
+    ("OTHER  (NPC)", "STATUS DEAD"),
+    ("PHILIPPE", "STATUS DEAD"),
+])
+def test_dead_companion_sheet_reads_only_exact_inner_rows(header, status):
+    px = bytearray(W * H * 3)
+    _draw(px, _FONT_BLOCK, 1, 1, header, _NAME_INK)
+    _draw(px, _FONT_BLOCK, 22, 1, status, _NAME_INK)
+    screen = dosbox.Screen(W, H, bytes(px))
+    if (header, status) == ("PHILIPPE  (NPC)", "STATUS DEAD"):
+        assert da.dead_companion_sheet(screen, _FONT) == (header, status)
+    else:
+        with pytest.raises(da.StepFailed):
+            da.dead_companion_sheet(screen, _FONT)
+
+
+def test_dead_companion_sheet_unknown_glyph_stops():
+    px = bytearray(W * H * 3)
+    _draw(px, _FONT_BLOCK, 1, 1, "PHILIPPE  (NPC)", _NAME_INK)
+    _draw(px, _FONT_BLOCK, 22, 1, "STATUS DEAD", _NAME_INK)
+    for y in range(177, 183):
+        px[(y * W + 8) * 3:(y * W + 8) * 3 + 3] = b"\xff\xff\xff"
+    with pytest.raises(da.StepFailed, match="sheet"):
+        da.dead_companion_sheet(dosbox.Screen(W, H, bytes(px)), _FONT)
+
+
+def test_dead_companion_step_needs_exact_source_order_and_curse():
+    route = ("load", "begin", "camp", "save C",
+             "verify-dead-companion C 2 PHILIPPE", "cast 3 ANIMATE-DEAD", "save D")
+    step = da.parse_step(route[4])
+    assert (step.letter, step.line, step.name) == ("C", 2, "PHILIPPE")
+    da.validate_steps(_steps(*route), "curse")
+    for title in ("pool", "ssb"):
+        with pytest.raises(ValueError, match="verify-dead-companion"):
+            da.validate_steps(_steps(*route), title)
+    for bad in ("verify-dead-companion", "verify-dead-companion D 2 PHILIPPE",
+                "verify-dead-companion C 1 PHILIPPE",
+                "verify-dead-companion C 2 OTHER"):
+        with pytest.raises(ValueError, match="not a step"):
+            da.parse_step(bad)
+    for steps in (route[:3] + route[4:], route[:4] + ("shot gap",) + route[4:],
+                  route[:4] + route[4:5] + ("sheet 2",) + route[5:],
+                  route[:3] + ("cast 3 ANIMATE-DEAD",) + route[3:],
+                  ("load", "begin", "camp", "save C", "leave") + route[4:]):
+        with pytest.raises(ValueError):
+            da.validate_steps(_steps(*steps), "curse")
+    da.validate_steps(_steps("load", "camp", "cast 2 BLESS"), "pool")
+
+
+@pytest.mark.parametrize("passes", [False, True])
+def test_dead_companion_dispatch_stops_before_cast_and_d_or_allows_next_branch(
+        tmp_path, monkeypatch, passes):
+    log = _fake_run(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(da.Driver, "load", lambda self: {})
+    monkeypatch.setattr(da.Driver, "begin", lambda self: {}, raising=False)
+    monkeypatch.setattr(da.Driver, "camp", lambda self: {}, raising=False)
+
+    def save(self, letter):
+        calls.append("save " + letter)
+        (tmp_path / "session" / "SAVE" / f"SAVGAM{letter}.DAT").write_bytes(b"saved")
+        return {"slot": letter}
+
+    def guard(self, letter, line, name):
+        calls.append("guard")
+        assert (letter, line, name) == ("C", 2, "PHILIPPE")
+        if not passes:
+            raise self.fail("dead-companion-source", "C is not dead")
+        return {"slot": letter, "back_in_camp": True}
+
+    def cast(self, line, name, target):
+        calls.append("CAST")
+        return {"spell": name}
+
+    monkeypatch.setattr(da.Driver, "save", save, raising=False)
+    monkeypatch.setattr(da.Driver, "verify_dead_companion", guard, raising=False)
+    monkeypatch.setattr(da.Driver, "cast", cast, raising=False)
+    args = _run_args(tmp_path, ["load", "begin", "camp", "save C",
+                               "verify-dead-companion C 2 PHILIPPE",
+                               "cast 3 ANIMATE-DEAD", "save D"])
+    args.title = "curse"
+    assert da.run(args) == (0 if passes else 1)
+    assert calls == (["save C", "guard", "CAST", "save D"] if passes
+                     else ["save C", "guard"])
+    assert (tmp_path / "session" / "SAVE" / "SAVGAMD.DAT").exists() is passes
+    assert (tmp_path / "out" / "resave" / "SAVGAMC.DAT").is_file()
+    assert log == ["claim", "close", "release"]
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_dead_companion_driver_checks_live_c_before_view_and_fresh_frame(
+        tmp_path, monkeypatch, changed):
+    _dead_curse_c(tmp_path)
+    d = da.Driver.__new__(da.Driver)
+    d.title, d.where, d.left_camp = da.TITLES["curse"], "camp", False
+    d.s = type("Session", (), {"save_dir": tmp_path})()
+    frame = type("Frame", (), {"digest": lambda self: "same"})()
+    d.s.capture = lambda: frame
+    d.in_camp = lambda screen=None: True
+    d.display_font = lambda: _FONT
+    opened = []
+    d.open_sheet = lambda line: (opened.append(line) or
+                                 {"digest": "other" if changed else "same",
+                                  "sheet": "007-sheet-2"})
+    d.back_to_camp = lambda label: opened.append("back")
+    d.fail = lambda label, why: da.StepFailed(why)
+    monkeypatch.setattr(da, "dead_companion_sheet",
+                        lambda screen, font: ("PHILIPPE  (NPC)", "STATUS DEAD"))
+    if changed:
+        with pytest.raises(da.StepFailed, match="frame changed"):
+            d.verify_dead_companion("C", 2, "PHILIPPE")
+        assert opened == [2]
+    else:
+        got = d.verify_dead_companion("C", 2, "PHILIPPE")
+        assert got["sheet"] == "007-sheet-2" and got["back_in_camp"]
+        assert opened == [2, "back"]
+    (tmp_path / "CHRDATC2.SAV").unlink()
+    opened.clear()
+    with pytest.raises(da.StepFailed, match="exactly members"):
+        d.verify_dead_companion("C", 2, "PHILIPPE")
+    assert opened == []
+
+
 def test_a_stage_record_names_a_lowercase_source_file_and_any_slot_letter(tmp_path):
     (tmp_path / "chrdatj1.sav").write_bytes(_pool_record())
     args = _run_args(tmp_path, [])

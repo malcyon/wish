@@ -2453,7 +2453,7 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 
 STEP_HELP = ("load, begin, vault, move-on, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, "
              "display, "
-             "'rest 5m', 'save D', "
+             "'rest 5m', 'save D', 'verify-dead-companion C 2 PHILIPPE', "
              "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
              "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
@@ -2485,6 +2485,9 @@ def parse_step(text: str) -> Step:
         return Step(kind, text, minutes=minutes)
     if kind == "save" and len(words) == 2 and re.fullmatch(r"[A-Ja-j]", words[1]):
         return Step(kind, text, letter=words[1].upper())
+    if kind == "verify-dead-companion" and words == [
+            "verify-dead-companion", "C", "2", "PHILIPPE"]:
+        return Step(kind, text, letter="C", line=2, name="PHILIPPE")
     if kind in ("train", "sheet", "items", "view", "memorize", "heal", "cure") and len(
             words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
@@ -2588,7 +2591,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     fights = 0
     #: Whether a `prayer-watch` has run, which may leave the debugger halted.
     watched = False
-    for step in steps:
+    for index, step in enumerate(steps):
         k = step.kind
         if k in ("shot", "read"):
             continue
@@ -2769,6 +2772,18 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{', '.join(sorted(CAST_TITLES))} only, not {title}")
             if where != "camp":
                 raise ValueError(f"cast needs camp first: {step.text!r}")
+        elif k == "verify-dead-companion":
+            if (title != "curse" or where != "camp" or step.letter != "C"
+                    or step.line != 2 or step.name != "PHILIPPE"
+                    or index == 0 or steps[index - 1].kind != "save"
+                    or steps[index - 1].letter != "C"
+                    or index + 1 >= len(steps)
+                    or (steps[index + 1].kind, steps[index + 1].line,
+                        steps[index + 1].name) != ("cast", 3, "ANIMATE-DEAD")
+                    or any(s.kind == "cast" for s in steps[:index])):
+                raise ValueError(f"verify-dead-companion needs Curse camp, save C "
+                                 f"immediately before it and cast 3 ANIMATE-DEAD "
+                                 f"immediately after it, with no earlier cast: {step.text!r}")
         elif k == "save":
             if where not in ("camp", "party"):
                 raise ValueError(f"save needs camp first: {step.text!r}")
@@ -3148,6 +3163,46 @@ def read_slot(folder: pathlib.Path, letter: str) -> dict:
             "control": control, "treasure_share": treasure_share,
             "nodes": [node_dict(e) for e in c.effects]})
     return out
+
+
+def dead_companion_source(folder: pathlib.Path) -> dict:
+    """Check the game-written Curse C before a sheet or spell can be opened."""
+    container = folder / "SAVGAMC.DAT"
+    try:
+        data = container.read_bytes()
+        if (len(data) != dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS.size
+                or data[0x3214] != 6 or dos_savegame.party_size(data) != 6):
+            raise ValueError("C is not a six-member Curse save")
+        numbered = {p.name for p in folder.glob("CHRDATC*.SAV")}
+        expected = {f"CHRDATC{n}.SAV" for n in range(1, 7)}
+        if numbered != expected:
+            raise ValueError(f"C needs exactly members 1..6, got {sorted(numbered)}")
+        saved = read_slot(folder, "C")
+        members = saved["characters"]
+        if len(members) != 6 or [c["file"] for c in members] != sorted(expected):
+            raise ValueError("C members are missing or out of order")
+        target = members[1]
+        if sum(c["name"] == "PHILIPPE" for c in members) != 1 or target["name"] != "PHILIPPE":
+            raise ValueError("C member 2 is not the unique PHILIPPE")
+        status = target["status_bytes"]
+        if (status is None or len(status) != 4 or status[:2] != [6, 1]
+                or target["control"] != 0xB2 or target["creature_type"] != 0
+                or any(node["id"] == 32 for node in target["nodes"])):
+            raise ValueError("C member 2 is not the staged active DEAD companion")
+        return {"slot": "C", "status_bytes": status, "control": target["control"],
+                "creature_type": target["creature_type"], "nodes": target["nodes"]}
+    except (OSError, ValueError, IndexError, KeyError, TypeError) as e:
+        raise StepFailed(f"dead-companion C cannot be verified: {e}") from e
+
+
+def dead_companion_sheet(screen, font: dict[bytes, str]) -> tuple[str, str]:
+    """Read only the measured inner cells of Curse's name and status rows."""
+    header = text_row(screen, 1, font, range(1, 39)).strip()
+    status = text_row(screen, 22, font, range(1, 39)).strip()
+    if header != "PHILIPPE  (NPC)" or status != "STATUS DEAD":
+        raise StepFailed(f"dead-companion sheet is not PHILIPPE DEAD: "
+                         f"header={header!r}, status={status!r}")
+    return header, status
 
 
 def compare_nodes(before: dict, after: dict) -> list[dict]:
@@ -6820,6 +6875,33 @@ class Driver:
         self.back_to_camp(f"sheet-{line}-back")
         return got
 
+    def verify_dead_companion(self, letter: str, line: int, name: str) -> dict:
+        if (self.title.key != "curse" or (letter, line, name) != ("C", 2, "PHILIPPE")
+                or self.where != "camp" or self.left_camp
+                or not self.in_camp()):
+            raise self.fail("dead-companion-camp", "dead-companion needs Curse camp")
+        try:
+            source = dead_companion_source(self.s.save_dir)
+        except StepFailed as e:
+            raise self.fail("dead-companion-source", str(e)) from e
+        try:
+            font = self.display_font()
+        except StepFailed as e:
+            raise self.fail("dead-companion-font", str(e)) from e
+        sheet = self.open_sheet(line)
+        screen = self.s.capture()
+        if screen.digest() != sheet["digest"]:
+            raise self.fail("dead-companion-frame", "sheet frame changed after identity check")
+        try:
+            header, status = dead_companion_sheet(screen, font)
+        except StepFailed as e:
+            raise self.fail("dead-companion-sheet", str(e)) from e
+        self.back_to_camp("dead-companion-back")
+        if not self.in_camp():
+            raise self.fail("dead-companion-back", "camp bar is absent after sheet")
+        return {**source, "sheet": sheet["sheet"], "header": header,
+                "status": status, "back_in_camp": True}
+
     def heal(self, line: int) -> dict:
         """Roster line `line` lays on hands: `HEAL` (`LAY`) on his camp sheet,
         `SELECT` at `HEAL WHOM?`, and back to camp.
@@ -8272,6 +8354,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.display()
                 elif step.kind == "cast":
                     r = d.cast(step.line, step.name, step.row or None)
+                elif step.kind == "verify-dead-companion":
+                    r = d.verify_dead_companion(step.letter, step.line, step.name)
                 elif step.kind == "scribe":
                     r = d.scribe(step.line, step.name)
                 elif step.kind == "save":
