@@ -209,7 +209,10 @@ inheritance for that specific launch. A short brief does not disable history
 inheritance. Claude Code delegation follows its existing instructions.
 
 Agent definitions are paired under `.claude/agents/<name>.md` and
-`.codex/agents/<name>.toml`; keep both current by hand. Read `delegating.md`
+`.codex/agents/<name>.toml`; keep both current by hand. OpenCode's native
+profiles under `.opencode/agents/` reuse the Claude role bodies and map
+the actual Codex models and reasoning efforts; keep those mappings current
+with the source definitions. Read `delegating.md`
 for routing, briefs, review and push order. Its Claude Code vocabulary
 describes the same practice for Codex.
 

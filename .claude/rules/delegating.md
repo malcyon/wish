@@ -14,11 +14,17 @@ session, which edits nothing, so that exemption does not apply to it.
 
 ## Choosing the agent
 
-Each agent has two hand-kept definitions, `.claude/agents/<name>.md` for
+Claude Code and Codex have hand-kept definitions, `.claude/agents/<name>.md` for
 Claude Code and `.codex/agents/<name>.toml` for Codex, and a change to one is
 made to the other by hand. Only the model differs, since a Claude model name
 has no Codex counterpart: the two columns below record each tool's
 configured model, not the same decision spelled two ways.
+
+OpenCode's native profiles are `.opencode/agents/<name>.md`. They reference
+the Claude role bodies through `.opencode/references/subagent-protocol.md`
+and map the actual Codex model and reasoning effort to OpenCode model IDs
+and variants. Keep their model and capability mappings current when either
+source changes; do not copy platform-specific lifecycle instructions.
 
 | agent | Claude | Codex | when |
 |---|---|---|---|

@@ -23,25 +23,19 @@ independent work with `background: true`; completion notifications return the
 report to you. Continue a completed child with its returned `sessionID` and a
 compact new prompt. Do not continue a child still running.
 
-The available `general` agent is a transport for repository specialist
-instructions, not permission to discard specialization. Read the selected
-`.claude/agents/<role>.md` and include its repository path in a self-contained
-brief. Require the child to read the role body, `AGENTS.md` and applicable rules
-before acting. Apply the role's scope, evidence and stop conditions; replace
-only Claude/Codex-specific tool names and lifecycle instructions with this
-skill's OpenCode protocol. Ignore Claude frontmatter model, tools, memory and
-effort fields, and sections explicitly limited to Claude Code or Codex.
-Include the adapter explicitly in every fresh child's brief: return reports
-and test specifications to root, do not submit a new test request yourself,
-do not use sibling messaging, and await parent continuation for test results.
-This relay replaces worker-submission and sibling-delivery instructions in
-the role body and delegation rules; it does not relax serialization or checks.
+Use the native `.opencode/agents/<role>.md` specialist by its exact role ID.
+Read its definition before briefing and require its shared
+`.opencode/references/subagent-protocol.md` adaptation. These agents reuse
+the detailed Claude role bodies and configure the actual Codex model/effort
+as OpenCode model IDs and variants. Source runtime-specific sections do not
+apply. Return reports and test specifications through the parent, not sibling
+messages or worker-submitted requests.
 
-If a matching OpenCode specialist is advertised, use it instead. Otherwise
-use `agent: "general"` and state the specialist role in the brief and status.
-Do not pass a Claude model alias or a Codex TOML model into OpenCode. Workers
-inherit the current OpenCode model unless a configured specialist supplies one;
-report this difference at startup. Do not change model settings yourself.
+If a required specialist is not advertised, report its missing registration
+and stop that assignment; do not silently substitute `general` or another
+model. Do not override the configured models or variants without Donald's
+authorization. Native permission rules do not supply Claude/Codex hooks or an
+operating-system sandbox.
 
 This skill supplies instructions, not hook enforcement. Do not run Codex's
 `check_hooks.py`, claim Claude hooks protect OpenCode, or invent hook trust
@@ -83,7 +77,7 @@ repository implementation or run tests or emulators.
 | Backlog-auditor | An authorized audit producing bounded briefs. |
 | Changelog-writer | An authorized changelog or release write-up. |
 
-The role IDs are the lowercase spellings in `.claude/agents/`. Read the
+The role IDs are the lowercase spellings in `.opencode/agents/`. Read the
 definition before writing its brief. Reuse a planner only for a related
 follow-up with current evidence; keep planner, builder and reviewer separate.
 
@@ -224,7 +218,7 @@ and acceptance evidence; distinguish shipped implementation from proven game
 behavior. Report usage only when reliable counters exist.
 
 At startup, retain your own session ID, reconcile live Plane metadata and the shared cache, print the
-ranked table, report the model and hook limitations, establish the runner and
+ranked table, report any missing specialist or hook limitation, establish the runner and
 dispatch ready work. On each completion, process evidence, reconcile states
 and dispatch newly ready independent work.
 

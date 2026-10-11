@@ -24,7 +24,7 @@ What each directory in this repository is for; the API documentation is at https
 | `.claude/rules/` | The working standards split out of `CLAUDE.md`; a file with `paths:` frontmatter loads only when a file it names is read, and one without loads at launch for the main window and every subagent. |
 | `.agents/rules/` | The same files as `.claude/rules/`, as symlinks, for tools that read `AGENTS.md` and `.agents/rules/`; `AGENTS.md` holds the rules themselves and `CLAUDE.md` imports it and adds only what is true of Claude Code alone. |
 | `.agents/skills/` | Skills Codex and Antigravity read; `caveman` is shared with Claude Code by symlink from `.claude/skills/`, and `orchestrate` here is Codex's own copy of `.claude/skills/orchestrate/`, allowed to differ from it. |
-| [`.opencode/`](.opencode/README.md) | OpenCode's ranked-queue skill and slash command, using fresh child sessions and relayed test requests. |
+| [`.opencode/`](.opencode/README.md) | OpenCode's specialist agents, ranked-queue skill and slash command, using fresh child sessions and relayed test requests. |
 | `.gemini/` | One file, `settings.json`, telling Gemini CLI to read `AGENTS.md` as its context file. |
 | `.claude/` (the rest) | Local state — agent memory, machine settings; gitignored, except `agents/`, `rules/`, `hooks/` and `settings.json`. |
 | `<temp>/wish/` | Not in the repository: where a tool's runs write (`tools/registry/scratch.py`), under the machine's temp directory, where it may vanish at any time and where anything derived from the game stays so it never enters the repository. |
