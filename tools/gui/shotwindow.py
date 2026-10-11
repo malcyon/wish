@@ -196,11 +196,9 @@ def shoot(app, save: str | None, extra: float = 0.0, width: int | None = None,
         app.setFont(base)
 
 
-#: What was asked and answered for us during the last `shoot`. A dialog the
-#: program wanted to raise means something went wrong that a person would have
-#: been told about, so the tool exits non-zero rather than leaving a picture
-#: that looks like a successful run. An unreadable `--save` drew an empty
-#: window and exited 0 before this.
+#: What was asked and answered for us during the last `shoot`. Unexpected
+#: dialogs make the tool exit non-zero; the expected missing-disk warning is
+#: still reported, but a valid loaded save can be photographed successfully.
 SUPPRESSED: list[str] = []
 
 
@@ -340,13 +338,14 @@ def main(argv: list[str]) -> int:
         return 1
     print(f"{out}  {line}")
     if SUPPRESSED:
-        # The picture was still written -- it is evidence of what the window
-        # did -- but the run is not a success. `--save` on a file that is not
-        # a save drew an empty window and exited 0 before this.
+        unexpected = False
         for said in SUPPRESSED:
             print(f"the program asked and nobody could answer -- {said}",
                   file=sys.stderr)
-        return 2
+            if said != "warning: Missing Game Disk":
+                unexpected = True
+        if unexpected:
+            return 2
     return 0
 
 

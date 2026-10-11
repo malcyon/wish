@@ -320,6 +320,34 @@ def _one_qapplication():
     yield QApplication.instance() or QApplication([])
 
 
+def _record_missing_game_disk_warning(original, recorded, ok):
+    def warning(parent, title, body, *args, **kwargs):
+        if title != "Missing Game Disk":
+            return original(parent, title, body, *args, **kwargs)
+        recorded.append((parent, title, body))
+        return ok
+
+    return warning
+
+
+@pytest.fixture(autouse=True)
+def missing_game_disk_warnings(monkeypatch):
+    """Acknowledge only the missing-disk warning during each GUI test."""
+    recorded = []
+    try:
+        from PyQt6.QtWidgets import QMessageBox
+    except ImportError:  # the suite also runs without the gui extra
+        yield recorded
+        return
+
+    original = QMessageBox.warning
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(_record_missing_game_disk_warning(
+            original, recorded, QMessageBox.StandardButton.Ok)))
+    yield recorded
+
+
 def pytest_collection_finish(session):
     """Move every object the collected modules hold out of the collector's walk.
 

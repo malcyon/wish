@@ -16,7 +16,7 @@ from support.editorwindow import make_root
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtWidgets import QLabel, QMessageBox, QWidget
 
 from editor.binding import (
     binding_for,
@@ -32,7 +32,20 @@ from goldbox.layout import LAYOUT, Confidence
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exists(),
-                                reason="needs the save disks")
+                                 reason="needs the save disks")
+
+
+@pytest.fixture(autouse=True)
+def capture_missing_game_disk_warning(monkeypatch):
+    """Keep the new modal from blocking existing headless editor checks."""
+    calls = []
+
+    def warning(parent, title, body, *args, **kwargs):
+        calls.append((parent, title, body))
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", warning)
+    return calls
 
 
 @pytest.fixture
@@ -1323,6 +1336,115 @@ def test_the_field_label_falls_back_for_a_field_with_no_label(app, save):
 # --- the inventory ----------------------------------------------------------
 
 GAME_DISK = f"{DISKS}/POOL1.D64"
+
+
+def test_missing_resources_warn_once_per_successful_open_without_changing_save(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    from editor.window import EditorBinding
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    path = synthetic_save(tmp_path)
+    before = path.read_bytes()
+    window = EditorBinding(make_root(), game_folders={})
+    window.load(str(path))
+    assert window.party is not None and window.party.is_save
+    assert len(window.party.members) == 6
+    assert window.model.rowCount() == 6
+    assert window.roster.currentIndex().row() == 0
+    assert capture_missing_game_disk_warning == [(
+        window.root, "Missing Game Disk",
+        f"Set your {window.party.game.title} game disk in "
+        "File->Preferences->Game Disks. Without this, Wish cannot load "
+        "item or spell names.")]
+    window.load(str(path))
+    assert len(capture_missing_game_disk_warning) == 2
+    assert path.read_bytes() == before
+
+
+def test_failed_open_does_not_warn_or_replace_loaded_party(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    from editor.window import EditorBinding
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    path = synthetic_save(tmp_path)
+    window = EditorBinding(make_root(), str(path))
+    original = window.party
+    assert len(capture_missing_game_disk_warning) == 1
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: None)
+    window.load(str(tmp_path / "absent.D64"))
+    assert window.party is original
+    assert len(capture_missing_game_disk_warning) == 1
+
+    monkeypatch.setattr(window, "_guard_unsaved", lambda text: False)
+    window.load(str(path))
+    assert window.party is original
+    assert len(capture_missing_game_disk_warning) == 1
+    window.set_disks(str(tmp_path / "no-game-resources"))
+    assert len(capture_missing_game_disk_warning) == 1
+
+
+def test_starting_save_as_does_not_repeat_the_open_warning(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    from editor.window import EditorBinding
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    path = synthetic_save(tmp_path)
+    before = path.read_bytes()
+    window = EditorBinding(make_root(), str(path))
+    assert len(capture_missing_game_disk_warning) == 1
+    window.begin_save_as("c64")
+    assert len(capture_missing_game_disk_warning) == 1
+    assert path.read_bytes() == before
+
+
+def test_wrong_title_explicit_disk_with_only_a_generic_icon_warns(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    import editor.window as ew
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    save = synthetic_save(tmp_path)
+    other = tmp_path / "CURSE1.D64"
+    other.write_bytes(b"")
+    monkeypatch.setattr(ew, "load_icon_charset", lambda where: b"icon charset")
+    monkeypatch.setattr(ew, "load_item_names", lambda where, game: {})
+    monkeypatch.setattr(ew, "load_spell_names", lambda where, game: {})
+    window = ew.EditorBinding(make_root(), game_disk=str(other))
+    window.load(str(save))
+    assert window.party is not None and window.party.is_save
+    assert window.charset == b"icon charset"
+    assert window.item_names == {} and window.spell_names == {}
+    assert len(capture_missing_game_disk_warning) == 1
+    assert capture_missing_game_disk_warning[0][1] == "Missing Game Disk"
+
+
+def test_matching_title_preferences_c64_resources_need_no_warning(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    import editor.window as ew
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    save = synthetic_save(tmp_path)
+    own = tmp_path / "own-game"
+    own.mkdir()
+    game = Party(str(save)).game
+    disk = own / "POOL1.D64"
+    disk.write_bytes(b"")  # Reader stubs model usable title-matched resources.
+
+    def charset(where):
+        if pathlib.Path(where) != disk:
+            raise FileNotFoundError(where)
+        return b"icon charset"
+
+    monkeypatch.setattr(ew, "load_icon_charset", charset)
+    monkeypatch.setattr(ew, "load_item_names", lambda where, title: {1: "Item"}
+                        if pathlib.Path(where) == disk and title is game else {})
+    monkeypatch.setattr(ew, "load_spell_names", lambda where, title: {1: "Spell"}
+                        if pathlib.Path(where) == disk and title is game else {})
+    window = ew.EditorBinding(make_root(), game_folders={game.key: str(own)})
+    window.load(str(save))
+    assert window.game_disk_found == str(disk)
+    assert window.item_names == {1: "Item"}
+    assert window.spell_names == {1: "Spell"}
+    assert capture_missing_game_disk_warning == []
 
 
 def _row(model, slot: int) -> int:

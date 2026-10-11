@@ -35,7 +35,7 @@ import pytest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from PyQt6.QtGui import QImage
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from tools.gui import shotwindow
 
@@ -66,6 +66,81 @@ def test_it_writes_a_picture_of_the_window(app, tmp_path, save, capsys):
                      .split("x")]
     assert (image.width(), image.height()) == (width,
                                                height + shotwindow.CAPTION_H)
+
+
+def test_a_loaded_save_without_game_disks_still_writes_a_picture(
+        app, tmp_path, save, monkeypatch):
+    from automap.config import Settings
+    from goldbox import c64_port
+
+    loaded = []
+    real = shotwindow.WishWindow
+
+    def spy(*args, **kwargs):
+        kwargs["settings"] = Settings(game_folders={
+            c64_port.POOL_OF_RADIANCE.key: str(tmp_path / "no-game-disks")})
+        win = real(*args, **kwargs)
+        loaded.append(win.editor.party)
+        return win
+
+    monkeypatch.setattr(shotwindow, "WishWindow", spy)
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    out = tmp_path / "missing-disk.png"
+
+    code = shotwindow.main(["shotwindow", "--save", save, str(out)])
+
+    assert loaded and loaded[0] is not None and len(loaded[0]) == 6
+    assert any("warning: Missing Game Disk" in said
+               for said in shotwindow.SUPPRESSED)
+    assert out.exists() and out.stat().st_size > 0
+    assert code == 0, "the expected warning must not reject a loaded save"
+
+
+def test_the_missing_disk_warning_is_recorded_for_a_caller(
+        app, tmp_path, save, monkeypatch, missing_game_disk_warnings):
+    from automap.config import Settings
+    from goldbox import c64_port
+    from wish.session import Session
+    from wish.window import WishWindow
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    win = WishWindow(save, maps={}, settings=Settings(game_folders={
+        c64_port.POOL_OF_RADIANCE.key: str(tmp_path / "no-game-disks")}),
+        session=Session(find=lambda pref=None: None))
+    try:
+        assert win.editor.party is not None and len(win.editor.party) == 6
+        assert len(missing_game_disk_warnings) == 1
+        parent, title, body = missing_game_disk_warnings[0]
+        assert parent is win
+        assert title == "Missing Game Disk"
+        assert "item or spell names" in body
+    finally:
+        win.session.close()
+        win.hide()
+        win.deleteLater()
+
+
+def test_other_warnings_are_forwarded_to_the_prior_handler():
+    from conftest import _record_missing_game_disk_warning
+
+    calls = []
+    recorded = []
+    ok = QMessageBox.StandardButton.Ok
+    other = QMessageBox.StandardButton.No
+
+    def previous(*args, **kwargs):
+        calls.append((args, kwargs))
+        return other
+
+    warning = _record_missing_game_disk_warning(previous, recorded, ok)
+    assert warning(None, "Other Warning", "Unrelated warning", other,
+                   extra=True) == other
+    assert calls == [((None, "Other Warning", "Unrelated warning", other),
+                      {"extra": True})]
+    assert recorded == []
+    assert warning(None, "Missing Game Disk", "Expected warning") == ok
+    assert recorded == [(None, "Missing Game Disk", "Expected warning")]
+    assert len(calls) == 1
 
 
 def test_the_floor_it_reports_does_not_follow_the_ui_font(app, save):
@@ -143,6 +218,24 @@ def test_an_unreadable_save_is_reported_rather_than_waited_on(app, tmp_path,
     assert "Cannot open" in " ".join(shotwindow.SUPPRESSED)
 
 
+def test_an_unrelated_warning_still_fails_the_shot(app, tmp_path, save,
+                                                   monkeypatch):
+    real = shotwindow.WishWindow
+
+    def warn(*args, **kwargs):
+        win = real(*args, **kwargs)
+        QMessageBox.warning(win, "Other Warning", "Unrelated warning")
+        return win
+
+    monkeypatch.setattr(shotwindow, "WishWindow", warn)
+    out = tmp_path / "other-warning.png"
+
+    assert shotwindow.main(["shotwindow", "--save", save, str(out)]) == 2
+    assert out.exists()
+    assert any("warning: Other Warning" in said
+               for said in shotwindow.SUPPRESSED)
+
+
 def test_the_map_tab_is_given_its_maps(app, save, monkeypatch):
     """`maps={}` is not `maps=None`, and only the second loads anything.
 
@@ -192,4 +285,3 @@ def test_the_session_does_not_outlive_the_shot(app, save, monkeypatch):
 
     assert made, "no session was built"
     assert not made[0].timer.isActive(), "the session is still polling"
-

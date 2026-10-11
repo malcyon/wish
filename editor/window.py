@@ -1975,6 +1975,12 @@ class EditorBinding(QObject):
             QMessageBox.critical(self.root, "Cannot open", str(exc))
             return
         self._adopt(party, str(source.path) if source is not None else path)
+        if party.is_save and not (self.item_names and self.spell_names):
+            QMessageBox.warning(
+                self.root, "Missing Game Disk",
+                f"Set your {party.game.title} game disk in "
+                "File->Preferences->Game Disks. Without this, Wish cannot "
+                "load item or spell names.")
 
     def _adopt(self, party: Party, path: str | None, note: str | None = None,
                dirty: bool = False) -> None:
@@ -2605,7 +2611,8 @@ class EditorBinding(QObject):
         return None
 
     def _find_game_disk(self) -> str | None:
-        return self._find_disk(load_icon_charset)
+        game = self.party.game if self.party is not None else None
+        return self._find_disk(load_icon_charset, game=game)
 
     def _load_movement_items(self) -> None:
         """Give a Pool of Radiance party the `ITEMS` table its movement needs.
@@ -2784,8 +2791,13 @@ class EditorBinding(QObject):
         found = self._find_game_disk()
         self.game_disk_found = found
         if found is None:
+            if self.party is not None and self.party.port in ("dos", "amiga"):
+                self._load_pod_names()
+                for member in self.party.members:
+                    if member.inventory is not None:
+                        member.inventory.names = self.item_names
             self._apply_spell_table()
-            self.traits.set_tables({}, {}, self._spell_table())
+            self.traits.set_tables({}, self.spell_names, self._spell_table())
             self.items.set_spells(self._spell_table())
             return
         game = self.party.game if self.party is not None else None
@@ -2801,6 +2813,12 @@ class EditorBinding(QObject):
                 setattr(self, attr, read(found))
             except Exception:
                 _log.exception("could not read %s off %s", attr, found)
+        if self.party is not None and self.party.port in ("dos", "amiga"):
+            c64_items, c64_spells = self.item_names, self.spell_names
+            if not (c64_items and c64_spells):
+                self._load_pod_names()
+                self.item_names = self.item_names or c64_items
+                self.spell_names = self.spell_names or c64_spells
         self.traits.set_tables(self.item_types, self.spell_names,
                                self._spell_table())
         self.items.set_spells(self._spell_table())

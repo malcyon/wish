@@ -20,6 +20,7 @@ from __future__ import annotations
 import pathlib
 
 import pytest
+from PyQt6.QtWidgets import QMessageBox
 from support.editorwindow import make_root
 from test_podparty import FLAG, OFF, POD, _amiga_sources, _dos_sources, _flag
 
@@ -32,6 +33,19 @@ from goldbox.items import Item
 ITEM_WORD = 7
 FAKE_ITEMS = {ITEM_WORD: "Test Mace"}
 FAKE_SPELLS = {9: "Test Burning Hands", 10: "Test Charm Person"}
+
+
+@pytest.fixture(autouse=True)
+def capture_missing_game_disk_warning(monkeypatch):
+    """Record the modal without blocking the existing offscreen checks."""
+    calls = []
+
+    def warning(parent, title, body, *args, **kwargs):
+        calls.append((parent, title, body))
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", warning)
+    return calls
 
 
 @pytest.fixture
@@ -138,6 +152,81 @@ def _open_synthetic(monkeypatch, tmp_path, *, names: bool):
     window = _window(_synthetic_game_folder(tmp_path) if names else None)
     window.load(str(folder))
     return window, folder
+
+
+def test_native_names_satisfy_warning_even_without_c64_charset(
+        app, monkeypatch, tmp_path, fake_names,
+        capture_missing_game_disk_warning):
+    window, folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    assert window.party is not None and window.party.game is POD
+    assert window.model.rowCount() == 1
+    assert window.roster.currentIndex().row() == 0
+    assert window.charset == b""
+    assert window.item_names == FAKE_ITEMS
+    assert window.spell_names == FAKE_SPELLS
+    assert capture_missing_game_disk_warning == []
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+
+
+def test_shared_matching_native_game_folder_supplies_names_without_warning(
+        app, monkeypatch, tmp_path, fake_names,
+        capture_missing_game_disk_warning):
+    import editor.window as ew
+
+    _flag(monkeypatch, "1")
+    folder = _synthetic_folder(tmp_path)
+    game_folder = _synthetic_game_folder(tmp_path)
+    window = ew.EditorBinding(make_root(), disks=str(game_folder))
+    window.load(str(folder))
+    assert window.charset == b""
+    assert window.item_names == FAKE_ITEMS
+    assert window.spell_names == FAKE_SPELLS
+    assert capture_missing_game_disk_warning == []
+
+
+def test_native_save_without_a_matching_game_folder_warns(
+        app, monkeypatch, tmp_path,
+        capture_missing_game_disk_warning):
+    monkeypatch.setattr(item_names, "item_names",
+                        lambda *args: (_ for _ in ()).throw(FileNotFoundError()))
+    monkeypatch.setattr(spell_names, "spell_names",
+                        lambda *args: (_ for _ in ()).throw(FileNotFoundError()))
+    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=False)
+    assert window.party is not None and window.party.game is POD
+    assert window.model.rowCount() == 1
+    assert capture_missing_game_disk_warning == [(
+        window.root, "Missing Game Disk",
+        "Set your Pools of Darkness game disk in "
+        "File->Preferences->Game Disks. Without this, Wish cannot load "
+        "item or spell names.")]
+
+
+def test_another_titles_dos_folder_does_not_supply_native_names(
+        app, monkeypatch, tmp_path, capture_missing_game_disk_warning):
+    from goldbox.c64_port import POOL_OF_RADIANCE
+
+    _flag(monkeypatch, "1")
+    _no_box(monkeypatch)
+    folder = _synthetic_folder(tmp_path)
+    launcher, config, stem = titles.DOS_FOLDER_FILES[POOL_OF_RADIANCE.key]
+    other = tmp_path / stem
+    other.mkdir()
+    for name in (launcher, config):
+        (other / name).write_bytes(b"")
+
+    def read_dos(game, platform, where):
+        if platform == "amiga":
+            raise FileNotFoundError(where)
+        return FAKE_ITEMS
+
+    monkeypatch.setattr(item_names, "item_names", read_dos)
+    monkeypatch.setattr(spell_names, "spell_names", read_dos)
+    window = _window(other)
+    window.load(str(folder))
+    assert window.party is not None and window.party.game is POD
+    assert window.item_names == {} and window.spell_names == {}
+    assert len(capture_missing_game_disk_warning) == 1
 
 
 def test_open_shows_a_synthetic_party_through_the_sheet(
