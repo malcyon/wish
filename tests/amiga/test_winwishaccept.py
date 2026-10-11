@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import json
 import pathlib
 import struct
@@ -10,11 +12,12 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from goldbox import amiga_dax
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.geo import GEO_SIZE
-from tools.amiga import winwishaccept
+from tools.amiga import winuaesession, winwishaccept
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 
@@ -1335,6 +1338,116 @@ def _opening_controller(tmp_path, monkeypatch):
     return controller, game, clock, snapshots, calls
 
 
+def test_rebound_equal_pipe_receipts_preserve_each_opening_frame_and_event(tmp_path,
+                                                                           monkeypatch):
+    from tools.amiga import amigadrive
+
+    controller, _, clock, _, _ = _opening_controller(tmp_path, monkeypatch)
+    guest = winuaesession.WinGuest()
+    guest.holder = "test-acw"
+    source = {"source": "winuae-pipe", "pid": 1912, "counter": 1}
+    guest.last_shot = source.copy()
+    replies = []
+    for shade in (27, 53, 79):
+        encoded = io.BytesIO()
+        Image.new("RGB", (752, 574), (shade, 34, 51)).save(encoded, "PNG")
+        replies.append("\n".join(("ok shot pid=1912 counter=001 ms=500", "WINVM-SHOT-BEGIN",
+                                  base64.b64encode(encoded.getvalue()).decode(), "WINVM-SHOT-END")))
+    sent = []
+    def run(*args, timeout):
+        sent.append(args)
+        return replies.pop(0)
+    monkeypatch.setattr(guest, "_run", run)
+    monkeypatch.setattr(amigadrive, "_last_counter", {})
+    controller.game = guest
+    controller.summary["discovery"] = winwishaccept.row()
+    frame = controller._capture_unknown_frames("ssb_opening_unknown", "opening", clock() + 5)
+    evidence = controller.summary["discovery"]["evidence"]
+    events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert len(sent) == len(evidence) == len(events) == 3
+    assert all(command[0] == "ssh" and command[1].endswith(" shot -Holder test-acw")
+               for command in sent)
+    assert frame is evidence[-1]
+    assert all(item["shot_source"] == source for item in (*evidence, *events))
+    assert all(pathlib.Path(item["raw"]).is_file() and pathlib.Path(item["crop"]).is_file()
+               for item in evidence)
+    assert len({pathlib.Path(item["raw"]).read_bytes() for item in evidence}) == 3
+    guest.last_shot["counter"] = 99
+    assert all(item["shot_source"] == source for item in (*evidence, *events))
+
+
+@pytest.mark.parametrize("receipt", [None, {"source": "fake", "pid": 1912, "counter": 1},
+                                          {"source": "winuae-pipe", "pid": 0, "counter": 1},
+                                          {"source": "winuae-pipe", "pid": 1912, "counter": None}])
+def test_opening_exact_crop_without_fresh_valid_receipt_fails_with_evidence(tmp_path,
+                                                                             monkeypatch, receipt):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _opening_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    if receipt is not None:
+        original = game.grab
+        def grab(state, raw, crop, timeout):
+            exact = original(state, raw, crop, timeout)
+            if state == "ssb_opening_unknown":
+                game.last_shot = receipt.copy()
+            return exact
+        game.grab = grab
+    else:
+        original = game.grab
+        def grab(state, raw, crop, timeout):
+            if state == "ssb_opening_unknown":
+                pathlib.Path(raw).write_bytes(b"raw")
+                pathlib.Path(crop).write_bytes(b"crop")
+                return True
+            return original(state, raw, crop, timeout)
+        game.grab = grab
+    result = controller.run_opening_first()
+    evidence = result["discovery"]["evidence"]
+    assert "fresh valid pipe shot provenance" in result["failure"]
+    assert result["discovery"]["status"] == "failed" and ("down",) in calls
+    assert len(evidence) == 1 and pathlib.Path(evidence[0]["raw"]).is_file()
+    assert pathlib.Path(evidence[0]["crop"]).is_file()
+    assert evidence[0]["shot_source"] == receipt
+    assert "ssb_opening_after_first" not in result["checkpoints"]
+    assert game.keys[-1] == "RET"
+
+
+def test_opening_crop_error_keeps_fresh_pipe_receipt_and_raw(tmp_path, monkeypatch):
+    from tools.amiga import amigadrive, screens
+
+    controller, _, clock, _, _ = _opening_controller(tmp_path, monkeypatch)
+    guest = winuaesession.WinGuest()
+    guest.holder = "test-acw"
+    encoded = io.BytesIO()
+    Image.new("RGB", (752, 574), (27, 34, 51)).save(encoded, "PNG")
+    reply = "\n".join(("ok shot pid=1912 counter=001 ms=500", "WINVM-SHOT-BEGIN",
+                       base64.b64encode(encoded.getvalue()).decode(), "WINVM-SHOT-END"))
+    monkeypatch.setattr(guest, "_run", lambda *args, timeout: reply)
+    monkeypatch.setattr(amigadrive, "_last_counter", {})
+    canonical = screens.canonical_file
+    crops = 0
+    def broken_crop(raw, crop):
+        nonlocal crops
+        crops += 1
+        if crops == 2:
+            raise RuntimeError("crop failed")
+        return canonical(raw, crop)
+    monkeypatch.setattr(screens, "canonical_file", broken_crop)
+    controller.game = guest
+    controller.summary["discovery"] = winwishaccept.row()
+    with pytest.raises(RuntimeError, match="crop failed"):
+        controller._capture_unknown_frames("ssb_opening_unknown", "opening", clock() + 5)
+    frames = controller.summary["discovery"]["evidence"]
+    frame = frames[1]
+    event = json.loads((tmp_path / "events.jsonl").read_text().splitlines()[1])
+    assert len(frames) == 2 and pathlib.Path(frames[0]["crop"]).is_file()
+    assert pathlib.Path(frame["raw"]).is_file() and frame["crop"] is None
+    assert frame["shot_source"] == event["shot_source"] == {
+        "source": "winuae-pipe", "pid": 1912, "counter": 1}
+    assert frame["error"] == "RuntimeError: crop failed"
+
+
 def test_opening_first_only_sends_the_known_prefix_and_one_return(tmp_path, monkeypatch):
     from tools.amiga import route_silver_blades
 
@@ -1417,6 +1530,8 @@ def test_opening_capture_fails_closed_and_preserves_raw_frames(tmp_path, monkeyp
     if fault == "partial":
         assert result["discovery"]["evidence"][1]["error"] == "RuntimeError: second pipe grab failed"
         assert result["discovery"]["evidence"][1]["crop"] is None
+        assert result["discovery"]["evidence"][1]["shot_source"] is None
+        assert "ssb_opening_after_first" not in result["checkpoints"]
 
 
 def test_opening_parser_and_mapping_cap(tmp_path, monkeypatch):

@@ -1268,24 +1268,29 @@ class Controller:
                 break
             raw = self.out / f"{prefix}-{number}.raw.png"
             crop = self.out / f"{prefix}-{number}.png"
-            previous = self.game.last_shot.copy() if isinstance(
-                self.game.last_shot, dict) else self.game.last_shot
+            previous = self.game.last_shot
             try:
                 exact = self.game.grab(state, raw, crop, remaining)
             except Exception as exc:
                 if raw.is_file():
                     current = self.game.last_shot
                     partial = {"raw": str(raw), "crop": None,
-                               "shot_source": current if current != previous else None,
+                               "shot_source": current.copy() if isinstance(current, dict)
+                               and current is not previous else None,
                                "error": f"{type(exc).__name__}: {exc}"}
                     frames.append(partial)
                     self.log("terminal_frame", **partial)
                 raise
             current = self.game.last_shot
+            source = current.copy() if isinstance(current, dict) and current is not previous else None
             frame = {"raw": str(raw), "crop": str(crop) if exact else None,
-                     "shot_source": current if current != previous else None}
+                     "shot_source": source}
             frames.append(frame)
             self.log("terminal_frame", **frame)
+            if exact and (source is None or source.get("source") != "winuae-pipe"
+                          or type(source.get("pid")) is not int or source["pid"] <= 0
+                          or type(source.get("counter")) is not int or source["counter"] <= 0):
+                raise AcceptanceStop("exact terminal crop has no fresh valid pipe shot provenance")
         if not frames or self.clock() > end:
             raise AcceptanceStop("terminal pipe frames exceeded five seconds")
         exact_frames = [frame for frame in frames if frame["crop"] is not None]
