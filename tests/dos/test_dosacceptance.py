@@ -8866,6 +8866,80 @@ def test_dead_companion_dispatch_stops_before_cast_and_d_or_allows_next_branch(
     assert log == ["claim", "close", "release"]
 
 
+@pytest.mark.parametrize("sheet_problem", ["okay", "unreadable"])
+def test_dead_companion_actual_sheet_guard_stops_cast_and_keeps_c(
+        tmp_path, monkeypatch, sheet_problem):
+    real_guard = da.Driver.verify_dead_companion
+    log = _fake_run(monkeypatch, tmp_path)
+    calls = []
+    px = bytearray(W * H * 3)
+    _draw(px, _FONT_BLOCK, 1, 1, "PHILIPPE  (NPC)", _NAME_INK)
+    _draw(px, _FONT_BLOCK, 22, 1,
+          "STATUS OKAY" if sheet_problem == "okay" else "STATUS DEAD", _NAME_INK)
+    if sheet_problem == "unreadable":
+        for y in range(177, 183):
+            at = (y * W + 8) * 3
+            px[at:at + 3] = b"\xff\xff\xff"
+    sheet = dosbox.Screen(W, H, bytes(px))
+
+    def load(self):
+        self.where = "party"
+        return {}
+
+    def begin(self):
+        self.where = "map"
+        return {}
+
+    def camp(self):
+        self.where = "camp"
+        return {}
+
+    def save(self, letter):
+        calls.append("save " + letter)
+        if letter == "C":
+            _dead_curse_c(self.s.save_dir)
+        else:
+            (self.s.save_dir / f"SAVGAM{letter}.DAT").write_bytes(b"saved")
+        return {"slot": letter}
+
+    def open_sheet(self, line):
+        calls.append("VIEW")
+        assert line == 2
+        return {"digest": sheet.digest(), "sheet": "sheet-2"}
+
+    def cast(self, line, name, target):
+        calls.append("CAST")
+        return {}
+
+    def init(self, session, note, letter, *rest, **kw):
+        self.s, self.title, self.left_camp = session, da.TITLES["curse"], False
+        self.where = "boot"
+        session.capture = lambda: sheet
+
+    for method, function in (("__init__", init), ("load", load), ("begin", begin),
+                             ("camp", camp), ("save", save), ("open_sheet", open_sheet),
+                             ("cast", cast)):
+        monkeypatch.setattr(da.Driver, method, function, raising=False)
+    monkeypatch.setattr(da.Driver, "verify_dead_companion", real_guard, raising=False)
+    monkeypatch.setattr(da.Driver, "in_camp", lambda self, screen=None: True,
+                        raising=False)
+    monkeypatch.setattr(da.Driver, "display_font", lambda self: _FONT, raising=False)
+    args = _run_args(tmp_path, ["load", "begin", "camp", "save C",
+                               "verify-dead-companion C 2 PHILIPPE",
+                               "cast 3 ANIMATE-DEAD", "save D"])
+    args.title = "curse"
+    assert da.run(args) == 1
+    assert calls == ["save C", "VIEW"]
+    assert not (tmp_path / "session" / "SAVE" / "SAVGAMD.DAT").exists()
+    assert (tmp_path / "session" / "SAVE" / "SAVGAMC.DAT").is_file()
+    assert (tmp_path / "out" / "resave" / "CHRDATC2.SAV").is_file()
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert "dead-companion sheet" in summary["lost"]
+    assert "lost-dead-companion-sheet.png" in summary["lost"]
+    assert (tmp_path / "out" / "shots" / "lost-dead-companion-sheet.png").is_file()
+    assert log == ["claim", "close", "release"]
+
+
 @pytest.mark.parametrize("changed", [False, True])
 def test_dead_companion_driver_checks_live_c_before_view_and_fresh_frame(
         tmp_path, monkeypatch, changed):
