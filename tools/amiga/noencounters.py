@@ -423,6 +423,9 @@ ROWS = (
           "IF= GOTO the drunken brawl at $A693"),
     _gate("curse-of-the-azure-bonds", "*0x5006+0x8739", "9afc9873", PROBABLE,
           "ECL02 roll at $8739: IF> EXIT"),
+    _gate("curse-of-the-azure-bonds", "*0x5006+0x9952", "9afc9873", PROBABLE,
+          "ECL01 step chance at $9952: IF> EXIT at $995F before "
+          "SETUPMON at $9991 and COMBAT at $9482", area="c80bfd1e"),
     _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "0da02140", PROBABLE,
           "world map area $50: its rolls pick the PATROL FOREST monsters the "
           "player asked to fight ($84DE, $84F8, $8508) and whether a journey "
