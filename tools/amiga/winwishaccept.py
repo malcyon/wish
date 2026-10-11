@@ -34,6 +34,7 @@ MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
 DISCOVERY_SECONDS = 1800
+OPENING_THIRD_SECONDS = 1500
 DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
 DISCOVERY_DF0_SHA256 = "068bc3e2bfd79e6014d427b5aef730d2bd52f0ba1cd28c3664fd9306a04a6948"
 OPENING_FIRST_RULE = {
@@ -221,7 +222,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     mode = getattr(args, "discover", None)
     opening = mode in OPENING_MODES
     discovery = mode == "ssb-leave" or opening
-    maximum = DISCOVERY_SECONDS if discovery else MAX_SECONDS
+    maximum = (OPENING_THIRD_SECONDS if mode == "ssb-opening-after-third"
+               else DISCOVERY_SECONDS if discovery else MAX_SECONDS)
     if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
     if not pathlib.Path(args.manifest).is_file():
@@ -1548,7 +1550,8 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.deadline is None:
-        args.deadline = DISCOVERY_SECONDS if args.discover else MAX_SECONDS
+        args.deadline = (OPENING_THIRD_SECONDS if args.discover == "ssb-opening-after-third"
+                         else DISCOVERY_SECONDS if args.discover else MAX_SECONDS)
     from tools.amiga.maproute import route_for  # noqa: PLC0415
 
     guest, lane, game = winwish.Guest(), WinGuest(), WinGuest()

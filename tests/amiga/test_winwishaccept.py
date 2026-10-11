@@ -1674,6 +1674,8 @@ def test_second_page_preflight_requires_both_independent_boxes_before_artifact(
 
     args = _discovery_args(tmp_path)
     args.discover = mode
+    if mode == "ssb-opening-after-third":
+        args.deadline = 1500
     args.manifest.write_text('{"title":"ssb","opening_scene":true,"substitute":{"letter":"A"},'
                              '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
     for key in ("df0", "df1"):
@@ -1758,10 +1760,49 @@ def _second_controller(tmp_path, monkeypatch, mode, frames):
 def _third_controller(tmp_path, monkeypatch, frames):
     controller, game, clock, snapshots, calls = _second_controller(
         tmp_path, monkeypatch, "ssb-opening-after-third", frames)
+    controller.args.deadline = 1500
+    controller.total_end = controller.started + 1500
+    controller.route_end = controller.total_end - winwishaccept.CLEANUP_SECONDS
     controller.clock = lambda: clock.now
     controller.guards.rules = {**controller.guards.rules,
                                "ssb_opening_third": winwishaccept.OPENING_THIRD_RULE}
     return controller, game, clock, snapshots, calls
+
+
+def test_third_page_default_total_budget_includes_cleanup(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(winwishaccept.winwish, "Guest", lambda: object())
+    monkeypatch.setattr(winwishaccept, "WinGuest", lambda: object())
+    def preflight(args, **kwargs):
+        seen.append(args.deadline)
+        raise winwishaccept.AcceptanceStop("stop before lane claim")
+    monkeypatch.setattr(winwishaccept, "preflight", preflight)
+    argv = ["--title", "ssb", "--discover", "ssb-opening-after-third",
+            "--manifest", str(tmp_path / "prepare.json"), "--sha", SHA,
+            "--holder", "test-acw", "--mute-proof", str(tmp_path / "mute.json"),
+            "--out", str(tmp_path)]
+    assert winwishaccept.main(argv) == 2
+    assert seen == [1500]
+
+
+@pytest.mark.parametrize("deadline", [1501, 1800])
+def test_third_page_over_budget_stops_preflight_before_guest_or_boot(tmp_path, deadline):
+    args = _discovery_args(tmp_path)
+    args.discover = "ssb-opening-after-third"
+    args.deadline = deadline
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="--deadline must be above 300 and at most 1500"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *unused:
+                                pytest.fail("route inspected after budget stop"), driver_sha=SHA)
+
+
+@pytest.mark.parametrize("mode", ["ssb-leave", "ssb-opening-after-second"])
+def test_prior_discovery_modes_still_admit_1800_seconds(tmp_path, mode):
+    args = _discovery_args(tmp_path)
+    args.discover = mode
+    with pytest.raises(winwishaccept.AcceptanceStop, match="prepared manifest is missing"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *unused:
+                                pytest.fail("route inspected without manifest"), driver_sha=SHA)
 
 
 def test_third_page_mode_sends_one_guarded_return_then_captures_fresh_unknown(
@@ -1970,6 +2011,7 @@ def test_third_page_preflight_rejects_changed_export_before_fetch(tmp_path, monk
 
     args = _discovery_args(tmp_path)
     args.discover = "ssb-opening-after-third"
+    args.deadline = 1500
     args.manifest.write_text('{"title":"ssb","opening_scene":true,"substitute":{"letter":"A"},'
                              '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
     for key in ("df0", "df1"):
