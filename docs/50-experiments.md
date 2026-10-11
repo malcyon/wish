@@ -8633,3 +8633,61 @@ not run.
 either arm; `$4AA9` read after a reload; the walked leave-route control from
 area 28 (B9c, optional, since `$993C SAVE 253,[$4AB4]` is in the bytecode and
 B9a and B9b pass).
+
+## Curse's rejected encounter chance: the EXIT witness and its lifetime
+
+**Player situation.** A party stepping through ordinary Tilverton may pass an
+encounter chance without a fight. A post-step read could identify a rejected
+chance, not a skipped EXIT or stale state. **No live witness or suppression
+acceptance is established.** Static inputs: `/Curse` SHA-256
+`8d4ceba86e4b7659e5fa678446f9cafdfd5f4aa70c59c68d44862ed12bb83fb8`,
+ECL01 SHA-256 `18a41bbd89cf136b4140c5a215606dab747d744e706b5cf7b9f8de8321e3b450`.
+Executable sites below are file offsets, not relocated addresses.
+
+**CONFIRMED from code: executed and skipped EXIT differ.** ECL01's rejected
+chance executes `$9960 EXIT`: PC becomes `$9961`, current opcode `$00`,
+previous opcode `$19` (IF>), greater-than result retained, caller head drained
+(`/Curse` `0x20988`, `0x1DB26`–`0x1DB5C`). Interpreter stop prevents another
+fetch (`0x2097C`–`0x209A8`); EXIT does not clear roll/limit. A false IF> uses
+skip helper `0xDE44`, which can transiently set the same PC/opcode *without*
+executing EXIT, but previous opcode is `$03` (COMPARE; `0xDE4E`, `0xDECE`).
+PC/opcode or empty callers alone cannot prove provenance: EXIT destroys caller
+history. Require previous opcode, comparison and a fresh step, not a stale
+tuple. A prospective rejected-chance tuple also needs `L<R<=100` with
+`L` in `{10,20,30,40}`, from the unsigned roll `R` and limit `L`; these
+values alone do not establish natural provenance.
+
+**PROBABLE conditional lifetime, not a live measurement.** Mode-4 return
+enters world input (`0x20D02`–`0x20BA8`). With initialized dialog and every
+item drawn, no-event polling (`0x4376E`, `0x43820`–`0x439B8`) has no game-side
+semantic writer of PC, opcode, comparison, roll/limit or their pointers.
+This excludes first redraw and queued input. Cursor work writes fixed scratch
+and a pointed span at data-hunk `+0x383C` (`0x3BE40`, `0x3DFF6`); require
+entire writable spans and pointed roll/limit to be disjoint measured
+allocations. OS message polling (`0x3E138`, `0x4456C`) means no newly sent
+key is not proof of an empty queue; actual no-event returns are required.
+
+**CONFIRMED conditional redraw bounds, not no-write behavior.** Bitmap
+`0x3B9F0` writes screen rows, graphics globals and local decode buffers;
+aligned drawing starts DMA (`0x3F918`) that may outlive the call. Valid
+dimensions/streams, screen ownership, row/DMA-span disjointness, stack and
+graphics-library contracts are premises, not observations. Type-1 redraw
+passes its label as a format (`0x42D9A`). Formatter `0x4128C` can mutate a
+negative variadic argument through its pointer (`0x414C4`) or select an
+indexed handler (`0x41356`); recursive handler slots are not established by
+the outer wrapper. A literal NUL-terminated label avoids these branches and
+uses bounded emitter `0x39F52`. **Actual first-redraw formats are unmeasured**;
+the EXIT-to-first-idle interval is not certified.
+
+**Future qualification, not authorization.** Establish actual label formats
+and complete protected/writable allocations (script, variable table, cursor,
+stack, screen and pending DMA), or trace each chosen format callback and
+argument destination. A separately authorized natural unsuppressed move then
+needs original full-script identity, switch off/empty journal, ordinary-square
+coordinate displacement, roll/limit and comparison readback, and equal
+bracketed tuple/pointer/full-script reads around a screenshot and a later
+recorded no-command interval. A fresh second move needs separate budget;
+identical RNG values are allowed, stale state is not. Such samples could
+qualify rejected-chance persistence, not continuously empty queues, a fight,
+suppression success or conversion acceptance. No boot, test or driver verdict
+was produced by this static reading.
