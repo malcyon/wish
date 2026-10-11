@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import base64
 import dataclasses
 import hashlib
@@ -705,6 +706,33 @@ TITLE_STATES = ("party_menu", "load_picker", "loaded_menu", "disk_wait", "world"
                 "camp_picker")
 CURSE_START = {"area": 1, "x": 4, "y": 4, "facing": geo.NORTH}
 CURSE_LATER = dict(CURSE_START, y=2)
+
+
+def test_curse_selects_a_turn_only_for_the_blocked_tilverton_source(tmp_path):
+    blocked = {"area": 1, "x": 4, "y": 14, "facing": geo.EAST}
+    path = tmp_path / "prepare.json"
+    args = argparse.Namespace(published_disk_one=False, title="curse", command="accept",
+                              manifest=path)
+    path.write_text(json.dumps({"state_a": blocked}))
+    title, manifest, legacy = foundation._route_title(args, False)
+    assert manifest is None and legacy is False
+    assert title.turn == "about"
+    assert title.route[7:10] == (("NP2", "world", "turn"),
+                                 ("NP8", "world", "move"),
+                                 ("NP8", "world", "move"))
+    assert sum(kind == "move" for _, _, kind in title.route) == 2
+    after = {"place": dict(blocked, x=2, facing=geo.WEST)}
+    verdict = foundation.walk_verdict(blocked, {"place": blocked}, after, 2, turn=title.turn)
+    assert verdict["b_ok"] and verdict["d_ok"] and verdict["squares_moved"] == 2
+    assert not foundation.walk_verdict(blocked, {"place": blocked},
+                                       {"place": blocked}, 2, turn=title.turn)["d_ok"]
+
+    for other in (dict(blocked, x=3), dict(blocked, facing=geo.NORTH), CURSE_START):
+        path.write_text(json.dumps({"state_a": other}))
+        ordinary, _, _ = foundation._route_title(args, False)
+        assert ordinary is route_curse.CURSE
+        assert ordinary.turn is None
+        assert all(kind != "turn" for _, _, kind in ordinary.route)
 CURSE_STATES = ("title", "front_end", "load_picker", "loaded_menu", "sheet", "save_picker",
                 "world", "camp", "camp_save_picker", "exit_game")
 _FRONT = (b"frame 0", b"frame 1")

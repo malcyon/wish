@@ -52,6 +52,7 @@ from goldbox import (  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
     route_camp,
+    route_curse,
     route_silver_blades,
 )
 from tools.amiga.route import (  # noqa: E402
@@ -5172,6 +5173,8 @@ def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, di
             title = _train_title_for(args.manifest)
         if args.title in ("darkness", "darkness-reload"):
             title = published_darkness_title(args.manifest, args.title) or title
+        if args.title == "curse":
+            title = route_curse.title_for_manifest(json.loads(args.manifest.read_text()))
         if args.title in SPARE_TITLES:
             title = _spare_title(args.manifest, args.title, title, args.command)
     # A Silver Blades substitute prepared with camp steps, or whose party has not set out,

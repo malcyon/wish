@@ -110,6 +110,15 @@ CURSE_SOURCES = _Sources("curse", CURSE, CURSE_SPECIMEN, CURSE_SPECIMEN_SHA256, 
                          CURSE_LOADED, CURSE_LATER, {"diskb": CURSE_DISK_B_SHA256})
 
 
+def title_for_manifest(manifest: dict[str, Any]) -> AmigaTitle:
+    """Turn the party around at the registered Tilverton wall before the two-step walk."""
+    if manifest.get("state_a") != {"area": 1, "x": 4, "y": 14, "facing": 1}:
+        return CURSE
+    route = list(CURSE.route)
+    route.insert(7, ("NP2", "world", "turn"))
+    return dataclasses.replace(CURSE, route=tuple(route), turn="about")
+
+
 def _prepare_curse(run: pathlib.Path, specimen: pathlib.Path | None, *,
                    substitute: pathlib.Path | None = None, substitute_letter: str = "A"
                    ) -> dict[str, Any]:
