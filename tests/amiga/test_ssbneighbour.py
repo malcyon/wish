@@ -3,16 +3,22 @@
 import argparse
 import hashlib
 import json
+import pathlib
+import subprocess
 
 import pytest
 
 from tools.amiga import ssbneighbour as neighbour
-from tools.amiga.winuaesession import RouteError
+from tools.amiga.winuaesession import RouteError, ShotTimedOut
 
 
-@pytest.mark.parametrize("unknown_picker", [False, True])
+@pytest.mark.parametrize("unknown_picker,failure", [
+    (False, None), (True, None), (False, "snapshot_lost"),
+    (False, "snapshot_before_create"), (False, "shot_timeout"),
+    (False, "child_timeout"),
+])
 def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch,
-                                                             unknown_picker):
+                                                             unknown_picker, failure):
     source = tmp_path / "inputs"
     source.mkdir()
     inputs = {}
@@ -44,6 +50,8 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
             return proof.exists()
 
         def grab(self, state, raw, crop, timeout):
+            if failure == "shot_timeout":
+                raise ShotTimedOut("winvm ssh exceeded its 20.0s limit")
             raw.write_bytes(b"synthetic raw")
             crop.write_bytes(b"synthetic cropped")
             return True
@@ -52,7 +60,11 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
             events.append(("press", key))
 
         def snapshot(self, name, holder):
+            if failure == "snapshot_before_create":
+                raise RouteError("snapshot creation stopped")
             events.append(("snapshot", name))
+            if failure == "snapshot_lost":
+                raise RouteError("snapshot response lost")
 
         def restore(self, name, holder):
             events.append(("restore", name))
@@ -108,6 +120,9 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
 
     def execute(run, disks, out, flags, start, end):
         events.append(("trip", start, end, tuple(flags), str(out), str(disks)))
+        if failure == "child_timeout":
+            raise RouteError("trip child exceeded its deadline: fake") from subprocess.TimeoutExpired(
+                "fasttravelrun", 480)
         assert start == current["area"]
         out.mkdir()
         (out / "stdout.txt").write_text(f"{start} -> {end}\n")
@@ -132,8 +147,14 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
                               budget=3600, wait_lane=0, retry_of=None)
     options = dict(guest=Guest(), guards=Guards(), reader=lambda holder: current.copy(),
                    executor=execute, switch_factory=Switch)
-    if unknown_picker:
-        with pytest.raises(RouteError, match="load_picker"):
+    if unknown_picker or failure:
+        reason = "load_picker" if unknown_picker else {
+            "snapshot_lost": "snapshot response lost",
+            "snapshot_before_create": "snapshot creation stopped",
+            "shot_timeout": "exceeded its",
+            "child_timeout": "trip child exceeded its deadline",
+        }[failure]
+        with pytest.raises(RouteError, match=reason):
             neighbour.run(args, **options)
     else:
         receipt = neighbour.run(args, **options)
@@ -153,14 +174,78 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
         assert receipt["reads"]["81"]["square"] == (15, 6, 3)
         assert receipt["reads"]["81-step"]["square"] == (14, 6, 3)
         assert [v[1] for v in events if v[0] == "switch"] == ["on", "NP8", "off"] * 2
-    assert [v[1] for v in events if v[0] == "press"] == (["P", "L"] if unknown_picker else ["P", "L", "D", "B"])
+    assert [v[1] for v in events if v[0] == "press"] == (
+        [] if failure == "shot_timeout" else
+        ["P", "L"] if unknown_picker else ["P", "L", "D", "B"])
     if unknown_picker:
         assert not any(v[0] == "trip" for v in events)
+    if failure in ("snapshot_lost", "snapshot_before_create"):
+        assert ("discard", "s0") in events
+        assert not any(v[0] == "trip" for v in events)
+    if failure == "snapshot_before_create":
+        assert ("snapshot", "s0") not in events
+    if failure == "snapshot_lost":
+        assert ("snapshot", "s0") in events
     assert [v[0] for v in events if v[0] in {"stop", "fetch", "release"}] == [
         "stop", "fetch", "release"]
     assert all(hashlib.sha256((source / f"{key}.adf").read_bytes()).hexdigest() == inputs[key]["sha256"]
                for key in inputs)
     saved = json.loads((args.out / "receipt.json").read_text())
-    assert saved["success"] is not unknown_picker
+    assert saved["success"] is (not unknown_picker and failure is None)
+    assert saved["retryable"] is (failure == "shot_timeout")
+    if failure in ("snapshot_lost", "snapshot_before_create"):
+        assert saved["snapshots"] == ["s0"]
+        assert {"discard": "s0"} in saved["cleanup"]
+        assert saved["halt"]["fetched"] == {"df0": {}, "df1": {}}
+    if failure == "child_timeout":
+        assert any(item[0] == "trip" for item in events)
+        assert {"discard": "s0"} in saved["cleanup"]
+        assert saved["halt"]["fetched"] == {"df0": {}, "df1": {}}
     if unknown_picker:
         assert list((args.out / "screens").glob("*-load_picker-raw.png"))
+
+
+def test_an_overrunning_child_is_stopped_and_keeps_its_logs(tmp_path, monkeypatch):
+    events = []
+
+    class Child:
+        returncode = -15
+
+        def communicate(self, timeout):
+            events.append(("communicate", timeout))
+            if len(events) == 1:
+                raise subprocess.TimeoutExpired("fasttravelrun", timeout)
+            return "partial stdout\n", "partial stderr\n"
+
+        def send_signal(self, signum):
+            events.append(("terminate", signum))
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(neighbour.subprocess, "Popen", lambda *args, **kwargs: Child())
+
+    class Run:
+        holder = "fake-holder"
+
+        def left(self, cap):
+            return cap
+
+    out = tmp_path / "child"
+    with pytest.raises(RouteError, match="trip child exceeded its deadline") as failure:
+        neighbour.trip(Run(), pathlib.Path("/synthetic/disks"), out, ["--to", "33"], 16, 33)
+    assert isinstance(failure.value.__cause__, subprocess.TimeoutExpired)
+    assert events == [("communicate", 480), ("terminate", neighbour.signal.SIGTERM),
+                      ("communicate", 10)]
+    assert (out / "stdout.txt").read_text() == "partial stdout\n"
+    assert (out / "stderr.txt").read_text() == "partial stderr\n"
+    assert neighbour.transport_timeout(failure.value) is False
+
+
+def test_a_winvm_transport_overrun_is_retryable_only_with_its_timeout_cause():
+    timeout = subprocess.TimeoutExpired("winvm", 20)
+    try:
+        raise RouteError("winvm ssh exceeded its 20.0s limit") from timeout
+    except RouteError as error:
+        assert neighbour.transport_timeout(error) is True
+    assert neighbour.transport_timeout(RouteError("winvm ssh exceeded its 20.0s limit")) is False

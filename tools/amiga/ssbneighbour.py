@@ -29,7 +29,12 @@ from tools.amiga import (  # noqa: E402
 )
 from tools.amiga.screens import PixelGuards  # noqa: E402
 from tools.amiga.staging import sha256  # noqa: E402
-from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
+from tools.amiga.winuaesession import (  # noqa: E402
+    RouteError,
+    ShotTimedOut,
+    WinGuest,
+    terminating,
+)
 
 TITLE = "secret-of-the-silver-blades"
 GUARDS = pathlib.Path(__file__).with_name("guards_silver_blades.json")
@@ -173,6 +178,15 @@ def logged(reading: dict) -> dict:
     return {key: value for key, value in reading.items() if key != "target"}
 
 
+def transport_timeout(exc: BaseException) -> bool:
+    return isinstance(exc, ShotTimedOut) or (
+        isinstance(exc, RouteError)
+        and str(exc).startswith("winvm ")
+        and " exceeded its " in str(exc)
+        and isinstance(exc.__cause__, subprocess.TimeoutExpired)
+    )
+
+
 def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: list[str],
          start: int, end: int) -> dict:
     """Execute one independently logged, bounded fasttravelrun child."""
@@ -192,7 +206,7 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
             except subprocess.TimeoutExpired:
                 proc.kill()
                 stdout, stderr = proc.communicate(timeout=10)
-            raise RouteError(f"transport timeout in child {out}") from exc
+            raise RouteError(f"trip child exceeded its deadline: {out}") from exc
     finally:
         if proc.poll() is None:
             proc.send_signal(signal.SIGTERM)
@@ -289,8 +303,8 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         receipt["reads"]["start"] = logged(initial)
 
         def snapshot(name: str) -> None:
-            guest.snapshot(name, args.holder)
             receipt["snapshots"].append(name)
+            guest.snapshot(name, args.holder)
 
         def observed(label: str, area: int, square: tuple[int, int, int] | None,
                      variables: dict[int, int] | None = None) -> dict:
@@ -357,9 +371,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         receipt["screens"] = run_guard.events
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
-        receipt["retryable"] = ("transport timeout in child" in str(exc)
-                                or (isinstance(exc, RouteError) and str(exc).startswith("winvm ")
-                                    and " exceeded its " in str(exc)))
+        receipt["retryable"] = transport_timeout(exc)
     finally:
         if run_guard is not None:
             receipt["screens"] = run_guard.events
