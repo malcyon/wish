@@ -8,8 +8,71 @@ import subprocess
 
 import pytest
 
+from automap import gamedisks
 from tools.amiga import ssbneighbour as neighbour
 from tools.amiga.winuaesession import RouteError, ShotTimedOut
+
+
+@pytest.mark.parametrize("missing", ["registry", "reader", "template", "df0_unreadable",
+                                     "df0_empty"])
+def test_journal_dependencies_stop_before_output_or_guest(tmp_path, monkeypatch, missing):
+    inputs = {}
+    for key in ("boot_source", "disk_b_source", "substitute", "published_df1", "df0", "df1"):
+        disk = tmp_path / f"{key}.adf"
+        disk.write_bytes(f"synthetic {key}".encode())
+        inputs[key] = {"path": str(disk), "sha256": hashlib.sha256(disk.read_bytes()).hexdigest()}
+    manifest = {**inputs, "disks": {key: inputs[key] for key in ("df0", "df1")},
+                "registered": {key: inputs[key] for key in ("boot_source", "disk_b_source",
+                                                              "substitute")}
+                | {"published": inputs["published_df1"]},
+                "state_a": {"area": 16, "x": 3, "y": 7, "facing": 2},
+                "names_a": [f"Member {n}" for n in range(6)],
+                "mode": "substitute_title", "title": "ssb", "loaded_letter": "D",
+                "slot_letter": "D"}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    events = []
+    if missing == "registry":
+        monkeypatch.setattr(gamedisks, "REGISTRY", tmp_path / "missing.yaml")
+        monkeypatch.setenv("WISH_CODEWHEEL", str(tmp_path / "override"))
+    else:
+        monkeypatch.setattr(gamedisks, "names", lambda: events.append("registry") or ["codewheel"])
+
+    def reader(interpreter):
+        events.append("reader")
+        assert interpreter == neighbour.sys.executable
+        if missing in ("reader", "template"):
+            raise RouteError(f"private {missing} is unavailable")
+
+    def tables(adf):
+        events.append("tables")
+        assert adf == pathlib.Path(inputs["df0"]["path"])
+        if missing == "df0_unreadable":
+            raise OSError("unreadable prepared disk")
+        return [] if missing == "df0_empty" else [object()]
+
+    monkeypatch.setattr(neighbour.route_silver_blades, "journal_preflight", reader)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "tables", tables)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "answer",
+                        lambda *a, **k: pytest.fail("Journal answer was called"))
+    monkeypatch.setattr(neighbour.acceptance, "boot_lane",
+                        lambda *a, **k: pytest.fail("Lane was claimed"))
+
+    class Guest:
+        def _run(self, *a, **k):
+            pytest.fail("SSH mute was queried")
+
+        def press(self, *a, **k):
+            pytest.fail("A key was sent")
+
+    out = tmp_path / "result"
+    args = argparse.Namespace(manifest=path, holder="fake-holder", out=out,
+                              budget=3600, wait_lane=0, retry_of=None)
+    with pytest.raises(RouteError, match="journal prerequisites are unavailable before boot"):
+        neighbour.run(args, guest=Guest())
+    assert not out.exists()
+    assert events == ([] if missing == "registry" else ["registry", "reader"]
+                      if missing in ("reader", "template") else ["registry", "reader", "tables"])
 
 
 @pytest.mark.parametrize("unknown_picker,failure", [
@@ -139,6 +202,9 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
                 "stdout": str(out / "stdout.txt"), "stderr": str(out / "stderr.txt")}
 
     monkeypatch.setattr(neighbour.route_silver_blades, "title_for_substitute", lambda m: object())
+    monkeypatch.setattr(gamedisks, "names", lambda: ["codewheel"])
+    monkeypatch.setattr(neighbour.route_silver_blades, "journal_preflight", lambda interpreter: None)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "tables", lambda adf: [object()])
     monkeypatch.setattr(neighbour.acceptance, "boot_lane", boot)
     monkeypatch.setattr(neighbour.acceptance, "halt_lane", halt)
     monkeypatch.setattr(neighbour.noencounters, "WinuaeState", lambda path: State())

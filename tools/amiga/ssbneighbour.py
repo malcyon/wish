@@ -19,7 +19,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from automap import amiga, amigaparty, amigatrip, amigavars  # noqa: E402
+from automap import amiga, amigaparty, amigatrip, amigavars, gamedisks  # noqa: E402
 from tools.amiga import (  # noqa: E402
     acceptance,
     amigabladesjournal,
@@ -107,6 +107,17 @@ def preflight(path: pathlib.Path, out: pathlib.Path, retry_of: pathlib.Path | No
                 "the earlier run already has a retry")
         wall_deadline = old["combined_deadline"]
         require(time.time() < wall_deadline, "the combined retry deadline expired")
+    try:
+        # The codewheel override can resolve without loading the private registry.
+        gamedisks.names()
+        route_silver_blades.journal_preflight(sys.executable)
+        extracted = amigabladesjournal.tables(pathlib.Path(manifest["df0"]["path"]))
+        require(len(extracted) > 0, "the prepared side-A journal tables are empty")
+    except (gamedisks.RegistryError, RouteError, OSError, ValueError, KeyError,
+            ImportError, TypeError) as exc:
+        raise RouteError("journal prerequisites are unavailable before boot") from exc
+    except SystemExit as exc:
+        raise RouteError("journal prerequisites are unavailable before boot") from exc
     return manifest, wall_deadline
 
 
