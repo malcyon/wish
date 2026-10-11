@@ -920,6 +920,7 @@ def test_curse_ecl01_step_gate_is_unique_and_exits_before_a_fight():
     from tools.amiga import amigasaves, tripspace
 
     scripts = curse_scripts()
+    assert len(scripts) == 25
     model, skip = tripspace.glib_model(CURSE, amigasaves.images())
     rows = [r for r in REAL_ROWS if r.title == CURSE and r.kind == ne.GATE]
     gate = next(r for r in rows if r.spec == CURSE_ECL01_SPEC)
