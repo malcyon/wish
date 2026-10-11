@@ -33,6 +33,62 @@ STATUSES = ("passed", "failed", "unproven", "awaiting image review")
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
+DISCOVERY_SECONDS = 1800
+DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
+
+
+def _discovery_phases(route: Any) -> dict[str, Any]:
+    """Validate the measured prefix without accepting the unfinished mapping route."""
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    if route.title != "ssb" or route.loaded_slot != "D" or route.mounted != ("df0", "df1"):
+        raise AcceptanceStop("discovery needs the prepared Silver Blades slot D and two drives")
+    phases = {phase.name: phase for phase in route.phases}
+    if len(phases) != len(route.phases) or [p.name for p in route.phases[:3]] != [
+            "load", "stationary", "walk"]:
+        raise AcceptanceStop("discovery needs a distinct ordered load, stationary and walk prefix")
+    if any(not phases[name].ready for name in ("load", "stationary", "walk")):
+        raise AcceptanceStop("discovery prefix is not ready")
+    if any(action.enabled for action in route.actions):
+        raise AcceptanceStop("discovery cannot enable actions")
+    load, stationary, walk = (phases[name] for name in ("load", "stationary", "walk"))
+    if ([s.kind for s in load.steps] != ["key"] * 6 + ["answer"]
+            or [s.key for s in load.steps[:6]] != ["P", "L", "D", "V", "E", "B"]
+            or [s.key for s in stationary.steps] != ["NP4", "NP6", "NP6", "NP4"]
+            or any(s.kind != "turn" for s in stationary.steps)
+            or [s.kind for s in walk.steps].count("move") != 17
+            or [s.kind for s in walk.steps].count("snapshot") != 1
+            or [s.kind for s in walk.steps].count("encounters") != 2
+            or walk.steps[0].kind != "snapshot"
+            or walk.steps[0].snapshot != DISCOVERY_SNAPSHOT
+            or [(s.kind, s.encounters) for s in walk.steps if s.kind == "encounters"] != [
+                ("encounters", True), ("encounters", False)]
+            or walk.steps[-1].kind != "encounters"
+            or any(s.kind not in ("move", "turn", "snapshot", "encounters") for s in walk.steps)
+            or any(s.key != "NP8" for s in walk.steps if s.kind == "move")
+            or [s.key for s in walk.steps if s.kind == "turn"] != [
+                "NP4", "NP6", "NP4", "NP6", "NP4"]):
+        raise AcceptanceStop("discovery prefix is not the measured Silver Blades route")
+    checkpoints = set()
+    for phase in (load, stationary, walk):
+        for step in phase.steps:
+            expected = step.expected
+            if expected and expected.compare_to and expected.compare_to not in checkpoints:
+                raise AcceptanceStop(f"discovery checkpoint {expected.compare_to} is missing")
+            if step.checkpoint:
+                if step.checkpoint in checkpoints:
+                    raise AcceptanceStop(f"discovery checkpoint {step.checkpoint} repeats")
+                checkpoints.add(step.checkpoint)
+    if not {"loaded", "ssb_exit_square", "ssb_facing_exit"} <= checkpoints:
+        raise AcceptanceStop("discovery has no measured start and terminal checkpoints")
+    final = walk.steps[-2].expected
+    if (walk.steps[-2].checkpoint != "ssb_facing_exit" or final is None
+            or dict(final.engine or {}) != {"area": 16, "x": 15, "y": 8, "facing": 1}):
+        raise AcceptanceStop("discovery terminal square is not 15,8,E")
+    if (load, stationary, walk) != (maproute._load("ssb", "D"),
+                                    maproute._ssb_stationary(), maproute._ssb_walk()):
+        raise AcceptanceStop("discovery prefix differs from the guarded measured route")
+    return {name: phases[name] for name in ("load", "stationary", "walk")}
 
 def _action_budget(route: Any) -> int:
     from automap import amigaparty  # noqa: PLC0415
@@ -129,13 +185,26 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     """Check every static dependency before a lane can be claimed."""
     if not BUILD_SHA.fullmatch(args.sha):
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
-    if args.deadline > MAX_SECONDS or args.deadline <= CLEANUP_SECONDS:
-        raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {MAX_SECONDS}")
+    discovery = getattr(args, "discover", None) == "ssb-leave"
+    maximum = DISCOVERY_SECONDS if discovery else MAX_SECONDS
+    if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
+        raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
     if not pathlib.Path(args.manifest).is_file():
         raise AcceptanceStop("the prepared manifest is missing")
     manifest = json.loads(pathlib.Path(args.manifest).read_text())
     route = route_for(args.title, manifest)
-    _phase_map(route)
+    if discovery:
+        source = manifest.get("substitute")
+        if args.title != "ssb" or manifest.get("title") != "ssb" or not isinstance(
+                source, dict) or source.get("letter") != "A" or manifest.get("state_a") != {
+                    "area": 16, "x": 3, "y": 3, "facing": 2}:
+            raise AcceptanceStop("discovery needs source A imported into D at 16,3,3,S")
+        _discovery_phases(route)
+        from tools.amiga import route_silver_blades  # noqa: PLC0415
+
+        route_silver_blades.journal_preflight(sys.executable)
+    else:
+        _phase_map(route)
     if not winwish._mute_proof(pathlib.Path(args.mute_proof)):
         raise AcceptanceStop("the WinUAE audio mute proof is missing or stale")
     if len(route.mounted) > 4 or not route.mounted:
@@ -162,7 +231,10 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         raise AcceptanceStop(f"guard export failed with exit {rc}")
     exported = export_dir / "guards.json"
     guards = screens.PixelGuards(exported)
-    missing = _states(route) - guards.rules.keys()
+    states = ({"title"} | {state for phase in _discovery_phases(route).values()
+                           for state in (phase.initial_state, *(s.state for s in phase.steps))}
+              if discovery else _states(route))
+    missing = states - guards.rules.keys()
     if missing:
         raise AcceptanceStop("route has no measured guards for " + ", ".join(sorted(missing)))
     if not route.loaded_slot or len(route.loaded_slot) != 1:
@@ -208,6 +280,8 @@ class Controller:
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         self.action_limit = _action_budget(route)
+        self.discovery = getattr(args, "discover", None) == "ssb-leave"
+        self.discovery_snapshot = False
         self.encounters = None
         self.encounters_on = False
         self.booted = False
@@ -509,9 +583,11 @@ class Controller:
                                  self.left(60), medium.sha256)
                 self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
             elif kind == "snapshot":
-                if self.encounters_on:
+                if self.discovery or self.encounters_on:
                     self._switch(False)
                 self.game.snapshot(step.snapshot, self.args.holder)
+                if self.discovery and step.snapshot == DISCOVERY_SNAPSHOT:
+                    self.discovery_snapshot = True
             elif kind == "restore":
                 if self.encounters_on:
                     self._switch(False)
@@ -524,6 +600,10 @@ class Controller:
                 if self.route.title != "ssb":
                     raise AcceptanceStop("journal answer is only defined for Silver Blades")
                 disk = next(m.path for m in self.route.media if m.key == self.route.mounted[0])
+                if self.discovery:
+                    self.summary["challenge_key_count"] = None
+                    self.summary["challenge_key_count_verified"] = False
+                    self.log("journal_answer", challenge_key_count=None, verified=False)
                 code, answer = route_silver_blades.run_journal_answer(
                     sys.executable, self.args.holder, disk, self.left(60))
                 if code:
@@ -946,7 +1026,7 @@ class Controller:
                   "df0": None, "df1": None, "df2": None, "df3": None,
                   "game": self.route.game_key, "zip": str(self.zipped),
                   "uae_option": list(self.route.amiga_title.options),
-                  "travel_targets": [], "no_flag": False, "map_only": False,
+                  "travel_targets": [], "no_flag": False, "map_only": self.discovery,
                   "wait_lanes": 0, "keep_lanes": False}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]
@@ -957,12 +1037,48 @@ class Controller:
 
     def _cleanup(self) -> None:
         failures = []
-        if self.encounters_on:
+        if self.discovery and self.encounters is not None:
+            try:
+                persistent = self.encounters.state.load()
+                self.summary["cleanup"]["encounters_before"] = persistent
+                if persistent["on"] or persistent["rows"] or self.encounters_on:
+                    self._game_section()
+                    self._switch(False)
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"encounters: {exc}")
+        elif self.encounters_on:
             try:
                 self._game_section()
                 self._switch(False)
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"encounters: {exc}")
+        if self.discovery and self.discovery_snapshot and self.summary["failure"]:
+            try:
+                if self.encounters is not None:
+                    state = self.encounters.state.load()
+                    if state["on"] or state["rows"]:
+                        raise AcceptanceStop("cannot restore with encounter suppression outstanding")
+                self._game_section()
+                self.game.restore(DISCOVERY_SNAPSHOT, self.args.holder)
+                from automap import amiga  # noqa: PLC0415
+                from tools.amiga import amigatarget  # noqa: PLC0415
+
+                target = amigatarget.connect_pipe(self.args.holder,
+                                                   amiga.MACHINES[self.route.game_key])
+                try:
+                    fix = target.fix()
+                    geo = target.geo()
+                    area = self._area_of(geo) if geo is not None else None
+                    restored = {"area": area, "x": fix.x, "y": fix.y,
+                                "facing": fix.facing} if fix is not None else None
+                finally:
+                    target.close()
+                self.summary["cleanup"]["restored_fix"] = restored
+                if restored != {"area": 16, "x": 3, "y": 3, "facing": 2}:
+                    raise AcceptanceStop(f"restored fix is not 16,3,3,S: {restored}")
+                self.summary["cleanup"]["restored"] = True
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"restore: {exc}")
         if self.booted:
             try:
                 self._game_section()
@@ -1006,6 +1122,9 @@ class Controller:
         for medium in self.route.media:
             try:
                 self.info["media"][medium.key]["source_after_sha256"] = digest(medium.path)
+                if (self.discovery and self.info["media"][medium.key]["source_after_sha256"]
+                        != medium.sha256):
+                    failures.append(f"source medium {medium.key} changed")
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"source medium {medium.key}: {exc}")
         self.summary["cleanup"]["errors"] = failures
@@ -1013,6 +1132,61 @@ class Controller:
             self.log("cleanup", errors=failures)
         except OSError as exc:
             failures.append(f"event log: {exc}")
+        if self.discovery and self.clock() > self.total_end:
+            failures.append("the 1800-second total budget was exceeded during cleanup")
+
+    def run_discovery(self) -> dict[str, Any]:
+        """Observe the first unknown leave-town frame without pressing its prompt."""
+        self.summary["discovery"] = row()
+        self.summary["challenge_key_count"] = None
+        self.summary["challenge_key_count_verified"] = False
+        try:
+            phases = _discovery_phases(self.route)
+            self._up()
+            self._game_section()
+            title = self._await("title", limit=300)
+            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            for name in ("load", "stationary", "walk"):
+                self.run_phase(phases[name])
+                self.summary["mapping"][name] = row("awaiting image review")
+            if self.encounters is None or self.encounters_on:
+                raise AcceptanceStop("terminal encounter suppression was not verified off")
+            state = self.encounters.state.load()
+            if state["on"] or state["rows"]:
+                raise AcceptanceStop(f"terminal encounter suppression remains active: {state}")
+            if self.checkpoints.get("ssb_facing_exit", {}).get("comparison", {}).get(
+                    "status") != "awaiting image review":
+                raise AcceptanceStop("terminal 15,8,E checkpoint is not verified")
+            self.game.snapshot("ssb_leave_terminal", self.args.holder)
+            terminal_start = self.clock()
+            self._press("NP8")
+            end = min(terminal_start + 5, self.route_end)
+            frames = []
+            for number in range(3):
+                remaining = end - self.clock()
+                if remaining <= 0:
+                    if not frames:
+                        raise AcceptanceStop("no terminal pipe frame within five seconds")
+                    break
+                raw = self.out / f"leave-{number}.raw.png"
+                crop = self.out / f"leave-{number}.png"
+                exact = self.game.grab("ssb_leave_unknown", raw, crop, remaining)
+                frame = {"raw": str(raw), "crop": str(crop) if exact else None,
+                         "shot_source": self.game.last_shot}
+                frames.append(frame)
+                self.log("terminal_frame", **frame)
+            if not frames or self.clock() > end:
+                raise AcceptanceStop("terminal pipe frames exceeded five seconds")
+            self.summary["discovery"] = row("awaiting image review", evidence=frames,
+                                            reason="Prompt identification and mapping remain unproven")
+        except BaseException as exc:
+            self.summary["failure"] = f"{type(exc).__name__}: {exc}"
+            self.log("failure", error=self.summary["failure"])
+            self.summary["discovery"]["reason"] = self.summary["failure"]
+        finally:
+            self._cleanup()
+            (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
+        return self.summary
 
     def run_title(self) -> dict[str, Any]:
         try:
@@ -1065,24 +1239,28 @@ class Controller:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--title", choices=("pool", "curse", "ssb", "darkness"), required=True)
+    parser.add_argument("--discover", choices=("ssb-leave",))
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--holder", required=True)
     parser.add_argument("--mute-proof", type=pathlib.Path, required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
-    parser.add_argument("--deadline", type=int, default=MAX_SECONDS)
+    parser.add_argument("--deadline", type=int)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.deadline is None:
+        args.deadline = DISCOVERY_SECONDS if args.discover else MAX_SECONDS
     from tools.amiga.maproute import route_for  # noqa: PLC0415
 
     guest, lane, game = winwish.Guest(), WinGuest(), WinGuest()
     try:
         route, guards, zipped, info = preflight(args, guest=guest, route_for=route_for)
-        result = Controller(args, guest=guest, lane=lane, game=game, guards=guards,
-                            route=route, zipped=zipped, info=info).run_title()
+        controller = Controller(args, guest=guest, lane=lane, game=game, guards=guards,
+                                route=route, zipped=zipped, info=info)
+        result = controller.run_discovery() if args.discover else controller.run_title()
     except (AcceptanceStop, RouteError, winwish.WinwishError, OSError, ValueError) as exc:
         print(f"winwishaccept: {exc}", file=sys.stderr)
         return 2

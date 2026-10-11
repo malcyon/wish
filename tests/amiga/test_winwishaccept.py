@@ -765,3 +765,280 @@ def test_identical_maps_with_two_ids_remain_ambiguous(tmp_path):
     image.write_bytes(disk.to_bytes())
 
     assert _map_controller(tmp_path, "ssb", image)._area_of(resident) is None
+
+
+def _discovery_route(tmp_path):
+    from tools.amiga import maproute
+
+    route = _route()
+    route.loaded_slot = "D"
+    route.mounted = ("df0", "df1")
+    route.phases = (maproute._load("ssb", "D"), maproute._ssb_stationary(),
+                    maproute._ssb_walk(), *(_phase(p.name, p.initial_state,
+                                                   ready=False, reason="unmeasured")
+                                            for p in route.phases[3:]))
+    route.actions = maproute._actions("ssb")
+    route.guard_path = tmp_path / "guards_silver_blades.json"
+    route.media = tuple(SimpleNamespace(key=key, path=tmp_path / f"{key}.adf",
+                                        sha256=winwishaccept.digest(tmp_path / f"{key}.adf"))
+                        for key in route.mounted)
+    return route
+
+
+def _discovery_args(tmp_path):
+    args = _args(tmp_path)
+    args.discover = "ssb-leave"
+    args.deadline = 1800
+    return args
+
+
+def test_discovery_preflight_only_accepts_measured_prefix(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    args = _discovery_args(tmp_path)
+    args.manifest.write_text('{"title":"ssb","substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for key in ("df0", "df1"):
+        (tmp_path / f"{key}.adf").write_bytes(key.encode())
+    route = _discovery_route(tmp_path)
+    route.guard_path.write_text("{}")
+    monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
+        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
+        rules={name: True for phase in route.phases[:3]
+               for name in (phase.initial_state, *(s.state for s in phase.steps))}))
+    zip_path = tmp_path / "artifact.zip"
+    zip_path.write_bytes(b"build")
+    (tmp_path / winwishaccept.winwish.COMMIT_FILE).write_text(SHA)
+    monkeypatch.setattr(winwishaccept.winwish, "fetch", lambda *args: zip_path)
+    monkeypatch.setattr(winwishaccept.winwish, "pick_run", lambda *args: 17)
+    monkeypatch.setattr(winwishaccept.winwish, "check_zip_commit", lambda *args: None)
+    guest = SimpleNamespace(gh=lambda *args: "[]")
+    result = winwishaccept.preflight(args, guest=guest, route_for=lambda *args: route,
+                                      driver_sha=SHA)
+    assert result[0] is route
+    assert result[3]["media"]["df0"]["source_sha256"] == route.media[0].sha256
+    ordinary = _args(tmp_path)
+    ordinary.out = tmp_path / "ordinary"
+    with pytest.raises(winwishaccept.AcceptanceStop, match="route incomplete"):
+        winwishaccept.preflight(ordinary, guest=guest, route_for=lambda *args: route,
+                                driver_sha=SHA)
+
+
+@pytest.mark.parametrize("fault", ["slot", "action", "terminal", "deadline", "source"])
+def test_discovery_rejects_wrong_prepared_route_before_guest(tmp_path, fault):
+    args = _discovery_args(tmp_path)
+    args.manifest.write_text('{"title":"ssb","substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for key in ("df0", "df1"):
+        (tmp_path / f"{key}.adf").write_bytes(key.encode())
+    route = _discovery_route(tmp_path)
+    if fault == "slot":
+        route.loaded_slot = "A"
+    elif fault == "action":
+        route.actions = (SimpleNamespace(enabled=True),)
+    elif fault == "terminal":
+        route.phases = (*route.phases[:2], _phase("walk", "world", _step("move", "world", "NP8")),
+                        *route.phases[3:])
+    elif fault == "deadline":
+        args.deadline = 1801
+    else:
+        args.manifest.write_text(args.manifest.read_text().replace('"A"', '"B"'))
+    with pytest.raises(winwishaccept.AcceptanceStop):
+        winwishaccept.preflight(args, guest=SimpleNamespace(
+            gh=lambda *args: pytest.fail("guest touched")), route_for=lambda *args: route,
+            driver_sha=SHA)
+
+
+def _discovery_controller(tmp_path, monkeypatch):
+    route = _discovery_route(tmp_path) if all((tmp_path / f"{key}.adf").exists()
+                                               for key in ("df0", "df1")) else None
+    if route is None:
+        for key in ("df0", "df1"):
+            (tmp_path / f"{key}.adf").write_bytes(key.encode())
+        route = _discovery_route(tmp_path)
+    clock, game = FakeClock(), FakeGame()
+    game.last_shot = {"source": "winuae-pipe", "pid": 12, "counter": 3}
+    game.snapshot = lambda name, holder: snapshots.append(name)
+    game.restore = lambda name, holder: snapshots.append("restore:" + name)
+    game.get = lambda remote, path, timeout: pathlib.Path(path).write_bytes(b"working")
+    snapshots, calls = [], []
+    lane = SimpleNamespace(status=lambda timeout: "no claims")
+    controller = winwishaccept.Controller(
+        _discovery_args(tmp_path), guest=object(), lane=lane, game=game,
+        guards=lambda state, path: True, route=route, zipped=tmp_path / "artifact.zip",
+        info={"media": {m.key: {} for m in route.media}}, clock=clock, sleep=clock.sleep)
+    monkeypatch.setattr(controller, "_up", lambda: (setattr(controller, "booted", True),
+                                                    controller.remotes.update({"df0": "a", "df1": "b"})))
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    state = {"on": False, "rows": []}
+    def switch(enabled):
+        state["on"] = enabled
+        state["rows"] = [1] if enabled else []
+        controller.encounters_on = enabled
+        controller.encounters = SimpleNamespace(state=SimpleNamespace(load=lambda: dict(state)),
+            keys=lambda names: (game.keys.extend(names) or {"pressed": names}))
+        calls.append(("switch", enabled))
+    monkeypatch.setattr(controller, "_switch", switch)
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame: (
+        controller.checkpoints.update({name: {"comparison": {"status": "awaiting image review"}}}),
+        calls.append(("checkpoint", name))))
+    monkeypatch.setattr(winwishaccept.winwish, "collect_log", lambda *args: [])
+    monkeypatch.setattr(winwishaccept.winwish, "down", lambda *args: calls.append(("down",)) or {})
+    return controller, game, clock, snapshots, calls
+
+
+def test_discovery_prefix_and_only_one_terminal_key_without_actions(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, snapshots, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    monkeypatch.setattr(controller, "run_actions", lambda: pytest.fail("actions must stay disabled"))
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert result["completed_sequence"] == ["load", "stationary", "walk"]
+    assert game.keys[-1:] == ["NP8"]
+    assert game.keys.count("NP8") == 18
+    assert controller.mapping_commands == len(game.keys) == 6 + 4 + 17 + 5 + 1
+    assert result["challenge_key_count"] is None
+    assert result["challenge_key_count_verified"] is False
+    assert snapshots == ["ssb_new_verdigris", "ssb_leave_terminal"]
+    assert len(result["discovery"]["evidence"]) == 3
+    assert result["discovery"]["evidence"][0]["shot_source"]["counter"] == 3
+    assert all(result["mapping"][name]["status"] == "unproven"
+               for name in ("transition", "reload", "reopen"))
+    assert ("down",) in calls
+
+
+def test_discovery_answer_failure_never_sends_movement(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (1, "missing"))
+    result = controller.run_discovery()
+    assert "journal was not answered" in result["failure"]
+    assert game.keys == ["P", "L", "D", "V", "E", "B"]
+    assert controller.mapping_commands == 6
+    assert result["challenge_key_count"] is None
+    assert result["challenge_key_count_verified"] is False
+    assert ("down",) in calls
+
+
+@pytest.mark.parametrize("frame_count,seconds", [(0, 0), (2, 5.25), (3, 0)])
+def test_discovery_pipe_capture_caps_frames_and_five_seconds(tmp_path, monkeypatch,
+                                                               frame_count, seconds):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    count = 0
+    def grab(state, raw, crop, timeout):
+        nonlocal count
+        if state == "ssb_leave_unknown":
+            count += 1
+            assert count <= 3 and timeout <= 5
+            if frame_count == 0:
+                clock.now += 5
+                return original(state, raw, crop, timeout)
+            if count == frame_count:
+                clock.now += seconds
+        return original(state, raw, crop, timeout)
+    game.grab = grab
+    result = controller.run_discovery()
+    assert count <= 3
+    assert "five seconds" in result["failure"] if seconds > 5 else count >= 1
+    assert game.keys[-1] == "NP8"
+    assert ("down",) in calls
+
+
+def test_discovery_wrong_fix_restores_before_down_and_sends_no_later_key(tmp_path,
+                                                                          monkeypatch):
+    from tools.amiga import amigatarget, route_silver_blades
+
+    controller, game, _, snapshots, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    def checkpoint(name, expected, frame):
+        if name == "ssb_south_2":
+            raise winwishaccept.AcceptanceStop("wrong fix at south checkpoint")
+        controller.checkpoints[name] = {"comparison": {"status": "awaiting image review"}}
+    monkeypatch.setattr(controller, "_checkpoint", checkpoint)
+    target = SimpleNamespace(fix=lambda: SimpleNamespace(x=3, y=3, facing=2),
+                             geo=lambda: b"synthetic", close=lambda: None)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: target)
+    monkeypatch.setattr(controller, "_area_of", lambda geo: 16)
+    result = controller.run_discovery()
+    assert "wrong fix" in result["failure"]
+    assert game.keys[-2:] == ["NP8", "NP8"]
+    assert "restore:ssb_new_verdigris" in snapshots
+    assert result["cleanup"]["restored_fix"] == {
+        "area": 16, "x": 3, "y": 3, "facing": 2}
+    assert result["cleanup"]["restored"] is True
+    assert ("down",) in calls
+
+
+def test_discovery_failed_encounter_enable_checks_persistent_state_and_off(tmp_path,
+                                                                            monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    saved = {"on": False, "rows": []}
+    def switch(enabled):
+        controller.encounters = SimpleNamespace(state=SimpleNamespace(load=lambda: dict(saved)))
+        if enabled:
+            saved.update(on=True, rows=[1])
+            raise winwishaccept.AcceptanceStop("enable failed after persistent write")
+        saved.update(on=False, rows=[])
+        controller.encounters_on = False
+        calls.append(("off",))
+    monkeypatch.setattr(controller, "_switch", switch)
+    result = controller.run_discovery()
+    assert "enable failed" in result["failure"]
+    assert result["cleanup"]["encounters_before"] == {"on": True, "rows": [1]}
+    assert ("off",) in calls
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "NP4", "NP6", "NP6", "NP4"]
+    assert ("down",) in calls
+
+
+def test_discovery_cleanup_overrun_is_failure_and_still_downs(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, _, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    def down(*args):
+        clock.now = 1801
+        calls.append(("down",))
+        return {}
+    monkeypatch.setattr(winwishaccept.winwish, "down", down)
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert "total budget" in result["cleanup"]["errors"][-1]
+    assert ("down",) in calls
+
+
+def test_discovery_mapping_press_cap_and_parser(tmp_path, monkeypatch):
+    parser = winwishaccept._parser()
+    base = ["--title", "ssb", "--manifest", str(tmp_path / "prepare.json"),
+            "--sha", SHA, "--holder", "test-acw", "--mute-proof",
+            str(tmp_path / "mute.json"), "--out", str(tmp_path)]
+    assert parser.parse_args(base + ["--discover", "ssb-leave"]).discover == "ssb-leave"
+    controller, *_ = _discovery_controller(tmp_path, monkeypatch)
+    controller.mapping_commands = 40
+    with pytest.raises(winwishaccept.AcceptanceStop, match="40-command mapping cap"):
+        controller._press("NP8")
+
+
+def test_discovery_title_and_route_time_stop_before_any_key(tmp_path, monkeypatch):
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    def wait(state, *, limit=90):
+        assert state == "title" and limit == 300
+        clock.now = controller.route_end
+        controller.left(1)
+    monkeypatch.setattr(controller, "_await", wait)
+    result = controller.run_discovery()
+    assert "bounded route time" in result["failure"]
+    assert game.keys == []
+    assert ("down",) in calls
