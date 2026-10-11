@@ -1,5 +1,6 @@
 """`tools/amiga/fasttravelrun.py`, with a fake fast travel, target and screen."""
 
+import hashlib
 import json
 import pathlib
 import signal
@@ -219,6 +220,41 @@ def test_a_screenshot_is_kept_only_when_the_screen_changes(world):
     assert len(shots) >= 3
     assert [e["changed"] for e in shots] == [True] + [False] * (len(shots) - 1)
     assert sorted(p.name for p in world.out.glob("*.png")) == ["001.png"]
+
+
+def test_two_legs_in_one_output_keep_every_logged_changed_image(world):
+    class ChangesScreen(Travel):
+        def continue_pending(self, target):
+            world.screen = b"arrival one" if self.leg == 1 else b"arrival two"
+            return super().continue_pending(target)
+
+    for leg, departure in ((1, b"departure one"), (2, b"departure two")):
+        world.screen = departure
+        travel = ChangesScreen(polls=1)
+        travel.leg = leg
+        got = ftr.run_trip(travel, Target(), ROW, SimpleNamespace(id=5), world.out,
+                           lambda p: p.write_bytes(world.screen), lambda key: None, world.log,
+                           sleep=world.clock.sleep, clock=world.clock, back=leg == 2)
+        assert got["result"] == "idle"
+    world.stream.close()
+    changed = [e for e in world.events() if e["event"] == "screenshot" and e["changed"]]
+    assert len(changed) == 4
+    assert len({e["file"] for e in changed}) == len(changed)
+    for event in changed:
+        assert hashlib.sha256((world.out / event["file"]).read_bytes()).hexdigest() == event["sha256"]
+
+
+def test_capture_number_resumes_above_existing_numbered_pngs_not_other_files(tmp_path):
+    for name in ("001.png", "003.png", "1000.png", "arrival.png", "12.png"):
+        (tmp_path / name).write_bytes(name.encode())
+    original = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+    logged = []
+    screen = ftr._Screen(tmp_path, lambda path: path.write_bytes(b"new image"),
+                         lambda event, **fields: logged.append(fields))
+    assert screen.take("before")
+    assert logged[0]["file"] == "1001.png"
+    assert (tmp_path / "1001.png").read_bytes() == b"new image"
+    assert {name: (tmp_path / name).read_bytes() for name in original} == original
 
 
 def test_the_final_shot_waits_for_the_gate_and_then_the_settle_time(world):

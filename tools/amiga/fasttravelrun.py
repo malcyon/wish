@@ -191,7 +191,9 @@ class _Screen:
 
     def __init__(self, out: pathlib.Path, shot: Callable[[pathlib.Path], object], log: Log):
         self.out, self.shot, self.log = out, shot, log
-        self.count = 0
+        self.count = max((int(path.stem) for path in out.glob("*.png")
+                          if len(path.stem) >= 3 and path.stem.isascii() and path.stem.isdigit()),
+                         default=0)
         self.last: bytes | None = None
         self.digest: str | None = None
 
