@@ -1267,6 +1267,57 @@ class SourcePrivateGuest:
         return response
 
 
+class SourceBootGuest:
+    """Bound source boot actions without limiting the lane's failure cleanup."""
+
+    def __init__(self, guest: SourcePrivateGuest, action_end: float, deadline: float):
+        self.guest, self.action_end, self.deadline = guest, action_end, deadline
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.guest, name)
+
+    def _limited(self, timeout: float) -> float:
+        left = self.action_end - time.monotonic()
+        _require(left > 0, "bundle_source_deadline: boot action expired; cleanup reserved")
+        return min(timeout, left)
+
+    def _cleanup_limit(self, timeout: float) -> float:
+        return min(timeout, max(1.0, self.deadline - time.monotonic()))
+
+    def silence(self, proof: pathlib.Path | None) -> bool:
+        self._limited(float("inf"))
+        muted = self.guest.silence(proof)
+        self._limited(float("inf"))
+        return muted
+
+    def _run(self, *args: str, timeout: float) -> str:
+        output = self.guest._run(*args, timeout=self._limited(timeout))
+        self._limited(float("inf"))
+        return output
+
+    def claim(self, holder: str, timeout: float, **options: Any) -> str:
+        # Let boot_lane mark a successful claim before a later deadline check can fail.
+        return self.guest.claim(holder, timeout=self._limited(timeout), **options)
+
+    def put(self, local: pathlib.Path, remote: str, timeout: float) -> str:
+        result = self.guest.put(local, remote, timeout=self._limited(timeout))
+        self._limited(float("inf"))
+        return result
+
+    def start(self, holder: str, *drives: str | None, timeout: float,
+              options: tuple[str, ...] = ()) -> str:
+        result = self.guest.start(holder, *drives, timeout=self._limited(timeout),
+                                  options=options)
+        self._limited(float("inf"))
+        return result
+
+    def stop(self, holder: str, timeout: float) -> str:
+        return self.guest.stop(holder, timeout=self._cleanup_limit(timeout))
+
+    def release(self, holder: str, timeout: float) -> str:
+        return self.guest.release(holder, timeout=self._cleanup_limit(timeout))
+
+
 def _source_fetched(guest: SourcePrivateGuest, remote: str, out: pathlib.Path,
                     limit: float) -> tuple[amiga_adf.AmigaDisk, str]:
     """Read the game-written F twice, before G, with independent identical ADF copies."""
@@ -1370,7 +1421,8 @@ def run_bundle_source(args: argparse.Namespace, *, guest: WinGuest | None = None
         _require(not set(route_darkness.DARKNESS.slot_letters(
             amiga_adf.AmigaDisk.open(manifest["disks"]["disk3"]["path"]))) & {"F", "G"},
             "bundle_source_manifest: F/G occupied before boot")
-        boot = _boot(guest, args.manifest, manifest, args.holder, args.audio_proof,
+        boot = _boot(SourceBootGuest(guest, action_end, deadline), args.manifest, manifest,
+                     args.holder, args.audio_proof,
                      time.monotonic() + action_left(1200), command)
         booted = True
         receipt["boot"] = {key: boot[key] for key in ("holder", "claim", "start")}

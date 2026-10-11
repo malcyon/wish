@@ -1614,6 +1614,109 @@ def _source_coordinator(tmp_path, monkeypatch, *, fail=None):
     return args, Guest(), events, comparisons, hashes
 
 
+@pytest.mark.parametrize("stage", ["claim-expired", "upload-expired", "mute-expired",
+                                   "start-failure", "cleanup-near-overall"])
+def test_source_boot_refreshes_each_operation_deadline_and_keeps_cleanup(
+        tmp_path, monkeypatch, stage):
+    real_boot = driver._boot
+    args, guest, _, _, _ = _source_coordinator(tmp_path, monkeypatch)
+    monkeypatch.setattr(driver, "_boot", real_boot)
+    disks = {key: pathlib.Path(row["path"]) for key, row in
+             json.loads(args.manifest.read_text())["disks"].items()}
+    monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
+        issue="360", disk_keys=tuple(disks), mounted=("disk1", "disk3"), options=(),
+        slot_letters=lambda disk: [],
+        read_slot=lambda disk, letter: {"place": driver.BUNDLE_PLACE}))
+    monkeypatch.setattr(driver.acceptance, "_title_inputs",
+                        lambda manifest, title: (disks, {}, "B"))
+    monkeypatch.setattr(driver.acceptance.evidence, "git_state",
+                        lambda repo: {"sha": "generated"})
+    monkeypatch.setattr(driver.acceptance, "_lane_log", lambda *a: None)
+    now = {"value": 100.0}
+    monkeypatch.setattr(driver.time, "monotonic", lambda: now["value"])
+    calls = []
+    silence_reads = 0
+    uploads = 0
+
+    def silence(proof):
+        nonlocal silence_reads
+        silence_reads += 1
+        calls.append(("silence", now["value"], None))
+        if stage == "mute-expired" and silence_reads == 2:
+            now["value"] += 90
+        return True
+
+    def claim(holder, timeout, **options):
+        calls.append(("claim", now["value"], timeout))
+        now["value"] += 1201 if stage == "claim-expired" else 250
+        return f"ok claimed by {holder}"
+
+    def put(local, remote, timeout):
+        nonlocal uploads
+        calls.append(("put", now["value"], timeout))
+        uploads += 1
+        now["value"] += (360 if stage == "upload-expired" and uploads == 3 else
+                         300 if stage == "upload-expired" else
+                         290 if stage == "mute-expired" else 260)
+        return "ok uploaded"
+
+    def start(holder, *drives, timeout, options):
+        calls.append(("start", now["value"], timeout))
+        now["value"] += 750 if stage == "cleanup-near-overall" else 175
+        raise RouteError("injected start failure")
+
+    def stop(holder, timeout):
+        calls.append(("stop", now["value"], timeout))
+        now["value"] += 10
+        return "ok stopped"
+
+    def release(holder, timeout):
+        calls.append(("release", now["value"], timeout))
+        now["value"] += 10
+        return "ok released"
+
+    guest.remote_path = driver.WinGuest.remote_path
+    guest.silence = silence
+    guest.claim = claim
+    guest.put = put
+    guest.start = start
+    guest.stop = stop
+    guest.release = release
+    with pytest.raises(RouteError):
+        driver.run_bundle_source(args, guest=guest)
+    receipt = json.loads((args.out / "bundle-source-receipt.json").read_text())
+    assert receipt["success"] is False
+    assert ("injected start failure" if stage in ("start-failure", "cleanup-near-overall") else
+            "bundle_source_deadline: boot action expired") in receipt["error"]
+    assert [call[0] for call in calls if call[0] in ("stop", "release")] == (
+        ["stop", "release"] if stage in ("start-failure", "cleanup-near-overall") else
+        ["release"])
+    cleanup = [call for call in calls if call[0] in ("stop", "release")]
+    if stage == "cleanup-near-overall":
+        assert cleanup == [("stop", 1880.0, 20.0), ("release", 1890.0, 10.0)]
+    else:
+        assert all(at >= 1300 and timeout == 30 for _, at, timeout in cleanup)
+    assert len([call for call in calls if call[0] == "claim"]) == 1
+    assert all(timeout == pytest.approx(min(300, 1300 - at))
+               for action, at, timeout in calls if action in ("claim", "put", "start"))
+    starts = [call for call in calls if call[0] == "start"]
+    if stage in ("start-failure", "cleanup-near-overall"):
+        assert starts == [("start", 1130.0, 170.0)]
+    else:
+        assert not starts
+    assert uploads == (0 if stage == "claim-expired" else 3)
+    checks = {"claim-expired": [100.0], "upload-expired": [100.0],
+              "mute-expired": [100.0, 1220.0],
+              "start-failure": [100.0, 1130.0, 1130.0],
+              "cleanup-near-overall": [100.0, 1130.0, 1130.0]}[stage]
+    assert [at for action, at, _ in calls if action == "silence"] == checks
+    assert silence_reads == len(checks) and all(at < 1300 for at in checks)
+    action_order = [action for action, _, _ in calls if action not in ("stop", "release")]
+    assert action_order == (["silence", "claim"] + ["put"] * uploads
+                            + ["silence"] * (len(checks) - 1)
+                            + (["start"] if starts else []))
+
+
 @pytest.mark.parametrize("failure", [None, "identity", "initial-pre-f", "initial-mismatch",
                                      "deadline", "pre-g", "pre-g-mismatch", "post-g",
                                      "post-g-mismatch"])
