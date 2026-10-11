@@ -333,3 +333,215 @@ def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypa
     assert [entry["flag"] for entry in restarts] == [True, False, True]
     assert all(value["status"] == "awaiting image review"
                for value in controller.summary["flags"].values())
+
+
+def _action_controller(tmp_path, monkeypatch, *, guard=True):
+    route = _route()
+    show = _phase("show", "world", SimpleNamespace(**{**vars(_step("observe", "sheet")),
+                                                       "checkpoint": "view", "expected": None}))
+    back = _phase("back", "sheet", SimpleNamespace(**{**vars(_step("key", "world", "E")),
+                                                      "checkpoint": "world", "expected": None}))
+    route.actions = (SimpleNamespace(kind="heal", enabled=True, selector="hp", show=show, back=back),)
+    clock, game = FakeClock(), FakeGame()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=game,
+        guards=lambda state, path: guard if state == "sheet" else True,
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame:
+                        controller.checkpoints.update({name: {"game": frame}}))
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args, **kwargs:
+                        ["Button|Heal party|heal|enabled=True"])
+    return controller, game
+
+
+def test_heal_action_guards_before_click_and_keeps_distinct_visits(tmp_path, monkeypatch):
+    controller, game = _action_controller(tmp_path, monkeypatch)
+    events = []
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "before": [], "baseline": [], "staged": {"hp": 15}})
+    monkeypatch.setattr(controller, "_action_readback", lambda: [])
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    original_grab = game.grab
+
+    def grab(state, raw, crop, timeout):
+        events.append(("frame", state))
+        return original_grab(state, raw, crop, timeout)
+
+    game.grab = grab
+
+    def ui(*args, **kwargs):
+        if args[2] == "click":
+            events.append(("click", args[3]))
+            return []
+        return ["Button|Heal party|heal|enabled=True"]
+
+    monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
+    controller.run_actions()
+    assert events.index(("frame", "sheet")) < events.index(("click", ("Heal party",)))
+    assert events.index(("click", ("Heal party",))) < len(events) - 2
+    assert {"heal.before.view", "heal.after.view"} <= controller.checkpoints.keys()
+    assert controller.summary["actions"]["heal"]["status"] == "awaiting image review"
+    assert len(controller.summary["actions"]["heal"]["observed"]["clicks"]) == 1
+
+
+@pytest.mark.parametrize("failed_after", [False, True])
+def test_failed_action_view_stops_and_keeps_click_if_it_happened(tmp_path, monkeypatch,
+                                                                  failed_after):
+    controller, game = _action_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "before": [], "baseline": []})
+    monkeypatch.setattr(controller, "_action_readback", lambda: [])
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    calls = []
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args, **kwargs:
+                        calls.append(args[2]) or ["Button|Heal party|heal|enabled=True"])
+    count = 0
+
+    def guards(state, path):
+        nonlocal count
+        if state == "sheet":
+            count += 1
+            # The before visit sees the sheet both after Show and before Back.
+            return count <= 2 if failed_after else False
+        return True
+
+    controller.guards = guards
+    with pytest.raises(winwishaccept.AcceptanceStop):
+        controller.run_actions()
+    assert calls.count("click") == int(failed_after)
+    entry = controller.summary["actions"]["heal"]
+    assert entry["status"] == "unproven"
+    assert len(entry["observed"]["clicks"]) == int(failed_after)
+    assert (tmp_path / "game-000.raw.png").exists()
+
+
+def test_action_bound_counts_visits_selections_and_original_reload(tmp_path):
+    route = _route()
+    pair = _phase("show", "world", _step("select", "world"), _step("key", "sheet", "V"))
+    back = _phase("back", "sheet", _step("key", "world", "E"))
+    route.actions = (SimpleNamespace(kind="heal", enabled=True, show=pair, back=back),)
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    assert controller.action_limit == 2 * (7 + 1 + 1) + 1 + 1
+    for _ in range(controller.action_limit):
+        controller._count(action=True)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="cap is reached"):
+        controller._count(action=True)
+
+
+def test_full_party_action_deltas_include_zero_hp_and_all_item_nodes(tmp_path):
+    from automap import amigaparty
+
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    row = amigaparty.ROWS[controller.route.game_key]
+
+    def record(slot, hp, maximum, flags=None):
+        raw = bytearray(row.record_size)
+        raw[row.hp.offset] = hp
+        raw[row.hp_max.offset] = maximum
+        item = []
+        if flags is not None:
+            node = bytearray(row.items.size)
+            node[row.hidden.offset] = flags
+            item = [[slot + 100, node.hex()]]
+        return {"slot": slot, "name": f"Member{slot}", "address": slot + 1000,
+                "raw": raw.hex(), "items": item}
+
+    before = [record(0, 15, 20, 0x07), record(1, 7, 10, 0xA5), record(2, 0, 9)]
+    healed = [record(0, 20, 20, 0x07), record(1, 10, 10, 0xA5), record(2, 0, 9)]
+    controller._verify_action("heal", {"baseline": before}, healed)
+    identified = [record(0, 15, 20, 0), record(1, 7, 10, 0xA0), record(2, 0, 9)]
+    controller._verify_action("identify", {"baseline": before}, identified)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("identify", {"baseline": before}, identified[:1] + before[1:])
+
+
+def test_final_reload_is_separate_and_compares_original_party_and_location(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    controller, game = _action_controller(tmp_path, monkeypatch)
+    controller.route.phases = tuple(
+        _phase("reload", "world", SimpleNamespace(**{**vars(_step("key", "world", "L")),
+                                                     "checkpoint": "returned", "expected": None}))
+        if phase.name == "reload" else phase for phase in controller.route.phases)
+    row = amigaparty.ROWS[controller.route.game_key]
+    record = {"slot": 0, "name": "A", "address": 100,
+              "raw": bytes(row.record_size).hex(), "items": []}
+    initial = {"fix": {"area": 3, "x": 4, "y": 5}, "geo_sha256": "map",
+               "party": [record]}
+    controller.checkpoints["loaded"] = {"observed": initial}
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame:
+                        controller.checkpoints.update({name: {"observed": {
+                            **initial, "party": [{**record, "address": 500}]}}}))
+    controller._final_reload()
+    assert controller.summary["original_slot_reload"]["status"] == "awaiting image review"
+    assert controller.checkpoints["loaded"]["observed"] is initial
+    assert controller.action_commands == 1
+    assert "original_slot_reload.returned" in controller.checkpoints
+
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame:
+                        controller.checkpoints.update({name: {"observed": {
+                            **initial, "fix": {**initial["fix"], "x": 9}}}}))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="changed location"):
+        controller._final_reload()
+    assert controller.summary["original_slot_reload"]["status"] == "unproven"
+
+
+def test_spells_save_clear_and_restore_compare_all_members(tmp_path):
+    from automap import amigaparty
+
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    row = amigaparty.ROWS[controller.route.game_key]
+
+    def member(slot, values):
+        raw = bytearray(row.record_size)
+        raw[row.memorised.offset:row.memorised.offset + len(values)] = values
+        return {"slot": slot, "name": f"Member{slot}", "address": slot + 100,
+                "raw": raw.hex(), "items": []}
+
+    baseline = [member(0, b"\x03\x04"), member(1, b"\x08\x09")]
+    context = {"slot": 0, "spell_index": 0, "baseline": baseline}
+    controller._verify_action("spells", context, baseline)
+    controller._verify_action("spells", context,
+                              [member(0, b"\x00\x04"), member(1, b"\x08\x09")], step="cleared")
+    controller._verify_action("spells", context, baseline)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("spells", context,
+                                  [member(0, b"\x03\x04"), member(1, b"\x08\x00")])
+
+
+def test_staging_preserves_every_other_member_and_item(tmp_path):
+    from automap import amigaparty
+
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    row = amigaparty.ROWS[controller.route.game_key]
+
+    def member(slot, hp):
+        raw = bytearray(row.record_size)
+        raw[row.slot] = slot
+        raw[row.hp.offset] = hp
+        raw[row.hp_max.offset] = 20
+        return amigaparty.AmigaMember(row, slot, 1000 + slot * 100, bytes(raw))
+
+    party = [member(0, 20), member(1, 7)]
+    before = [controller._member_record(member) for member in party]
+    modified = bytearray(party[0].raw)
+    modified[row.hp.offset] = 15
+    staged = [amigaparty.AmigaMember(row, 0, party[0].address, bytes(modified)), party[1]]
+    context = {"slot": 0, "before": before,
+               "baseline": [controller._member_record(member) for member in staged],
+               "staged": {"hp": 15}}
+    controller._verify_staging("heal", context, party)
+    context["baseline"][1]["raw"] = bytes(row.record_size).hex()
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected byte"):
+        controller._verify_staging("heal", context, party)

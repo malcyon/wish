@@ -33,7 +33,21 @@ STATUSES = ("passed", "failed", "unproven", "awaiting image review")
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
-MAX_ACTION_COMMANDS = 30
+
+def _action_budget(route: Any) -> int:
+    from automap import amigaparty  # noqa: PLC0415
+
+    def keys(phase: Any) -> int:
+        return sum((amigaparty.MAX_MEMBERS - 1 if step.kind == "select" else 1)
+                   for step in phase.steps if step.kind in ("key", "turn", "move", "insert", "select"))
+
+    total = max(1, keys(next(phase for phase in route.phases if phase.name == "reload")))
+    for action in route.actions:
+        if action.enabled:
+            visits = 3 if action.kind == "spells" else 2
+            total += visits * (keys(action.show) + keys(action.back))
+            total += 2 if action.kind == "spells" else 1
+    return total
 
 
 class AcceptanceStop(RuntimeError):
@@ -193,6 +207,7 @@ class Controller:
         self.route_end = self.started + args.deadline - CLEANUP_SECONDS
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
+        self.action_limit = _action_budget(route)
         self.encounters = None
         self.encounters_on = False
         self.booted = False
@@ -205,6 +220,7 @@ class Controller:
         self.summary: dict[str, Any] = {**info,
             "mapping": {name: row() for name in MAPPING_ROWS},
             "actions": {action.kind: row() for action in route.actions},
+            "original_slot_reload": row(),
             "checkpoints": self.checkpoints, "completed_sequence": [],
             "failure": None, "cleanup": {}}
 
@@ -222,7 +238,7 @@ class Controller:
 
     def _count(self, action: bool = False) -> None:
         name = "action_commands" if action else "mapping_commands"
-        cap = MAX_ACTION_COMMANDS if action else MAX_MAPPING_COMMANDS
+        cap = self.action_limit if action else MAX_MAPPING_COMMANDS
         if getattr(self, name) >= cap:
             raise AcceptanceStop(f"the {cap}-command {'action' if action else 'mapping'} cap is reached")
         setattr(self, name, getattr(self, name) + 1)
@@ -472,21 +488,22 @@ class Controller:
             self.log("flags", mode=name, controls=controls, picture=str(picture))
         self._game_section()
 
-    def run_phase(self, phase: Any, action_context: Any = None) -> None:
+    def run_phase(self, phase: Any, action_context: Any = None,
+                  namespace: str | None = None) -> None:
         if not phase.ready:
             raise AcceptanceStop(f"{phase.name} is unready: {phase.reason}")
         self._game_section()
-        self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
+        last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
             phase.initial_state, self.route.amiga_title.title_limit))
         for step in phase.steps:
             kind = step.kind
             if kind in ("key", "turn", "move"):
-                self._press(step.key, action=action_context is not None)
+                self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
             elif kind == "insert":
                 medium = next(m for m in self.route.media if m.key == step.media)
                 self.game.insert(self.args.holder, step.drive, self.remotes[step.media],
                                  self.left(60), medium.sha256)
-                self._press(step.key, action=action_context is not None)
+                self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
             elif kind == "snapshot":
                 if self.encounters_on:
                     self._switch(False)
@@ -522,13 +539,30 @@ class Controller:
                 target.close()
                 if selected.get("error"):
                     raise AcceptanceStop(f"member selection: {selected['error']}")
+                action_context.setdefault("selections", []).append(selected)
             elif kind != "observe":
                 raise AcceptanceStop(f"unknown route step kind {kind}")
             frame = self._await(step.state, limit=self.route.amiga_title.wait_limits.get(
                 step.state, 90))
+            last_frame = frame
             if step.checkpoint:
-                self._checkpoint(step.checkpoint, step.expected, frame)
-        self.summary["completed_sequence"].append(phase.name)
+                expected = step.expected
+                if namespace and expected and expected.compare_to:
+                    from dataclasses import replace  # noqa: PLC0415
+
+                    local = {s.checkpoint for s in phase.steps if s.checkpoint}
+                    if action_context is not None:
+                        local.update(action_context.get("visit_checkpoints", ()))
+                    if expected.compare_to in local:
+                        expected = replace(expected, compare_to=f"{namespace}.{expected.compare_to}")
+                self._checkpoint(f"{namespace}.{step.checkpoint}" if namespace else step.checkpoint,
+                                 expected, frame)
+                if action_context is not None:
+                    action_context.setdefault("visit_checkpoints", set()).add(step.checkpoint)
+        if action_context is not None and namespace:
+            self._checkpoint(f"{namespace}.{phase.name}_end", None, last_frame)
+        self.summary["completed_sequence"].append(
+            f"{namespace}.{phase.name}" if namespace else phase.name)
 
     def _fresh_party(self):
         from automap import amiga, amigaparty  # noqa: PLC0415
@@ -549,12 +583,13 @@ class Controller:
 
     def _action_input(self, action: Any) -> dict[str, Any]:
         """Stage only the plan's named input on a newly resolved member."""
-        from automap import amigalevelup  # noqa: PLC0415
+        from automap import amigalevelup, amigaparty  # noqa: PLC0415
 
         target, party = self._fresh_party()
         before = [self._member_record(member) for member in party]
         choice = None
         try:
+            candidates = []
             for member in sorted(party, key=lambda item: item.slot):
                 if action.selector == "hp" and member.hp_max >= 6 and member.hp > 0:
                     choice = member
@@ -569,9 +604,20 @@ class Controller:
                     levels = amigalevelup.summary(member.raw, self.route.game_key)["levels"]
                     fighter = amigalevelup.POD_SLOTS.index("fighter")
                     if levels[fighter] > 0:
-                        choice = member
+                        threshold = amigalevelup.pod_threshold(fighter, levels[fighter] + 1)
+                        staged = bytearray(member.raw)
+                        staged[amigalevelup._POD_EXPERIENCE:amigalevelup._POD_EXPERIENCE + 4] = (
+                            threshold.to_bytes(4, "big"))
+                        if "fighter" in amigalevelup.ready_classes(staged, self.route.game_key):
+                            candidates.append(member)
                 if choice is not None:
                     break
+            if action.selector == "pod_levelup":
+                eligible = [member for member in party if
+                            amigalevelup.ready_classes(member.raw, self.route.game_key)]
+                if eligible or not candidates:
+                    raise AcceptanceStop("Level up has an existing eligible member or no ready fighter")
+                choice = candidates[0]
             if choice is None:
                 raise AcceptanceStop(f"no existing input for {action.selector}")
             context: dict[str, Any] = {"member": choice.name, "slot": choice.slot,
@@ -607,23 +653,116 @@ class Controller:
                 offset = amigalevelup._POD_EXPERIENCE
                 target.write(choice.address + offset, threshold.to_bytes(4, "big"))
                 context["staged"] = {"experience": threshold}
+            staged_party = amigaparty.read_party(target)
+            if not staged_party:
+                raise AcceptanceStop("the staged party is not readable")
+            context["baseline"] = [self._member_record(member) for member in staged_party]
+            self._verify_staging(action.kind, context, party)
             return context
         finally:
             target.close()
 
-    def _unique_action(self, label: str | None = None, automation_id: str | None = None) -> None:
+    @staticmethod
+    def _party_by_slot(records: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+        slots = {record["slot"]: record for record in records}
+        if len(slots) != len(records):
+            raise AcceptanceStop("party has repeated slots")
+        return slots
+
+    def _verify_staging(self, kind: str, context: dict[str, Any], party: Any) -> None:
+        from automap import amigalevelup  # noqa: PLC0415
+
+        original = self._party_by_slot(context["before"])
+        staged = self._party_by_slot(context["baseline"])
+        if original.keys() != staged.keys():
+            raise AcceptanceStop("staging changed the party slots")
+        slot = context["slot"]
+        for member in party:
+            old, new = original[member.slot], staged[member.slot]
+            raw = bytearray.fromhex(old["raw"])
+            items = [[address, data] for address, data in old["items"]]
+            if member.slot == slot:
+                if kind == "heal":
+                    spot = member.row.hp
+                    raw[spot.offset:spot.offset + spot.length] = context["staged"]["hp"].to_bytes(spot.length, "big")
+                elif kind == "identify":
+                    items[0][1] = (bytes.fromhex(items[0][1])[:member.row.hidden.offset]
+                                   + bytes([context["staged"]["hidden_staged"]])
+                                   + bytes.fromhex(items[0][1])[member.row.hidden.offset + 1:]).hex()
+                elif kind == "quickfight":
+                    raw[member.row.quickfight.offset] = 1
+                elif kind == "levelup":
+                    offset = amigalevelup._POD_EXPERIENCE
+                    raw[offset:offset + 4] = context["staged"]["experience"].to_bytes(4, "big")
+            if new["raw"] != raw.hex() or new["items"] != items or new["name"] != old["name"]:
+                raise AcceptanceStop(f"staging changed an unexpected byte for {member.name}")
+
+    def _verify_action(self, kind: str, context: dict[str, Any], after: list[dict[str, Any]],
+                       *, step: str = "action") -> None:
+        from automap import amigalevelup, amigaparty  # noqa: PLC0415
+
+        baseline = self._party_by_slot(context["baseline"])
+        actual = self._party_by_slot(after)
+        if baseline.keys() != actual.keys():
+            raise AcceptanceStop("action changed the party slots")
+        row_ = amigaparty.ROWS[self.route.game_key]
+        for slot, old in baseline.items():
+            new = actual[slot]
+            raw = bytearray.fromhex(old["raw"])
+            items = [[address, data] for address, data in old["items"]]
+            if kind == "heal":
+                hp, maximum = row_.hp.value(raw), row_.hp_max.value(raw)
+                if 0 < hp < maximum:
+                    raw[row_.hp.offset:row_.hp.offset + row_.hp.length] = maximum.to_bytes(row_.hp.length, "big")
+            elif kind == "identify":
+                for node in items:
+                    data = bytearray.fromhex(node[1])
+                    data[row_.hidden.offset] &= ~row_.hidden.mask & 0xff
+                    node[1] = data.hex()
+            elif kind == "quickfight":
+                if row_.control is None or not row_.control.value(raw) & 0x80:
+                    raw[row_.quickfight.offset] = 0
+            elif kind == "spells":
+                if step == "cleared" and slot == context["slot"]:
+                    raw[row_.memorised.offset + context["spell_index"]] = 0
+            elif kind == "levelup":
+                if slot == context["slot"]:
+                    old_levels = amigalevelup.summary(raw, self.route.game_key)["levels"]
+                    new_levels = amigalevelup.summary(bytes.fromhex(new["raw"]), self.route.game_key)["levels"]
+                    ready = amigalevelup.ready_classes(raw, self.route.game_key)
+                    if not ready or any(new_levels[i] != level + (name in ready)
+                                        for i, (name, level) in enumerate(zip(amigalevelup.POD_SLOTS, old_levels))):
+                        raise AcceptanceStop("Level up did not raise exactly the ready classes")
+                    # Level up also rolls hit points and writes derived fields.
+                    if new["name"] != old["name"] or new["items"] != items:
+                        raise AcceptanceStop("Level up changed the selected member's items or name")
+                    continue
+            if new["name"] != old["name"] or new["raw"] != raw.hex() or new["items"] != items:
+                raise AcceptanceStop(f"{kind} changed unexpected bytes for {old['name']}")
+
+    def _unique_action(self, label: str | None = None, automation_id: str | None = None,
+                       *, context: dict[str, Any]) -> None:
         listing = winwish.ui(self.guest, self.args.holder, "controls")
-        path = self.out / f"action-controls-{self.action_commands:02d}.txt"
+        path = self.out / f"action-controls-{context['kind']}-{len(context['evidence']):02d}.txt"
         path.write_text("\n".join(listing) + "\n")
+        context["evidence"].append(str(path))
         matches = [line for line in listing if len(parts := line.split("|")) >= 4
                    and ((automation_id is not None and parts[2] == automation_id)
                         or (label is not None and parts[1] == label))]
         if len(matches) != 1 or "enabled=True" not in matches[0]:
             raise AcceptanceStop(f"{label or automation_id}: absent, ambiguous or disabled; kept {path}")
+        if context["kind"] == "levelup":
+            enabled = [line for line in listing if "_level_up" in line and "enabled=True" in line]
+            if enabled != matches:
+                raise AcceptanceStop(f"Level up has another enabled card; kept {path}")
+            if context["member"] not in matches[0]:
+                raise AcceptanceStop(f"Level up card does not name {context['member']}; kept {path}")
         self._count(action=True)
         winwish.ui(self.guest, self.args.holder, "click", (() if label is None else (label,)),
                    automation_id=automation_id)
-        self.log("action_click", control=label or automation_id, listing=str(path))
+        event = {"control": label or automation_id, "listing": str(path)}
+        context["clicks"].append(event)
+        self.log("action_click", **event)
 
     def _action_readback(self) -> list[dict[str, Any]]:
         target, party = self._fresh_party()
@@ -632,6 +771,14 @@ class Controller:
         finally:
             target.close()
 
+    def _action_visit(self, action: Any, context: dict[str, Any], label: str) -> None:
+        namespace = f"{action.kind}.{label}"
+        context["visit_checkpoints"] = set()
+        before = set(self.checkpoints)
+        self.run_phase(action.show, context, namespace=namespace)
+        self.run_phase(action.back, context, namespace=namespace)
+        context["evidence"].extend(name for name in self.checkpoints if name not in before)
+
     def run_actions(self) -> None:
         labels = {"heal": "Heal party", "identify": "Identify",
                   "quickfight": "Quickfight off"}
@@ -639,41 +786,92 @@ class Controller:
             if not action.enabled:
                 self.summary["actions"][action.kind]["reason"] = "observation only on this route"
                 continue
+            context = {"kind": action.kind, "evidence": [], "clicks": []}
+            result = self.summary["actions"][action.kind]
+            result["evidence"] = context["evidence"]
+            result["observed"] = context
             try:
                 if action.show is None or action.back is None:
                     raise AcceptanceStop("the game-display route is incomplete")
                 self._game_section()
-                context = self._action_input(action)
+                context.update(self._action_input(action))
+                context["kind"] = action.kind
+                context["staged_readback"] = self._action_readback()
+                self._action_visit(action, context, "before")
                 self._map_section()
                 if action.kind == "spells":
-                    self._unique_action("Save spells")
+                    self._unique_action("Save spells", context=context)
+                    context["saved"] = self._action_readback()
+                    self._verify_action("spells", context, context["saved"])
                     self._game_section()
                     target, party = self._fresh_party()
                     try:
                         member = next(m for m in party if m.slot == context["slot"])
                         offset = member.row.memorised.offset + context["spell_index"]
                         target.write(member.address + offset, b"\x00")
-                        context["staged"] = {"spell_index": context["spell_index"],
-                                              "memorised_byte": 0}
                     finally:
                         target.close()
+                    context["cleared"] = self._action_readback()
+                    self._verify_action("spells", context, context["cleared"], step="cleared")
+                    self._action_visit(action, context, "cleared")
                     self._map_section()
-                    self._unique_action("Restore spells")
+                    self._unique_action("Restore spells", context=context)
                 elif action.kind == "levelup":
-                    self._unique_action(automation_id=f"card_{context['slot']}_level_up")
+                    self._unique_action(automation_id=f"card_{context['slot']}_level_up", context=context)
                 else:
-                    self._unique_action(labels[action.kind])
+                    self._unique_action(labels[action.kind], context=context)
                 self._game_section()
-                after = self._action_readback()
-                self.run_phase(action.show, context)
-                self.run_phase(action.back, context)
-                self.summary["actions"][action.kind] = row(
-                    "awaiting image review", expected=context.get("staged"),
-                    observed={"before": context["before"], "after": after},
-                    evidence=[name for name in self.checkpoints if name.startswith(action.kind)])
+                context["after"] = self._action_readback()
+                self._verify_action(action.kind, context, context["after"])
+                self._action_visit(action, context, "after")
+                result["status"] = "awaiting image review"
+                result["expected"] = context.get("staged")
             except AcceptanceStop as exc:
-                self.summary["actions"][action.kind] = row("unproven", reason=str(exc))
+                result["reason"] = str(exc)
                 raise
+
+    @staticmethod
+    def _without_addresses(records: list[dict[str, Any]], row_: Any) -> list[dict[str, Any]]:
+        normalized = []
+        for record in records:
+            raw = bytearray.fromhex(record["raw"])
+            for offset in row_.pointers:
+                raw[offset:offset + 4] = b"\x00" * 4
+            items = []
+            for _, value in record["items"]:
+                node = bytearray.fromhex(value)
+                node[row_.items.link:row_.items.link + 4] = b"\x00" * 4
+                items.append(node.hex())
+            normalized.append({"slot": record["slot"], "name": record["name"],
+                               "raw": raw.hex(), "items": items})
+        return sorted(normalized, key=lambda item: item["slot"])
+
+    def _final_reload(self) -> None:
+        from automap import amigaparty  # noqa: PLC0415
+
+        self.summary["original_slot_reload"]["status"] = "unproven"
+        initial = self.checkpoints.get("loaded", {}).get("observed")
+        if not initial or initial.get("fix") is None or initial.get("party") is None:
+            raise AcceptanceStop("the original loaded party and location were not recorded")
+        reload_phase = next(phase for phase in self.route.phases if phase.name == "reload")
+        self.run_phase(reload_phase, namespace="original_slot_reload")
+        last = [name for name in self.checkpoints if name.startswith("original_slot_reload.")]
+        if not last:
+            raise AcceptanceStop("the original-slot reload has no checkpoint")
+        final = self.checkpoints[last[-1]]["observed"]
+        result = self.summary["original_slot_reload"]
+        result["expected"] = initial
+        result["observed"] = final
+        result["evidence"] = last
+        row_ = amigaparty.ROWS[self.route.game_key]
+        if (final["fix"] != initial["fix"] or
+                final["geo_sha256"] != initial["geo_sha256"] or
+                final["party"] is None or
+                self._without_addresses(final["party"], row_) !=
+                self._without_addresses(initial["party"], row_)):
+            result["reason"] = "original-slot reload changed location or party bytes"
+            raise AcceptanceStop(result["reason"])
+        result["status"] = "awaiting image review"
 
     def _stage_media(self) -> None:
         for medium in self.route.media:
@@ -778,6 +976,10 @@ class Controller:
                 if name == "load":
                     self.flag_controls()
             self.run_actions()
+            if any(action.enabled for action in self.route.actions):
+                self._game_section()
+                self._await("world")
+                self._final_reload()
             self._map_section()
             self.lane.stop(self.args.holder, self.left(60))
             pictures = []
