@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
+import stat
 import struct
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -18,6 +19,47 @@ from tools.amiga import darknessreturn as driver
 from tools.amiga import noencounters, route_darkness
 from tools.amiga.staging import sha256
 from tools.amiga.winuaesession import RouteError
+
+
+def _synthetic_private_files(monkeypatch, root):
+    """Model POSIX metadata only for generated files in source behavior tests."""
+    if os.name == "posix":
+        return pathlib.Path
+
+    class PrivateStat:
+        def __init__(self, actual):
+            self.actual = actual
+            self.st_uid = 1729
+            self.st_mode = (stat.S_IFMT(actual.st_mode)
+                            | (0o700 if stat.S_ISDIR(actual.st_mode) else 0o600))
+
+        def __getattr__(self, field):
+            return getattr(self.actual, field)
+
+    class PrivatePath(type(pathlib.Path())):
+        def stat(self, *args, **kwargs):
+            actual = super().stat(*args, **kwargs)
+            return PrivateStat(actual) if self.is_relative_to(root) else actual
+
+    class PrivateOS:
+        name = "posix"
+
+        @staticmethod
+        def getuid():
+            return 1729
+
+        def __getattr__(self, field):
+            return getattr(os, field)
+
+    class PrivatePaths:
+        Path = PrivatePath
+
+        def __getattr__(self, field):
+            return getattr(pathlib, field)
+
+    monkeypatch.setattr(driver, "os", PrivateOS())
+    monkeypatch.setattr(driver, "pathlib", PrivatePaths())
+    return PrivatePath
 
 
 def _source() -> pathlib.Path:
@@ -1216,7 +1258,7 @@ def _seven_source(tmp_path, monkeypatch):
     root = tmp_path / "run"
     directory = root / "item-nodes"
     directory.mkdir(parents=True)
-    path = directory / "initial.json"
+    path = driver.pathlib.Path(directory / "initial.json")
 
     def capture():
         reading = driver._live_read(target, capture=path, source=True)
@@ -1230,6 +1272,7 @@ def _seven_source(tmp_path, monkeypatch):
 
 
 def test_seven_member_source_captures_64_heads_four_children_and_specific_f(tmp_path, monkeypatch):
+    _synthetic_private_files(monkeypatch, tmp_path)
     generated = _seven_source(tmp_path, monkeypatch)
     reading, entry = generated.capture()
     assert "trip" not in reading and "variables" not in reading
@@ -1250,7 +1293,8 @@ def test_seven_member_source_captures_64_heads_four_children_and_specific_f(tmp_
     assert all(bytes.fromhex(child["raw_hex"])[0x2a:0x2e] == b"\x55\x66\x77\x88"
                for child in case["children"])
     assert "raw_hex" not in json.dumps(report)
-    assert generated.path.stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":
+        assert generated.path.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.parametrize("damage", ["name", "slot", "count", "case", "six-members"])
@@ -1358,6 +1402,7 @@ def test_source_capture_blocks_damaged_private_topology_and_late_changes(
 
 def test_source_comparison_keeps_unnamed_payload_and_reference_letters_separate(
         tmp_path, monkeypatch):
+    _synthetic_private_files(monkeypatch, tmp_path)
     generated = _seven_source(tmp_path, monkeypatch)
     reading, entry = generated.capture()
     digest = hashlib.sha256(generated.saved).hexdigest()
@@ -1383,6 +1428,7 @@ def test_source_comparison_keeps_unnamed_payload_and_reference_letters_separate(
                                      "saved-quantity", "saved-child"])
 def test_source_comparison_binds_each_letter_to_its_own_fetched_slot(
         tmp_path, monkeypatch, damage):
+    _synthetic_private_files(monkeypatch, tmp_path)
     generated = _seven_source(tmp_path, monkeypatch)
     reading, entry = generated.capture()
     f_slot = generated.saved
@@ -1435,6 +1481,7 @@ def test_source_comparison_binds_each_letter_to_its_own_fetched_slot(
 @pytest.mark.parametrize("damage", [None, "wrong-variant", "unfiltered", "missing-identity",
                                      "wrong-reader", "wrong-prepared-digest"])
 def test_source_controls_require_one_current_source_variant_per_screen(tmp_path, monkeypatch, damage):
+    tmp_path = _synthetic_private_files(monkeypatch, tmp_path)(tmp_path)
     shared = pathlib.Path(driver.guardmaps.__file__).with_name("guards_darkness.json")
     current = json.loads(shared.read_text())
     manifest = tmp_path / "prepare.json"
@@ -1493,8 +1540,9 @@ def test_pinned_prepared_b_and_registered_f_have_full_ordered_boundaries_when_av
 
 
 def _source_coordinator(tmp_path, monkeypatch, *, fail=None):
+    private_path = _synthetic_private_files(monkeypatch, tmp_path)
     generated = _seven_source(tmp_path, monkeypatch)
-    root = tmp_path / ".cache/wish/acceptance/WISH-360/synthetic-source"
+    root = private_path(tmp_path / ".cache/wish/acceptance/WISH-360/synthetic-source")
     root.mkdir(parents=True, mode=0o700)
     source = root / "source-input.adf"
     source.write_bytes(b"Generated original disk marker")
@@ -1591,7 +1639,7 @@ def _source_coordinator(tmp_path, monkeypatch, *, fail=None):
         return {"holder": holder, "claim": "ok claimed", "start": "ok started",
                 "remotes": {"disk2": "remote-disk2", "disk3": "remote-disk3"}}
 
-    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(driver.pathlib.Path, "home", lambda: private_path(tmp_path))
     monkeypatch.setattr(driver, "_source_contract", lambda *a: (source, driver.BUNDLE_PREPARED_SHA256))
     monkeypatch.setattr(driver, "_source_controls", lambda *a: (
         None, None, {"guards": {"sha256": "guards"}, "identity": {"sha256": "identity"}}))
@@ -1772,13 +1820,32 @@ def test_source_coordinator_never_uses_a_next_save_after_a_failed_checkpoint(
         assert "raw_hex" not in json.dumps(receipt)
 
 
-def test_source_receipt_keeps_owner_mode_and_no_raw_payload(tmp_path):
+@pytest.mark.skipif(os.name != "posix", reason="POSIX owner/0600 checks require POSIX stat")
+def test_source_receipt_keeps_owner_mode(tmp_path):
     receipt = {"phase": "bundle-source", "success": True,
                "independently_authenticated": False, "preservation_established": False}
     path = tmp_path / "private.json"
     driver._write_source_receipt(path, receipt)
     assert path.stat().st_mode & 0o777 == 0o600
     assert json.loads(path.read_text()) == receipt
+
+
+def test_source_receipt_blocks_raw_payload_on_every_platform(tmp_path):
+    path = tmp_path / "blocked.json"
     with pytest.raises(RouteError, match="raw node bytes"):
-        driver._write_source_receipt(tmp_path / "blocked.json", {"raw_hex": "not a game byte"})
-    assert not (tmp_path / "blocked.json").exists()
+        driver._write_source_receipt(path, {"raw_hex": "not a game byte"})
+    assert not path.exists()
+
+
+def test_source_unsupported_platform_fails_before_output_or_game_keys(tmp_path, monkeypatch):
+    if os.name == "posix":
+        monkeypatch.setattr(driver, "os", SimpleNamespace(name="nt"))
+    args = SimpleNamespace(out=tmp_path / "source-output", budget=1800)
+
+    class NoKeys:
+        def __getattr__(self, operation):
+            pytest.fail(f"unsupported source capture attempted guest {operation}")
+
+    with pytest.raises(RouteError, match="POSIX owner checks are required"):
+        driver.run_bundle_source(args, guest=NoKeys())
+    assert not args.out.exists()
