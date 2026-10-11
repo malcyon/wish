@@ -72,7 +72,114 @@ DIRECT = {"pc": (0x5004, 2), "script_pointer": (0x5006, 4),
           "menu": (0x1C24, 2), "variable_pointer": (0x3DBE, 4),
           "word_pointer": (0x3D00, 4), "cursor_pointer": (0x383C, 4),
           "dialog_pointer": (0x66EA, 4), "dialog_count": (0x39F6, 2),
-          "dialog_initialized": (0x39F4, 1)}
+           "dialog_initialized": (0x39F4, 1)}
+CURSOR_EVENT = re.compile(
+    r"Memwatch (17|18|19): break at ([0-9A-Fa-f]{8})\.([BWL]) "
+    r"([ R])([ W])([ I]) ([0-9A-Fa-f]{8}) PC=([0-9A-Fa-f]{8}) "
+    r"(CPUDR|CPUDW) \([0-9A-Fa-f]{3}\)")
+
+
+def classify_cursor_log(text: str, data_base: int, code_base: int,
+                        pointer: int, init: int, *, complete: bool) -> dict:
+    """Classify one cursor generation, never the observer's other allocations."""
+    errors: list[str] = []
+    if not isinstance(text, str) or not text.endswith("\n"):
+        return {"cursor_qualified": False, "errors": ["cursor log is truncated"]}
+    events = []
+    removed = []
+    for line in text.splitlines():
+        match = CURSOR_EVENT.fullmatch(line)
+        if match:
+            if removed:
+                errors.append("watch event follows a removal footer")
+            slot, addr, width, r, w, i, value, pc, source = match.groups()
+            access = "W" if w == "W" else "R" if r == "R" else "?"
+            if i != " " or source != ("CPUDW" if access == "W" else "CPUDR"):
+                errors.append("cursor log has an unsafe access mode")
+            events.append((int(slot), int(addr, 16), width, access,
+                           int(value, 16), int(pc, 16)))
+        elif re.fullmatch(r"Memwatch (17|18|19) removed", line):
+            removed.append(int(line.split()[1]))
+        elif line.startswith("Memwatch") and line != "Memwatch breakpoints enabled":
+            errors.append("cursor log contains a malformed watch record")
+    if complete and removed != [19, 18, 17]:
+        errors.append("cursor log has no verified removal footer")
+    if not events:
+        errors.append("cursor log contains no watch events")
+    slot_address = data_base + 0x383C
+    init_address = data_base + 0x2932
+    def site(offset: int) -> int:
+        return code_base + offset - 0x28
+    expected = {site(0x3DD4C), site(0x3DD50)}
+    init_sites = {site(0x3DD9E), site(0x3DDA4)}
+    clear_sites = {site(0x3DE08), site(0x3DE0C)}
+    free_sites = {site(0x3DE00), site(0x3DE04)}
+    generation = None
+    live = False
+    initialized = False
+    partial: tuple[int, int] | None = None
+    for slot, addr, width, access, value, pc in events:
+        if slot == 17:
+            if access != "W" or not slot_address <= addr < slot_address + 4:
+                errors.append("pointer watch has an unexpected access")
+                live = False
+                continue
+            if pc not in expected:
+                errors.append("unexpected pointer-slot writer")
+                live = False
+                generation = None
+                partial = None
+                continue
+            if width == "L" and addr == slot_address and partial is None:
+                generation = value
+            elif width == "W" and addr == slot_address and partial is None:
+                partial = (value & 0xFFFF, pc)
+                live = False
+                continue
+            elif (width == "W" and addr == slot_address + 2 and partial is not None
+                  and partial[1] == pc):
+                generation = (partial[0] << 16) | (value & 0xFFFF)
+                partial = None
+            else:
+                errors.append("incomplete or out-of-order pointer store")
+                live = False
+                generation = None
+                partial = None
+                continue
+            live = bool(generation)
+            initialized = False
+            if not live:
+                errors.append("allocation returned a null pointer")
+        elif slot == 18:
+            if (addr != slot_address or access != "R" or pc not in free_sites
+                    or width not in ("L", "W")):
+                errors.append("unrecognized teardown pointer read")
+            live = False
+            initialized = False
+            partial = None
+            # A read hit's logged value is zero in WinUAE, not the freed P.
+        elif slot == 19:
+            if addr != init_address or access != "W" or width != "B":
+                errors.append("unrecognized initialization-byte write")
+                live = False
+            elif pc in init_sites and value == 1:
+                initialized = live and partial is None
+            elif pc in clear_sites and value == 0:
+                initialized = False
+                live = False
+            else:
+                errors.append("initialization-byte writer or value differs")
+                initialized = False
+                live = False
+    if partial is not None:
+        errors.append("pointer longword store is incomplete")
+    if generation != pointer or pointer == 0 or init != 1:
+        errors.append("sampled pointer or initialization differs from the new generation")
+    if not live or not initialized:
+        errors.append("no live initialized cursor generation")
+    return {"cursor_qualified": not errors, "pointer": generation,
+            "requested_bytes": 76, "request_flags": 0x10003,
+            "events": len(events), "errors": errors}
 
 
 def _u(raw: bytes) -> int:
@@ -104,6 +211,9 @@ def pinned_executable() -> dict:
     code = exe.hunks[0]
     require(data is not None and code.kind == "CODE" and code.file_offset is not None,
             "the pinned executable has no expected code/data hunks")
+    require(code.file_offset == 0x28 and data.file_offset == 0x449A0
+            and code.size > 0x3DE10 - code.file_offset,
+            "the pinned cursor relocations do not fit the executable hunks")
     jumps = []
     for offset in (0, 6, 12):
         blob = raw[data.file_offset + offset:data.file_offset + offset + 6]
@@ -121,7 +231,9 @@ def pinned_executable() -> dict:
                 "the executable's dialog handler differs")
         handlers[kind] = (relative, raw[file_at:file_at + 4])
     return {"jumps": tuple(jumps), "handlers": handlers,
-            "code_size": code.size, "sha256": EXE_SHA256}
+            "code_size": code.size, "sha256": EXE_SHA256,
+            "cursor_sites": {offset: raw[offset:offset + 4] for offset in
+                             (0x3DD4C, 0x3DD9E, 0x3DE00, 0x3DE08)}}
 
 
 def relocated_handlers(target, pinned: dict) -> dict[int, int]:
@@ -272,6 +384,120 @@ def _private_observation(folder: pathlib.Path, label: str, state: dict) -> dict:
     return {"order": label, "time": state["time"],
             "sha256": hashlib.sha256(blob).hexdigest(),
             "script_sha256": hashlib.sha256(state["pointed"]["script"]).hexdigest()}
+
+
+class CursorTrace:
+    """Own only this run's three cursor watches and private console log."""
+
+    def __init__(self, guest, target, holder: str, remote: str,
+                 folder: pathlib.Path, pinned: dict, report: dict):
+        require(holder == "wish365-ecl01"
+                and getattr(guest, "_cursor_log", None) == (holder, remote),
+                "cursor trace needs its guest's generated holder log")
+        self.guest, self.target, self.holder = guest, target, holder
+        self.remote, self.folder, self.pinned, self.report = remote, folder, pinned, report
+        self.pipe = getattr(target, "debugger", None)
+        self.code_base: int | None = None
+        self.armed = False
+        self.prefix: bytes | None = None
+
+    def arm(self) -> None:
+        require(isinstance(self.pipe, amiga.WinuaePipe)
+                and self.pipe is self.target.debugger
+                and self.pipe.holder == self.holder,
+                "cursor reports need this holder's real WinUAE pipe")
+        if getattr(self.target, "data_base", None) is None:
+            self.target.locate()
+        elif getattr(self.target, "anchor_base", None) is not None:
+            self.target.check_base()
+        handlers = relocated_handlers(self.target, self.pinned)
+        base = handlers[1] - self.pinned["handlers"][1][0]
+        for offset, blob in self.pinned["cursor_sites"].items():
+            address = base + offset - 0x28
+            _range(self.target, address, len(blob), "cursor code site")
+            require(self.target.read(address, len(blob)) == blob,
+                    "live cursor code differs from the pinned executable")
+        self.code_base = base
+        self.armed = True  # Even a partial install has slots to remove.
+        addresses = self.pipe.install_cursor_reports(self.holder, self.target.data_base,
+                                                     base)
+        self.report["cursor_observation"] = {"status": "armed before B load",
+                                             "addresses": addresses,
+                                             "cursor_qualified": False,
+                                             "allocation_qualified": False}
+
+    def _copy(self, label: str) -> bytes:
+        path = self.folder / f"cursor-{label}.log"
+        require(not path.exists() and not path.is_symlink(),
+                "cursor log copy already exists")
+        require(self.folder.stat().st_uid == os.getuid()
+                and stat.S_IMODE(self.folder.stat().st_mode) == 0o700,
+                "cursor log folder is not owner-private")
+        self.guest.get(self.remote, path, timeout=20)
+        path.chmod(0o600)
+        require(path.stat().st_uid == os.getuid()
+                and stat.S_IMODE(path.stat().st_mode) == 0o600,
+                "cursor log copy is not owner-private")
+        blob = path.read_bytes()
+        require(bool(blob) and len(blob) <= 1_000_000,
+                "cursor log is missing or exceeds its bounded evidence size")
+        self.report["cursor_observation"].setdefault("logs", []).append({
+            "path": str(path), "bytes": len(blob),
+            "sha256": hashlib.sha256(blob).hexdigest()})
+        return blob
+
+    def before_movement(self) -> None:
+        require(self.armed and self.code_base is not None,
+                "cursor watchers were not armed before loading B")
+        blob = self._copy("before-movement")
+        self.prefix = blob
+        d = self.target.data_base
+        pointer = _u(self.target.read(d + 0x383C, 4))
+        init = _u(self.target.read(d + 0x2932, 1))
+        _range(self.target, pointer, 76, "cursor requested object")
+        result = classify_cursor_log(blob.decode("ascii"), d, self.code_base,
+                                     pointer, init, complete=False)
+        self.report["cursor_observation"]["before_movement"] = result
+        require(result["cursor_qualified"],
+                "no new complete cursor initialization before movement")
+
+    def finish(self) -> None:
+        if not self.armed:
+            return
+        removed = self.pipe.remove_cursor_reports(self.holder)
+        self.armed = False
+        report = self.report.setdefault("cursor_observation", {"cursor_qualified": False,
+                                                                "allocation_qualified": False})
+        report["removed"] = removed
+        blob = self._copy("complete")
+        if self.prefix is None or not blob.startswith(self.prefix):
+            report["status"] = "incomplete log prefix"
+            return
+        d = self.target.data_base
+        pointer = _u(self.target.read(d + 0x383C, 4))
+        init = _u(self.target.read(d + 0x2932, 1))
+        _range(self.target, pointer, 76, "cursor requested object")
+        result = classify_cursor_log(blob.decode("ascii"), d, self.code_base,
+                                     pointer, init, complete=True)
+        candidate = self.report.get("candidate_observation", {})
+        if candidate.get("status") == "sampled rejected-chance candidate":
+            for move in candidate.get("moves", []):
+                if move.get("outcome") != "candidate":
+                    continue
+                index = move["index"]
+                for bracket in range(2):
+                    for stage in ("pre", "post"):
+                        saved = self.folder / f"move-{index}-b{bracket}-{stage}.json"
+                        sample = json.loads(saved.read_text())
+                        if _u(bytes.fromhex(sample["direct"]["cursor_pointer"])) != pointer:
+                            result["errors"].append("candidate bracket used another cursor")
+            result["cursor_qualified"] = not result["errors"]
+        report.update(result)
+        report["status"] = ("sampled cursor generation" if result["cursor_qualified"]
+                            else "incomplete cursor lifetime")
+        # A sampled cursor generation does not qualify screen memory, queued
+        # input, natural provenance or the aggregate allocation witness.
+        report["allocation_qualified"] = False
 
 
 def require(ok: bool, reason: str) -> None:
@@ -723,17 +949,20 @@ def observe_step(shots: Screens, target, index: int, before: dict,
 
 
 def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
-          report: dict, *, observe_rejected: bool = False,
-          pinned_exe: dict | None = None, private: pathlib.Path | None = None) -> None:
+           report: dict, *, observe_rejected: bool = False,
+           pinned_exe: dict | None = None, private: pathlib.Path | None = None,
+           cursor_trace: CursorTrace | None = None) -> None:
     """One off snapshot, up to two control moves, then only a matched replay."""
     report["candidate"] = False
     shots.see("title", 250, opening=True)
     previous = "title"
     for key, screen in (("L", "load_picker"), ("B", "loaded_menu"), ("V", "sheet"),
-                        ("E", "loaded_menu")):
+                         ("E", "loaded_menu")):
         shots.press(key)
         shots.see(screen, 40, from_state=previous)
         previous = screen
+        if key == "L" and cursor_trace is not None:
+            cursor_trace.arm()
     shots.press("B")
     shots.world_at(target, (4, 14, 1), 50, from_state="loaded_menu")
     start = live(target, names=True)
@@ -751,6 +980,11 @@ def proof(shots: Screens, target, switch, state, guest, holder, combat_guard,
             "allocation_qualified": False,
             "allocation_limit": "Physical memory and selected span disjointness only; "
                                 "allocation ownership and sizes are unverified"}
+        if cursor_trace is not None:
+            report["candidate_observation"]["allocation_limit"] = (
+                "A 76-byte cursor request is pinned; other allocations, DMA, "
+                "input and aggregate ownership are unverified")
+            cursor_trace.before_movement()
         report["snapshot_attempted"] = {"holder": holder, "name": SNAPSHOT}
         shots.receipt()
         report["snapshot"] = receipt_of(guest.snapshot(SNAPSHOT, holder))
@@ -876,6 +1110,9 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
     manifest = preflight(args, state)
     gate_row()
     observation = getattr(args, "observe_rejected", False)
+    cursor_logging = getattr(args, "cursor_log", False)
+    require(not cursor_logging or observation,
+            "cursor logging is only available in rejected-chance diagnostic mode")
     pinned_exe = pinned_executable() if observation else None
     require(not observation or os.name == "posix",
             "private rejected observations need POSIX owner and mode checks")
@@ -915,17 +1152,27 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
                                   "canonical": str(combat_reference),
                                   "canonical_sha256": sha256(combat_reference)}
     guest = guest or WinGuest()
+    cursor_remote = (guest.prepare_cursor_console_log(args.holder)
+                     if cursor_logging else None)
+    if cursor_remote is not None:
+        report["cursor_console_log"] = cursor_remote
+        report["cursor_observation"] = {"status": "incomplete",
+                                        "cursor_qualified": False,
+                                        "allocation_qualified": False}
     guards = guards or screens.PixelGuards(args.guards)
     identity = identity or screens.PixelGuards(args.identity)
     booted = False
     switch = None
     shots = None
+    cursor_trace = None
     old_alarm = signal.getsignal(signal.SIGALRM)
     alarm_set = False
     command = [str(pathlib.Path(__file__)), "--manifest", str(args.manifest),
                 "--holder", args.holder, "--out", str(args.out)]
     if observation:
         command.append("--observe-rejected")
+    if cursor_logging:
+        command.append("--cursor-log")
     def receipt():
         record(args.out / "summary.json", report)
         if observation:
@@ -948,6 +1195,9 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
         receipt()
         target = target or amiga.AmigaTarget(amiga.WinuaePipe(holder=args.holder),
                                             amiga.MACHINES[TITLE])
+        if cursor_logging:
+            cursor_trace = CursorTrace(guest, target, args.holder, cursor_remote,
+                                       private, pinned_exe, report)
         if observation:
             shots = Screens(guest, args.holder, args.out / "shots", guards, identity,
                             route_end, report, receipt, private=True)
@@ -982,7 +1232,8 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
 
         if observation:
             proof(shots, target, None, state, guest, args.holder, combat_guard,
-                  report, observe_rejected=True, pinned_exe=pinned_exe, private=private)
+                  report, observe_rejected=True, pinned_exe=pinned_exe, private=private,
+                  cursor_trace=cursor_trace)
         else:
             switch = switch_factory(press_when_patched)
             proof(shots, target, switch, state, guest, args.holder, combat_guard, report)
@@ -996,6 +1247,18 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
         if shots is not None:
             report["screens"] = shots.events
         if booted:
+            watches_ok = True
+            if cursor_trace is not None:
+                try:
+                    with bounded_until(min(time.monotonic() + 60, total_end - 90)):
+                        cursor_trace.finish()
+                except BaseException as exc:
+                    watches_ok = not cursor_trace.armed
+                    report["cleanup"].append({"cursor_log_error":
+                                              f"{type(exc).__name__}: {exc}"})
+                if not watches_ok:
+                    report["cleanup"].append({"watch_removal_error":
+                                              "owned cursor watches remain unverified"})
             off_ok = False
             off_deadline = min(time.monotonic() + 90, total_end - 90)
             try:
@@ -1010,7 +1273,7 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
                 off_ok = True
             except BaseException as exc:
                 report["cleanup"].append({"off_error": f"{type(exc).__name__}: {exc}"})
-            if report.get("snapshot_attempted") and off_ok:
+            if report.get("snapshot_attempted") and off_ok and watches_ok:
                 snapshot_deadline = min(time.monotonic() + 120, total_end - 90)
                 restored = False
                 if report.get("snapshot_taken"):
@@ -1041,8 +1304,9 @@ def run(args: argparse.Namespace, *, guest=None, target=None, switch_factory=Non
                     report["snapshot_unresolved"] = {
                         "holder": args.holder, "name": SNAPSHOT,
                         "exists": None, "discard_attempted": False}
-            if report.get("snapshot_attempted") and not off_ok:
-                report["cleanup"].append({"snapshot_skipped": "off was not verified"})
+            if report.get("snapshot_attempted") and (not off_ok or not watches_ok):
+                report["cleanup"].append({"snapshot_skipped":
+                                          "off or cursor-watch removal was not verified"})
             remaining = total_end - time.monotonic()
             fetch = remaining >= 150
             if not fetch:
@@ -1126,6 +1390,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--holder", required=True)
     parser.add_argument("--wait-lane", type=float, default=0)
     parser.add_argument("--observe-rejected", action="store_true")
+    parser.add_argument("--cursor-log", action="store_true")
     args = parser.parse_args(argv)
     with terminating():
         result = run(args)
@@ -1133,6 +1398,8 @@ def main(argv: list[str] | None = None) -> int:
               "branch_witness_verified", "branch_witness_reason")
     if args.observe_rejected:
         fields += ("candidate_observation",)
+    if args.cursor_log:
+        fields += ("cursor_observation",)
     print(json.dumps({k: result.get(k) for k in fields},
                       sort_keys=True))
     return 1

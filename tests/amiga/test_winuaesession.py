@@ -165,6 +165,26 @@ def test_lane_reads_the_lane_number_from_a_reply_that_names_the_pipe(clock):
     assert guest.lane("wish282-x", 5) == 2
 
 
+def test_cursor_console_log_is_private_to_one_holder_and_not_a_default_launch(monkeypatch):
+    monkeypatch.setattr(winuaesession.secrets, "token_hex", lambda count: "a" * (2 * count))
+    guest = Guest()
+    guest.start("wish365-ecl01", "C:/Amiga/Disks/generated.adf", timeout=5)
+    assert "conlogfile" not in guest.sent[-1][1]
+    remote = guest.prepare_cursor_console_log("wish365-ecl01")
+    assert remote == "C:\\Amiga\\Disks\\wish365-wish365-ecl01-" + "a" * 24 + ".log"
+    guest.start("wish365-ecl01", "C:/Amiga/Disks/generated.adf", timeout=5)
+    assert f'-conlogfile "{remote}"' in guest.sent[-1][1]
+    assert "-log " not in guest.sent[-1][1] and "-console" not in guest.sent[-1][1]
+    sent = len(guest.sent)
+    with pytest.raises(winuaesession.RouteError, match="different holder"):
+        guest.start("another-holder", timeout=5)
+    assert len(guest.sent) == sent
+    with pytest.raises(winuaesession.RouteError, match="fresh Curse holder"):
+        guest.prepare_cursor_console_log("wish365-ecl01")
+    with pytest.raises(winuaesession.RouteError, match="fresh Curse holder"):
+        Guest().prepare_cursor_console_log("another-holder")
+
+
 def test_lane_stops_on_a_reply_that_names_no_lane(clock):
     with pytest.raises(winuaesession.RouteError, match="names no lane"):
         Guest(["ok pid=4242"]).lane("wish282-x", 5)

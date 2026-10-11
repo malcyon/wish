@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from automap import amiga, gamedisks
 from tools.amiga import cursegateproof as proof
 from tools.amiga import screens as screen_rules
 from tools.amiga.winuaesession import RouteError
@@ -986,13 +987,17 @@ def observer_memory(monkeypatch):
     handlers = {kind: (relative, b"TEST") for kind, relative in handler_rels.items()}
     for kind, (relative, prefix) in handlers.items():
         target.put(target.code + relative, prefix)
+    sites = {offset: b"SITE" for offset in (0x3DD4C, 0x3DD9E, 0x3DE00, 0x3DE08)}
+    for offset, prefix in sites.items():
+        target.put(target.code + offset - 0x28, prefix)
     for index, kind in enumerate((1, 5)):
         item = bytearray(32)
         item[:4] = (target.code + handler_rels[kind]).to_bytes(4, "big")
         item[0x1C] = 0x80
         target.put(d + 0x39F8 + 32 * index, item)
     synthetic = {"jumps": jump, "handlers": handlers,
-                 "code_size": 0x44938, "sha256": "synthetic"}
+                 "code_size": 0x44938, "sha256": "synthetic",
+                 "cursor_sites": sites}
     monkeypatch.setattr(proof, "ECL_SHA256", hashlib.sha256(script).hexdigest())
     monkeypatch.setattr(proof, "ENTRY", hashlib.sha256(ENTRY_BYTES).hexdigest()[:8])
     monkeypatch.setattr(proof, "live", lambda target, **kw: {
@@ -1159,4 +1164,208 @@ def test_observe_rejected_cli_passes_opt_in_and_never_exits_zero(monkeypatch, tm
     assert received == [True]
     displayed = json.loads(capsys.readouterr().out)
     assert displayed["candidate_observation"]["status"] == "sampled rejected-chance candidate"
+    assert displayed["branch_witness_verified"] is False
+
+
+def _cursor_hit(slot, addr, width, access, value, pc):
+    return (f"Memwatch {slot}: break at {addr:08X}.{width} "
+            f"{'R' if access == 'R' else ' '}{'W' if access == 'W' else ' '}  "
+            f"{value:08X} PC={pc:08X} CPUD{access} (001)\n")
+
+
+def _cursor_events(*, split=False):
+    d, c, p = 0x10000, 0xA0000, 0x180000
+    store = c + 0x3DD50 - 0x28
+    flag = c + 0x3DDA4 - 0x28
+    prefix = "Memwatch breakpoints enabled\n"
+    if split:
+        prefix += _cursor_hit(17, d + 0x383C, "W", "W", p >> 16, store)
+        prefix += _cursor_hit(17, d + 0x383E, "W", "W", p & 0xFFFF, store)
+    else:
+        prefix += _cursor_hit(17, d + 0x383C, "L", "W", p, store)
+    prefix += _cursor_hit(19, d + 0x2932, "B", "W", 1, flag)
+    return prefix, d, c, p
+
+
+def test_generated_complete_cursor_generation_is_only_cursor_qualified():
+    prefix, d, c, p = _cursor_events(split=True)
+    assert proof.classify_cursor_log(prefix, d, c, p, 1, complete=False)[
+        "cursor_qualified"] is True
+    done = prefix + "Memwatch 19 removed\nMemwatch 18 removed\nMemwatch 17 removed\n"
+    result = proof.classify_cursor_log(done, d, c, p, 1, complete=True)
+    assert result["cursor_qualified"] is True
+    assert result["requested_bytes"] == 76 and result["request_flags"] == 0x10003
+    assert "allocation_qualified" not in result
+
+
+@pytest.mark.parametrize("failure", [
+    "missing", "null", "partial", "stale_after_free", "reuse_without_store",
+    "unexpected_writer", "relocation", "truncated", "malformed", "wrong_order",
+    "unsafe_access", "foreign_pointer", "missing_footer", "events_after_remove",
+    "missing_initialization", "flag_cleared", "split_wrong_endian",
+])
+def test_generated_cursor_log_rejects_missing_or_unsafe_generations(failure):
+    prefix, d, c, p = _cursor_events()
+    complete = True
+    footer = "Memwatch 19 removed\nMemwatch 18 removed\nMemwatch 17 removed\n"
+    if failure == "missing":
+        prefix = "Memwatch breakpoints enabled\n"
+    elif failure == "null":
+        prefix = prefix.replace(f"{p:08X} PC=", "00000000 PC=")
+    elif failure == "partial":
+        prefix, _, _, _ = _cursor_events(split=True)
+        prefix = prefix.replace(_cursor_hit(17, d + 0x383E, "W", "W", 0,
+                                         c + 0x3DD50 - 0x28), "")
+    elif failure in ("stale_after_free", "reuse_without_store"):
+        prefix += _cursor_hit(18, d + 0x383C, "L", "R", 0,
+                              c + 0x3DE04 - 0x28)
+        if failure == "reuse_without_store":
+            prefix += _cursor_hit(19, d + 0x2932, "B", "W", 1,
+                                  c + 0x3DDA4 - 0x28)
+    elif failure == "unexpected_writer":
+        prefix += _cursor_hit(17, d + 0x383C, "L", "W", p,
+                              c + 0x3E000 - 0x28)
+    elif failure == "relocation":
+        c += 2
+    elif failure == "truncated":
+        prefix = prefix[:-4]
+        footer = ""
+    elif failure == "malformed":
+        prefix += "Memwatch 17: corrupted event\n"
+    elif failure == "wrong_order":
+        prefix = prefix.replace("Memwatch 17:", "Memwatch 18:", 1)
+    elif failure == "unsafe_access":
+        prefix = prefix.replace("CPUDW", "CPUDR", 1)
+    elif failure == "foreign_pointer":
+        p += 4
+    elif failure == "missing_initialization":
+        prefix = prefix.replace(_cursor_hit(19, d + 0x2932, "B", "W", 1,
+                                            c + 0x3DDA4 - 0x28), "")
+    elif failure == "flag_cleared":
+        prefix += _cursor_hit(19, d + 0x2932, "B", "W", 0,
+                              c + 0x3DE0C - 0x28)
+    elif failure == "split_wrong_endian":
+        split, _, _, _ = _cursor_events(split=True)
+        high = _cursor_hit(17, d + 0x383C, "W", "W", p >> 16,
+                            c + 0x3DD50 - 0x28)
+        low = _cursor_hit(17, d + 0x383E, "W", "W", p & 0xFFFF,
+                           c + 0x3DD50 - 0x28)
+        prefix = split.replace(high + low, low + high)
+    elif failure == "missing_footer":
+        footer = ""
+    else:
+        footer += _cursor_hit(17, d + 0x383C, "L", "W", p,
+                              c + 0x3DD50 - 0x28)
+    result = proof.classify_cursor_log(prefix + footer, d, c, p, 1,
+                                       complete=complete)
+    assert result["cursor_qualified"] is False, failure
+    assert result["errors"], failure
+
+
+def test_cursor_trace_arms_after_guarded_picker_and_stops_before_movement_without_init(
+        scenario, monkeypatch, tmp_path):
+    class Trace:
+        calls = []
+
+        def arm(self):
+            self.calls.append(("arm", list(scenario.shots.keys)))
+
+        def before_movement(self):
+            self.calls.append(("before", list(scenario.shots.keys)))
+            raise RouteError("no new complete cursor initialization before movement")
+
+    monkeypatch.setattr(proof, "observe_state", lambda *a: {"reading": scenario.reading()})
+    trace = Trace()
+    with pytest.raises(RouteError, match="before movement"):
+        proof.proof(scenario.shots, scenario.pipe, None, scenario.journal,
+                    scenario.guest, "synthetic", lambda image: False,
+                    {"verdict": "inconclusive", "branch_witness_verified": False},
+                    observe_rejected=True, pinned_exe={"sha256": "synthetic"},
+                    private=tmp_path, cursor_trace=trace)
+    assert trace.calls == [("arm", ["L"]),
+                           ("before", ["L", "B", "V", "E", "B"])]
+    assert "NP2" not in scenario.shots.keys and "NP8" not in scenario.shots.keys
+
+
+@pytest.fixture
+def cursor_arm(observer_memory, monkeypatch, tmp_path):
+    target, pinned = observer_memory
+    own_pipe = amiga.WinuaePipe(holder="wish365-ecl01", runner=lambda *a: None)
+    target.debugger = own_pipe
+    calls = []
+    monkeypatch.setattr(own_pipe, "install_cursor_reports", lambda *a: calls.append(a))
+    guest = type("Guest", (), {"_cursor_log": ("wish365-ecl01", "generated-remote")})()
+    trace = proof.CursorTrace(guest, target, "wish365-ecl01", "generated-remote",
+                               tmp_path, pinned, {})
+    return target, trace, calls
+
+
+@pytest.mark.parametrize("failure,match", [
+    ("site", "live cursor code differs"),
+    ("jump", "live jumps disagree"),
+])
+def test_generated_code_must_match_before_cursor_watch_arm(cursor_arm, failure, match):
+    target, trace, calls = cursor_arm
+    if failure == "site":
+        target.put(target.code + 0x3DE00 - 0x28, b"FAIL")
+    else:
+        target.put(target.data_base + 6, b"\x4e\xf9" +
+                   (target.code + 100).to_bytes(4, "big"))
+    with pytest.raises(RouteError, match=match):
+        trace.arm()
+    assert calls == [] and trace.armed is False
+
+
+def test_generated_code_and_claimed_pipe_arm_once(cursor_arm):
+    target, trace, calls = cursor_arm
+    trace.arm()
+    assert len(calls) == 1 and trace.armed is True
+    assert trace.pipe is target.debugger
+
+
+@pytest.mark.parametrize("holder", ["foreign-holder", "wish365-ecl01"])
+def test_replaced_debugger_cannot_arm_cached_cursor_pipe(cursor_arm, monkeypatch, holder):
+    target, trace, calls = cursor_arm
+    replacement = amiga.WinuaePipe(holder=holder, runner=lambda *a: None)
+    replacement_calls = []
+    monkeypatch.setattr(replacement, "install_cursor_reports",
+                        lambda *a: replacement_calls.append(a))
+    target.debugger = replacement
+    with pytest.raises(RouteError, match="holder's real WinUAE pipe"):
+        trace.arm()
+    assert calls == replacement_calls == [] and trace.armed is False
+
+
+def test_registered_curse_executable_pins_the_four_cursor_sites_without_copying_bytes():
+    if gamedisks.find("amiga") is None:
+        pytest.skip("no registered Amiga game disks")
+    pinned = proof.pinned_executable()
+    assert pinned["sha256"] == proof.EXE_SHA256
+    assert set(pinned["cursor_sites"]) == {0x3DD4C, 0x3DD9E, 0x3DE00, 0x3DE08}
+    assert all(len(blob) == 4 for blob in pinned["cursor_sites"].values())
+
+
+def test_cursor_log_cli_is_explicit_and_never_promotes_aggregate_or_exit(
+        monkeypatch, tmp_path, capsys):
+    from contextlib import nullcontext
+
+    received = []
+
+    def diagnostic(args):
+        received.append((args.observe_rejected, args.cursor_log))
+        return {"verdict": "inconclusive", "candidate": False,
+                "branch_witness_verified": False,
+                "candidate_observation": {"allocation_qualified": False},
+                "cursor_observation": {"cursor_qualified": True,
+                                       "allocation_qualified": False}}
+
+    monkeypatch.setattr(proof, "run", diagnostic)
+    monkeypatch.setattr(proof, "terminating", nullcontext)
+    argv = [option for key in ("manifest", "guards", "identity", "audio-proof", "out", "holder")
+            for option in (f"--{key}", str(tmp_path / f"generated-{key}"))]
+    assert proof.main([*argv, "--observe-rejected", "--cursor-log"]) != 0
+    assert received == [(True, True)]
+    displayed = json.loads(capsys.readouterr().out)
+    assert displayed["candidate_observation"]["allocation_qualified"] is False
+    assert displayed["cursor_observation"]["cursor_qualified"] is True
     assert displayed["branch_witness_verified"] is False

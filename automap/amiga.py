@@ -521,6 +521,14 @@ def _blob(out: str, name: str) -> bytes | None:
 #: of whoever is playing, which is the one thing this route exists to avoid.
 SAFE_COMMANDS = frozenset("mSWT")
 
+# These three numbered slots belong only to the opt-in Curse cursor trace on a
+# newly started, holder-claimed emulator. General debugger commands stay guarded.
+CURSOR_WATCH_SLOTS = (17, 18, 19)
+_CURSOR_REPORT_COMMAND = re.compile(
+    r"w(?:| 1[789]| 17 [0-9a-f]{1,8} 4 WL|"
+    r" 18 [0-9a-f]{1,8} 4 RLPC[0-9a-f]{1,8}|"
+    r" 19 [0-9a-f]{1,8} 1 WL)")
+
 
 class PipeError(GuestError):
     """The pipe would not open, or the guest could not be reached.
@@ -1179,6 +1187,62 @@ class WinuaePipe:
         self.holder = holder
         #: Every command this session sent, for a run log.
         self.sent: list[str] = []
+        self._cursor_owned: list[int] = []
+
+    def _cursor_report_command(self, command: str) -> str:
+        """Send only a command assembled by the typed cursor-watch methods."""
+        if (self.connection != "ssh" or self.holder != "wish365-ecl01"
+                or not _CURSOR_REPORT_COMMAND.fullmatch(command)):
+            raise ValueError("cursor trace blocks an unsafe debugger command")
+        self.sent.append(command)
+        out = self._execute(self._framed(["DBG " + command]))
+        return self._replies(out, [command])[0][0][1].strip()
+
+    def install_cursor_reports(self, holder: str, data_base: int,
+                               code_base: int) -> dict[str, int]:
+        """Arm three report-only watches in a fresh, claimed Curse process."""
+        if (self.connection != "ssh" or self.holder != holder
+                or holder != "wish365-ecl01" or self._cursor_owned):
+            raise ValueError("cursor reports need their own claimed Curse holder")
+        if (any(type(value) is not int or value < 0 or value & 1
+                for value in (data_base, code_base))
+                or data_base + 0x383F > 0xFFFFFFFF
+                or code_base + 0x3DE04 - 0x28 > 0xFFFFFFFF):
+            raise ValueError("cursor report relocations are invalid")
+        # `w` prints this only while enabling previously inactive memwatch.
+        # A running watch owner, including one restored from a state, blocks us.
+        if self._cursor_report_command("w") != "Memwatch breakpoints enabled":
+            raise PipeError("cursor watch slots were not proven fresh")
+        addresses = {"pointer": data_base + 0x383C,
+                     "teardown": code_base + 0x3DE00 - 0x28,
+                     "initialization": data_base + 0x2932}
+        commands = (
+            f"w 17 {addresses['pointer']:x} 4 WL",
+            # WinUAE 6.0.3 consumes `PC` then readhex directly: `PC=...`
+            # silently reads zero and never reports the teardown read.
+            f"w 18 {addresses['pointer']:x} 4 RLPC{addresses['teardown']:x}",
+            f"w 19 {addresses['initialization']:x} 1 WL",
+        )
+        for slot, command in zip(CURSOR_WATCH_SLOTS, commands):
+            # WinUAE's `memwatch_dump` uses `f_out(stdout)` and does not answer
+            # through DBG without a console; 404 is not installation proof.
+            # Retain this slot even on an ambiguous reply so cleanup tries it.
+            self._cursor_owned.append(slot)
+            if self._cursor_report_command(command) != "404":
+                raise PipeError(f"cursor watch {slot} did not return its expected pipe reply")
+        return addresses
+
+    def remove_cursor_reports(self, holder: str) -> list[int]:
+        """Remove only slots installed by this object; verify each removal reply."""
+        if self.connection != "ssh" or self.holder != holder or holder != "wish365-ecl01":
+            raise ValueError("cursor watch removal needs its original holder")
+        removed = []
+        for slot in tuple(reversed(self._cursor_owned)):
+            if self._cursor_report_command(f"w {slot}") != f"Memwatch {slot} removed":
+                raise PipeError(f"cursor watch {slot} removal was not verified")
+            self._cursor_owned.remove(slot)
+            removed.append(slot)
+        return removed
 
     # -- the guest script ------------------------------------------------
 

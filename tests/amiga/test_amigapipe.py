@@ -124,6 +124,75 @@ def pipe(memory=None, guest=None, **kwargs):
     return amiga.WinuaePipe(runner=guest, **kwargs), guest
 
 
+class CursorWatchGuest(PipeGuest):
+    """Synthetic WinUAE replies for three newly owned report-only slots."""
+
+    def __init__(self):
+        super().__init__()
+        self.enabled = False
+
+    def _answer(self, command, dumps):
+        if command == "w":
+            if self.enabled:
+                return "404\n\x00"
+            self.enabled = True
+            return "Memwatch breakpoints enabled\n\x00"
+        if command in ("w 17", "w 18", "w 19"):
+            return f"Memwatch {command.split()[1]} removed\n\x00"
+        if command.startswith("w "):
+            return "404\n\x00"  # WinUAE's dump goes to stdout, not DBG.
+        return super()._answer(command, dumps)
+
+
+def test_cursor_reports_use_only_three_holder_bound_log_only_slots():
+    target, fake = pipe(guest=CursorWatchGuest(), holder="wish365-ecl01")
+    sites = target.install_cursor_reports("wish365-ecl01", 0xC10000, 0xC20000)
+    assert sites == {"pointer": 0xC1383C, "teardown": 0xC5DDD8,
+                     "initialization": 0xC12932}
+    sent = [cmd for script in fake.scripts for cmd in fake.commands(script)]
+    assert sent == ["DBG w", "DBG w 17 c1383c 4 WL",
+                    "DBG w 18 c1383c 4 RLPCc5ddd8", "DBG w 19 c12932 1 WL"]
+    assert target.remove_cursor_reports("wish365-ecl01") == [19, 18, 17]
+    assert target._cursor_owned == []
+    assert [cmd for script in fake.scripts[-3:] for cmd in fake.commands(script)] == [
+        "DBG w 19", "DBG w 18", "DBG w 17"]
+
+
+def test_cursor_watch_setup_cannot_reuse_enabled_slots_or_foreign_holder():
+    target, fake = pipe(guest=CursorWatchGuest(), holder="wish365-ecl01")
+    fake.enabled = True
+    with pytest.raises(amiga.PipeError, match="not proven fresh"):
+        target.install_cursor_reports("wish365-ecl01", 0xC10000, 0xC20000)
+    assert target._cursor_owned == []
+    with pytest.raises(ValueError, match="original holder"):
+        target.remove_cursor_reports("another-holder")
+    foreign, foreign_guest = pipe(guest=CursorWatchGuest(), holder="another-holder")
+    with pytest.raises(ValueError, match="claimed Curse holder"):
+        foreign.install_cursor_reports("wish365-ecl01", 0xC10000, 0xC20000)
+    assert foreign_guest.scripts == []
+    with pytest.raises(ValueError):
+        target.script(["w 17 c1383c 4 WL"])
+    for unsafe in ("g", "w -", "w 17 c1383c 4 W", "w 17 c1383c 4 WN",
+                   "w 18 c1383c 4 RLPC=c5ddd8",
+                   "w 17 c1383c 4 WL;g", "w 4 c1383c 4 WL"):
+        with pytest.raises(ValueError, match="unsafe debugger command"):
+            target._cursor_report_command(unsafe)
+
+
+def test_cursor_watch_removal_failure_retains_only_the_unverified_owned_slot():
+    class BrokenRemoval(CursorWatchGuest):
+        def _answer(self, command, dumps):
+            if command == "w 18":
+                return "404\n\x00"
+            return super()._answer(command, dumps)
+
+    target, _ = pipe(guest=BrokenRemoval(), holder="wish365-ecl01")
+    target.install_cursor_reports("wish365-ecl01", 0xC10000, 0xC20000)
+    with pytest.raises(amiga.PipeError, match="18 removal was not verified"):
+        target.remove_cursor_reports("wish365-ecl01")
+    assert target._cursor_owned == [17, 18]
+
+
 # -- the framing --------------------------------------------------------------
 
 

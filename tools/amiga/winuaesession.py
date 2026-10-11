@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import signal
 import subprocess
 import sys
@@ -62,6 +63,7 @@ class WinGuest:
         self.last_shot: dict[str, Any] | None = None
         #: Called with the state name and the error each time `capture` retries a timed-out shot.
         self.on_shot_retry: Callable[[str, RouteError], None] | None = None
+        self._cursor_log: tuple[str, str] | None = None
 
     @staticmethod
     def remote_path(issue: str, holder: str, key: str) -> str:
@@ -253,15 +255,28 @@ class WinGuest:
         return receipt
 
     def start(self, holder: str, *drives: str | None, timeout: float,
-              options: tuple[str, ...] = (), config: str = BOOT_CONFIG) -> str:
+               options: tuple[str, ...] = (), config: str = BOOT_CONFIG) -> str:
         """Start WinUAE with `drives` in DF0 upward; None ejects a drive the template fills."""
         settings = [f"-s floppy{n}=" + ("" if path is None else path.replace("/", "\\"))
                     for n, path in enumerate(drives)]
         settings += [f"-s {option}" for option in options]
         settings += ["-s joyport1=none", "-s sound_output=interrupts"]
+        if self._cursor_log is not None:
+            if holder != self._cursor_log[0]:
+                raise RouteError("cursor console log belongs to a different holder")
+            settings += [f'-conlogfile "{self._cursor_log[1]}"']
         if config != BOOT_CONFIG and config != self.private_config_path(holder):
             raise RouteError("start config is not this holder's private config")
         return self._lane(holder, f"start -f {config} {' '.join(settings)}", timeout)
+
+    def prepare_cursor_console_log(self, holder: str) -> str:
+        """Select a new holder-named Windows file before the owned emulator boots."""
+        if holder != "wish365-ecl01" or self._cursor_log is not None:
+            raise RouteError("cursor logging needs a fresh Curse holder")
+        path = (rf"C:\Amiga\Disks\wish365-{holder}-"
+                f"{secrets.token_hex(12)}.log")
+        self._cursor_log = (holder, path)
+        return path
 
     @staticmethod
     def private_config_path(holder: str) -> str:
