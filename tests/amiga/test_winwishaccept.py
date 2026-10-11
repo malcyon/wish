@@ -1772,6 +1772,47 @@ def test_second_page_modes_stop_at_first_match_or_send_only_one_more_guarded_ret
                for name in ("load", "stationary", "walk", "transition", "reload", "reopen"))
 
 
+def test_after_second_needs_a_new_exact_frame_and_keeps_all_inexact_raws(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-after-second",
+        (b"second", b"partial", b"partial", b"partial"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    previous = game.grab
+    def grab(state, raw, crop, timeout):
+        exact = previous(state, raw, crop, timeout)
+        if state == "ssb_opening_after_second_unknown":
+            pathlib.Path(crop).unlink()
+            return False
+        return exact
+    game.grab = grab
+    result = controller.run_opening_second()
+    frames = result["discovery"]["evidence"]
+    assert "no exact terminal crop" in result["failure"]
+    assert result["discovery"]["status"] == "failed"
+    assert len(frames) == 4 and frames[0]["crop"] is not None
+    assert all(frame["crop"] is None and frame["shot_source"]["source"] == "winuae-pipe"
+               and pathlib.Path(frame["raw"]).is_file() for frame in frames[1:])
+    assert "ssb_opening_second" in result["checkpoints"]
+    assert "ssb_opening_after_second" not in result["checkpoints"]
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET", "RET"]
+    assert ("down",) in calls
+
+
+def test_unknown_capture_with_prior_exact_frame_and_expired_window_takes_no_new_shot(
+        tmp_path, monkeypatch):
+    controller, game, clock, _, _ = _opening_controller(tmp_path, monkeypatch)
+    previous = {"raw": "prior.raw.png", "crop": "prior.png",
+                "shot_source": {"source": "winuae-pipe", "pid": 12, "counter": 1}}
+    controller.summary["discovery"] = winwishaccept.row(evidence=[previous])
+    game.grab = lambda *args: pytest.fail("capture started after its deadline")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="no terminal pipe frame"):
+        controller._capture_unknown_frames("ssb_opening_after_second_unknown", "after-second",
+                                           clock() - 1)
+    assert controller.summary["discovery"]["evidence"] == [previous]
+
+
 @pytest.mark.parametrize("frames", [(b"partial", b"partial", b"partial"),
                                      (b"partial", b"partial", b"second")])
 def test_second_page_mismatch_or_late_match_preserves_frames_without_extra_return(

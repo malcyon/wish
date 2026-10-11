@@ -1273,10 +1273,11 @@ class Controller:
     def _capture_unknown_frames(self, state: str, prefix: str, end: float,
                                 *, stop_guard: str | None = None) -> dict[str, Any]:
         frames = self.summary["discovery"]["evidence"]
+        start = len(frames)
         for number in range(3):
             remaining = end - self.clock()
             if remaining <= 0:
-                if not frames:
+                if len(frames) == start:
                     raise AcceptanceStop("no terminal pipe frame within five seconds")
                 break
             raw = self.out / f"{prefix}-{number}.raw.png"
@@ -1306,9 +1307,10 @@ class Controller:
                 raise AcceptanceStop("exact terminal crop has no fresh valid pipe shot provenance")
             if exact and self.clock() <= end and stop_guard and self.guards(stop_guard, crop):
                 return frame
-        if not frames or self.clock() > end:
+        current_frames = frames[start:]
+        if not current_frames or self.clock() > end:
             raise AcceptanceStop("terminal pipe frames exceeded five seconds")
-        exact_frames = [frame for frame in frames if frame["crop"] is not None]
+        exact_frames = [frame for frame in current_frames if frame["crop"] is not None]
         if not exact_frames:
             raise AcceptanceStop("no exact terminal crop; raw pipe frames retained")
         if stop_guard:
