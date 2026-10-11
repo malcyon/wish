@@ -11,11 +11,12 @@ not merely draining Queue. Creating, reviewing or editing this skill does not
 authorize starting work, writing tickets or contacting another session.
 
 An authorized run executes work, not just a queue audit. Before handing back,
-either start an eligible ticket through confirmed Backlog → Queue → In Progress
-transitions and launch its specialist, or account for every unfinished ticket
-with a concrete hold, shared owner or failed transition. An empty Queue,
-`No gaps`, a ranked table or an idle test-runner is not that account. Do not ask
-Donald to schedule ordinary eligible work: `/orchestrate` supplies that authority.
+either confirm an eligible ticket is live In Progress and launch its specialist,
+using Backlog → Queue → In Progress transitions where needed, or account for
+every unfinished ticket with a concrete hold, shared owner or failed transition.
+An empty Queue, `No gaps`, a ranked table or an idle test-runner is not that
+account. Do not ask Donald to schedule ordinary eligible work: `/orchestrate`
+supplies that authority.
 
 Repository paths below are relative to the working tree root, not this skill's
 base directory. Read `AGENTS.md`, `CLAUDE.md` and
@@ -254,10 +255,12 @@ At startup, in this order:
 3. Start the first eligible step, then repeat for other independent steps.
    For a Backlog ticket, send an explained Backlog to Queue update and confirm
    readback, then send an explained Queue to In Progress update and confirm
-   readback. For a Queue ticket, confirm its In Progress update. Resolve UUIDs
-   from live metadata and use the approved adapter; never infer a transition
-   from the cache. Establish the reusable test-runner before an executing
-   worker needs it, then launch the fitting specialist and record its actual
+   readback. For a Queue ticket, confirm its In Progress update. For an already
+   In Progress ticket, confirm live state and that no shared owner is executing
+   the step; do not move it backward or duplicate another session's assignment.
+   Resolve UUIDs from live metadata and use the approved adapter; never infer
+   a transition from the cache. Establish the reusable test-runner before an
+   executing worker needs it, then launch the fitting specialist and record its actual
    session ID, role, ticket and next step. A missing specialist or failed write
    stops only dependent assignments; report it and continue assessing others.
    Do not work around the write or ask Donald to perform ordinary scheduling.
