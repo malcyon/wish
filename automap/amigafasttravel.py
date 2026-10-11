@@ -254,6 +254,8 @@ class AmigaFastTravel(engine.FastTravel):
                if here is not None else None)
         if leg is not None:
             arrival = (leg.square.x, leg.square.y, leg.square.facing)
+        if trips.script_places_square(row, here, to):
+            arrival = None
         try:
             prologue = (trips.leave_grid_prologue(row, here, to)
                         + trips.departure_prologue(self.key, here, to,

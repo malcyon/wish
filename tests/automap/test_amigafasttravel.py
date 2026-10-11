@@ -284,14 +284,26 @@ def test_a_neighbour_leg_writes_the_walked_square(disks, monkeypatch):
     written = statements_written(out)
     assert (trips.save(7, 0xC04B) + trips.save(0, 0xC04C)
             + trips.save(0, 0xC04D)) in written
+
+
+def test_well_to_temple_return_fits_the_24_byte_tail(disks, monkeypatch):
+    disks[0x21] = 0x1DE8
+    row = trips.ROWS[BLADES]
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(row, confirmed=True,
+                                            differences=()))
+    rows = {a.id: a for a in areas.AREAS_SILVER_BLADES}
     t = aft.AmigaFastTravel(BLADES, object())
     t._row = lambda id: rows[id]
-    out = t.apply(machine(BLADES, area=0x21), rows[0x34])
+    t.back = engine.Waypoint(0x34, None, (5, 6, 1))
+    assert not trips.leg_held(trips.ROWS[BLADES], 0x21, 0x34, True, disks)
+    out = t.apply_back(machine(BLADES, area=0x21))
     assert out.ok
-    written = statements_written(out)
-    assert (trips.save(5, 0x4C62) + trips.save(1, 0x4C2A)) in written
-    assert (trips.save(2, 0xC04B) + trips.save(15, 0xC04C)
-            + trips.save(3, 0xC04D)) in written
+    code = trips._statements(row, t.trip.armed.plan)
+    assert code == (trips.save(5, 0x4C62) + trips.save(1, 0x4C2A)
+                    + trips.save(3, 0x7F12) + trips.newecl(0x34))
+    assert len(code) == 21
+    assert t.trip.armed.plan.square is None
 
 
 def test_a_silver_blades_return_saves_the_departures_area_file(

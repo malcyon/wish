@@ -397,6 +397,12 @@ def leg_prologue(row, here: int | None, to: int) -> bytes:
     return b"".join(save(value, address) for address, value in leg.writes)
 
 
+def script_places_square(row, here: int | None, to: int) -> bool:
+    """Whether the destination's came-from arm sets the whole square."""
+    return row_for(row).key == "secret-of-the-silver-blades" \
+        and (here, to) == (0x21, 0x34)
+
+
 def area_file_for(row, here: int | None, to: int) -> int | None:
     """The disk-side byte a trip into `to` writes ahead of its `NEWECL`, as a
     walked exit does. None when the title has no such byte, when either disk
@@ -437,7 +443,8 @@ def leg_held(row: TripRow, here: int | None, to: int, back: bool,
                     + leg_prologue(row, here, to))
     except ValueError:
         return True
-    smallest = plan(to, (0, 0, 0), area_file=area_file_for(row, here, to),
+    square = None if script_places_square(row, here, to) else (0, 0, 0)
+    smallest = plan(to, square, area_file=area_file_for(row, here, to),
                     prologue=prologue, epilogue=arrival_epilogue(row, to))
     return free_tail(row, here, lengths, smallest, init_areas) not in (1, 2)
 
