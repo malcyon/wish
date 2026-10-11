@@ -1479,11 +1479,18 @@ def test_source_comparison_binds_each_letter_to_its_own_fetched_slot(
 
 
 @pytest.mark.parametrize("damage", [None, "wrong-variant", "unfiltered", "missing-identity",
-                                     "wrong-reader", "wrong-prepared-digest"])
+                                      "wrong-reader", "wrong-map", "wrong-prepared-digest"])
 def test_source_controls_require_one_current_source_variant_per_screen(tmp_path, monkeypatch, damage):
     tmp_path = _synthetic_private_files(monkeypatch, tmp_path)(tmp_path)
     shared = pathlib.Path(driver.guardmaps.__file__).with_name("guards_darkness.json")
-    current = json.loads(shared.read_text())
+    current_bytes = shared.read_bytes()
+    if os.name == "nt":
+        current_bytes = current_bytes.replace(b"\r\n", b"\n")
+    assert hashlib.sha256(current_bytes).hexdigest() == driver.BUNDLE_CURRENT_RULES_SHA256
+    current_path = tmp_path / "guards_darkness.json"
+    current_path.write_bytes(current_bytes)
+    monkeypatch.setattr(driver.guardmaps, "__file__", str(tmp_path / "guardmaps.py"))
+    current = json.loads(current_path.read_text())
     manifest = tmp_path / "prepare.json"
     manifest.write_text("Generated prepared manifest\n")
     manifest.chmod(0o600)
@@ -1518,8 +1525,14 @@ def test_source_controls_require_one_current_source_variant_per_screen(tmp_path,
     controls = tmp_path / "selected.json"
     controls.write_text(json.dumps(validated))
     controls.chmod(0o600)
+    if damage == "wrong-map":
+        current_path.write_bytes(current_bytes + b"\n")
+        assert sha256(current_path) != driver.BUNDLE_CURRENT_RULES_SHA256
     if damage:
-        with pytest.raises(RouteError, match="bundle_source_controls"):
+        reason = ("current rule map differs" if damage == "wrong-map" else
+                  "offline preparation or current reader differs" if damage == "wrong-reader" else
+                  "bundle_source_controls")
+        with pytest.raises(RouteError, match=reason):
             driver._source_controls(controls, manifest, prepared)
     else:
         guards, identity, _ = driver._source_controls(controls, manifest, prepared)
