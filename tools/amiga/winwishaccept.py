@@ -1337,8 +1337,8 @@ class Controller:
             self.run_phase(phase)
             self._answer_journal()
             self._await("ssb_opening_first", limit=300)
-            first_start = self.clock()
             self._press("RET")
+            first_start = self.clock()
             second = self._capture_unknown_frames(
                 "ssb_opening_unknown", "opening", min(first_start + 5, self.route_end),
                 stop_guard="ssb_opening_second")
@@ -1349,8 +1349,8 @@ class Controller:
             if mode == "ssb-opening-after-second":
                 # Reconfirm the page after the delayed, non-atomic Wish checkpoint.
                 self._await("ssb_opening_second", limit=30)
-                second_start = self.clock()
                 self._press("RET")
+                second_start = self.clock()
                 following = self._capture_unknown_frames(
                     "ssb_opening_after_second_unknown", "after-second",
                     min(second_start + 5, self.route_end))

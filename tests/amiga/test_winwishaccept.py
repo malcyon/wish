@@ -1772,6 +1772,82 @@ def test_second_page_modes_stop_at_first_match_or_send_only_one_more_guarded_ret
                for name in ("load", "stationary", "walk", "transition", "reload", "reopen"))
 
 
+@pytest.mark.parametrize("mode,returns,frame_count", [
+    ("ssb-opening-second", 1, 3),
+    ("ssb-opening-after-second", 2, 6),
+])
+def test_second_page_capture_window_starts_after_each_delayed_return(
+        tmp_path, monkeypatch, mode, returns, frame_count):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _second_controller(
+        tmp_path, monkeypatch, mode,
+        (b"partial", b"partial", b"second", b"unknown", b"unknown", b"unknown"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    controller.clock = lambda: clock.now
+    original_press, original_grab = game.press, game.grab
+    captures = []
+
+    def press(holder, key, timeout):
+        original_press(holder, key, timeout)
+        if key == "RET":
+            clock.now += 1.7
+
+    def grab(state, raw, crop, timeout):
+        if state in ("ssb_opening_unknown", "ssb_opening_after_second_unknown"):
+            captures.append((state, timeout))
+            clock.now += 1.55
+        return original_grab(state, raw, crop, timeout)
+
+    game.press, game.grab = press, grab
+    result = controller.run_opening_second()
+
+    assert result["failure"] is None
+    assert game.keys == ["P", "L", "D", "V", "E", "B"] + ["RET"] * returns
+    assert len(captures) == frame_count
+    assert all(0 < timeout <= 5 for _, timeout in captures)
+    assert len(result["discovery"]["evidence"]) == frame_count
+    assert result["checkpoints"]["ssb_opening_second"]["game"] is result["discovery"]["evidence"][2]
+    if returns == 2:
+        assert result["checkpoints"]["ssb_opening_after_second"]["game"] is (
+            result["discovery"]["evidence"][5])
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
+def test_late_second_page_frame_stops_before_later_return_and_cleans_up(
+        tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _second_controller(
+        tmp_path, monkeypatch, "ssb-opening-after-second",
+        (b"partial", b"partial", b"second"))
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
+    controller.clock = lambda: clock.now
+    original_press, original_grab = game.press, game.grab
+    captures = 0
+
+    def press(holder, key, timeout):
+        original_press(holder, key, timeout)
+        if key == "RET":
+            clock.now += 1.7
+
+    def grab(state, raw, crop, timeout):
+        nonlocal captures
+        if state == "ssb_opening_unknown":
+            captures += 1
+            clock.now += 1.55 if captures < 3 else 1.95
+        return original_grab(state, raw, crop, timeout)
+
+    game.press, game.grab = press, grab
+    result = controller.run_opening_second()
+
+    assert result["failure"] == "AcceptanceStop: terminal pipe frames exceeded five seconds"
+    assert captures == 3 and len(result["discovery"]["evidence"]) == 3
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "RET"]
+    assert "ssb_opening_second" not in result["checkpoints"]
+    assert result["cleanup"]["errors"] == [] and ("down",) in calls
+
+
 def test_after_second_needs_a_new_exact_frame_and_keeps_all_inexact_raws(tmp_path, monkeypatch):
     from tools.amiga import route_silver_blades
 
