@@ -1785,6 +1785,20 @@
       "example": "640/ssb2/accept2/shots/11-world.png",
       "sha256": "605efa442147026c8e87487103e1fd24cfd16f148e522f6cbc0cbe83e8620367"
     },
+    "temple_entry_continue": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [186, 404, 586, 426],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [88, 302, 700, 360],
+      "example": "WISH-367/amiga-neighbour/guard3/temple-entry-canonical.png",
+      "sha256": "79b1f10c48f8f400095e26fbf9e4877144ad922863f8440af03decf66f048408"
+    },
     "well_entry_continue": {
       "also": [
         "continue"

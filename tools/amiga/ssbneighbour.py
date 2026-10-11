@@ -44,6 +44,11 @@ WELL_PENDING_STDERR = (
     "The leg reached area 33 and the game is still waiting on its screen; "
     "give its keys with --arrival-answer (repeat it for several screens).\n"
 )
+TEMPLE_PENDING_STDERR = (
+    "Leg 1 (the trip) never became ready for Fast Travel.\n"
+    "The leg reached area 52 and the game is still waiting on its screen; "
+    "give its keys with --arrival-answer (repeat it for several screens).\n"
+)
 
 
 def require(ok: bool, reason: str) -> None:
@@ -255,16 +260,30 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
                     and len(rows[0]["party_before"]) == 6
                     and all(isinstance(name, str) and name for name in rows[0]["party_before"])
                     and rows[0].get("party_before") == rows[0].get("party_after"))
-    require(proc.returncode == 0 or pending_well,
+    pending_temple = (start == 33 and end == 52
+                      and arguments == ["--waypoint", "52,7,3,2", "--back", "--peek-var",
+                                        "4C62,4C2A,4CFD,4CFE"]
+                      and proc.returncode == 1 and stderr == TEMPLE_PENDING_STDERR
+                      and len(rows) == 1 and rows[0].get("result") == "idle"
+                      and rows[0].get("settled") is False
+                      and rows[0].get("areas_seen") == [33, 52]
+                      and rows[0].get("arrival_keys") == []
+                      and rows[0].get("arrival_answered") is False
+                      and isinstance(rows[0].get("party_before"), list)
+                      and len(rows[0]["party_before"]) == 6
+                      and all(isinstance(name, str) and name for name in rows[0]["party_before"])
+                      and rows[0].get("party_before") == rows[0].get("party_after"))
+    require(proc.returncode == 0 or pending_well or pending_temple,
             f"trip child stopped with {proc.returncode}: {stderr[-500:]}")
     require(len(rows) == 1 and rows[0].get("result") == "idle"
-            and (rows[0].get("settled") is True or pending_well),
+            and (rows[0].get("settled") is True or pending_well or pending_temple),
             f"trip did not settle: {rows}")
     leg = rows[0]
     require(leg.get("areas_seen") == [start, end] and leg.get("arrival_keys") == []
             and leg.get("party_before") == leg.get("party_after"),
             f"trip diverged from {start} to {end}: {leg}")
     return {"command": command, "result": leg, "pending_well": pending_well,
+            "pending_temple": pending_temple,
             "stdout": str(out / "stdout.txt"), "stderr": str(out / "stderr.txt")}
 
 
@@ -309,7 +328,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         write_json(guard_file, json.loads(GUARDS.read_text())["guards"])
         guards = guards or PixelGuards(guard_file)
         require({"title", "party_menu", "load_picker", "loaded_menu", "journal", "world",
-                 "well_entry_continue"}
+                  "well_entry_continue", "temple_entry_continue"}
                  <= guards.rules.keys(), "Silver Blades load guards are missing")
         proof = args.out / "mute.json"
         output = guest._run("ssh", acceptance.MUTE_READBACK, timeout=min(60, deadline - time.monotonic()))
@@ -407,6 +426,14 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
                             "the Well world gate is still shut after Return")
                 observed("33", 33, (1, 1, 2))
             elif number == 2:
+                if leg.get("pending_temple"):
+                    prompt = reader(args.holder)
+                    check(prompt, names, 52, (2, 15, 3), {0x4C62: 5, 0x4C2A: 1})
+                    receipt["reads"]["temple_prompt"] = logged(prompt)
+                    run_guard.press("temple_entry_continue", "RET")
+                    run_guard.see("world", 60)
+                    require(amigatrip.gate(reader(args.holder)["target"], amigatrip.row_for(TITLE)),
+                            "the Temple world gate is still shut after Return")
                 observed("52", 52, (2, 15, 3), {0x4C62: 5})
                 snapshot("destination-52")
                 step("52", 52, (2, 15, 3))
