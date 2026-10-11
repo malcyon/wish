@@ -509,6 +509,11 @@ def c64_payloads(party: Any) -> tuple[SaveGame0, "SaveGame1 | None", D64]:
 # Save As: what it blocks
 # ---------------------------------------------------------------------------
 
+#: The pop-up body, under the route's own error title, when a write to an Amiga
+#: disk image finds too few free blocks (`goldbox.amiga_adf.AmigaDiskFull`).
+DISK_FULL = "Disk is out of space."
+
+
 class SaveAsError(Exception):
     """A Save As that cannot go ahead, with a technical reason.
 

@@ -548,9 +548,12 @@ AMIGA_SUFFIX = ".adf"
 def _player_message_of(exc: Exception) -> str:
     """What the dialog shows for a source or rehearsal that raised `exc`:
     the two clashing file names when a folder holds two DOS names differing
-    only in case, otherwise the generic sentence."""
+    only in case, the full-disk line when an Amiga image has no room left,
+    otherwise the generic sentence."""
     if isinstance(exc, dos_savegame.DosNameClashError):
         return exc.player_message or CANNOT_CONVERT
+    if isinstance(exc, AmigaDiskFull):
+        return saveplan.DISK_FULL
     return CANNOT_CONVERT
 
 

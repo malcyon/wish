@@ -219,9 +219,9 @@ RECOVERY_FAILED_NO_BACKUP = (
 #: ("no registered dos to amiga conversion for por") and never reaches a
 #: player.
 SAVE_AS_FAILED = "The save could not be written, and your saved game is unchanged."
-#: The `CANNOT_SAVE_TITLE` pop-up body when the copied disk 3 has too little
-#: room.
-DISK_FULL = "Disk is out of space."
+#: The `CANNOT_SAVE_TITLE` pop-up body when an Amiga disk image has too little
+#: room for what a Save or Save As writes.
+DISK_FULL = saveplan.DISK_FULL
 
 #: The word the Condition line shows for each neutral status name.
 #: `c64_codec.status_from_byte` and the DOS and Amiga readers name the states.
@@ -2910,7 +2910,9 @@ class EditorBinding(QObject):
                 self.party.save0 = SaveGame0.from_bytes(
                     payload_before, self.party.game)
             if interactive:
-                QMessageBox.critical(self.root, "Cannot save", str(exc))
+                QMessageBox.critical(
+                    self.root, "Cannot save",
+                    DISK_FULL if isinstance(exc, AmigaDiskFull) else str(exc))
                 return "failed"
             raise
         if self.party.port == "c64":
@@ -3001,6 +3003,10 @@ class EditorBinding(QObject):
 
         try:
             source = Source.detect(str(self.path), self.party)
+        except AmigaDiskFull:
+            _log.debug("Save As: the open save's disk is full")
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, DISK_FULL)
+            return
         except Exception:
             _log.exception("could not read the open save for Save As")
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
@@ -3370,7 +3376,12 @@ class EditorBinding(QObject):
         assets = self._resolve_destination_assets()
         if assets is None:
             return
-        snapshot = saveplan.prepare(self.party)
+        try:
+            snapshot = saveplan.prepare(self.party)
+        except AmigaDiskFull:
+            _log.debug("Save As to %s: the open save's disk is full", path)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, DISK_FULL)
+            return
         if snapshot is not None:
             try:
                 saveplan.check_not_alias(path, snapshot, assets)
