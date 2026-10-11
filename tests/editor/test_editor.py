@@ -446,6 +446,48 @@ def test_no_backup_folder_blocks_the_save_rather_than_writing(tmp_path):
     assert files.save_disk(FakeDisk(b"old"), save, "") == "no changes"
 
 
+def test_a_save_folder_that_fails_part_way_restores_every_original_on_a_full_drive(
+        tmp_path, monkeypatch):
+    """The rollback renames the originals back, so a full drive cannot truncate one.
+
+    The second move fails, and any in-place write of an original (what a
+    rollback by `write_bytes` would do) truncates the file and then fails with
+    ENOSPC.
+    """
+    import errno
+    import os
+
+    from editor import files
+
+    first, second = tmp_path / "A.CHR", tmp_path / "B.CHR"
+    first.write_bytes(b"first original")
+    second.write_bytes(b"second original")
+    written = {first: b"first new, longer", second: b"second new, longer"}
+
+    real_replace = os.replace
+    moves = []
+
+    def replace(src, dst):
+        moves.append(dst)
+        if len(moves) == 2:
+            raise OSError(errno.EIO, "second move")
+        return real_replace(src, dst)
+
+    def full_write_bytes(self, data):
+        self.open("wb").close()
+        raise OSError(errno.ENOSPC, "no space")
+
+    monkeypatch.setattr(files.os, "replace", replace)
+    monkeypatch.setattr(pathlib.Path, "write_bytes", full_write_bytes)
+    with pytest.raises(OSError) as raised:
+        files.save_folder(written, tmp_path / "backups")
+    assert raised.value.errno == errno.EIO
+    assert first.read_bytes() == b"first original"
+    assert second.read_bytes() == b"second original"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "A.CHR", "B.CHR", "backups"]
+
+
 def test_a_backup_is_made_and_the_original_is_unchanged(tmp_path):
     f = tmp_path / "x.d64"
     f.write_bytes(b"before")

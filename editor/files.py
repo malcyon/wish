@@ -28,6 +28,7 @@ import pathlib
 import shutil
 import stat
 import tempfile
+import uuid
 
 _log = logging.getLogger("wish.editor.files")
 
@@ -200,8 +201,9 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
     """Replace the changed files in one save folder, with backups.
 
     Each replacement is prepared and synced before any original moves.  If a
-    later replacement fails, every earlier one is put back from its bytes, so
-    a character's record, item and effect files do not land half-written.
+    later replacement fails, every original is renamed back from beside its
+    file, which needs no free space and never writes a partial file, so a
+    character's record, item and effect files do not land half-written.
     """
     changed = {pathlib.Path(path): (None if data is None else bytes(data))
                for path, data in written.items()
@@ -215,8 +217,7 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
     if not into:
         raise _no_backup_folder(first.name)
 
-    originals = {path: path.read_bytes() if path.exists() else None
-                 for path in changed}
+    held: dict[pathlib.Path, pathlib.Path] = {}
     temporary: dict[pathlib.Path, pathlib.Path] = {}
     try:
         for path, data in changed.items():
@@ -230,23 +231,28 @@ def save_folder(written: dict[pathlib.Path, bytes | None],
                 out.flush()
                 os.fsync(out.fileno())
         copies = {path: back_up(path, into) for path in changed}
-        replaced: list[pathlib.Path] = []
+        touched: list[pathlib.Path] = []
         try:
             for path in changed:
-                replacement = temporary.pop(path, None)
-                if replacement is None:
-                    path.unlink()
-                else:
+                touched.append(path)
+                if path.exists():
+                    # Renamed, not copied: restoring it later costs no space.
+                    keep = path.with_name(
+                        f".{path.name}.{uuid.uuid4().hex}.orig")
+                    os.rename(path, keep)
+                    held[path] = keep
+                replacement = temporary.get(path)
+                if replacement is not None:
                     os.replace(replacement, path)
-                replaced.append(path)
+                    del temporary[path]
         except BaseException:
-            for path in reversed(replaced):
-                was = originals[path]
-                if was is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    path.write_bytes(was)
+            for path in reversed(touched):
+                path.unlink(missing_ok=True)
+                if path in held:
+                    os.rename(held[path], path)
             raise
+        for keep in held.values():
+            keep.unlink(missing_ok=True)
     finally:
         for path in temporary.values():
             path.unlink(missing_ok=True)
