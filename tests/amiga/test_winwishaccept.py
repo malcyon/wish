@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +73,14 @@ class FakeGame:
         self.keys.append(key)
 
 
+@dataclass(frozen=True)
+class Expected:
+    engine: dict | None = None
+    window: dict | None = None
+    compare_to: str | None = None
+    relation: str | None = None
+
+
 def test_unrecognized_walk_stops_later_keys_restores_encounters_and_goes_down(tmp_path, monkeypatch):
     clock, game = FakeClock(), FakeGame()
     lane = SimpleNamespace(status=lambda timeout: "no claims")
@@ -123,6 +132,73 @@ def test_an_unready_transition_blocks_preflight_before_a_guest_call(tmp_path):
     with pytest.raises(winwishaccept.AcceptanceStop, match="transition: measured entrance guard missing"):
         winwishaccept.preflight(args, guest=guest, route_for=lambda title, manifest: route,
                                driver_sha=SHA)
+
+
+def test_unreadable_checkpoint_stops_before_another_key(tmp_path, monkeypatch):
+    from automap import amigaparty
+    from tools.amiga import amigatarget
+
+    clock, game = FakeClock(), FakeGame()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=game,
+        guards=lambda state, path: True, route=_route(),
+        zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    target = SimpleNamespace(fix=lambda: None, geo=lambda: None, close=lambda: None)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: target)
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: None)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: [])
+    phase = _phase("walk", "world",
+                   SimpleNamespace(**{**vars(_step("observe", "world")),
+                                      "checkpoint": "lost_fix",
+                                      "expected": Expected(engine={"x": 3})}),
+                   _step("move", "world", key="NP8"))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="lost_fix"):
+        controller.run_phase(phase)
+    assert game.keys == []
+    assert controller.checkpoints["lost_fix"]["comparison"]["status"] == "unproven"
+
+
+def test_a_loading_frame_without_a_game_crop_is_retried(tmp_path):
+    clock, game = FakeClock(), FakeGame()
+    count = 0
+
+    def grab(state, raw, crop, timeout):
+        nonlocal count
+        count += 1
+        pathlib.Path(raw).write_bytes(b"loading" if count == 1 else b"title")
+        if count == 1:
+            return False
+        pathlib.Path(crop).write_bytes(b"title")
+        return True
+
+    game.grab = grab
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=game,
+        guards=lambda state, path: pathlib.Path(path).read_bytes() == b"title",
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    frame = controller._await("title", limit=30)
+    assert count == 2
+    assert pathlib.Path(frame["crop"]).read_bytes() == b"title"
+    assert (tmp_path / "game-000.raw.png").read_bytes() == b"loading"
+
+
+def test_a_declared_travel_window_coordinate_is_checked(tmp_path):
+    clock = FakeClock()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(),
+        guards=object(), route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}}, clock=clock, sleep=clock.sleep)
+    reading = {"fix": {"x": 8, "y": 29, "outdoors": True,
+                       "facing": None, "area": 26}, "geo_sha256": "a"}
+    verdict = controller._compare_checkpoint(
+        "loaded", Expected(window={"x": 7, "y": 29}), reading)
+    assert verdict["status"] == "failed"
+    assert "window x" in verdict["reason"]
 
 
 def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypatch):

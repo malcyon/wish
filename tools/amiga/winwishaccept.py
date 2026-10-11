@@ -235,11 +235,14 @@ class Controller:
         number = sum(1 for _ in self.out.glob("game-*.raw.png"))
         raw = self.out / f"game-{number:03d}.raw.png"
         crop = self.out / f"game-{number:03d}.png"
-        if not self.game.grab(state, raw, crop, self.left(30)):
-            raise AcceptanceStop(f"{state}: no exact Amiga crop; kept {raw}")
-        evidence = {"raw": str(raw), "crop": str(crop),
+        exact = self.game.grab(state, raw, crop, self.left(30))
+        evidence = {"raw": str(raw), "crop": str(crop) if exact else None,
                     "shot_source": self.game.last_shot}
         self.log("game_frame", state=state, **evidence)
+        if not exact:
+            if check:
+                raise AcceptanceStop(f"{state}: no exact Amiga crop; kept {raw}")
+            return evidence
         if check and not self.guards(state, crop):
             raise AcceptanceStop(f"{state} screen was not recognized; kept {raw}")
         return evidence
@@ -249,7 +252,7 @@ class Controller:
         last = None
         while self.clock() < end:
             last = self._capture(state, check=False)
-            if self.guards(state, pathlib.Path(last["crop"])):
+            if last["crop"] is not None and self.guards(state, pathlib.Path(last["crop"])):
                 return last
             self.sleep(min(1.0, max(0, end - self.clock())))
         raise AcceptanceStop(f"{state} screen was not recognized before its deadline; last {last}")
@@ -328,8 +331,8 @@ class Controller:
                                   "pair_atomic": False}
         self.log("checkpoint", name=name, game=game_evidence, wish=str(wish_path))
         self._game_section()
-        if verdict["status"] == "failed":
-            raise AcceptanceStop(f"{name}: {verdict['reason']}")
+        if verdict["status"] != "awaiting image review":
+            raise AcceptanceStop(f"{name}: {verdict['reason'] or verdict['status']}")
 
     def _area_of(self, resident: bytes) -> int | None:
         """Identify an unchanged resident map from the prepared disks only."""
@@ -353,7 +356,17 @@ class Controller:
             return row("unproven", expected=asdict(expected), observed=engine,
                        reason="the game fix was not readable")
         missing = []
+        for key, want in (expected.window or {}).items():
+            if key not in fix:
+                missing.append(f"window {key}")
+            elif fix[key] != want:
+                return row("failed", expected=asdict(expected), observed=engine,
+                           reason=f"window {key} reads {fix[key]}, expected {want}")
         for key, want in (expected.engine or {}).items():
+            # On Pool's travel grid, the game prints global coordinates while
+            # target.fix() deliberately returns the local map-window square.
+            if fix.get("outdoors") and key in ("x", "y", "facing"):
+                continue
             if key not in fix:
                 missing.append(key)
             elif fix[key] != want:
