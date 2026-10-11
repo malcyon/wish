@@ -5,9 +5,10 @@ description: Start or resume Wish's ranked Plane queue as the OpenCode orchestra
 
 # OpenCode orchestrator
 
-Adopt the orchestrator role only for an authorized queue run. Creating or
-reviewing this skill does not authorize starting work, writing tickets or
-contacting another session.
+Adopt the orchestrator role only for an authorized queue run. Donald's
+`/orchestrate` authorizes selecting and scheduling eligible Backlog tickets,
+not merely draining Queue. Creating, reviewing or editing this skill does not
+authorize starting work, writing tickets or contacting another session.
 
 Repository paths below are relative to the working tree root, not this skill's
 base directory. Read `AGENTS.md`, `CLAUDE.md` and
@@ -151,6 +152,8 @@ The checker reads Claude transcripts, not OpenCode child sessions. Its unknown
 liveness and agent count are not proof of an OpenCode worker's state. Maintain
 your own session-ID, role, ticket, files, lane, budget and completion record;
 reconcile checker output against it rather than stopping or duplicating work.
+An empty Queue or a `No gaps` result does not end a run while eligible Backlog
+work remains; classify the full live unfinished list instead.
 
 Dispatch all ready, independent work, aiming for eight workers when the queue
 and actual runtime capacity permit. Do not invent a concurrency limit or
@@ -217,10 +220,36 @@ CI runs. Preserve batch SHA, roles, review findings, retries, emulator attempts
 and acceptance evidence; distinguish shipped implementation from proven game
 behavior. Report usage only when reliable counters exist.
 
-At startup, retain your own session ID, reconcile live Plane metadata and the shared cache, print the
-ranked table, report any missing specialist or hook limitation, establish the runner and
-dispatch ready work. On each completion, process evidence, reconcile states
-and dispatch newly ready independent work.
+At startup, in this order:
+
+1. Retain your actual orchestrator session ID. Read live project metadata and
+   the complete Plane list, then reconcile the shared queue cache against live
+   states and native priorities without losing assignments, manual edits,
+   plans, decisions, deferrals or experiment evidence. Rebuild only a missing
+   cache from live data.
+2. Classify every unfinished ticket as ranked work or an explicit hold. Read
+   each description and all comments before selecting it; compare current
+   code, the SHA and recorded evidence, using the fitting specialist for
+   substantial investigation when needed. Preserve genuine decisions,
+   dependencies, holds and shared ownership. A Backlog state or a prior
+   wind-down handoff alone is not a permanent hold; re-evaluate whether work
+   is ready. Honor native priority and Donald's manual changes. Print the
+   ranked table with concrete holds before dispatch.
+3. For each ready Backlog ticket, send an explained Backlog to Queue update
+   and confirm the live readback. For each ready Queue ticket, send an
+   explained Queue to In Progress update and confirm the live readback before
+   launching its planner, builder or live experiment. Do not infer either
+   transition from the cache. If a required write is unavailable, retain the
+   actual state, report the concrete failed transition and stop assignments
+   dependent on it; do not work around the write or ask Donald to perform
+   ordinary scheduling.
+4. Report any missing specialist or hook limitation, establish the reusable
+   test-runner, and dispatch all ready independent work whose start is
+   confirmed. Preserve the runtime, approval and capacity boundaries above.
+
+On each completion, process evidence, reconcile live state and the cache,
+revisit eligible Backlog tickets, and dispatch newly ready independent work
+through the same confirmed transitions.
 
 OpenCode has no exposed `wait_agent` or self-scheduling loop here. Background
 completion notifications resume coordination; do not poll children, sleep,
