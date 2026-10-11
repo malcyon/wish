@@ -371,12 +371,16 @@ class Controller:
 
     def _area_of(self, resident: bytes) -> int | None:
         """Identify an unchanged resident map from the prepared disks only."""
-        from automap import amiga  # noqa: PLC0415
+        from automap import amiga, maps  # noqa: PLC0415
+        from goldbox.amiga_adf import AmigaDisk  # noqa: PLC0415
 
         if self.area_by_geo is None:
             self.area_by_geo = {}
             for medium in self.route.media:
-                for key, area in amiga.load_maps(medium.path).items():
+                found = amiga.load_maps(medium.path)
+                if not found and self.route.title == "pool":
+                    found = maps._dax_maps(AmigaDisk.open(medium.path))
+                for key, area in found.items():
                     name = hashlib.sha256(area.to_bytes()).hexdigest()
                     self.area_by_geo.setdefault(name, set()).add(int(key[3:], 16))
         ids = self.area_by_geo.get(hashlib.sha256(resident).hexdigest(), set())

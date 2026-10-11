@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import struct
 from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
 
+from goldbox import amiga_dax
+from goldbox.amiga_adf import AmigaDisk
+from goldbox.geo import GEO_SIZE
 from tools.amiga import winwishaccept
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -545,3 +549,104 @@ def test_staging_preserves_every_other_member_and_item(tmp_path):
     context["baseline"][1]["raw"] = bytes(row.record_size).hex()
     with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected byte"):
         controller._verify_staging("heal", context, party)
+
+
+def _packed_map(raw):
+    """Encode a synthetic DAX block with literal runs in reverse read order."""
+    bits = []
+    for start in range(0, len(raw), 8):
+        chunk = raw[::-1][start:start + 8]
+        bits.extend((0, 0, *((len(chunk) - 1) >> shift & 1 for shift in (2, 1, 0))))
+        bits.extend(byte >> shift & 1 for byte in chunk for shift in range(7, -1, -1))
+    bits.extend([0] * (-len(bits) % 32))
+    words = [sum(bit << offset for offset, bit in enumerate(bits[start:start + 32]))
+             for start in range(0, len(bits), 32)]
+    check = 1
+    for word in words:
+        check ^= word
+    result = (b"".join(struct.pack(">I", word) for word in reversed(words))
+              + struct.pack(">III", 1, check, len(raw)))
+    assert amiga_dax.unpack(result, len(raw)) == raw
+    return result
+
+
+def _dax_map(ident, geo):
+    block = _packed_map(b"\x00\x04" + geo)
+    entry = amiga_dax.ENTRY.pack(ident, 0, len(block), GEO_SIZE + 2)
+    return struct.pack(">H", len(entry)) + entry + block
+
+
+def _glib_maps(entries):
+    index = struct.pack(">H", len(entries)) + b"".join(
+        struct.pack(">HH", ident, number) for number, (ident, _) in enumerate(entries, 1))
+    blocks = [index, *(geo for _, geo in entries)]
+    start = 16 + 4 * (len(blocks) + 1)
+    offsets = [start]
+    for block in blocks:
+        offsets.append(offsets[-1] + len(block))
+    return (b"GLIB" + struct.pack(">IHH", sum(map(len, blocks)), len(blocks), 0)
+            + b"GEO " + b"".join(struct.pack(">I", offset) for offset in offsets)
+            + b"".join(blocks))
+
+
+def _map_controller(tmp_path, title, *images):
+    route = _route()
+    route.title = title
+    route.media = tuple(SimpleNamespace(path=image) for image in images)
+    return winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+
+
+def test_pool_dax_identifies_area_26_from_a_matching_resident_map(tmp_path):
+    resident = bytes((index * 37 + 11) & 0xff for index in range(GEO_SIZE))
+    disk = AmigaDisk.blank("POOLDATA")
+    disk.write_file("geo.dax", _dax_map(26, resident))
+    image = tmp_path / "pool2.adf"
+    image.write_bytes(disk.to_bytes())
+    controller = _map_controller(tmp_path, "pool", image)
+
+    assert controller._area_of(resident) == 26
+    assert controller._area_of(bytes(GEO_SIZE)) is None
+
+
+def test_library_lookup_remains_valid_without_pool_dax_fallback(tmp_path):
+    resident = bytes((index * 13 + 3) & 0xff for index in range(GEO_SIZE))
+    disk = AmigaDisk.blank("Secret 2")
+    disk.make_dir("DISK2")
+    disk.write_file("DISK2/GEO.GLB", _glib_maps([(0x10, resident)]))
+    image = tmp_path / "secret2.adf"
+    image.write_bytes(disk.to_bytes())
+
+    assert _map_controller(tmp_path, "ssb", image)._area_of(resident) == 0x10
+
+
+def test_pool_library_takes_precedence_over_dax_on_same_medium(tmp_path):
+    resident = bytes((index * 17 + 5) & 0xff for index in range(GEO_SIZE))
+    disk = AmigaDisk.blank("POOLDATA")
+    disk.write_file("GEO.GLB", _glib_maps([(0x10, resident)]))
+    disk.write_file("geo.dax", _dax_map(26, resident))
+    image = tmp_path / "both.adf"
+    image.write_bytes(disk.to_bytes())
+
+    assert _map_controller(tmp_path, "pool", image)._area_of(resident) == 0x10
+
+
+def test_other_titles_do_not_consult_dax_without_a_library(tmp_path):
+    resident = bytes((index * 19 + 9) & 0xff for index in range(GEO_SIZE))
+    disk = AmigaDisk.blank("Secret 2")
+    disk.write_file("geo.dax", _dax_map(26, resident))
+    image = tmp_path / "secret2.adf"
+    image.write_bytes(disk.to_bytes())
+
+    assert _map_controller(tmp_path, "ssb", image)._area_of(resident) is None
+
+
+def test_identical_maps_with_two_ids_remain_ambiguous(tmp_path):
+    resident = bytes((index * 23 + 7) & 0xff for index in range(GEO_SIZE))
+    disk = AmigaDisk.blank("Secret 2")
+    disk.write_file("GEO.GLB", _glib_maps([(0x10, resident), (0x1a, resident)]))
+    image = tmp_path / "ambiguous.adf"
+    image.write_bytes(disk.to_bytes())
+
+    assert _map_controller(tmp_path, "ssb", image)._area_of(resident) is None
