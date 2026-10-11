@@ -234,7 +234,16 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
                 stdout, stderr = proc.communicate(timeout=10)
         (out / "stdout.txt").write_text(stdout)
         (out / "stderr.txt").write_text(stderr)
-    rows = [json.loads(line) for line in stdout.splitlines() if line.startswith("{")]
+    if proc.returncode != 0:
+        # A failing child must not conceal a diagnostic behind an expected JSON line.
+        try:
+            summary = json.loads(stdout)
+        except (ValueError, TypeError) as exc:
+            raise RouteError(f"trip child did not emit one JSON object: {out}") from exc
+        require(isinstance(summary, dict), f"trip child did not emit one JSON object: {out}")
+        rows = [summary]
+    else:
+        rows = [json.loads(line) for line in stdout.splitlines() if line.startswith("{")]
     pending_well = (start == 16 and end == 33 and arguments == ["--to", "33"]
                     and proc.returncode == 1 and stderr == WELL_PENDING_STDERR
                     and len(rows) == 1 and rows[0].get("result") == "idle"

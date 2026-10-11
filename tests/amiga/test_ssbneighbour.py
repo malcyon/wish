@@ -289,10 +289,30 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
             raise RouteError("trip child exceeded its deadline: fake") from subprocess.TimeoutExpired(
                 "fasttravelrun", 480)
         assert start == current["area"]
+        positions = {33: (1, 1, 2), 52: (2, 15, 3), 82: (1, 11, 1), 81: (15, 6, 3)}
+        if end == 33 and well_case in ("diagnostic_before", "diagnostic_after"):
+            current.update(area=end, square=positions[end])
+            summary = {"result": "idle", "settled": False, "areas_seen": [16, 33],
+                       "arrival_keys": [], "arrival_answered": False,
+                       "party_before": names, "party_after": names}
+            output = json.dumps(summary) + "\n"
+            output = ("Unexpected child diagnostic.\n" + output if well_case == "diagnostic_before"
+                      else output + "Unexpected child diagnostic.\n")
+
+            class Child:
+                returncode = 1
+
+                def communicate(self, timeout):
+                    return output, neighbour.WELL_PENDING_STDERR
+
+                def poll(self):
+                    return self.returncode
+
+            monkeypatch.setattr(neighbour.subprocess, "Popen", lambda *a, **k: Child())
+            return neighbour.trip(run, disks, out, flags, start, end)
         out.mkdir()
         (out / "stdout.txt").write_text(f"{start} -> {end}\n")
         (out / "stderr.txt").write_text("")
-        positions = {33: (1, 1, 2), 52: (2, 15, 3), 82: (1, 11, 1), 81: (15, 6, 3)}
         current.update(area=end, square=positions[end])
         if end == 33 and well_case == "wrong_prompt":
             current["square"] = (3, 3, 1)
@@ -320,7 +340,8 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
     options = dict(guest=Guest(), guards=Guards(), reader=lambda holder: current.copy(),
                    executor=execute, switch_factory=Switch)
     if unknown_picker or failure or well_case in ("bar_only", "changed_story", "wrong_prompt",
-                                                  "wrong_after", "shut_world"):
+                                                  "wrong_after", "shut_world", "diagnostic_before",
+                                                  "diagnostic_after"):
         reason = "load_picker" if unknown_picker else {
             "snapshot_lost": "snapshot response lost",
             "snapshot_before_create": "snapshot creation stopped",
@@ -330,9 +351,14 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
             "bar_only": "well_entry_continue", "changed_story": "well_entry_continue",
             "wrong_prompt": "square in 33", "wrong_after": "square in 33",
             "shut_world": "world gate is still shut",
+            "diagnostic_before": "one JSON object", "diagnostic_after": "one JSON object",
         }[well_case]
-        with pytest.raises(RouteError, match=reason):
-            neighbour.run(args, **options)
+        try:
+            with pytest.raises(RouteError, match=reason):
+                neighbour.run(args, **options)
+        finally:
+            if well_case in ("diagnostic_before", "diagnostic_after"):
+                assert ("press", "RET") not in events
     else:
         receipt = neighbour.run(args, **options)
         assert receipt["success"] is True
@@ -354,18 +380,23 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
     assert [v[1] for v in events if v[0] == "press"] == (
         [] if failure == "shot_timeout" else
         ["P", "L"] if unknown_picker else ["P", "L", "D", "B"] +
-        (["RET"] if well_case not in (None, "bar_only", "changed_story", "wrong_prompt") else []))
+        (["RET"] if well_case not in (None, "bar_only", "changed_story", "wrong_prompt",
+                                     "diagnostic_before", "diagnostic_after") else []))
     if unknown_picker:
         assert not any(v[0] == "trip" for v in events)
     if well_case is not None:
         assert len([v for v in events if v[0] == "trip"]) == (
             4 if well_case == "pending" else 1)
-        if well_case not in ("wrong_prompt", "bar_only", "changed_story"):
+        if well_case not in ("wrong_prompt", "bar_only", "changed_story", "diagnostic_before",
+                             "diagnostic_after"):
             assert ("press", "RET") in events
             assert events.index(("trip", 16, 33, ("--to", "33"),
                                  str(args.out / "trip-1"), str(source))) < events.index(("press", "RET"))
         else:
             assert ("press", "RET") not in events
+        if well_case in ("diagnostic_before", "diagnostic_after"):
+            assert (args.out / "trip-1" / "stdout.txt").read_text().count("Unexpected child diagnostic.") == 1
+            assert (args.out / "trip-1" / "stderr.txt").read_text() == neighbour.WELL_PENDING_STDERR
     if failure in ("snapshot_lost", "snapshot_before_create"):
         assert ("discard", "s0") in events
         assert not any(v[0] == "trip" for v in events)
@@ -392,7 +423,7 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
     if unknown_picker:
         assert list((args.out / "screens").glob("*-load_picker-raw.png"))
     if well_case is not None:
-        if well_case == "wrong_prompt":
+        if well_case in ("wrong_prompt", "diagnostic_before", "diagnostic_after"):
             assert "well_prompt" not in saved["reads"]
         else:
             assert saved["reads"]["well_prompt"]["square"] == [1, 1, 2]
@@ -403,7 +434,8 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("well_case", ["pending", "bar_only", "changed_story",
-                                         "wrong_prompt", "wrong_after", "shut_world"])
+                                         "wrong_prompt", "wrong_after", "shut_world",
+                                         "diagnostic_before", "diagnostic_after"])
 def test_well_page_allows_only_one_guarded_return_before_the_next_leg(tmp_path, monkeypatch,
                                                                        well_case):
     test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch, False, None,
@@ -412,7 +444,8 @@ def test_well_page_allows_only_one_guarded_return_before_the_next_leg(tmp_path, 
 
 @pytest.mark.parametrize("change", [None, "stderr", "extra_error", "wrong_area", "wrong_names",
                                     "already_answered", "wrong_flags", "wrong_leg", "extra_row",
-                                    "wrong_result", "empty_name", "wrong_code"])
+                                    "wrong_result", "empty_name", "wrong_code", "diagnostic_before",
+                                    "diagnostic_after", "nonobject", "surrounding_whitespace"])
 def test_child_only_admits_the_exact_pending_well_outcome(tmp_path, monkeypatch, change):
     names = [f"Member {n}" for n in range(6)]
     summary = {"result": "idle", "settled": False, "areas_seen": [16, 33],
@@ -443,6 +476,14 @@ def test_child_only_admits_the_exact_pending_well_outcome(tmp_path, monkeypatch,
     stdout = json.dumps(summary) + "\n"
     if change == "extra_row":
         stdout += json.dumps(summary) + "\n"
+    elif change == "diagnostic_before":
+        stdout = "Unexpected child diagnostic.\n" + stdout
+    elif change == "diagnostic_after":
+        stdout += "Unexpected child diagnostic.\n"
+    elif change == "nonobject":
+        stdout = json.dumps([summary]) + "\n"
+    elif change == "surrounding_whitespace":
+        stdout = " \n" + stdout + "\t\n"
 
     class Child:
         returncode = code
@@ -461,7 +502,7 @@ def test_child_only_admits_the_exact_pending_well_outcome(tmp_path, monkeypatch,
 
     monkeypatch.setattr(neighbour.subprocess, "Popen", lambda *a, **k: Child())
     out = tmp_path / "child"
-    if change is None:
+    if change in (None, "surrounding_whitespace"):
         leg = neighbour.trip(Run(), tmp_path, out, flags, start, end)
         assert leg["pending_well"] is True
         assert leg["result"] == summary
