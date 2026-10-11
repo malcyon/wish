@@ -225,9 +225,10 @@ def continue_guard(title: str | None, out: pathlib.Path,
     """Whether a screenshot's bytes show the title's PRESS RETURN bar, by its `continue` guard.
 
     None when the title has no such guard, or its file cannot be used (the reason
-    goes to `log`, so the run goes on with the screen-holds-still rule). Bytes that are no Amiga frame do not
-    match. The animated picture beside the bar never settles, so a frame that
-    shows the bar is answerable without holding still.
+    goes to `log`). A run with a RET arrival answer requires a guard before travel;
+    other keys can use the screen-holds-still rule. Bytes that are no Amiga frame
+    do not match. The animated picture beside the bar never settles, so a frame
+    that shows the bar is answerable without holding still.
     """
     from tools.amiga import screens  # noqa: PLC0415
 
@@ -317,11 +318,13 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
     that differs from the one at the previous press, if the game is asking
     something in the destination while the menu gate stays shut;
     `arrival_answered` records that one went and `arrival_keys` which.
-    `at_continue` tells whether a screenshot shows the PRESS RETURN bar; RET
-    requires that bar, even when the screen holds still. A bar screen can be
-    answered although its picture keeps changing.
+    `at_continue` tells whether a screenshot shows the PRESS RETURN bar; any
+    key resolved to RET requires that bar, even when the screen holds still.
+    A bar screen can be answered although its picture keeps changing.
     """
     arrival_keys = (arrival_answer,) if isinstance(arrival_answer, str) else tuple(arrival_answer or ())
+    if at_continue is None and any(amigakeys.lookup(key).name == "RET" for key in arrival_keys):
+        raise DriverError("a RET arrival answer requires a continue guard")
     verdict = fasttravel.back_verdict(target) if back else fasttravel.legality(target, area)
     log("legality", ok=bool(verdict), reason=verdict.reason, back=back)
     summary = {"result": "not_legal", "outcomes": [], "answered": False,
@@ -428,10 +431,10 @@ def run_trip(fasttravel, target, row, area, out: pathlib.Path,
             by_bar = bar and bar_looks >= 2 and bar_gone
             if why is None and held < 1 and not by_bar:
                 why = "the screen was still changing"
-            if why is None and arrival_keys[len(summary["arrival_keys"])] == "RET" and not bar:
+            key = arrival_keys[len(summary["arrival_keys"])]
+            if why is None and amigakeys.lookup(key).name == "RET" and not bar:
                 why = "the PRESS RETURN bar is absent"
             if why is None:
-                key = arrival_keys[len(summary["arrival_keys"])]
                 log("arrival_answer", key=key,
                     gate=bool(amigatrip.gate(target, row)), unchanged_polls=held,
                     at_continue=bar)

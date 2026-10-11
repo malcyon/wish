@@ -322,13 +322,15 @@ def _redrawing_with(world, monkeypatch, prefix):
     monkeypatch.setattr(amigatrip, "gate", gate)
 
 
-def test_a_changing_screen_that_shows_the_continue_bar_gets_the_arrival_key(world, monkeypatch):
+@pytest.mark.parametrize("key", ["RET", "Return", "Enter", "rEt"])
+def test_a_changing_screen_that_shows_the_continue_bar_gets_the_arrival_key(world, monkeypatch, key):
     _redrawing_with(world, monkeypatch, b"bar")
-    got = world.drive(_Arrives(polls=1), arrival_answer="RET",
+    got = world.drive(_Arrives(polls=1), arrival_answer=key,
                       at_continue=lambda data: data.startswith(b"bar"))
-    assert world.pressed == ["RET"] and got["arrival_answered"] and got["settled"]
+    assert world.pressed == [key] and got["arrival_answered"] and got["settled"]
     (event,) = [e for e in world.events() if e["event"] == "arrival_answer"]
-    assert event["at_continue"] is True and event["unchanged_polls"] == 0
+    assert event["key"] == key and event["at_continue"] is True
+    assert event["unchanged_polls"] == 0
 
 
 def test_a_changing_screen_that_is_not_the_continue_bar_still_waits(world, monkeypatch):
@@ -340,13 +342,22 @@ def test_a_changing_screen_that_is_not_the_continue_bar_still_waits(world, monke
                for e in world.events())
 
 
-def test_a_still_non_bar_screen_does_not_take_return(world, monkeypatch):
+@pytest.mark.parametrize("key", ["RET", "Return", "Enter", "rEt", "eNtEr"])
+def test_a_still_non_bar_screen_does_not_take_return(world, monkeypatch, key):
     _arriving(world, monkeypatch)
     world.screen = b"attack or flee"
-    got = world.drive(_Arrives(polls=1), arrival_answer="RET",
+    got = world.drive(_Arrives(polls=1), arrival_answer=key,
                       at_continue=lambda data: data == b"press return")
     assert world.pressed == [] and not got["arrival_answered"]
     assert not any(e["event"] == "arrival_answer" for e in world.events())
+
+
+@pytest.mark.parametrize("keys", ["RET", "Return", "Enter", ("y", "rEt")])
+def test_a_return_arrival_key_requires_a_continue_guard_before_travel(world, keys):
+    travel = Travel(polls=1)
+    with pytest.raises(ftr.DriverError, match="continue guard"):
+        world.drive(travel, arrival_answer=keys)
+    assert travel.calls == [] and world.pressed == []
 
 
 def _two_key_arrival(world, monkeypatch, screens):
@@ -535,7 +546,9 @@ def _drive_with(world, **kwargs):
 
 def test_an_arrival_answer_sequence_presses_each_key_on_its_own_screen(world, monkeypatch):
     _two_prompts(world, monkeypatch, b"second page")
-    got = _drive_with(world, arrival_answer=("Return", "Return"))
+    # Both fake prompt pages stand for PRESS RETURN screens.
+    got = _drive_with(world, arrival_answer=("Return", "Return"),
+                      at_continue=lambda data: data in (b"take boat?", b"second page"))
     assert world.pressed == ["Return", "Return"]
     assert got["settled"] and got["arrival_keys"] == ["Return", "Return"]
     assert [e["key"] for e in world.events() if e["event"] == "arrival_answer"] == [
@@ -544,7 +557,8 @@ def test_an_arrival_answer_sequence_presses_each_key_on_its_own_screen(world, mo
 
 def test_the_next_arrival_key_waits_for_the_screen_to_change(world, monkeypatch):
     _two_prompts(world, monkeypatch, b"take boat?")
-    got = _drive_with(world, arrival_answer=("Return", "Return"))
+    got = _drive_with(world, arrival_answer=("Return", "Return"),
+                      at_continue=lambda data: data == b"take boat?")
     assert world.pressed == ["Return"] and not got["settled"]
 
 
@@ -588,7 +602,8 @@ def test_the_second_arrival_key_gets_its_own_full_window(world, monkeypatch):
     got = ftr.run_trip(_Arrives(polls=1), Target(), ROW, SimpleNamespace(id=5), world.out,
                        shot, lambda key: world.pressed.append(key), world.log,
                        sleep=world.clock.sleep, clock=world.clock,
-                       arrival_answer=("Return", "Return"))
+                       arrival_answer=("Return", "Return"),
+                       at_continue=lambda data: data in (b"take boat?", b"c"))
     world.stream.close()
     assert first[-1] - 1000.0 >= ftr.ANSWER_SECONDS
     assert world.pressed == ["Return", "Return"] and got["settled"]
