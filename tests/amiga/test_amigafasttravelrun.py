@@ -340,6 +340,15 @@ def test_a_changing_screen_that_is_not_the_continue_bar_still_waits(world, monke
                for e in world.events())
 
 
+def test_a_still_non_bar_screen_does_not_take_return(world, monkeypatch):
+    _arriving(world, monkeypatch)
+    world.screen = b"attack or flee"
+    got = world.drive(_Arrives(polls=1), arrival_answer="RET",
+                      at_continue=lambda data: data == b"press return")
+    assert world.pressed == [] and not got["arrival_answered"]
+    assert not any(e["event"] == "arrival_answer" for e in world.events())
+
+
 def _two_key_arrival(world, monkeypatch, screens):
     """Two presses are wanted; `screens(world, presses)` gives the frame before each poll."""
     _arriving(world, monkeypatch)
@@ -433,6 +442,18 @@ def test_the_continue_guard_matches_the_bar_and_nothing_else(tmp_path):
     assert shows(_frame((1, 2, 3))) is True
     assert shows(_frame((9, 9, 9))) is False
     assert shows(b"world") is False
+
+
+def test_darkness_return_guard_matches_kept_bar_and_not_attack_flee(tmp_path):
+    root = pathlib.Path.home() / ".cache/wish/acceptance/WISH-360"
+    bars = [root / "podret5/p1/002.png", root / "podret5/p1/004.png"]
+    encounter = root / "podret6/p2/002.png"
+    if not all(path.exists() for path in (*bars, encounter)):
+        pytest.skip("Kept Pools of Darkness Return captures are unavailable")
+    shows = ftr.continue_guard("pools-of-darkness", tmp_path)
+    assert shows is not None
+    assert all(shows(path.read_bytes()) for path in bars)
+    assert not shows(encounter.read_bytes())
 
 
 def test_a_title_with_no_continue_guard_gets_none(tmp_path):

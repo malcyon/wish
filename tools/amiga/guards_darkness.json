@@ -1642,17 +1642,30 @@
       "example": "amiga-grab-crops/wish2-use__camp_use_target.png",
       "sha256": "f90727455ab039238e446191cb89e4a19b07ccb6c73208cbe21abd7930120c59"
     },
-    "continue": {
-      "also": [],
-      "box": [
-        58,
-        402,
-        698,
-        430
-      ],
-      "example": "679/718-b1/b2/shots/10-continue.png",
-      "sha256": "0a85ef3aaa4777b3a8e931bd19fca322507a56e9d58712133f4ff4e54cce6389"
-    },
+    "continue": [
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "679/718-b1/b2/shots/10-continue.png",
+        "sha256": "0a85ef3aaa4777b3a8e931bd19fca322507a56e9d58712133f4ff4e54cce6389"
+      },
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "amiga-grab-crops/wish360-podret5__continue.png",
+        "sha256": "2ed484d5ac5103c5575c8ec08ae0858283b5a2fe622e4b822c3980a5fe036e03"
+      }
+    ],
     "disk2_prompt": {
       "also": [],
       "box": [
@@ -2999,6 +3012,9 @@
     ]
   },
   "labels": {
+    "amiga-grab-crops/wish360-podret5__continue.png": [
+      "continue"
+    ],
     "628/darkness-P1a/accept2/shots/12-world.png": [
       "place_x1_y2_f1"
     ],
