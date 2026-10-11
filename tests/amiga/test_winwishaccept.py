@@ -134,6 +134,84 @@ def test_an_unready_transition_blocks_preflight_before_a_guest_call(tmp_path):
                                driver_sha=SHA)
 
 
+def test_controller_executes_transition_before_indoor_stationary(tmp_path, monkeypatch):
+    route = _route()
+    ordered = (route.phases[0], route.phases[3], route.phases[1], route.phases[2],
+               route.phases[4], route.phases[5])
+    route.phases = ordered
+    clock = FakeClock()
+    lane = SimpleNamespace(stop=lambda *args: None)
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=lane, game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    events = []
+    monkeypatch.setattr(controller, "_up", lambda: events.append("up"))
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
+    monkeypatch.setattr(controller, "run_phase", lambda phase: events.append(phase.name))
+    monkeypatch.setattr(controller, "run_actions", lambda: None)
+    monkeypatch.setattr(controller, "_cleanup", lambda: controller.summary["cleanup"].update(errors=[]))
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish",
+                        lambda *args: events.append("stop_wish"))
+    monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: None)
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert events == ["up", "load", "transition", "stationary", "walk", "reload",
+                      "stop_wish", "reopen_step"]
+
+
+@pytest.mark.parametrize("fault,reason", [
+    ("missing", "required phases missing"),
+    ("duplicate", "repeats a phase name"),
+    ("load_order", "load must be the first phase"),
+    ("walk_order", "stationary must precede walk"),
+    ("reopen_order", "reload must precede reopen_step"),
+    ("future_checkpoint", "checkpoint later must precede"),
+    ("missing_checkpoint", "checkpoint absent must precede"),
+    ("duplicate_checkpoint", "checkpoint mark is repeated"),
+])
+def test_invalid_phase_dependencies_stop_before_guest_up(tmp_path, fault, reason):
+    route = _route()
+    phases = list(route.phases)
+    if fault == "missing":
+        phases.pop(3)
+    elif fault == "duplicate":
+        phases.append(phases[3])
+    elif fault == "load_order":
+        phases[0], phases[1] = phases[1], phases[0]
+    elif fault == "walk_order":
+        phases[1], phases[2] = phases[2], phases[1]
+    elif fault == "reopen_order":
+        phases[4], phases[5] = phases[5], phases[4]
+    else:
+        first = _step("observe", "world")
+        first.checkpoint = "mark"
+        if fault in ("future_checkpoint", "missing_checkpoint"):
+            first.expected = Expected(compare_to=(
+                "later" if fault == "future_checkpoint" else "absent"))
+            phases[1] = _phase("stationary", "world", first)
+            if fault == "future_checkpoint":
+                later = _step("observe", "world")
+                later.checkpoint = "later"
+                phases[2] = _phase("walk", "world", later)
+        else:
+            repeated = _step("observe", "world")
+            repeated.checkpoint = "mark"
+            phases[1] = _phase("stationary", "world", first, repeated)
+    route.phases = tuple(phases)
+    args = _args(tmp_path)
+    args.manifest.write_text("{}")
+    guest = SimpleNamespace(gh=lambda *args: pytest.fail("guest touched before route validation"))
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match=reason):
+        winwishaccept.preflight(args, guest=guest, route_for=lambda title, manifest: route,
+                               driver_sha=SHA)
+
+
 def test_unreadable_checkpoint_stops_before_another_key(tmp_path, monkeypatch):
     from automap import amigaparty
     from tools.amiga import amigatarget

@@ -73,13 +73,23 @@ def test_an_unmeasured_transition_blocks_the_title_before_a_lane_is_claimed(
     phases = {phase.name: phase for phase in route.phases}
 
     assert set(phases) == {"load", "stationary", "walk", "transition", "reload",
-                           "reopen_step"}
+                           "reopen_step"} | ({"outdoor"} if title in ("pool", "curse") else set())
     assert not phases["transition"].ready
     assert phases["transition"].reason in route.unresolved
     assert route.unresolved
     assert [action.kind for action in route.actions] == [
         "heal", "spells", "identify", "quickfight", "levelup"]
     assert all(not action.enabled for action in route.actions)
+
+
+@pytest.mark.parametrize("title", ("pool", "curse"))
+def test_outdoor_routes_enter_an_area_before_indoor_checks(title: str, tmp_path: Path):
+    route = maproute.route_for(title, _manifest(title, tmp_path))
+
+    assert [phase.name for phase in route.phases] == [
+        "load", "outdoor", "transition", "stationary", "walk", "reload", "reopen_step"]
+    assert route.phases[1].steps[0].kind == "observe"
+    assert not route.phases[2].ready
 
 
 @pytest.mark.parametrize("title", ("pool", "curse", "ssb", "darkness"))

@@ -69,6 +69,25 @@ def _phase_map(route: Any) -> dict[str, Any]:
     absent = [name for name in REQUIRED if name not in phases]
     if absent:
         raise AcceptanceStop(f"required phases missing: {', '.join(absent)}")
+    names = [phase.name for phase in route.phases]
+    if names[0] != "load":
+        raise AcceptanceStop("load must be the first phase")
+    if names.index("stationary") > names.index("walk"):
+        raise AcceptanceStop("stationary must precede walk")
+    if names.index("reload") > names.index("reopen_step"):
+        raise AcceptanceStop("reload must precede reopen_step")
+    checkpoints = set()
+    for phase in route.phases:
+        for step in phase.steps:
+            expected = step.expected
+            if (expected is not None and expected.compare_to is not None
+                    and expected.compare_to not in checkpoints):
+                raise AcceptanceStop(
+                    f"checkpoint {expected.compare_to} must precede its comparison")
+            if step.checkpoint:
+                if step.checkpoint in checkpoints:
+                    raise AcceptanceStop(f"checkpoint {step.checkpoint} is repeated")
+                checkpoints.add(step.checkpoint)
     unready = [f"{p.name}: {p.reason or 'no reason supplied'}" for p in phases.values()
                if not p.ready]
     if route.unresolved:
@@ -745,21 +764,19 @@ class Controller:
             self._game_section()
             title = self._await("title", limit=300)
             self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
-            phases = _phase_map(self.route)
-            self.run_phase(phases["load"])
-            self.summary["mapping"]["load"] = row("awaiting image review")
-            self.flag_controls()
-            for name in ("stationary", "walk", "transition", "outdoor", "reload", "reopen_step"):
-                if name not in phases:
-                    continue
+            _phase_map(self.route)
+            for phase in self.route.phases:
+                name = phase.name
                 if name == "reopen_step":
                     self._map_section()
                     winwish.stop_wish(self.guest, self.args.holder)
                     self.wish_closed = True
-                self.run_phase(phases[name])
+                self.run_phase(phase)
                 label = "reopen" if name == "reopen_step" else name
                 if label in self.summary["mapping"]:
                     self.summary["mapping"][label] = row("awaiting image review")
+                if name == "load":
+                    self.flag_controls()
             self.run_actions()
             self._map_section()
             self.lane.stop(self.args.holder, self.left(60))

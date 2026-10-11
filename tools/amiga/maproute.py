@@ -286,7 +286,7 @@ def _ssb_walk() -> Phase:
 def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
     if title == "pool":
         needs = {
-            "stationary": "The travel-grid turn keys and facing readback are not measured.",
+            "stationary": "Indoor stationary turns after TAKE BOAT are not measured.",
             "walk": "No guarded three-step route from the outdoor specimen is recorded.",
             "transition": "TAKE BOAT into New Phlan lacks a measured prompt guard and key sequence.",
             "reload": "The game's no-save return to the load picker is not measured.",
@@ -294,7 +294,7 @@ def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
         }
     elif title == "curse":
         needs = {
-            "stationary": "The Dalelands screen has no measured square/facing turn control.",
+            "stationary": "Sewer stationary turns after the journey and entry are not measured.",
             "walk": "The guarded three-step sewer walk is not recorded.",
             "transition": "JOURNEY ON meets a scripted battle, and SEARCH AREA has no measured prompt guard.",
             "reload": "The game's no-save return to the load picker is not measured.",
@@ -318,6 +318,15 @@ def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
         return (
             load, _ssb_stationary(), _ssb_walk(),
             *(_missing(name, "world", needs[name]) for name in _REQUIRED[3:]),
+        )
+    if title in ("pool", "curse"):
+        return (
+            load, _phase("outdoor", "world", Step("observe", "world", checkpoint="outdoor")),
+            _missing("transition", "world", needs["transition"]),
+            _missing("stationary", "world", needs["stationary"]),
+            _missing("walk", "world", needs["walk"]),
+            _missing("reload", "world", needs["reload"]),
+            _missing("reopen_step", "world", needs["reopen_step"]),
         )
     return (load, *(_missing(name, "world", needs[name]) for name in _REQUIRED[1:]))
 
