@@ -1823,6 +1823,18 @@
       "example": "WISH-367/amiga-neighbour/guard3/temple-entry-canonical.png",
       "sha256": "79b1f10c48f8f400095e26fbf9e4877144ad922863f8440af03decf66f048408"
     },
+    "temple_clear_world": {
+      "also": ["world"],
+      "and": [
+        {
+          "box": [88, 302, 700, 360],
+          "sha256": "cef45536ff0f51ccc84d953ce7c3e08d407d4083029cc3efd7cce4a62825b730"
+        }
+      ],
+      "box": [72, 404, 606, 426],
+      "example": "WISH-367/amiga-neighbour/guard4/screens/051-world.png",
+      "sha256": "50cfbd7d2a3717965dc5c99b09138bee54b0634c64bfc0ddb256bfd7605f92b4"
+    },
     "well_entry_continue": {
       "also": [
         "continue"

@@ -332,7 +332,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         write_json(guard_file, json.loads(GUARDS.read_text())["guards"])
         guards = guards or PixelGuards(guard_file)
         require({"title", "party_menu", "load_picker", "loaded_menu", "journal", "world",
-                  "well_entry_continue", "temple_entry_continue"}
+                  "well_entry_continue", "temple_entry_continue", "temple_clear_world"}
                  <= guards.rules.keys(), "Silver Blades load guards are missing")
         proof = args.out / "mute.json"
         output = guest._run("ssh", acceptance.MUTE_READBACK, timeout=min(60, deadline - time.monotonic()))
@@ -370,15 +370,17 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
             guest.snapshot(name, args.holder)
 
         def observed(label: str, area: int, square: tuple[int, int, int] | None,
-                     variables: dict[int, int] | None = None) -> dict:
-            run_guard.see("world", 60)
+                     variables: dict[int, int] | None = None,
+                     screen: str = "world") -> dict:
+            run_guard.see(screen, 60)
             reading = reader(args.holder)
             check(reading, names, area, square, variables)
             receipt["reads"][label] = logged(reading)
             return reading
 
         def step(label: str, area: int, square: tuple[int, int, int],
-                 expected: tuple[int, int, int] | None = None) -> None:
+                 expected: tuple[int, int, int] | None = None,
+                 temple: bool = False) -> None:
             nonlocal active_switch
             target = reader(args.holder)["target"]
             factory = switch_factory or (lambda target: noencounters.WinuaeEncounters(
@@ -388,13 +390,29 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
             on = active_switch.on()
             require("error" not in on and "stopped" not in on, f"gate did not switch on: {on}")
             try:
-                response = active_switch.keys(["NP8"])
-                require(response.get("pressed") == ["NP8"] and "error" not in response
-                        and "stopped" not in response, f"NP8 did not go through: {response}")
-                moved = observed(label + "-step", area, expected)
-                require(tuple(moved["square"]) != square, "NP8 left the party on its square")
-                receipt.setdefault("steps", []).append({"on": on, "key": response,
-                                                          "after": logged(moved)})
+                if temple:
+                    for key, before, after, stage in (
+                            ("NP6", (2, 15, 3), (2, 15, 0), "turn-north"),
+                            ("NP6", (2, 15, 0), (2, 15, 1), "turn-east"),
+                            ("NP8", (2, 15, 1), (3, 15, 1), "step")):
+                        observed(label + "-before-" + stage, area, before,
+                                 screen="temple_clear_world")
+                        response = active_switch.keys([key])
+                        require(response.get("pressed") == [key] and "error" not in response
+                                and "stopped" not in response,
+                                f"{key} did not go through: {response}")
+                        moved = observed(label + "-" + stage, area, after,
+                                         screen="temple_clear_world")
+                        receipt.setdefault("steps", []).append({"on": on, "key": response,
+                                                                  "after": logged(moved)})
+                else:
+                    response = active_switch.keys(["NP8"])
+                    require(response.get("pressed") == ["NP8"] and "error" not in response
+                            and "stopped" not in response, f"NP8 did not go through: {response}")
+                    moved = observed(label + "-step", area, expected)
+                    require(tuple(moved["square"]) != square, "NP8 left the party on its square")
+                    receipt.setdefault("steps", []).append({"on": on, "key": response,
+                                                              "after": logged(moved)})
             finally:
                 off = active_switch.off()
                 require("error" not in off and not state.load()["on"]
@@ -440,7 +458,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
                             "the Temple world gate is still shut after Return")
                 observed("52", 52, (2, 15, 3), {0x4C62: 5})
                 snapshot("destination-52")
-                step("52", 52, (2, 15, 3))
+                step("52", 52, (2, 15, 3), (3, 15, 1), temple=True)
             elif number == 3:
                 observed("82", 82, (1, 11, 1))
             else:

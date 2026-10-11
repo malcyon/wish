@@ -10,9 +10,12 @@ import pytest
 from PIL import Image
 
 from automap import gamedisks
+from goldbox.geo import EAST, SOLID, WEST, Geo
+from tools.amiga import guardmaps
 from tools.amiga import ssbneighbour as neighbour
 from tools.amiga.screens import PixelGuards, box_digests, canonical_file, guard_rule
 from tools.amiga.winuaesession import RouteError, ShotTimedOut
+from tools.records.geoports import every_port
 
 
 @pytest.mark.parametrize("missing", ["registry", "reader", "template", "df0_unreadable",
@@ -239,7 +242,7 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
     class Guards:
         rules = dict.fromkeys(("title", "party_menu", "load_picker", "loaded_menu",
                                 "journal", "world", "well_entry_continue",
-                                "temple_entry_continue"))
+                                "temple_entry_continue", "temple_clear_world"))
 
         def __contains__(self, name):
             return name in self.rules
@@ -266,9 +269,15 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
 
         def keys(self, keys):
             events.append(("switch", *keys))
-            assert keys == ["NP8"]
+            assert keys in (["NP6"], ["NP8"])
             x, y, facing = current["square"]
-            current["square"] = (x - 1, y, facing) if current["area"] == 81 else (x + 1, y, facing)
+            if keys == ["NP6"]:
+                current["square"] = (x, y, (facing + 1) % 4)
+            elif current["area"] == 52:
+                if facing == EAST:
+                    current["square"] = (3, 15, EAST)
+            elif facing == WEST:
+                current["square"] = (x - 1, y, facing)
             return {"pressed": keys}
 
         def off(self):
@@ -377,7 +386,9 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
         assert receipt["reads"]["52"]["variables"]["4C62"] == 5
         assert receipt["reads"]["81"]["square"] == (15, 6, 3)
         assert receipt["reads"]["81-step"]["square"] == (14, 6, 3)
-        assert [v[1] for v in events if v[0] == "switch"] == ["on", "NP8", "off"] * 2
+        assert [v[1] for v in events if v[0] == "switch"] == [
+            "on", "NP6", "NP6", "NP8", "off", "on", "NP8", "off"]
+        assert receipt["reads"]["52-step"]["square"] == (3, 15, EAST)
     assert [v[1] for v in events if v[0] == "press"] == (
         [] if failure == "shot_timeout" else
         ["P", "L"] if unknown_picker else ["P", "L", "D", "B"] +
@@ -659,8 +670,64 @@ def test_private_temple_capture_matches_both_boxes_and_not_other_pages(tmp_path)
         assert not guards("temple_entry_continue", canonical)
 
 
+def test_private_temple_clear_world_excludes_the_gate_page(tmp_path):
+    screens = (pathlib.Path.home() / ".cache/wish/acceptance/WISH-367/amiga-neighbour/"
+               "guard4/screens")
+    frames = [screens / f"{number:03d}-world.png" for number in (51, 52, 53)]
+    if not all(frame.is_file() for frame in frames):
+        pytest.skip("Private retained Temple world captures 051/052/053 are unavailable")
+    rules = json.loads(neighbour.GUARDS.read_text())["guards"]
+    clear = rules["temple_clear_world"]
+    assert clear["box"] == rules["world"]["box"]
+    assert clear["sha256"] == rules["world"]["sha256"]
+    assert clear["and"] == [{"box": [88, 302, 700, 360],
+                             "sha256": "cef45536ff0f51ccc84d953ce7c3e08d407d4083029cc3efd7cce4a62825b730"}]
+    guard_file = tmp_path / "guards.json"
+    guard_file.write_text(json.dumps(rules))
+    guards = PixelGuards(guard_file)
+    for frame in frames:
+        assert guards("world", frame)
+    assert [guards("temple_clear_world", frame) for frame in frames] == [True, True, False]
+
+
+def test_temple_clear_world_exports_as_a_two_box_guard(tmp_path):
+    maps = neighbour.GUARDS.parent
+    declared = json.loads(neighbour.GUARDS.read_text())["guards"]
+    clear = declared["temple_clear_world"]
+    spec = guardmaps._load(maps, "ssb")
+    assert spec["guards"]["temple_clear_world"] == clear
+    assert clear["also"] == ["world"]
+    assert clear["box"] == declared["world"]["box"]
+    assert clear["sha256"] == declared["world"]["sha256"]
+    assert clear["and"] == [{"box": [88, 302, 700, 360],
+                             "sha256": "cef45536ff0f51ccc84d953ce7c3e08d407d4083029cc3efd7cce4a62825b730"}]
+    output = tmp_path / "export"
+    assert guardmaps.main(["--maps", str(maps), "export", "--title", "ssb",
+                           "--out", str(output)]) == 0
+    exported = json.loads((output / "guards.json").read_text())
+    assert exported["temple_clear_world"] == {
+        key: clear[key] for key in ("box", "sha256", "and")}
+    assert PixelGuards(output / "guards.json").rules == exported
+
+
+def test_private_temple_east_edge_uses_the_registered_amiga_geo32():
+    try:
+        payload = every_port()["Silver Blades"]["Amiga"]["GEO32"]
+    except (gamedisks.RegistryError, KeyError, OSError):
+        pytest.skip("Private registered Silver Blades Amiga GEO32 is unavailable")
+    geo = Geo(payload)
+    assert geo.wall(2, 15, WEST) == 2
+    assert geo.barrier(2, 15, WEST) == SOLID
+    assert not geo.is_passable(2, 15, WEST)
+    assert geo.wall(2, 15, EAST) == 1
+    assert geo.barrier(2, 15, EAST) == 1
+    assert geo.is_passable(2, 15, EAST)
+    assert geo.script_id(3, 15) == 0
+
+
 @pytest.mark.parametrize("failure", [None, "wrong_identity", "wrong_variable", "changed_story",
-                                     "bar_only", "shut_gate", "changed_after", "wrong_after"])
+                                      "bar_only", "shut_gate", "changed_after", "wrong_after",
+                                      "wrong_turn", "blocked_east", "changed_screen"])
 def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
         tmp_path, monkeypatch, failure):
     names = [f"Member {n}" for n in range(6)]
@@ -714,26 +781,34 @@ def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
 
     class Guards:
         rules = dict.fromkeys(("title", "party_menu", "load_picker", "loaded_menu", "journal",
-                               "world", "well_entry_continue", "temple_entry_continue"))
+                               "world", "well_entry_continue", "temple_entry_continue",
+                               "temple_clear_world"))
 
         def __contains__(self, name):
             return name in self.rules
 
         def __call__(self, state, crop):
+            if state == "temple_clear_world":
+                events.append(("guard", state, current["area"], current["square"]))
             if state == "temple_entry_continue" and failure in ("changed_story", "bar_only"):
                 return False
             if state == "world" and failure == "changed_after" and len([
                     e for e in events if e == ("press", "RET")]) == 2:
                 return False
+            if state == "temple_clear_world" and failure == "changed_screen" and (
+                    "switch", "NP6") in events:
+                return False
             return state != "journal"
 
-    if failure in ("changed_story", "bar_only", "changed_after"):
+    if failure in ("changed_story", "bar_only", "changed_after", "changed_screen"):
         original_see = neighbour.GuardedRun.see
 
         def quick_failed_screen(self, state, limit):
             if state == "temple_entry_continue" or (
                     state == "world" and failure == "changed_after"
-                    and len([e for e in events if e == ("press", "RET")]) == 2):
+                    and len([e for e in events if e == ("press", "RET")]) == 2) or (
+                    state == "temple_clear_world" and failure == "changed_screen"
+                    and ("switch", "NP6") in events):
                 limit = 0.01
             return original_see(self, state, limit)
 
@@ -749,8 +824,16 @@ def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
 
         def keys(self, keys):
             events.append(("switch", *keys))
+            assert len(keys) == 1 and keys[0] in ("NP6", "NP8")
             x, y, facing = current["square"]
-            current["square"] = (x - 1 if current["area"] == 81 else x + 1, y, facing)
+            if keys == ["NP6"]:
+                current["square"] = (x, y, facing if failure == "wrong_turn" else (facing + 1) % 4)
+            elif current["area"] == 52:
+                # GEO32 at (2,15): the west gate is solid; only east admits this step.
+                if facing == EAST and failure != "blocked_east":
+                    current["square"] = (3, 15, EAST)
+            elif facing == WEST:
+                current["square"] = (x - 1, y, facing)
             return {"pressed": keys}
 
         def off(self):
@@ -802,7 +885,12 @@ def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
         failure == "shut_gate" and len([e for e in events if e == ("press", "RET")]) == 2))
     args = argparse.Namespace(manifest=path, holder="fake-holder", out=tmp_path / "output",
                               budget=3600, wait_lane=0, retry_of=None)
-    options = dict(guest=Guest(), guards=Guards(), reader=lambda holder: current.copy(),
+
+    def read(holder):
+        events.append(("read", current["area"], current["square"], tuple(current["names"])))
+        return current.copy()
+
+    options = dict(guest=Guest(), guards=Guards(), reader=read,
                    executor=execute, switch_factory=Switch)
     if failure:
         with pytest.raises(RouteError):
@@ -812,16 +900,40 @@ def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
         assert receipt["success"] is True
         assert [(e[1], e[2]) for e in events if e[0] == "trip"] == [
             (16, 33), (33, 52), (16, 82), (82, 81)]
-        assert [e[1] for e in events if e[0] == "switch"] == ["on", "NP8", "off"] * 2
+        assert [e[1] for e in events if e[0] == "switch"] == [
+            "on", "NP6", "NP6", "NP8", "off", "on", "NP8", "off"]
         assert receipt["reads"]["temple_prompt"]["variables"]["4C2A"] == 1
         assert receipt["reads"]["52"]["square"] == (2, 15, 3)
+        assert receipt["reads"]["52-turn-north"]["square"] == (2, 15, 0)
+        assert receipt["reads"]["52-turn-east"]["square"] == (2, 15, 1)
+        assert receipt["reads"]["52-step"]["square"] == (3, 15, 1)
+        keys = [i for i, event in enumerate(events) if event in (("switch", "NP6"),
+                                                                  ("switch", "NP8"))]
+        assert len(keys) == 4
+        before = ((2, 15, 3), (2, 15, 0), (2, 15, 1))
+        after = ((2, 15, 0), (2, 15, 1), (3, 15, 1))
+        for turn, index in enumerate(keys[:3]):
+            previous = keys[turn - 1] if turn else events.index(("snapshot", "destination-52"))
+            following = keys[turn + 1]
+            assert ("guard", "temple_clear_world", 52, before[turn]) in events[previous:index]
+            assert ("read", 52, before[turn], tuple(names)) in events[previous:index]
+            assert ("guard", "temple_clear_world", 52, after[turn]) in events[index:following]
+            assert ("read", 52, after[turn], tuple(names)) in events[index:following]
         assert ("snapshot", "destination-52") in events
     assert [e[1] for e in events if e[0] == "press" and e[1] == "RET"] == (
         ["RET"] if failure in ("wrong_identity", "wrong_variable", "changed_story", "bar_only")
         else ["RET", "RET"])
     if failure:
-        assert ("snapshot", "destination-52") not in events
-        assert ("switch", "NP8") not in events
+        if failure in ("wrong_turn", "blocked_east", "changed_screen"):
+            assert ("snapshot", "destination-52") in events
+            if failure == "blocked_east":
+                assert ("switch", "NP8") in events
+            else:
+                assert ("switch", "NP8") not in events
+            assert ("switch", "NP6") in events
+        else:
+            assert ("snapshot", "destination-52") not in events
+            assert ("switch", "NP8") not in events
         assert not any(e[0] == "trip" and e[1] == 16 and e[2] == 82 for e in events)
     else:
         second_return = events.index(("press", "RET"), events.index(("trip", 33, 52)))
@@ -832,6 +944,10 @@ def test_pending_temple_requires_one_guarded_return_and_fresh_world_before_step(
     assert saved["success"] is (failure is None)
     assert {"discard": "s0"} in saved["cleanup"]
     assert saved["halt"]["fetched"] == {"df0": {}, "df1": {}}
+    if failure in ("wrong_turn", "blocked_east", "changed_screen"):
+        assert {"discard": "destination-52"} in saved["cleanup"]
+        assert {"encounters": "off"} in saved["cleanup"]
+        assert ("switch", "off") in events
 
 
 def test_well_guard_requires_both_independent_boxes_on_one_screen(tmp_path):
