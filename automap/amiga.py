@@ -456,6 +456,15 @@ class WinuaeDebugger:
         parts.append("Write-Output '<<end>>'")
         return "\n".join(parts)
 
+    def _argv(self, lines: list[str], fetch: list[tuple[str, str]]) -> list[str]:
+        return ["winvm", "ssh", "powershell -NoProfile -EncodedCommand "
+                + encode(self._script(lines, fetch))]
+
+    def command_length(self, lines: list[str],
+                       fetch: list[tuple[str, str]]) -> int:
+        """Characters in the command line `batch` would run for these lines."""
+        return len(" ".join(self._argv(lines, fetch)))
+
     def batch(self, lines: list[str],
               fetch: list[tuple[str, str]] | None = None
               ) -> tuple[str, dict[str, bytes | None]]:
@@ -469,10 +478,7 @@ class WinuaeDebugger:
         """
         fetch = fetch or []
         self.batches.append(list(lines))
-        out = self._run(["winvm", "ssh",
-                         "powershell -NoProfile -EncodedCommand "
-                         + encode(self._script(lines, fetch))],
-                        self.timeout)
+        out = self._run(self._argv(lines, fetch), self.timeout)
         if "<<end>>" not in out:
             raise GuestError("the guest script did not finish; its output "
                              f"ended: {out.strip()[-400:]}")
@@ -2718,15 +2724,23 @@ class AmigaTarget:
         A transport that cannot say how long its command is gets one range, as
         does any batch that fits; a single block is never split.
         """
-        measure = getattr(self.debugger, "command_length", None)
-        if measure is None or measure(lines, fetch) <= MAX_GUEST_COMMAND:
+        raw = getattr(self.debugger, "command_length", None)
+        if raw is None:
+            return [(0, len(lines))]
+        # `_resume` adds a `g` to each chunk on a route that halts the machine,
+        # and the command that is sent includes it.
+        tail = ["g"] if getattr(self.debugger, "halts_machine", True) else []
+
+        def measure(a: int, b: int) -> int:
+            return raw(lines[a:b] + tail, fetch[a:b])
+
+        if measure(0, len(lines)) <= MAX_GUEST_COMMAND:
             return [(0, len(lines))]
         ranges, start = [], 0
         while start < len(lines):
             stop = start + 1
-            while (stop < len(lines) and measure(
-                    lines[start:stop + 1], fetch[start:stop + 1])
-                    <= MAX_GUEST_COMMAND):
+            while (stop < len(lines)
+                   and measure(start, stop + 1) <= MAX_GUEST_COMMAND):
                 stop += 1
             ranges.append((start, stop))
             start = stop

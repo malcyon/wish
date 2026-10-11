@@ -1578,3 +1578,34 @@ def test_a_batch_that_fits_is_still_one_command():
     t = amiga.AmigaTarget(p, CURSE, BASE)
     t.read_blocks([(0xC00000, 4), (0xC00010, 4)])
     assert len(guest.scripts) == 1
+
+
+def test_a_large_read_on_the_console_route_is_split_too():
+    sent = []
+
+    def runner(argv, timeout):
+        sent.append(argv)
+        script = base64.b64decode(argv[-1].split()[-1]).decode("utf-16-le")
+        batch = base64.b64decode(
+            re.search(r"FromBase64String\('([^']+)'", script).group(1)
+        ).decode("ascii").split()
+        assert batch[-1] == "g"
+        dumps = {}
+        rows = re.findall(r"S (\S+) ([0-9a-f]+) ([0-9a-f]+)",
+                          " ".join(batch))
+        for path, addr, length in rows:
+            dumps[path] = bytes([int(addr, 16) & 0xFF]) * int(length, 16)
+        out = ["<<key>>", "<<send>>"]
+        for name, path in re.findall(
+                r"<<(b\d+)>>'\nif \(Test-Path -LiteralPath '([^']+)'", script):
+            out += [f"<<{name}>>",
+                    base64.b64encode(dumps[path]).decode("ascii")]
+        return "\r\n".join(out + ["<<end>>"]) + "\r\n"
+
+    t = amiga.AmigaTarget(amiga.WinuaeDebugger("wish37", runner=runner),
+                          CURSE, BASE)
+    blocks = [(0xC00000 + 16 * i, 8) for i in range(200)]
+    got = t.read_blocks(blocks)
+    assert got == [bytes([a & 0xFF]) * n for a, n in blocks]
+    assert len(sent) > 1
+    assert all(len(" ".join(argv)) <= amiga.MAX_GUEST_COMMAND for argv in sent)
