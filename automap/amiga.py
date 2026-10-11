@@ -104,6 +104,10 @@ _log = logging.getLogger("wish.automap.amiga")
 GUEST_ROOT = r"C:\Amiga"
 GUEST_DUMP = GUEST_ROOT + r"\dump"
 
+# The guest ssh server fails a command line of about 89,000 characters and
+# accepts 11,000; Windows caps a command line at 32,767.
+MAX_GUEST_COMMAND = 24_000
+
 #: The Amiga's memory, as the ranges a whole-machine search has to cover, for
 #: the A500 `tools/amiga/goldbox-a500.uae` describes: 512K of chip at 0 and 512K of
 #: slow memory at `$C00000` (`bogomem_size=2`). The game is in the second of
@@ -1609,6 +1613,16 @@ Write-Output '<<end>>'
         of the commands that can reach `activate_debugger()`.
         """
         fetch = fetch or []
+        script = self._batch_script(lines, fetch)
+        self.sent += list(lines)
+        out = self._execute(script)
+        replies, _timings = self._replies(out, list(lines))
+        text = "\n".join(f"--- {cmd}\n{reply}" for cmd, reply in replies)
+        return text, {name: _blob(out, name) for name, _path in fetch}
+
+    def _batch_script(self, lines: list[str],
+                      fetch: list[tuple[str, str]]) -> str:
+        """The script `batch` runs for these lines and dumps."""
         script = self.script(lines, fetch=fetch)
         if fetch:
             # `S` opens its file for writing and cannot create the directory
@@ -1618,11 +1632,12 @@ Write-Output '<<end>>'
             # makes PowerShell exit non-zero, so `_run` raises `GuestError`.
             script = (f"New-Item -ItemType Directory -Force -Path "
                       f"'{GUEST_DUMP}' -ErrorAction Stop | Out-Null\n{script}")
-        self.sent += list(lines)
-        out = self._execute(script)
-        replies, _timings = self._replies(out, list(lines))
-        text = "\n".join(f"--- {cmd}\n{reply}" for cmd, reply in replies)
-        return text, {name: _blob(out, name) for name, _path in fetch}
+        return script
+
+    def command_length(self, lines: list[str],
+                       fetch: list[tuple[str, str]]) -> int:
+        """Characters in the command line `batch` would run for these lines."""
+        return len(" ".join(self._argv(self._batch_script(lines, fetch))))
 
     def _execute(self, script: str) -> str:
         """Run one script on the guest and check it got to the end."""
@@ -2678,21 +2693,44 @@ class AmigaTarget:
             path = f"{GUEST_DUMP}\\wish-{token}-{i}.bin"
             lines.append(f"S {path} {addr:x} {length:x}")
             fetch.append((f"b{i}", path))
-        self._resume(lines)
-        out, blobs = self.debugger.batch(lines, fetch)
         result = []
-        for i, (addr, length) in enumerate(want):
-            blob = blobs.get(f"b{i}")
-            if blob is None:
-                raise GuestError(
-                    f"the debugger wrote no dump for {addr:#x}+{length:#x}; "
-                    f"the batch's own output ended: {out.strip()[-400:]}")
-            if len(blob) != length:
-                raise GuestError(
-                    f"asked for {length} bytes at {addr:#x} and the guest "
-                    f"returned {len(blob)}")
-            result.append(blob)
+        for start, stop in self._chunks(lines, fetch):
+            part, part_fetch = lines[start:stop], fetch[start:stop]
+            self._resume(part)
+            out, blobs = self.debugger.batch(part, part_fetch)
+            for i in range(start, stop):
+                addr, length = want[i]
+                blob = blobs.get(f"b{i}")
+                if blob is None:
+                    raise GuestError(
+                        f"the debugger wrote no dump for {addr:#x}+{length:#x}; "
+                        f"the batch's own output ended: {out.strip()[-400:]}")
+                if len(blob) != length:
+                    raise GuestError(
+                        f"asked for {length} bytes at {addr:#x} and the guest "
+                        f"returned {len(blob)}")
+                result.append(blob)
         return result
+
+    def _chunks(self, lines: list[str], fetch: list[tuple[str, str]]):
+        """Index ranges of `lines` whose built commands each fit the guest.
+
+        A transport that cannot say how long its command is gets one range, as
+        does any batch that fits; a single block is never split.
+        """
+        measure = getattr(self.debugger, "command_length", None)
+        if measure is None or measure(lines, fetch) <= MAX_GUEST_COMMAND:
+            return [(0, len(lines))]
+        ranges, start = [], 0
+        while start < len(lines):
+            stop = start + 1
+            while (stop < len(lines) and measure(
+                    lines[start:stop + 1], fetch[start:stop + 1])
+                    <= MAX_GUEST_COMMAND):
+                stop += 1
+            ranges.append((start, stop))
+            start = stop
+        return ranges
 
     def _resume(self, lines: list[str]) -> None:
         """Add the `g` that starts the machine again, where there was a halt.

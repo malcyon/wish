@@ -1559,3 +1559,22 @@ def test_the_pipe_command_line_reaches_the_holders_own_emulator(monkeypatch, cap
 def test_a_snapshot_receipt_keeps_the_sha256_tag_the_resume_record_reads():
     extra = WRITTEN + ("<<sha256>> " + "ab" * 32,)
     assert snap(LaneGuest(saved(extra=extra))).tags["sha256"] == "ab" * 32
+
+
+def test_a_batch_too_long_for_one_command_is_split_and_comes_back_in_order():
+    memory = {0xC00000: bytes(i % 256 for i in range(4096))}
+    blocks = [(0xC00000 + 16 * i, 8) for i in range(200)]
+    p, guest = pipe(memory)
+    t = amiga.AmigaTarget(p, CURSE, BASE)
+    got = t.read_blocks(blocks)
+    assert got == [guest.peek(a, n) for a, n in blocks]
+    assert len(guest.scripts) > 1
+    for script in guest.scripts:
+        assert len(" ".join(p._argv(script))) <= amiga.MAX_GUEST_COMMAND
+
+
+def test_a_batch_that_fits_is_still_one_command():
+    p, guest = pipe({0xC00000: bytes(64)})
+    t = amiga.AmigaTarget(p, CURSE, BASE)
+    t.read_blocks([(0xC00000, 4), (0xC00010, 4)])
+    assert len(guest.scripts) == 1
