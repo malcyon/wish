@@ -10,6 +10,13 @@ Adopt the orchestrator role only for an authorized queue run. Donald's
 not merely draining Queue. Creating, reviewing or editing this skill does not
 authorize starting work, writing tickets or contacting another session.
 
+An authorized run executes work, not just a queue audit. Before handing back,
+either start an eligible ticket through confirmed Backlog → Queue → In Progress
+transitions and launch its specialist, or account for every unfinished ticket
+with a concrete hold, shared owner or failed transition. An empty Queue,
+`No gaps`, a ranked table or an idle test-runner is not that account. Do not ask
+Donald to schedule ordinary eligible work: `/orchestrate` supplies that authority.
+
 Repository paths below are relative to the working tree root, not this skill's
 base directory. Read `AGENTS.md`, `CLAUDE.md` and
 `.claude/rules/{commits,delegating,issues,scratch,words}.md` before dispatch.
@@ -130,6 +137,16 @@ smallest blocker removal. Prepare Questions for Donald only after tracing the
 player's action, location, visible result and consequence. Do not choose
 interface wording or other player-facing behavior for him.
 
+Readiness belongs to the next authorized step, not the ticket's final proof.
+A missing plan calls for a planner; a missing acceptance driver calls for
+driver diagnosis or building; a ready driver calls for a bounded live run.
+Planning and preparation are ticket work and require the same confirmed start
+as building or acceptance. A busy emulator lane or overlapping integration
+does not block independent planning or worktree preparation. Record what can
+actually proceed and assign the fitting specialist. A genuine Donald-only
+hold does not authorize implementing the held behavior; prepare only evidence
+already permitted by his instructions, or retain the hold with its reason.
+
 Maintain `~/.cache/wish/orchestrator-queue.md` as a shared cache, never a
 substitute for live state and never committed. Preserve assignments, manual
 edits, plans, deferrals and experiment evidence. Save a dated copy before
@@ -227,25 +244,28 @@ At startup, in this order:
    states and native priorities without losing assignments, manual edits,
    plans, decisions, deferrals or experiment evidence. Rebuild only a missing
    cache from live data.
-2. Classify every unfinished ticket as ranked work or an explicit hold. Read
-   each description and all comments before selecting it; compare current
-   code, the SHA and recorded evidence, using the fitting specialist for
-   substantial investigation when needed. Preserve genuine decisions,
-   dependencies, holds and shared ownership. A Backlog state or a prior
-   wind-down handoff alone is not a permanent hold; re-evaluate whether work
-   is ready. Honor native priority and Donald's manual changes. Print the
-   ranked table with concrete holds before dispatch.
-3. For each ready Backlog ticket, send an explained Backlog to Queue update
-   and confirm the live readback. For each ready Queue ticket, send an
-   explained Queue to In Progress update and confirm the live readback before
-   launching its planner, builder or live experiment. Do not infer either
-   transition from the cache. If a required write is unavailable, retain the
-   actual state, report the concrete failed transition and stop assignments
-   dependent on it; do not work around the write or ask Donald to perform
-   ordinary scheduling.
-4. Report any missing specialist or hook limitation, establish the reusable
-   test-runner, and dispatch all ready independent work whose start is
-   confirmed. Preserve the runtime, approval and capacity boundaries above.
+2. Scan unfinished tickets in native-priority order for their next authorized
+   step. Read a candidate's description and all comments before selecting it;
+   compare the SHA and recorded evidence. Preserve genuine decisions,
+   dependencies, holds and shared ownership. A Backlog state, old ledger
+   reason or prior wind-down handoff alone is not a permanent hold. Publish
+   the initial ranking, marking unresolved rows as not yet assessed rather
+   than blocked. Do not require an exhaustive audit before the first dispatch.
+3. Start the first eligible step, then repeat for other independent steps.
+   For a Backlog ticket, send an explained Backlog to Queue update and confirm
+   readback, then send an explained Queue to In Progress update and confirm
+   readback. For a Queue ticket, confirm its In Progress update. Resolve UUIDs
+   from live metadata and use the approved adapter; never infer a transition
+   from the cache. Establish the reusable test-runner before an executing
+   worker needs it, then launch the fitting specialist and record its actual
+   session ID, role, ticket and next step. A missing specialist or failed write
+   stops only dependent assignments; report it and continue assessing others.
+   Do not work around the write or ask Donald to perform ordinary scheduling.
+4. Finish classifying the complete unfinished list while launched workers run.
+   Dispatch every newly identified independent step through step 3. Update the
+   table with each active assignment or concrete hold. An audit report naming
+   preparation work becomes a dispatch input, not the final result of the run.
+   Preserve the runtime, approval and capacity boundaries above.
 
 On each completion, process evidence, reconcile live state and the cache,
 revisit eligible Backlog tickets, and dispatch newly ready independent work
@@ -254,9 +274,14 @@ through the same confirmed transitions.
 OpenCode has no exposed `wait_agent` or self-scheduling loop here. Background
 completion notifications resume coordination; do not poll children, sleep,
 inspect private session storage or invent a wake-up command. If only running
-children remain, hand back a concise pending status and their IDs. If no
-launchable work or notifying child remains, state the exact blocker and stop;
-Donald can resume with `/orchestrate`. Never imply unattended continuation
+children remain, hand back a concise pending status and their IDs. Before
+stopping with no notifying child, finish the full unfinished-list pass and
+check for executable planning, driver preparation, acceptance, review and CI.
+For each remaining ticket, identify its shared owner, genuine hold or concrete
+unavailable operation; recheck historical waits against current evidence.
+Stop only when none of those authorized steps can proceed. A setup-only runner
+or completed audit supplies no continuation. Donald can resume with
+`/orchestrate`. Never imply unattended continuation
 without an actual pending notification or supported trigger.
 
 Wind-down stops new assignments and finishes authorized validation, review,
