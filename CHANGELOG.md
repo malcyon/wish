@@ -7,22 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-12
+
 ### Added
 
 - Character Editor shows a companion's treasure share in the terms used by the open game's platform.
-
-### Changed
+- Character Editor opens, edits and saves Pools of Darkness saves from a DOS folder or an Amiga disk, and Save As converts a Pools of Darkness party between DOS and the Amiga, item vault included; expect bugs.
+- Character Editor draws each party member's combat figure for DOS and Amiga saves, from the game's own files, and leaves the box empty when it cannot find them.
+- Character Editor warns when a save opens and the game's disk is not set, so its item and spell names are missing.
 
 ### Fixed
 
-- Fixed the bug which made Fast Travel run the player to the nearest door that triggers an in game script. 
+- Fixed the bug which made Fast Travel run the player to the nearest door that triggers an in game script.
 - Saving a folder keeps the original character files intact if a full drive interrupts the save.
 - Save and Save As report "Disk is out of space." when a full drive prevents writing the save.
+- Saving to an Amiga disk that is nearly full works whenever the game itself could replace that save.
 - On Linux, Character Editor opens and converts DOS save files regardless of filename case, and warns when two names differ only in case.
 - Editing an ability in Curse of the Azure Bonds or Secret of the Silver Blades now changes the permanent score too, so the game keeps the edit when it rebuilds abilities.
 - Save As converts a Pool of Radiance party with a joined game companion without stopping at that companion's portrait.
 - Save As turns a zombie player character into a living, player-controlled character on the destination platform while leaving a zombie companion a zombie. The AI ran in confused circles trying to solve weird corner cases on this. This is the only way to make it stop.
+- Save As converts a C64 Pool of Radiance zombie whose animation was dispelled, and a C64 character with an innate Animate Dead effect, instead of stopping.
 - A converted Pool of Radiance companion's name keeps the spaces the Amiga game needs to recognize that companion at the Kobold Caves exit.
+- A converted Curse of the Azure Bonds or Secret of the Silver Blades companion keeps his combat figure on every route, including to and from the C64, where the figure is read from your C64 disks.
+- A converted Amiga Pool of Radiance character keeps his combat figure on DOS and the C64.
+- A Curse of the Azure Bonds save converted to DOS inside the Pit of Moander or ten other indoor areas loads with its walls drawn.
 - The leave-behind window names items and scroll spells from DOS or Amiga game files when no C64 disks are set.
 - A Silver Blades party with too many joined scrolls for an Amiga save can choose further items to leave behind instead of stopping Save As.
 - Choosing items to leave behind from a large Silver Blades pack responds faster.
@@ -36,10 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fast Travel into Tilverton streets in Curse of the Azure Bonds no longer replays the opening scene.
 - Silver Blades Fast Travel lands in the Well of Knowledge and the Frost giant village as a walked arrival would, shows the new area's coordinates, and Return reaches its normal entrance.
 - Fast Travel no longer offers title-screen demo areas or Silver Blades mine levels that cannot be reached by a trip.
-- Fast Travel is unavailable in the Kobold Caves, where a walk-out trip could stop before reaching its destination; Return stays available. The AI ran in circles over this, trying to solve weird, never ending corner cases. I gave up and just disabled fast travel in the caves. 
+- Fast Travel is unavailable in the Kobold Caves, where a walk-out trip could stop before reaching its destination; Return stays available. The AI ran in circles over this, trying to solve weird, never ending corner cases. I gave up and just disabled fast travel in the caves.
 - Preferences recognizes a Curse of the Azure Bonds DOS game folder on the Game disks tab.
 - Character Editor keeps the missing-game-disks note visible after switching tabs and updates the Add item tooltip when disks become available.
 - Greyed-out Automapper controls no longer show tooltips for actions that are unavailable.
+- The Automapper's party marker moves to the party's new square when you return to its tab after the party walked while another tab was showing.
+- The Automapper no longer reports a wrong game disk, or takes its buttons away, while the game is loading a new area's map.
 
 ## [0.1.5] - 2026-10-04
 
@@ -252,7 +262,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/malcyon/wish/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/malcyon/wish/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/malcyon/wish/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/malcyon/wish/compare/v0.1.2...v0.1.3
