@@ -113,33 +113,53 @@ def check_frame(out, name: str, screen, poses) -> int:
 
 def check_run(out, game_dir: pathlib.Path, save: pathlib.Path | None,
               run: pathlib.Path) -> int:
-    """Every `icon N` step of one acceptance run; the number of problems."""
-    summary = json.loads((run / "summary.json").read_text())
+    """Every `icon N` step of one acceptance run; the number of problems.
+
+    A file the run or the save should hold and does not, or cannot be read,
+    is one problem and one line naming it, not a traceback.
+    """
+    try:
+        summary = json.loads((run / "summary.json").read_text())
+        steps = [r for r in summary["results"] if "icon" in r]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        out(f"{run / 'summary.json'}: cannot be read: {exc}")
+        return 1
     if summary.get("title") != "darkness":
         out(f"{run}: a {summary.get('title')} run, not darkness")
+        return 1
+    if not steps:
+        out(f"{run}: no icon step")
         return 1
     game = pod.read_game(game_dir)
     folder = save or game_dir / "SAVE"
     problems = 0
-    steps = [r for r in summary["results"] if "icon" in r]
-    if not steps:
-        out(f"{run}: no icon step")
-        return 1
     for result in steps:
+        name = result.get("name", "?")
         logged = result["record"]
-        char = dos_codec.read_character(folder / logged["file"])
+        record = folder / logged["file"]
+        shot = run / "shots" / f"{result['icon']}.png"
+        try:
+            char = dos_codec.read_character(record)
+        except (OSError, ValueError) as exc:
+            out(f"{name}: {record} cannot be read: {exc}")
+            problems += 1
+            continue
         fields, trouble = staged(record_fields(char),
                                  summary.get("staged", []), logged["file"])
         if any(fields[k] != logged[k] for k in FIELDS):
             trouble.append(f"composed from {fields}, but the run logged "
                            f"{ {k: logged[k] for k in FIELDS} }")
         for line in trouble:
-            out(f"{result['name']}: DISAGREES: {line}")
+            out(f"{name}: DISAGREES: {line}")
         problems += len(trouble)
-        screen = dosicons.capture_pixels(run / "shots"
-                                         / f"{result['icon']}.png")
+        try:
+            screen = dosicons.capture_pixels(shot)
+        except (OSError, dosicons.CaptureError) as exc:
+            out(f"{name}: {shot} cannot be read: {exc}")
+            problems += 1
+            continue
         problems += check_frame(
-            out, f"{run.name} {result['icon']} {result['name']} "
+            out, f"{run.name} {result['icon']} {name} "
                  f"({fields['icon_head']}/{fields['icon_body']}/"
                  f"{fields['size']}/{fields['icon_colours']})",
             screen, drawn(game, fields))

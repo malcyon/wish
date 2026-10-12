@@ -13,6 +13,7 @@ they are on this machine.
 
 from __future__ import annotations
 
+import pathlib
 import struct
 
 import pytest
@@ -542,7 +543,7 @@ def test_the_archives_pod_party_composes(pod_folder):
 # -- Pools of Darkness against the game's ICON screen ------------------------------------
 def pod_screen(game: dp.PodGameArt, fields: dict):
     """A 320x200 frame holding `fields`' figure at all four places."""
-    import numpy
+    numpy = pytest.importorskip("numpy")
     dospodicons = pytest.importorskip("tools.icons.dospodicons")
     screen = numpy.zeros((200, 320), dtype=numpy.int32)
     poses = dospodicons.drawn(game, fields)
@@ -601,6 +602,49 @@ def test_a_pod_stage_lays_its_bytes_over_the_save_s_and_checks_where_it_began():
     assert len(problems) == 1 and "icon_body" in problems[0]
 
 
+def pod_run(tmp_path, damage: str) -> tuple[pathlib.Path, pathlib.Path]:
+    """A generated game folder and a one-step run with `damage` done to it."""
+    import json
+    game = tmp_path / "game"
+    (game / "SAVE").mkdir(parents=True)
+    head, body = pod_image(pod_blank(10)), pod_image(pod_blank(24, 1))
+    box = pod_image(pod_blank(24, 0x57), first=0x40, count=32)
+    (game / "CHEAD.DAX").write_bytes(dax({64: head}))
+    (game / "CBODY.DAX").write_bytes(dax({64: body, 192: body}))
+    (game / "COMSPR.DAX").write_bytes(dax({15: box}))
+    record = bytearray(510)
+    record[0], record[1:5] = 4, b"ABCD"
+    record[0x19D], record[0x19E:0x1A4] = 2, SAME
+    if damage != "record":
+        (game / "SAVE" / "CHRDATA1.SAV").write_bytes(bytes(record))
+    run = tmp_path / "run"
+    (run / "shots").mkdir(parents=True)
+    logged = {"file": "CHRDATA1.SAV", "icon_head": 0, "icon_body": 0,
+              "size": 2, "icon_colours": SAME.hex()}
+    summary = {"title": "darkness", "staged": [], "results": [
+        {"name": "ABCD", "record": logged, "icon": "013-icon-1"}]}
+    (run / "summary.json").write_text(
+        "{" if damage == "summary" else json.dumps(summary))
+    if damage == "frame":
+        from PIL import Image
+        Image.new("RGB", (100, 100)).save(run / "shots" / "013-icon-1.png")
+    return game, run
+
+
+@pytest.mark.parametrize("damage, named", [
+    ("screenshot", "013-icon-1.png"), ("frame", "013-icon-1.png"),
+    ("record", "CHRDATA1.SAV"), ("summary", "summary.json")])
+def test_a_pod_run_it_cannot_read_fails_naming_the_file(tmp_path, capsys,
+                                                         damage, named):
+    """A missing or unreadable file is a failure line, not a traceback."""
+    dospodicons = pytest.importorskip("tools.icons.dospodicons")
+    game, run = pod_run(tmp_path, damage)
+    assert dospodicons.main(["--game", str(game), "--run", str(run)]) == 1
+    printed = capsys.readouterr().out
+    assert named in printed
+    assert "ABCD" in printed or damage == "summary"
+
+
 #: The archives' Pools of Darkness party on its ICON screen: all six members
 #: as the save holds them, and PAINE again with a body colour nibble of 8.
 POD_RUNS = ("dos-icon-darkness", "dos-icon-darkness-seethrough")
@@ -617,6 +661,13 @@ def test_every_pod_icon_capture_is_the_composed_figure(pod_folder):
     runs = [run for run in runs if (run / "summary.json").exists()]
     if not runs:
         pytest.skip("no Pools of Darkness ICON-screen captures here")
+    for run in runs:
+        shots = [run / "shots" / f"{result['icon']}.png"
+                 for result in json.loads((run / "summary.json").read_text())
+                 ["results"] if "icon" in result]
+        missing = [shot.name for shot in shots if not shot.is_file()]
+        if missing:
+            pytest.skip(f"{run.name} lacks {', '.join(missing)}")
     lines = []
     problems = sum(dospodicons.check_run(lines.append, pod_folder, None, run)
                    for run in runs)
