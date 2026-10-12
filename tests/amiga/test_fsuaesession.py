@@ -477,6 +477,34 @@ def test_a_key_to_a_recognised_screen_skips_the_age_and_a_later_unrecognised_one
     assert clock.sleeps == []
 
 
+def test_a_recognised_screen_lets_one_key_out_early_and_the_next_waits_for_the_age(lane, tmp_path, clock):
+    guest = _started(tmp_path, lane, first_key_after=259.0)
+    guest.note_recognised()
+    guest.press("wish1-test", "esc", 30)
+    with pytest.raises(RouteError, match="first key needs"):
+        guest.press("wish1-test", "ret", 30)
+    assert lane.keys == ["Escape"]
+
+
+def test_a_swap_keeps_the_mark_for_the_key_that_answers_the_recognised_prompt(lane, tmp_path, clock):
+    guest = _started(tmp_path, lane, disks=("one", "three", "two"), mounted=("one", "three"),
+                     first_key_after=259.0)
+    two = guest.remote_path("1", "wish1-test", "two")
+    real_send = guest._send
+
+    def send(key):
+        real_send(key)
+        if key == "F12" and lane.keys.count("F12") == 2:
+            _log_line(guest, f"gui_disk_image_change drive 0 name {guest.staged[two]}")
+
+    guest._send = send
+    guest.note_recognised()
+    guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
+    clock.sleeps.clear()
+    assert guest.press("wish1-test", "space", 30) == "ok SPACE"
+    assert lane.keys[-1] == "space" and clock.sleeps == []
+
+
 def test_get_live_stops_when_the_image_keeps_changing_or_the_save_needs_longer(lane, tmp_path, monkeypatch, clock):
     guest = _started(tmp_path, lane)
     remote = guest.remote_path("1", "wish1-test", "one")

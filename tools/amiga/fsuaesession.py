@@ -386,6 +386,10 @@ class FsuaeGuest:
         keysym = self._keysym(key)
         self._wait_for_first_key(timeout)
         self._send(keysym)
+        # The game may leave the recognised screen on this key. The F12 menu keys of `insert`
+        # go through `_send` alone and keep the mark: the menu covers the screen without
+        # changing it, and the route's key after a swap answers the screen it recognised.
+        self._recognised = False
         return f"ok {key.upper()}"
 
     # -- a disk change ----------------------------------------------------------------

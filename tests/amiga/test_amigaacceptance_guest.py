@@ -148,11 +148,11 @@ class NotedGuest(FsuaeNamedGuest):
 
 
 def test_each_guard_match_is_reported_to_an_fsuae_guest_and_changes_nothing_else(tmp_path, clock, readings):  # noqa: F811
-    plain, noted = FsuaeNamedGuest(clock), NotedGuest(clock)
-    left = _run(tmp_path / "plain", plain, proof=None)
+    unnoted, noted = FsuaeNamedGuest(clock), NotedGuest(clock)
+    left = _run(tmp_path / "unnoted", unnoted, proof=None)
     right = _run(tmp_path / "noted", noted, proof=None)
     assert left["error"] == right["error"] == ""
-    assert _events(left) == _events(right) and measure._keys(plain) == measure._keys(noted)
+    assert _events(left) == _events(right) and measure._keys(unnoted) == measure._keys(noted)
     assert noted.noted > 0
 
 
