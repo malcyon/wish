@@ -729,13 +729,56 @@ def test_peeks_option_splits_a_spec_from_its_length():
 def test_swap_sends_exactly_the_given_sequence_with_a_wait_between_keys():
     events = []
     keys = fsuaegdb.insert_floppy(
-        "F12 Down*{index} Return", 2, lambda k: events.append(("key", k)),
+        "F12 Down*{rows} Return", 2, lambda k: events.append(("key", k)),
         lambda label: events.append(("still", label)))
-    assert keys == ["F12", "Down", "Down", "Return"]
+    # Entry 0 is in the drive and its row is disabled: Eject, entry 1, entry 2.
+    assert keys == ["F12", "Down", "Down", "Down", "Return"]
     assert events == [("key", "F12"), ("still", "swap2-0"),
                       ("key", "Down"), ("still", "swap2-1"),
                       ("key", "Down"), ("still", "swap2-2"),
-                      ("key", "Return"), ("still", "swap2-3")]
+                      ("key", "Down"), ("still", "swap2-3"),
+                      ("key", "Return"), ("still", "swap2-4")]
+
+
+def test_a_swap_counts_rows_from_the_disk_in_the_drive_and_a_sequence_with_index_stops():
+    keys = fsuaegdb.insert_floppy("Down*{rows}", 0, lambda k: None, lambda label: None, 2)
+    assert keys == ["Down", "Down"]
+    with pytest.raises(ValueError, match="write {rows}"):
+        fsuaegdb.insert_floppy("Down*{index}", 2, lambda k: None, lambda label: None)
+
+
+def test_do_swap_keeps_the_disk_in_df0_for_the_next_swap(monkeypatch, tmp_path):
+    sent = []
+    monkeypatch.setattr(fsuaegdb, "shot", lambda display, path: None)
+    monkeypatch.setattr(fsuaegdb, "still", lambda args, out, label: None)
+    monkeypatch.setattr(fsuaegdb, "held_key", lambda args, key, idle, budget: sent.append(key))
+    args = argparse.Namespace(display=":99", swap_sequence=fsuaegdb.DEFAULT_SWAP_SEQUENCE)
+    log = tmp_path / "fs-uae.log.txt"
+    log.write_text("")
+
+    def swap(index, line):
+        sent.clear()
+        monkeypatch.setattr(fsuaegdb, "insert_floppy", _logging(log, line))
+        return fsuaegdb.do_swap(args, index, tmp_path, log)
+
+    row = swap(2, "gui_disk_image_change drive 0 name /d/two.adf\n")
+    assert row["inserted"] == 0 and sent.count("Down") == 3 + 3
+    row = swap(1, "gui_disk_image_change drive 0 name /d/one.adf\n")
+    assert row["inserted"] == 2 and sent.count("Down") == 3 + 3
+    row = swap(0, "perform disk_swap drive 0 floppy entry 0\n")
+    assert row["inserted"] == 1 and args.drive_zero == 1
+
+
+_REAL_INSERT = fsuaegdb.insert_floppy
+
+
+def _logging(log, line):
+    def insert(*a, **k):
+        keys = _REAL_INSERT(*a, **k)
+        with log.open("a") as f:
+            f.write(line)
+        return keys
+    return insert
 
 
 def _poke(driven, tmp_path, line, **flags):

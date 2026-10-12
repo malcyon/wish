@@ -443,6 +443,40 @@ def test_get_live_waits_for_the_save_then_copies_once_two_reads_agree(lane, tmp_
     assert clock.sleeps[1:] == [fsuaesession.LIVE_COPY_INTERVAL] * 2
 
 
+def test_get_live_gives_two_reads_after_a_save_wait_that_overruns(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    remote = guest.remote_path("1", "wish1-test", "one")
+    guest.press("wish1-test", "ret", 30)
+    late = [2.5]
+    real_sleep = clock.sleep
+
+    def sleep(seconds):
+        real_sleep(seconds + (late.pop() if late else 0.0))
+
+    monkeypatch.setattr(fsuaesession.time, "sleep", sleep)
+    assert guest.get_live(remote, tmp_path / "late.adf", 14) == f"ok {remote}"
+    assert (tmp_path / "late.adf").read_bytes() == b"one"
+
+
+def test_a_key_to_a_recognised_screen_skips_the_age_and_a_later_unrecognised_one_still_waits(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane, first_key_after=259.0)
+    guest.note_recognised()
+    clock.sleeps.clear()
+    assert guest.press("wish1-test", "esc", 30) == "ok ESC"
+    assert clock.sleeps == [] and lane.keys == ["Escape"]
+    assert guest.grab("next", tmp_path / "r.png", tmp_path / "c.png", 1) is False
+    clock.sleeps.clear()
+    with pytest.raises(RouteError, match="first key needs"):
+        guest.press("wish1-test", "ret", 30)
+    guest.press("wish1-test", "ret", 300)
+    assert len(clock.sleeps) == 1 and clock.sleeps[0] > 200 and lane.keys == ["Escape", "Return"]
+    guest.grab("after", tmp_path / "r.png", tmp_path / "c.png", 1)
+    clock.sleeps.clear()
+    guest.press("wish1-test", "ret", 30)
+    assert clock.sleeps == []
+
+
 def test_get_live_stops_when_the_image_keeps_changing_or_the_save_needs_longer(lane, tmp_path, monkeypatch, clock):
     guest = _started(tmp_path, lane)
     remote = guest.remote_path("1", "wish1-test", "one")

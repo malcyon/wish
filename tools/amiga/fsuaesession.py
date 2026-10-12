@@ -66,8 +66,12 @@ class FsuaeGuest:
         self._keyed = False
         self._screened = False
         self._mounted: list[pathlib.Path] = []
-        #: The swap list entry in DF0: the first mounted disk until an `insert` changes it.
+        #: The swap list entry in DF0. `start` lists the mounted disks first and mounts the first
+        #: in DF0, so that disk is entry 0 until an `insert` changes it.
         self._drive_zero = 0
+        #: Whether the frame on display matched a screen guard; `note_recognised` sets it and each
+        #: new frame clears it.
+        self._recognised = False
         self._hashes_before: dict[str, str] = {}
 
     @staticmethod
@@ -120,14 +124,14 @@ class FsuaeGuest:
         path = self._staged(remote)
         if self.emulator is None or self.emulator.poll() is not None:
             return self.get(remote, local, timeout)
-        end = time.monotonic() + timeout
-        if self._last_key is not None:
-            left = self._last_key + SAVE_REACHES_DISK - time.monotonic()
-            if left >= timeout:
-                raise RouteError(f"{remote} needs {left:.0f}s more for the last save to reach it "
-                                 f"and the call has {timeout:.0f}s")
-            if left > 0:
-                time.sleep(left)
+        left = 0.0 if self._last_key is None else (
+            self._last_key + SAVE_REACHES_DISK - time.monotonic())
+        if left + 2 * LIVE_COPY_INTERVAL > timeout:
+            raise RouteError(f"{remote} needs {left:.0f}s more for the last save to reach it and "
+                             f"two reads after, and the call has {timeout:.0f}s")
+        if left > 0:
+            time.sleep(left)
+        end = time.monotonic() + timeout - max(left, 0.0)
         previous = None
         while True:
             data = path.read_bytes()
@@ -290,6 +294,7 @@ class FsuaeGuest:
         """Copy the emulator's own screenshot (Alt+S) to `path` uncut, as WinUAE's pipe shot is."""
         self._need_slot("shot")
         self._require_running("shoot")
+        self._recognised = False
         found = self._shoot(timeout)
         if found is None:
             raise RouteError(f"FS-UAE wrote no screenshot within {timeout:.0f}s")
@@ -302,6 +307,7 @@ class FsuaeGuest:
 
         self._need_slot("grab")
         self._require_running(f"grab {state} from")
+        self._recognised = False
         if timeout <= 0:
             raise RouteError(f"no time left to grab {state}")
         if not fsuaepor.find_windows(self.slot.display, 5):
@@ -355,10 +361,20 @@ class FsuaeGuest:
                                          hold=HOLD, settle=0.0))
         self._last_key = time.monotonic()
 
+    def note_recognised(self) -> None:
+        """The frame on display matched a screen guard, so a key sent to it is not held to the first-key age."""
+        self._recognised = True
+
     def _wait_for_first_key(self, timeout: float) -> None:
+        """Hold the first key until the title's emulator age, unless it answers a recognised screen."""
         if self._keyed or self.first_key_after is None:
             return
         wait = self.first_key_after - (time.monotonic() - self._started)
+        if wait <= 0:
+            self._keyed = True
+            return
+        if self._recognised:
+            return
         if wait > timeout:
             raise RouteError(f"the first key needs {wait:.0f}s more of emulator age and the call has "
                              f"{timeout:.0f}s")
@@ -385,12 +401,11 @@ class FsuaeGuest:
         index = [*self._mounted, *(p for p in self.staged.values() if p not in self._mounted)].index(path)
         if index == self._drive_zero:
             raise RouteError(f"{remote} is already in DF0")
-        rows = fsuaegdb.media_rows(index, self._drive_zero)
         log = self._need_slot("insert") / "base" / "Cache" / "Logs" / "fs-uae.log.txt"
         since = log.stat().st_size if log.exists() else 0
         keys = fsuaegdb.insert_floppy(
-            fsuaegdb.DEFAULT_SWAP_SEQUENCE, rows,
-            lambda key: self._send(key), lambda label: time.sleep(SWAP_STEP))
+            fsuaegdb.DEFAULT_SWAP_SEQUENCE, index,
+            lambda key: self._send(key), lambda label: time.sleep(SWAP_STEP), self._drive_zero)
         end = time.monotonic() + min(SWAP_LOG_WAIT, timeout)
         while True:
             lines = fsuaegdb.swap_log_lines(log, since)

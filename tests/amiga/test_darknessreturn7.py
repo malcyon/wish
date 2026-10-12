@@ -790,6 +790,35 @@ def test_a_late_title_is_awaited_when_the_guard_set_has_no_intro(tmp_path, monke
     assert pressed == [] and clock["now"] == 300
 
 
+class _Guards:
+    """A guard map that recognises every state it holds."""
+
+    def __init__(self, *states):
+        self.states = set(states)
+
+    def __contains__(self, state):
+        return state in self.states
+
+    def __call__(self, state, crop):
+        return state in self.states
+
+
+def test_an_fsuae_key_to_a_guarded_intro_goes_out_before_the_titles_age(tmp_path):
+    from tools.amiga import fsuaesession
+
+    guest = driver._origin_guest(SimpleNamespace(emulator="fsuae"), None)
+    assert guest.first_key_after == fsuaesession.FIRST_KEY_AFTER["darkness"]
+    guest._started = fsuaesession.time.monotonic() - 60.0
+    guest.emulator = SimpleNamespace(poll=lambda: None)
+    sent = []
+    guest.grab = lambda state, raw, crop, timeout: True
+    guest._send = sent.append
+    run = driver.GuardedRun(guest, "generated-holder", tmp_path / "screens",
+                            _Guards("intro", "title"), driver.time.monotonic() + 600)
+    run.press("intro", "ESC")
+    assert sent == ["Escape"]
+
+
 def test_a_title_that_never_comes_stops_at_the_title_limit_without_keys(tmp_path, monkeypatch):
     run, seen, pressed, clock = _slow_title(tmp_path, monkeypatch, appears=10_000,
                                             states=("title",))

@@ -128,12 +128,39 @@ def test_emulator_fsuae_builds_the_fsuae_lane_and_takes_no_audio_proof(tmp_path,
     assert recorded["guest"].game == "amiga-pool"
 
 
-def test_a_guarded_fsuae_run_keys_on_recognised_screens_and_has_no_first_key_age(tmp_path, recorded, monkeypatch):
+def test_a_guarded_fsuae_run_keeps_the_first_key_age_for_screens_with_no_rule(tmp_path, recorded, monkeypatch):
     monkeypatch.setattr(acceptance, "PixelGuards", lambda path: "guards")
     guards = tmp_path / "guards.json"
     guards.write_text("{}")
     assert _measure(tmp_path, "--emulator", "fsuae", "--guards", str(guards)) == 0
-    assert recorded["guard"] == "guards" and recorded["guest"].first_key_after is None
+    assert recorded["guard"] == "guards" and recorded["guest"].first_key_after == 42.0
+
+
+class NotedGuest(FsuaeNamedGuest):
+    """`FsuaeNamedGuest` that counts the recognised screens the run reports to it."""
+
+    def __init__(self, clock):
+        super().__init__(clock)
+        self.noted = 0
+
+    def note_recognised(self):
+        self.noted += 1
+
+
+def test_each_guard_match_is_reported_to_an_fsuae_guest_and_changes_nothing_else(tmp_path, clock, readings):  # noqa: F811
+    plain, noted = FsuaeNamedGuest(clock), NotedGuest(clock)
+    left = _run(tmp_path / "plain", plain, proof=None)
+    right = _run(tmp_path / "noted", noted, proof=None)
+    assert left["error"] == right["error"] == ""
+    assert _events(left) == _events(right) and measure._keys(plain) == measure._keys(noted)
+    assert noted.noted > 0
+
+
+def test_the_noting_guard_answers_as_the_map_does():
+    seen = []
+    guard = acceptance._NotingGuard(MapGuard(states=("title",)), lambda: seen.append(1))
+    assert "title" in guard and "camp" not in guard and guard.states == {"title"}
+    assert acceptance._has_rule(guard, "title") and not acceptance._has_rule(guard, "camp")
 
 
 def test_winuae_stays_the_default_and_still_needs_its_audio_proof(tmp_path, recorded, monkeypatch, capsys):

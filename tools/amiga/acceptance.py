@@ -54,7 +54,6 @@ from goldbox import (  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
     amigatarget,
-    guardmaps,
     route_camp,
     route_curse,
     route_silver_blades,
@@ -1950,6 +1949,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             raise RouteError("observe-load options or route differ from the guarded prefix")
     if guard is None and not measure:
         raise RouteError("a screen guard is required unless measuring")
+    if callable(getattr(guest, "note_recognised", None)) and hasattr(guard, "__contains__"):
+        guard = _NotingGuard(guard, guest.note_recognised)
     if encounters is not None and (reload or diagnose):
         raise RouteError("the encounter switch belongs to an accept or measure run")
     if encounters is not None and measure and title is None:
@@ -5064,18 +5065,13 @@ EMULATORS = ("winuae", "fsuae")
 
 
 def _guest_for(args: argparse.Namespace) -> Any:
-    """The lane a command runs in: the Windows VM's WinUAE, or an FS-UAE in an instance-pool slot.
-
-    A run with screen guards sends each key to a screen it recognised, so FS-UAE's first-key
-    age, which stands in for a recognised screen in a run without them, is left off: it would
-    stop the key the route sends to a guarded intro long before the title.
-    """
+    """The lane a command runs in: the Windows VM's WinUAE, or an FS-UAE in an instance-pool slot."""
     if getattr(args, "emulator", "winuae") == "winuae":
         return WinGuest()
     from tools.amiga import fsuaesession  # noqa: PLC0415
 
-    age = None if getattr(args, "guards", None) else fsuaesession.FIRST_KEY_AFTER.get(args.title)
-    return fsuaesession.FsuaeGuest(game=f"amiga-{args.title}", first_key_after=age)
+    return fsuaesession.FsuaeGuest(game=f"amiga-{args.title}",
+                                   first_key_after=fsuaesession.FIRST_KEY_AFTER.get(args.title))
 
 
 def _check_emulator(args: argparse.Namespace) -> None:
@@ -5347,8 +5343,34 @@ def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, di
     return title, manifest, legacy
 
 
+class _NotingGuard:
+    """A guard map that tells the guest whenever a frame matches one of its rules.
+
+    FS-UAE holds the first key until the title's emulator age unless the screen on display
+    was recognised, so a key sent to a guarded intro goes out at once and a key sent to a
+    screen with no rule still waits.
+    """
+
+    def __init__(self, guard: Any, note: Any) -> None:
+        self.guard, self.note = guard, note
+
+    def __contains__(self, state: str) -> bool:
+        return state in self.guard
+
+    def __call__(self, state: str, crop: pathlib.Path) -> bool:
+        hit = self.guard(state, crop)
+        if hit:
+            self.note()
+        return hit
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.guard, name)
+
+
 def _screen_guards(path: pathlib.Path, kind: str) -> PixelGuards:
     """The `--guards` or `--identity` file: a flat rule file, or a title's guard map read for its `kind` section."""
+    from tools.amiga import guardmaps  # noqa: PLC0415
+
     return guardmaps.pixel_guards(path, kind, PixelGuards)
 
 

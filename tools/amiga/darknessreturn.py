@@ -1331,6 +1331,10 @@ class GuardedRun:
             if self.guest.grab(state, raw, crop, self.left(20)) and self.guards(state, crop):
                 self.events.append({"screen": state, "crop": str(crop),
                                     "time": time.time(), "shot": self.shot})
+                # FS-UAE holds a key to an unrecognised screen until the title's emulator age.
+                noted = getattr(self.guest, "note_recognised", None)
+                if callable(noted):
+                    noted()
                 return crop
             time.sleep(min(1, self.left(1)))
         raise RouteError(f"{state} did not match its existing guard within {wait:.0f}s")

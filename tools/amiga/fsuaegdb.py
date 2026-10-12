@@ -680,14 +680,17 @@ def parse_peeks(items: list[str] | None) -> list[tuple[str, int]]:
     return out
 
 
-def expand_sequence(text: str, index: int) -> list[str]:
-    """`'F12 Down*{index} Return'` as the keys to press for swap list `index`.
+def expand_sequence(text: str, rows: int) -> list[str]:
+    """`'F12 Down*{rows} Return'` as the keys to press, `rows` being `media_rows`' count.
 
-    `{index}` is replaced as text first, and `KEY*N` repeats a key, so a menu
+    `{rows}` is replaced as text first, and `KEY*N` repeats a key, so a menu
     that is walked by counting entries can be written down.
     """
+    if "{index}" in text:
+        raise ValueError("write {rows}, the Down presses to the entry, where the "
+                         "sequence has {index}")
     keys = []
-    for token in text.replace("{index}", str(index)).split():
+    for token in text.replace("{rows}", str(rows)).split():
         key, star, count = token.partition("*")
         keys += [key] * (int(count) if star else 1)
     for key in keys:
@@ -697,13 +700,10 @@ def expand_sequence(text: str, index: int) -> list[str]:
     return keys
 
 
-#: The F12 menu walk that inserted a swap list image in boot M's hand-driven
-#: run: open the menu, three Down and Return to reach the disk entries, Down to
-#: the media row and Return, then F12 to close it.  `Down*{index}` is right only
-#: while the media row's position equals the swap index; which row is the
-#: right one depends on which disks are already in the drives, so check the
-#: first swap by screenshot and pass `--swap-sequence` when the count differs.
-DEFAULT_SWAP_SEQUENCE = "F12 Down*3 Return Down*{index} Return F12"
+#: The F12 menu walk that inserts a swap list image in DF0: open the menu,
+#: three Down and Return to reach DF0's submenu, `media_rows` Down to the
+#: entry and Return, then F12 to close it.
+DEFAULT_SWAP_SEQUENCE = "F12 Down*3 Return Down*{rows} Return F12"
 
 
 def media_rows(index: int, inserted: int) -> int:
@@ -711,16 +711,17 @@ def media_rows(index: int, inserted: int) -> int:
 
     The submenu opens on the row naming the inserted disk, and the rows below it
     that take the cursor are Eject and then the swap list, less the inserted
-    disk's own entry, which `fsemu_mainmenu_update_drive` disables. So
-    `DEFAULT_SWAP_SEQUENCE`'s `{index}` is this count, not the entry number.
+    disk's own entry, which `fsemu_mainmenu_update_drive` disables. This is
+    the count a sequence's `{rows}` stands for.
     """
     if index == inserted:
         raise ValueError(f"swap list entry {index} is already in the drive")
     return index + 2 - (1 if inserted < index else 0)
 
 
-def insert_floppy(sequence: str | None, index: int, press_key, wait_still) -> list[str]:
-    """Put swap list image `index` into the drive, the one place that does it.
+def insert_floppy(sequence: str | None, index: int, press_key, wait_still,
+                  inserted: int = 0) -> list[str]:
+    """Put swap list image `index` into DF0, which holds entry `inserted`; the one place that does it.
 
     Everything else about a swap -- the screenshots either side, the log lines,
     the command -- is built around this.  The fork binds no key to a disk
@@ -731,7 +732,8 @@ def insert_floppy(sequence: str | None, index: int, press_key, wait_still) -> li
             "swap has no key sequence: how the F12 menu inserts a swap list "
             "image with xdotool is still being measured on #804; pass the "
             "measured sequence as --swap-sequence")
-    keys = expand_sequence(sequence, index)
+    rows = media_rows(index, inserted) if "{rows}" in sequence else 0
+    keys = expand_sequence(sequence, rows)
     for n, key in enumerate(keys):
         press_key(key)
         wait_still(f"swap{index}-{n}")
@@ -2363,16 +2365,26 @@ def still(args, out: pathlib.Path, label: str) -> None:
 def do_swap(args, index: int, out: pathlib.Path,
             log_path: pathlib.Path | None, idle=time.sleep,
             budget: float | None = None) -> dict:
-    """`insert_floppy`, between two screenshots, with the log lines it caused."""
+    """`insert_floppy`, between two screenshots, with the log lines it caused.
+
+    `args.drive_zero` is the swap list entry in DF0. It starts at 0 because
+    `start_processes` lists the drives' images first, so the first `--floppy`
+    is entry 0 and is in DF0; a swap moves it to `index` unless the emulator
+    log shows no change to drive 0.
+    """
+    inserted = getattr(args, "drive_zero", 0)
     since = (log_path.stat().st_size
              if log_path is not None and log_path.exists() else 0)
     shot(args.display, out / "shots" / f"swap{index}-before.png")
     keys = insert_floppy(args.swap_sequence, index,
                          lambda key: held_key(args, key, idle, budget),
-                         lambda label: still(args, out, label))
+                         lambda label: still(args, out, label), inserted)
     shot(args.display, out / "shots" / f"swap{index}-after.png")
-    return {"index": index, "keys": keys,
-            "log": swap_log_lines(log_path, since)}
+    lines = swap_log_lines(log_path, since)
+    if log_path is None or any(line.startswith("gui_disk_image_change drive 0 name")
+                               for line in lines):
+        args.drive_zero = index
+    return {"index": index, "inserted": inserted, "keys": keys, "log": lines}
 
 
 def open_window(tgt, disks: str | None, out: pathlib.Path):
@@ -3049,11 +3061,10 @@ def main(argv: list[str] | None = None) -> int:
                         "'+0x5B12 1' '*0x57AC+0x24 3'")
     s.add_argument("--swap-sequence",
                    help="the xdotool keys `swap` sends "
-                        "(`KEY*N` repeats a key, `{index}` is the swap "
-                        "index); default: the measured F12 menu walk "
-                        f"'{DEFAULT_SWAP_SEQUENCE}', whose Down count "
-                        "assumes the media row's position equals the swap "
-                        "index, which depends on the disks in the drives",
+                        "(`KEY*N` repeats a key, `{rows}` is the Down "
+                        "presses from the inserted disk's row to the entry, "
+                        "counted from the disk in DF0); default: the F12 "
+                        f"menu walk '{DEFAULT_SWAP_SEQUENCE}'",
                    default=DEFAULT_SWAP_SEQUENCE)
     s.add_argument("--fs-uae-log",
                    help="the emulator's log, where `swap` looks for the disk "
