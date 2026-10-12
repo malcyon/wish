@@ -4392,8 +4392,9 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
           and rec.get_raw("identity_pair")[0] not in (0x00,
                                                       CURSE_NO_PICTURE)):
         # A player DOS and the Amiga hold as taken over, whose loaders draw
-        # him from `CPIC` by this byte.  Curse's GEN never writes 0x0E6, so a
-        # player made on the C64 holds 0 there and keeps the digest.
+        # him from `CPIC` by this byte.  A converted player holds what the
+        # writer put here, his own draw or DOS's digest of him; one made on
+        # the C64 holds 0, which Curse's GEN leaves, and keeps the digest.
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
                 "the C64's identity pair @0x0E6, the first byte: the "
                 "combat picture DOS and the Amiga read for a player they "

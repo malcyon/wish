@@ -29,12 +29,17 @@ AMIGA_PICTURE = 0x127
 WORG = 0x57
 
 
-def _evoker() -> amiga_later.AmigaCharacter:
-    """EVOKER, the zombie companion the Amiga's own ADD CHARACTER wrote."""
+def _evoker_party() -> tuple:
+    """The party of the slot the Amiga's own ADD CHARACTER wrote."""
     where = specimen("wish-plane-303-curse-evoker-add", "amiga")
     slot = amiga_savegame.read_slot(AmigaDisk.open(str(where / "fetched-save.adf")),
                                     "D", "curse-of-the-azure-bonds")
-    return next(m for m in slot.characters if m.raw[0xF7] >= 0x80)
+    return tuple(slot.characters)
+
+
+def _evoker() -> amiga_later.AmigaCharacter:
+    """EVOKER, the zombie companion the Amiga's own ADD CHARACTER wrote."""
+    return next(m for m in _evoker_party() if m.raw[0xF7] >= 0x80)
 
 
 def _with_picture(char, picture: int | None):
@@ -180,6 +185,30 @@ def test_the_c64_curse_reader_takes_only_a_converted_companion_s_picture(
     assert char.get("unnamed_0ab") == want
 
 
+@pytest.mark.parametrize("pair, want", [
+    (WORG, WORG), (0x00, None), (0xFF, None),
+], ids=["converted", "made-on-the-c64", "fill"])
+def test_the_c64_curse_reader_returns_a_raised_player_s_byte(pair, want):
+    """A player at status $03: DOS and the Amiga hold him taken over (0xB3).
+
+    0 is what Curse's GEN leaves and $FF the MON files' fill; the reader
+    takes neither.
+    """
+    rec = _c64(0x00, pair)
+    rec.set("roster_in_use", c64_codec.ZOMBIE_STATUS)
+    char = c64_codec.read(rec, game="curse-of-the-azure-bonds")
+    assert char.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert char.get("unnamed_0ab") == want
+
+
+@pytest.mark.parametrize("control", [0x00, 0xB2])
+def test_silver_blades_on_the_c64_returns_no_byte(control):
+    """Its MON files fill 0x0E6 with 0, so nothing there tells a draw apart."""
+    char = c64_codec.read(_c64(control, WORG),
+                          game="secret-of-the-silver-blades")
+    assert char.get("unnamed_0ab") is None
+
+
 # --- BRUTUS: a player Animate Dead raised, control 0xB3 ---------------------
 # DOS Curse's Animate Dead (`GAME.OVR` 0x30EC9-0x30EDF) writes 0xB2 over a
 # companion's control byte and 0xB3 over a player's; the party loader draws
@@ -220,3 +249,41 @@ def test_the_c64_route_makes_a_raised_player_living():
     assert not dos_codec.holds_companion_picture(
         dos_codec.write(c64_codec.read(rec, game=neutral.game),
                         deltas=CURSE)[0])
+
+
+# --- The editor's rewrite keeps a raised player's picture -------------------
+# A gold edit renders the record through the C64 record the sheet binds to.
+# A taken-over player drawn 0 has nothing there the C64 reader returns, so
+# `goldbox.rewrite` gives each rendering the record's own byte.
+
+def test_a_dos_rewrite_keeps_a_raised_player_s_picture():
+    from goldbox import rewrite
+    from goldbox.c64_port import by_key
+    original = dos_codec.DosCharacter(_dos_curse(0xB3, 0x00, b"RANGER"))
+    before, _ = dos_codec.to_c64_record(original)
+    after = CharacterRecord(before.to_bytes(), before.stored_size)
+    after.gold = 1234
+    out = rewrite.rewrite_dos(original, before, after, by_key(CURSE.key))
+    assert out.record[PICTURE.offset] == 0x00
+    assert "gold" in out.moved
+
+
+def test_an_amiga_rewrite_keeps_a_raised_player_s_picture():
+    """The Amiga record keeps the byte at `$127`, one past DOS's 0x126."""
+    from goldbox import amiga_port, rewrite
+    from goldbox.c64_port import by_key
+    deltas = amiga_port.CURSE_DELTAS
+    raw = bytearray(deltas.record_size)
+    raw[0:6] = b"RANGER"
+    raw[deltas.offset(0xF7)] = 0xB3
+    raw[deltas.offset(PICTURE.offset)] = 0x00
+    assert deltas.offset(PICTURE.offset) == AMIGA_PICTURE
+    original = amiga_later.AmigaCharacter.from_bytes(bytes(raw), deltas)
+    before, _ = dos_codec.neutral_to_c64_record(
+        amiga_later.to_neutral_later(original))
+    after = CharacterRecord(before.to_bytes(), before.stored_size)
+    after.gold = 1234
+    out = rewrite.rewrite_amiga_later(original, before, after,
+                                      by_key(CURSE.key))
+    assert out.character.raw[AMIGA_PICTURE] == 0x00
+    assert out.character.raw[deltas.offset(0xF7)] == 0xB3
