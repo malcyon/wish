@@ -689,20 +689,18 @@ def test_a_rewrite_with_no_game_renders_through_the_titles_own_tables(port):
 def test_another_titles_tables_would_render_a_different_record():
     """What the default above is for: the container is not decoration.
 
-    The record's identity byte is 0, which Curse's reader takes for what
-    its GEN leaves and Pool of Radiance's reads as a draw, so the two
-    renders differ there."""
+    Curse's container declares a second ability array and Pool of
+    Radiance's does not, so a strength edit reaches DOS Curse's first
+    strength byte at 0x010 only when the record is read as Pool's."""
     deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
-    char, _ = _synthetic_dos(deltas)
-    raw = bytearray(char.to_bytes())
-    raw[dos_port.FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"].offset] = 0
-    char = dos_codec.DosCharacter(bytes(raw), items=char.items,
-                                  effects=char.effects, deltas=deltas)
-    before, _ = dos_codec.to_c64_record(char)
-    after = _edited(before, gold=4321)
-    assert rewrite.rewrite_dos(char, before, after).record != \
-        rewrite.rewrite_dos(char, before, after,
-                            _game(dos_port.POOL_OF_RADIANCE)).record
+    char, before = _synthetic_dos(deltas)
+    after = _edited(before, strength=12)
+    base = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["strength"].offset
+    own = rewrite.rewrite_dos(char, before, after).record
+    pool = rewrite.rewrite_dos(char, before, after,
+                               _game(dos_port.POOL_OF_RADIANCE)).record
+    assert own != pool
+    assert (own[base], pool[base]) == (char.to_bytes()[base], 12)
 
 
 @pytest.mark.parametrize("port", PORTS, ids=_port_id)
