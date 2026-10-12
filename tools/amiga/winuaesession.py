@@ -415,6 +415,28 @@ class WinGuest:
             raise RouteError(f"{row.name} is an emulator key ({row.host}), not an Amiga key")
         return self._lane(holder, f"press {row.amiga:02X}", timeout)
 
+    def schedule_keys(self, holder: str, keys: list[str], lead_frames: int, gap_frames: int,
+                      timeout: float) -> str:
+        """Queue `keys` in the holder's emulator with one pipe message, for a walk that
+        happens while Wish holds the pipe; WinUAE replies 404 to a line with no output.
+
+        `WinuaePipe.send` passes reading commands only, and this one queues input on
+        purpose, so the line is framed here and checked by `key_schedule`'s own format.
+        """
+        from automap import amiga  # noqa: PLC0415
+
+        command = key_schedule(keys, lead_frames, gap_frames)
+        self.holder = holder
+        pipe = amiga.WinuaePipe(holder=holder, timeout=timeout)
+        try:
+            out = pipe._execute(pipe._framed([f"DBG {command}"]))
+            reply = pipe._replies(out, [command])[0][0][1].strip()
+        except amiga.GuestError as exc:
+            raise RouteError(f"the keys {' '.join(keys)} were not scheduled: {exc}") from exc
+        if reply != "404":
+            raise RouteError(f"WinUAE answered the key schedule with {reply!r}")
+        return reply
+
     def stop(self, holder: str, timeout: float) -> str:
         return self._lane(holder, "stop", timeout)
 
@@ -423,6 +445,33 @@ class WinGuest:
 
     def release(self, holder: str, timeout: float) -> str:
         return self._lane(holder, "release", timeout)
+
+
+#: Frames a scheduled key stays down; `winuae.ps1 press` holds a key for 120 ms.
+KEY_HOLD_FRAMES = 6
+
+
+def key_schedule(keys: list[str], lead_frames: int, gap_frames: int) -> str:
+    """The debugger `I` line that presses `keys` from `lead_frames` on, `gap_frames` apart.
+
+    `I` hands its text to WinUAE's custom-event parser, where `"delay N"` runs the rest
+    of the line N frames later, so the keys need no client on the pipe when they land.
+    """
+    if not keys:
+        raise RouteError("a key schedule needs at least one key")
+    if lead_frames < 1 or gap_frames <= KEY_HOLD_FRAMES:
+        raise RouteError(f"a key schedule needs a lead of a frame or more and a gap above "
+                         f"{KEY_HOLD_FRAMES} frames, not {lead_frames} and {gap_frames}")
+    parts = [f"delay {lead_frames}"]
+    for at, key in enumerate(keys):
+        if at:
+            parts.append(f"delay {gap_frames - KEY_HOLD_FRAMES}")
+        try:
+            parts += [amigakeys.key_raw(key, True), f"delay {KEY_HOLD_FRAMES}",
+                      amigakeys.key_raw(key, False)]
+        except (KeyError, ValueError) as exc:
+            raise RouteError(f"{key} cannot be scheduled: {exc}") from None
+    return "I " + " ".join(f'"{part}"' for part in parts)
 
 def _terminate(signum, frame):
     raise Terminated(f"signal {signum}")

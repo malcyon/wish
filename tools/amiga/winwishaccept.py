@@ -23,7 +23,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.amiga import guardmaps, noencounters, screens, winwish  # noqa: E402
-from tools.amiga.winuaesession import RouteError, ShotTimedOut, WinGuest  # noqa: E402
+from tools.amiga.winuaesession import (  # noqa: E402
+    KEY_HOLD_FRAMES,
+    RouteError,
+    ShotTimedOut,
+    WinGuest,
+)
 
 BUILD_SHA = re.compile(r"[0-9a-f]{40}\Z")
 REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
@@ -43,6 +48,23 @@ CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
 #: The leave-town route checkpoints 13 times before its terminal key; 1800 s of route.
 LEAVE_DISCOVERY_SECONDS = 2100
+#: Where Wish's tab rests while the party walks: the Character Editor, which frees the pipe
+#: for a key and a guard after every step, or the Automapper, which polls throughout.
+WALK_TABS = ("editor", "map")
+#: The Automapper walk schedules each leg's keys and waits for them; 400 s more than the
+#: leave-town route's 2100 s, for the six legs' leads and settles.
+MAP_WALK_DISCOVERY_SECONDS = 2500
+#: Emulated PAL frames a second; WinUAE's key-schedule delays count frames.
+AMIGA_FRAMES_PER_SECOND = 50
+#: The first scheduled key lands this many frames after the schedule (30 s), so the
+#: Automapper tab is showing, and polling, before any of a leg's keys.
+WALK_LEAD_FRAMES = 1500
+#: Frames between two scheduled walk keys (5 s), the cadence of the guarded walk.
+WALK_KEY_GAP_FRAMES = 250
+#: The Automapper must be showing this many seconds before the first scheduled key.
+WALK_TAB_MARGIN = 5.0
+#: Seconds the Automapper keeps polling after a leg's last key, before its shot.
+WALK_SETTLE = 10.0
 OPENING_THIRD_SECONDS = 1500
 DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
 #: Party nodes this close are dumped as one span, so the batch stays a few dump commands.
@@ -249,12 +271,12 @@ def _states(route: Any) -> set[str]:
     return states | _page_states(route)
 
 
-def _deadline_limit(mode: str | None) -> int:
+def _deadline_limit(mode: str | None, walk_tab: str = "editor") -> int:
     """The largest total deadline, cleanup included, that a mode may run with."""
     if mode == "ssb-opening-after-third":
         return OPENING_THIRD_SECONDS
     if mode in LEAVE_MODES:
-        return LEAVE_DISCOVERY_SECONDS
+        return MAP_WALK_DISCOVERY_SECONDS if walk_tab == "map" else LEAVE_DISCOVERY_SECONDS
     return DISCOVERY_SECONDS if mode else MAX_SECONDS
 
 
@@ -264,9 +286,12 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     if not BUILD_SHA.fullmatch(args.sha):
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
     mode = getattr(args, "discover", None)
+    walk_tab = getattr(args, "walk_tab", "editor")
+    if walk_tab == "map" and mode not in LEAVE_MODES:
+        raise AcceptanceStop("--walk-tab map needs a leave-town discovery mode")
     opening = mode in OPENING_MODES
     discovery = mode in LEAVE_MODES or opening
-    maximum = _deadline_limit(mode)
+    maximum = _deadline_limit(mode, walk_tab)
     if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
     if not pathlib.Path(args.manifest).is_file():
@@ -743,13 +768,21 @@ class Controller:
         self.log("encounters", enabled=enabled, readback=result)
 
     def _checkpoint(self, name: str, expected: Any, game_evidence: dict[str, Any]) -> None:
-        from automap import (
-            amiga,  # noqa: PLC0415
-            amigaparty,  # noqa: PLC0415
-        )
-        from tools.amiga import amigatarget  # noqa: PLC0415
-
         timings: dict[str, float] = {}
+        lap = self._lap(timings)
+        engine, party_reads = self._read_engine(lap)
+        if self.wish_closed:
+            winwish.start_wish(self.guest, self.args.holder, flag=True, reseed=False)
+            self.wish_closed = False
+        self._map_section()
+        lap("map_tab")
+        self.sleep(self.left(10))
+        lap("settle")
+        wish_path, controls_path = self._wish_pair(name, lap)
+        self._record_checkpoint(name, expected, engine, game_evidence, wish_path, controls_path,
+                                timings, party_reads)
+
+    def _lap(self, timings: dict[str, float]) -> Any:
         mark = self.clock()
 
         def lap(part: str) -> None:
@@ -757,6 +790,15 @@ class Controller:
             now = self.clock()
             timings[part] = round(now - mark, 3)
             mark = now
+        return lap
+
+    def _read_engine(self, lap: Any) -> tuple[dict[str, Any], dict[str, int]]:
+        """The game's fix, area and party through a pipe connection the driver closes again."""
+        from automap import (
+            amiga,  # noqa: PLC0415
+            amigaparty,  # noqa: PLC0415
+        )
+        from tools.amiga import amigatarget  # noqa: PLC0415
 
         target = amigatarget.connect_pipe(self.args.holder, amiga.MACHINES[self.route.game_key])
         lap("connect")
@@ -786,13 +828,10 @@ class Controller:
                       for member in party])}
         target.close()
         self.game._pipe = None
-        if self.wish_closed:
-            winwish.start_wish(self.guest, self.args.holder, flag=True, reseed=False)
-            self.wish_closed = False
-        self._map_section()
-        lap("map_tab")
-        self.sleep(self.left(10))
-        lap("settle")
+        return engine, party_reads
+
+    def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
+        """Wish's shot and its controls, of whichever tab is showing."""
         wish_path = self.out / f"wish-{name}.png"
         winwish.shot(self.guest, self.args.holder, "wish", wish_path)
         lap("wish_shot")
@@ -800,6 +839,12 @@ class Controller:
         lap("controls")
         controls_path = self.out / f"controls-{name}.txt"
         controls_path.write_text("\n".join(controls) + "\n")
+        return wish_path, controls_path
+
+    def _record_checkpoint(self, name: str, expected: Any, engine: dict[str, Any],
+                           game_evidence: dict[str, Any], wish_path: pathlib.Path,
+                           controls_path: pathlib.Path, timings: dict[str, float],
+                           party_reads: dict[str, int], **extra: Any) -> None:
         verdict = self._compare_checkpoint(name, expected, engine)
         self.checkpoints[name] = {"expected": asdict(expected) if expected else None,
                                   "observed": engine, "game": game_evidence,
@@ -808,9 +853,9 @@ class Controller:
                                   "controls": str(controls_path),
                                   "elapsed": round(self.clock() - self.started, 3),
                                   "pair_atomic": False,
-                                  "timings": timings, "party_reads": party_reads}
+                                  "timings": timings, "party_reads": party_reads, **extra}
         self.log("checkpoint", name=name, game=game_evidence, wish=str(wish_path),
-                 timings=timings, party_reads=party_reads)
+                 timings=timings, party_reads=party_reads, **extra)
         self._game_section()
         if verdict["status"] != "awaiting image review":
             raise AcceptanceStop(f"{name}: {verdict['reason'] or verdict['status']}")
@@ -969,8 +1014,18 @@ class Controller:
         pages = (self.route.amiga_title.interstitials
                  if phase.name in ("load", "camp_reload", "reload") and self.route.title == "ssb"
                  and any(step.state == "treasure_bar" for step in phase.steps) else ())
+        map_walk = getattr(self.args, "walk_tab", "editor") == "map" and phase.name == "walk"
+        leg: list[str] = []
         for step in phase.steps:
             kind = step.kind
+            if map_walk and kind in ("turn", "move"):
+                leg.append(step.key)
+                if step.checkpoint:
+                    last_frame = self._map_walk_leg(leg, step)
+                    leg = []
+                continue
+            if leg:
+                raise AcceptanceStop(f"walk keys {' '.join(leg)} have no checkpoint before {kind}")
             if kind in ("key", "turn", "move"):
                 self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
             elif kind == "insert":
@@ -1027,10 +1082,69 @@ class Controller:
                                  expected, frame)
                 if action_context is not None:
                     action_context.setdefault("visit_checkpoints", set()).add(step.checkpoint)
+        if leg:
+            raise AcceptanceStop(f"walk keys {' '.join(leg)} end the phase with no checkpoint")
         if action_context is not None and namespace:
             self._checkpoint(f"{namespace}.{phase.name}_end", None, last_frame)
         self.summary["completed_sequence"].append(
             f"{namespace}.{phase.name}" if namespace else phase.name)
+
+    def _map_walk_leg(self, keys: list[str], step: Any) -> dict[str, Any]:
+        """One leg of the walk with the Automapper showing from before its first key to
+        Wish's shot after its last; returns the game frame of the checkpoint.
+
+        WinUAE's pipe takes one client, and Wish holds it while the Automapper polls, so
+        the keys are queued in the emulator first and land on their own frames. With
+        encounters controlled, the switch is applied once, before the leg."""
+        self._game_section()
+        for _ in keys:
+            self._count()
+        if self.encounters_on:
+            collected: list[str] = []
+            press = self.encounters.press
+            self.encounters.press = collected.append
+            try:
+                result = self.encounters.keys(keys[:1])
+            finally:
+                self.encounters.press = press
+            if (result.get("stopped") or result.get("error")
+                    or result.get("pressed") != keys[:1] or collected != keys[:1]):
+                raise AcceptanceStop(f"encounter switch before walk keys {' '.join(keys)}: {result}")
+            self.log("encounters_applied", before=keys[0], readback=result)
+        before = self.clock()
+        reply = self.game.schedule_keys(self.args.holder, keys, WALK_LEAD_FRAMES,
+                                        WALK_KEY_GAP_FRAMES, self.left(60))
+        sent = self.clock()
+        first = before + WALK_LEAD_FRAMES / AMIGA_FRAMES_PER_SECOND
+        last = sent + (WALK_LEAD_FRAMES + WALK_KEY_GAP_FRAMES * (len(keys) - 1)
+                       + KEY_HOLD_FRAMES) / AMIGA_FRAMES_PER_SECOND
+        self.log("walk_scheduled", keys=keys, lead_frames=WALK_LEAD_FRAMES,
+                 gap_frames=WALK_KEY_GAP_FRAMES, reply=reply)
+        self._map_section()
+        shown = self.clock()
+        schedule = {"keys": list(keys), "lead_frames": WALK_LEAD_FRAMES,
+                    "gap_frames": WALK_KEY_GAP_FRAMES,
+                    "tab_shown_s": round(shown - before, 3),
+                    "first_key_s": round(first - before, 3),
+                    "last_key_by_s": round(last - before, 3)}
+        self.log("map_walk", **schedule)
+        if shown > first - WALK_TAB_MARGIN:
+            raise AcceptanceStop(f"the Automapper showed {shown - before:.1f} s after walk keys "
+                                 f"{' '.join(keys)} were scheduled, within {WALK_TAB_MARGIN:.0f} s "
+                                 f"of the first key at {first - before:.0f} s")
+        self.sleep(self.left(max(1.0, last + WALK_SETTLE - self.clock())))
+        timings: dict[str, float] = {}
+        lap = self._lap(timings)
+        wish_path, controls_path = self._wish_pair(step.checkpoint, lap)
+        self._game_section()
+        lap("editor_tab")
+        frame = self._await(step.state, limit=self.route.amiga_title.wait_limits.get(step.state, 90))
+        lap("game")
+        engine, party_reads = self._read_engine(lap)
+        self._record_checkpoint(step.checkpoint, step.expected, engine, frame, wish_path,
+                                controls_path, timings, party_reads, walk_tab="map",
+                                schedule=schedule)
+        return frame
 
     def _fresh_party(self):
         from automap import amiga, amigaparty  # noqa: PLC0415
@@ -1886,13 +2000,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--mute-proof", type=pathlib.Path, required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--deadline", type=int)
+    parser.add_argument("--walk-tab", choices=WALK_TABS, default="editor",
+                        help="the Wish tab left showing while the party walks")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.deadline is None:
-        args.deadline = _deadline_limit(args.discover)
+        args.deadline = _deadline_limit(args.discover, args.walk_tab)
     from tools.amiga.maproute import route_for  # noqa: PLC0415
 
     guest, lane, game = winwish.Guest(), WinGuest(), WinGuest()
