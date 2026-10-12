@@ -957,6 +957,9 @@ class EditorBinding(QObject):
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
         self.figure_art: amigafigure.FigureArt | None = None
+        self._figure_serial = 0
+        self._figure_carrier = amigafigure.Loaded(self)
+        self._figure_carrier.done.connect(self._figure_loaded)
         self.item_names: dict[int, str] = {}
         self.templates: dict[str, bytes] = {}
         self.item_types: dict[int, object] = {}
@@ -2610,7 +2613,7 @@ class EditorBinding(QObject):
         self._load_movement_items()
         self.charset, self.item_names, self.templates = b"", {}, {}
         self.spell_names, self.item_types = {}, {}
-        self.figure_art = self._load_figure_art()
+        self._load_figure_art()
         if self._is_pod():
             # No C64 disk of this title exists, and another title's icon
             # parts or charset would draw the wrong game: the icon box stays
@@ -2668,14 +2671,30 @@ class EditorBinding(QObject):
                 member.inventory.names = self.item_names
         self._apply_spell_table()
 
-    def _load_figure_art(self) -> "amigafigure.FigureArt | None":
-        """The Amiga Pool of Radiance combat-figure art off the player's
-        disks, or None for any other party or when the disks are not found."""
+    def _load_figure_art(self) -> None:
+        """Start reading the Amiga Pool of Radiance combat-figure art off the
+        player's disks, for that party only. The figure box stays empty until
+        `_figure_loaded` has it, and when the disks are not found."""
+        self._figure_serial += 1
+        self.figure_art = None
         party = self.party
         if (party is None or party.port != "amiga"
                 or party.game.key != por_games.POOL_OF_RADIANCE.key):
-            return None
-        return amigafigure.load(self._port_folders(party.game))
+            return
+        amigafigure.start(self._figure_serial, self._port_folders(party.game),
+                          self._figure_carrier)
+
+    def _figure_loaded(self, serial: int, art) -> None:
+        """The art a background load found, unless another party or folder
+        has been opened since; draws the selected member's figure."""
+        if serial != self._figure_serial or art is None:
+            return
+        self.figure_art = art
+        icon_widget = self._widgets.get("icon")
+        if (icon_widget is not None and self.party is not None
+                and 0 <= self.current_row < len(self.party)):
+            icon_widget.set_figure(
+                self._figure_of(self.party.member(self.current_row)))
 
     def _figure_of(self, member) -> "amigafigure.Figure | None":
         """`member`'s combat figure drawn from the Amiga disks, or None."""

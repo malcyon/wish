@@ -6935,7 +6935,15 @@ def _generated_figure_art():
     return art
 
 
-def _amiga_pool_party_editor(tmp_path):
+def _settle(window=None):
+    """Wait for the background art load and deliver what it sends back."""
+    from PyQt6.QtCore import QThreadPool
+    from PyQt6.QtWidgets import QApplication
+    assert QThreadPool.globalInstance().waitForDone(10000)
+    QApplication.processEvents()
+
+
+def _amiga_pool_party_editor(tmp_path, settle=True):
     """Two characters who differ only in `icon_head` and `icon_body`."""
     from support.neutralrecords import _filled
 
@@ -6954,7 +6962,10 @@ def _amiga_pool_party_editor(tmp_path):
                                              bytes(savgam))
     path = tmp_path / "pool.adf"
     disk.save(str(path))
-    return EditorBinding(make_root(), str(path)), path
+    window = EditorBinding(make_root(), str(path))
+    if settle:
+        _settle(window)
+    return window, path
 
 
 def test_an_amiga_pool_member_shows_his_two_poses_in_the_figure_box(
@@ -7021,6 +7032,7 @@ def test_the_figure_controls_stay_greyed_and_the_record_stays_empty(
         assert icon.icon is None
         assert w.party.member(row).icon is None
         assert icon.toolTip() == icon.btn_change.toolTip() == ""
+        assert icon.preview.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
 def test_opening_and_selecting_never_changes_the_save_image(
@@ -7038,8 +7050,14 @@ def test_opening_and_selecting_never_changes_the_save_image(
 
 
 def test_a_missing_companion_disk_leaves_the_figure_box_empty(
-        app, tmp_path):
+        app, tmp_path, monkeypatch):
     from PyQt6.QtGui import QColor
+
+    from editor.window import EditorBinding
+    # Only the save's own folder, whatever Preferences or the Game directory
+    # name on the machine running this.
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [tmp_path])
     w, _path = _amiga_pool_party_editor(tmp_path)
     assert w.figure_art is None
     preview = w._widgets["icon"].preview
@@ -7049,6 +7067,43 @@ def test_a_missing_companion_disk_leaves_the_figure_box_empty(
     shot = preview.grab().toImage()
     assert shot.pixelColor(shot.width() // 2, shot.height() // 2) == QColor(
         "#ffffff")
+
+
+def test_opening_an_amiga_pool_save_does_not_wait_for_the_art(
+        app, tmp_path, monkeypatch):
+    import threading
+    import time
+    release, started = threading.Event(), threading.Event()
+
+    def slow(folders):
+        started.set()
+        release.wait(5)
+        return _generated_figure_art()
+    monkeypatch.setattr("editor.amigafigure.load", slow)
+    began = time.monotonic()
+    try:
+        w, _path = _amiga_pool_party_editor(tmp_path, settle=False)
+        opened = time.monotonic() - began
+        assert opened < 2.5 and not release.is_set()
+        assert len(w.party) == 2 and w.roster.currentIndex().row() == 0
+        assert w.figure_art is None
+        assert w._widgets["icon"].preview.figure is None
+        assert started.wait(5)
+    finally:
+        release.set()
+    _settle(w)
+    assert w._widgets["icon"].preview.figure is not None
+
+
+def test_art_from_an_earlier_open_is_not_drawn(app, tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders: None)
+    w, _path = _amiga_pool_party_editor(tmp_path)
+    w._figure_loaded(w._figure_serial - 1, _generated_figure_art())
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+    w._figure_loaded(w._figure_serial, _generated_figure_art())
+    assert w._widgets["icon"].preview.figure is not None
 
 
 def test_art_that_does_not_hold_the_members_blocks_leaves_the_box_empty(
@@ -7065,14 +7120,25 @@ def test_art_that_does_not_hold_the_members_blocks_leaves_the_box_empty(
     assert preview.figure is None
 
 
+def _amiga_pod_editor(tmp_path):
+    from test_podparty import _amiga_sources
+
+    from editor.window import EditorBinding
+    source = _amiga_sources(tmp_path)[0][1]
+    window = EditorBinding(make_root())
+    window._adopt(Party(source), str(source.path))
+    return window
+
+
 @pytest.mark.parametrize("make", ["_dos_pool_editor", "_dos_curse_editor",
                                   "_dos_silver_blades_editor",
-                                  "_amiga_curse_editor"])
+                                  "_amiga_curse_editor", "_amiga_pod_editor"])
 def test_no_other_party_gets_a_figure_even_when_the_art_is_there(
         app, tmp_path, monkeypatch, make):
     monkeypatch.setattr("editor.amigafigure.load", lambda folders:
                         _generated_figure_art())
     w = globals()[make](tmp_path)
+    _settle(w)
     assert w.figure_art is None
     w.roster.selectRow(0)
     assert w._widgets["icon"].preview.figure is None
@@ -7109,7 +7175,9 @@ def _registered_figure_window(tmp_path, beside=True):
     image.write_bytes(one)
     if beside:
         (save / "PoolOfRadiance-2.adf").write_bytes(two)
-    return EditorBinding(make_root(), str(image)), one, two
+    window = EditorBinding(make_root(), str(image))
+    _settle(window)
+    return window, one, two
 
 
 def _expected_poses(name):
@@ -7153,5 +7221,6 @@ def test_the_registered_save_without_disk_2_shows_an_empty_box_until_the_game_fo
     (game / "PoolOfRadiance-1.adf").write_bytes(one)
     (game / "PoolOfRadiance-2.adf").write_bytes(two)
     w.set_disks(str(game))
+    _settle(w)
     assert w.figure_art is not None
     assert preview.figure is not None

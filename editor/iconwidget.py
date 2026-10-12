@@ -110,6 +110,10 @@ class IconPreview(QWidget):
         """
         self._figure = figure
         self._figure_image = None
+        if figure is None:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.unsetCursor()
         if figure is not None:
             high = len(figure.poses[0])
             wide = len(figure.poses[0][0])

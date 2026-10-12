@@ -478,8 +478,9 @@ change its stored bytes.
 An Amiga Pool of Radiance party shows each member's ready and action poses in
 the same box, drawn from the player's own game disks as the game's ICON screen
 draws them (`editor/amigafigure.py`, `goldbox/amiga_por_icons.py`). The disks
-are looked for where `_port_names` looks for Amiga disks. When they do not
-hold the art the box stays empty. The controls stay greyed and `Member.icon`
+are looked for where `_port_names` looks for Amiga disks, on a worker thread:
+the box is empty until the art arrives, and stays empty when the disks do not
+hold it. The controls stay greyed and `Member.icon`
 stays `None`, since nothing edits a native figure. DOS saves, the later Amiga
 titles and Pools of Darkness keep the empty box.
 

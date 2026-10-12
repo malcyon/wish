@@ -11,6 +11,8 @@ import logging
 import pathlib
 from dataclasses import dataclass, field
 
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
+
 from goldbox import amiga_dax, spell_names, stonecracker
 from goldbox import amiga_por_icons as art
 from goldbox.amiga_adf import AmigaDisk
@@ -61,6 +63,39 @@ class FigureArt:
                        head, body, size, exc)
             return None
         return Figure(shown, self.palette[0])
+
+
+class Loaded(QObject):
+    """Brings a background load's result back to the thread that owns it."""
+
+    done = pyqtSignal(int, object)
+
+
+class _Job(QRunnable):
+    def __init__(self, serial: int, folders, carrier: Loaded):
+        super().__init__()
+        self._serial, self._folders, self._carrier = serial, list(folders), carrier
+
+    def run(self) -> None:
+        try:
+            found = load(self._folders)
+        except Exception as exc:
+            _log.debug("the figure art load failed: %s", exc)
+            found = None
+        try:
+            self._carrier.done.emit(self._serial, found)
+        except RuntimeError:
+            _log.debug("the window closed before the figure art arrived")
+
+
+def start(serial: int, folders, carrier: Loaded) -> None:
+    """Run :func:`load` on a worker thread and emit `carrier.done(serial, art)`
+    when it ends; `art` is None when nothing was found.
+
+    Opening the `.adf` images of up to five folders takes as long as they are
+    many, so the window does not wait for it.
+    """
+    QThreadPool.globalInstance().start(_Job(serial, folders, carrier))
 
 
 def load(folders) -> FigureArt | None:
