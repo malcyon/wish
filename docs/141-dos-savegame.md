@@ -390,6 +390,39 @@ above is still what separates "the load reads it" from "the load does not
 care". The writer sources it from the same cache Pool of Radiance's own
 wallset words come from, so it is a measured value either way.
 
+#### Curse's mode byte decides whether the load draws the save's map
+
+Curse's loader (`GAME.OVR:0x1F444`-`0x1F4B7`) loads the map and the wall sets
+named in the twelve-byte block only when the party is indoors **and** the mode
+byte read from 12807 into `DS:0x4FD3` is not 0. It then copies that byte to
+`DS:0x4FD4` and sets the live mode to 0, the party menu's.
+
+| Who stores into `DS:0x4FD3` before a save | Value | File holds |
+|---|---|---|
+| Camp menu entry, `GAME.OVR:0x1B3A6`, the only store of 2 | 2 | ENCAMP > SAVE |
+| Party menu entry, `GAME.OVR:0x201C0` (its SAVE calls at `0x20541`, `0x20637`) | 0 | a party-menu save, or one before BEGIN ADVENTURING |
+
+The save routine (`0x1F68F`) has five callers: camp, the party menu twice, the
+"You've won" screen and the low-memory exit. Of the 64 distinct DOS Curse
+saves here, 60 hold 2: 35 as the pair (0, 2), 24 as (2, 2), one world-map save
+as (3, 2). The other four hold 0. Wish wrote two of them. The engine wrote the
+other two from the party menu after a load (`curse-535`, `curse-709`).
+
+So a converted party that has set out gets (0, 2), the pair DOS Curse wrote
+when it saved a converted party from camp (`curse-632-wish-converted-resave`
+slot B). A party that has not set out keeps (0, 0). The writer used to put
+(0, 0) everywhere. Areas 1 and 2 hid that, because their scripts run `LOADFILES`
+before testing `$4BF2`. The Pit of Moander's script skips `LOADFILES`, and so
+do ten other indoor scripts. There, a save holding 0 loaded with no walls.
+That was measured live on a staged Pit save in WISH-387 comment cac5cb29.
+Silver Blades' loader has no mode test (`GAME.OVR:0x26643`), so its writer
+still writes zero.
+
+A game-written party-menu save in one of those eleven areas would load
+without its map too. That is PROBABLE and untested. To settle it: load a
+walled Pit save, save from the party menu without BEGIN, load that save,
+BEGIN, and walk MI from 1,3 S. Reaching 1,2 confirms it.
+
 ## Pools of Darkness: the byte-wide variable array (#175 (Decode the first 1024 bytes of the Pools of Darkness saved game))
 
 **The 1024 bytes at the front are the ECL variable array, one byte per

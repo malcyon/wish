@@ -1184,9 +1184,27 @@ LATER_TAIL_ZERO = ("zero: what the four shipped Curse and Silver Blades "
                    "the map on the first step and the two mode bytes are "
                    "the menu the save was made from")
 
+#: The interface mode Curse's camp menu sets on entry (`GAME.OVR:0x1B3A6`),
+#: the only store of 2 into `DS:0x4FD3`, so it is what ENCAMP > SAVE writes
+#: at 12807, indoors and on the world map.  60 of the 64 distinct DOS Curse
+#: saves here hold it; two of the other four Wish wrote and two the engine
+#: saved from the party menu, which sets the mode to 0.  The loader draws
+#: the save's own map and wall sets only when this byte is not 0
+#: (`GAME.OVR:0x1F450`), so a 0 leaves a party in an area whose script runs
+#: no `LOADFILES` on a load -- the Pit of Moander among them -- with no
+#: walls.
+CURSE_MODE_CAMP = 2
+CURSE_TAIL_CAMP = ("zero in the two scratch bytes, which are recomputed "
+                   "from the map on the first step; 0 and then 2 in the "
+                   "mode pair, the camp mode an ENCAMP > SAVE writes and "
+                   "the pair 35 of the engine's own camp saves hold -- the "
+                   "loader draws the save's map only when the second is "
+                   "not 0")
+
 
 def put_tail_state(save: bytearray, *, indoors: bool = True,
-                   container: "DosContainer | None" = None) -> None:
+                   container: "DosContainer | None" = None,
+                   set_out: bool = True) -> None:
     """Bytes 12804-12807, from measurement rather than from the template.
 
     **Pool of Radiance**: `indoors` sets **two** of them, not one: the
@@ -1204,10 +1222,17 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
     approximates it with the low byte of `$9800` for lack of a better source,
     and 13 of 13 files agree with that.
 
-    **Curse and Silver Blades**: all four bytes zero, see `LATER_TAIL_ZERO`.
-    Their mode byte is not Pool of Radiance's constant 2 -- it varies 0/2
-    across engine-written saves of one party -- and the shipped stubs, which
-    the engine loads and plays from, hold zero in all four (#299).
+    **Silver Blades**, and a **Curse party that has not set out**: all four
+    bytes zero, see `LATER_TAIL_ZERO`.  Their mode byte is not Pool of
+    Radiance's constant 2 -- it varies 0/2 across engine-written saves of one
+    party -- and the shipped stubs, which the engine loads and plays from,
+    hold zero in all four (#299).  Zero is also what the party menu's own
+    save writes, since that menu sets the mode to 0 on entry
+    (`GAME.OVR:0x201C0`).
+
+    **A Curse party that has set out** gets the mode pair (0, 2) instead, the
+    pair an ENCAMP > SAVE writes, see `CURSE_MODE_CAMP`: the loader skips the
+    map and the wall sets while the second byte is 0.
     """
     container = _container_for_save(save, container)
     if container is SAVE_POOL_OF_RADIANCE:
@@ -1222,7 +1247,9 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
             f"a {container.title} saved game's square block is not written here")
     save[container.tail_scratch:container.tail_scratch + 2] = bytes(2)
     save[container.previous_mode] = 0
-    save[container.mode] = 0
+    save[container.mode] = (CURSE_MODE_CAMP
+                            if set_out and container is SAVE_CURSE_OF_THE_AZURE_BONDS
+                            else 0)
 
 
 def put_travel_square(save: bytearray, x: int, y: int,

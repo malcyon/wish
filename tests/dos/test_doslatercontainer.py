@@ -162,9 +162,15 @@ def test_the_later_tail_is_written_zero_and_pool_of_radiances_is_not(container):
     later = bytearray(container.size)
     later[container.tail_scratch:container.party_size_byte] = b"\xaa" * (
         container.party_size_byte - container.tail_scratch)
-    sg.put_tail_state(later, indoors=True, container=container)
+    sg.put_tail_state(later, indoors=True, container=container, set_out=False)
     assert later[container.tail_scratch:container.tail_scratch + 2] == b"\0\0"
     assert later[container.previous_mode] == 0 and later[container.mode] == 0
+    # A party that has set out: Curse's camp mode, Silver Blades' zero.
+    sg.put_tail_state(later, indoors=True, container=container)
+    assert later[container.previous_mode] == 0
+    assert later[container.mode] == (
+        sg.CURSE_MODE_CAMP if container is sg.SAVE_CURSE_OF_THE_AZURE_BONDS
+        else 0)
     # The block after them is untouched.
     assert later[container.wall_block] == 0xAA
     pool = bytearray(POOL.size)
