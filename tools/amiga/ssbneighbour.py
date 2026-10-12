@@ -153,8 +153,10 @@ class GuardedRun:
     def see(self, state: str, limit: float) -> pathlib.Path:
         require(state in self.guards, f"missing {state} guard")
         end = time.monotonic() + self.left(limit)
+        still = None
         while time.monotonic() < end:
             self.count += 1
+            still = None
             raw = self.out / f"{self.count:03d}-{state}-raw.png"
             crop = self.out / f"{self.count:03d}-{state}.png"
             if self.guest.grab(state, raw, crop, self.left(20)):
@@ -169,9 +171,19 @@ class GuardedRun:
                     if (other not in (state, self.pressed_on) and other in self.guards
                             and self.guards(other, crop)):
                         raise RouteError(f"expected {state}, saw {other}; shot {raw}")
+                if self.pressed_on in self.guards and self.guards(self.pressed_on, crop):
+                    still = self.pressed_on
             time.sleep(min(1, max(0, end - time.monotonic())))
-        still = f" (still {self.pressed_on})" if self.pressed_on else ""
-        raise RouteError(f"{state} did not match within {limit}s{still}; last shot {raw}")
+        suffix = f" (still {still})" if still else ""
+        raise RouteError(f"{state} did not match within {limit}s{suffix}; last shot {raw}")
+
+    def shows(self, state: str, name: str) -> bool:
+        """Grab once; a match ends the wait past the screen the last key went out on."""
+        raw, crop = self.out / f"{name}-raw.png", self.out / f"{name}.png"
+        if self.guest.grab(state, raw, crop, self.left(20)) and self.guards(state, crop):
+            self.pressed_on = None
+            return True
+        return False
 
     def press(self, state: str, key: str, limit: float = 60) -> None:
         self.see(state, limit)
@@ -356,9 +368,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         run_guard.press("party_menu", "L")
         run_guard.press("load_picker", "D")
         run_guard.press("loaded_menu", "B")
-        journal_shot = run_guard.out / "journal-before-answer.png"
-        raw = run_guard.out / "journal-before-answer-raw.png"
-        if guest.grab("journal", raw, journal_shot, run_guard.left(20)) and guards("journal", journal_shot):
+        if run_guard.shows("journal", "journal-before-answer"):
             capture, press = guest.answer_io(args.holder)
             with bounded_answer(run_guard.left(180)):
                 answered = amigabladesjournal.answer(args.holder, 1, copied["df0"],

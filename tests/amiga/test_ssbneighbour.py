@@ -1085,3 +1085,79 @@ def test_a_different_known_screen_after_a_key_still_stops_at_once(tmp_path, monk
     with pytest.raises(RouteError, match="expected load_picker, saw title"):
         run.see("load_picker", 60)
     assert guest.keys == ["L"]
+
+
+def test_journal_match_ends_the_wait_past_the_loaded_menu(tmp_path, monkeypatch):
+    # B goes out on the loaded menu; once the journal is recognised, a return to the
+    # loaded menu while waiting for the world stops at once instead of polling 90 s.
+    source = tmp_path / "inputs"
+    source.mkdir()
+    inputs = {}
+    for key in ("boot_source", "disk_b_source", "substitute", "published_df1", "df0", "df1"):
+        path = source / f"{key}.adf"
+        path.write_bytes((key + " synthetic disk").encode())
+        inputs[key] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    manifest = {**inputs, "disks": {key: inputs[key] for key in ("df0", "df1")},
+                "registered": {key: inputs[key] for key in ("boot_source", "disk_b_source",
+                                                              "substitute")}
+                | {"published": inputs["published_df1"]},
+                "state_a": {"area": 16, "x": 3, "y": 7, "facing": 2},
+                "names_a": [f"Member {n}" for n in range(6)],
+                "mode": "substitute_title", "title": "ssb", "loaded_letter": "D",
+                "slot_letter": "D"}
+    original = tmp_path / "original.json"
+    original.write_text(json.dumps(manifest))
+
+    class Guest(_ScriptedGuest):
+        def _run(self, *args, **kwargs):
+            return '{"muted": true}'
+
+        def silence(self, proof):
+            return True
+
+        def answer_io(self, holder):
+            return None, None
+
+    class Guards(_NamedGuards):
+        rules = dict.fromkeys(("title", "party_menu", "load_picker", "loaded_menu", "journal",
+                                "world", "well_entry_continue", "temple_entry_continue",
+                                "temple_clear_world"))
+
+    class State:
+        def load(self):
+            return {"on": False, "rows": []}
+
+    guest = Guest(["title", "party_menu", "load_picker", "loaded_menu", "journal",
+                   "loaded_menu"])
+    monkeypatch.setattr(neighbour.route_silver_blades, "title_for_substitute", lambda m: object())
+    monkeypatch.setattr(gamedisks, "names", lambda: ["codewheel"])
+    monkeypatch.setattr(neighbour.route_silver_blades, "journal_preflight", lambda interpreter: None)
+    monkeypatch.setattr(neighbour.amigabladesjournal, "tables", lambda adf: [object()])
+    monkeypatch.setattr(neighbour.amigabladesjournal, "answer", lambda *a, **k: True)
+    monkeypatch.setattr(neighbour.acceptance, "boot_lane", lambda *a, **k: {})
+    monkeypatch.setattr(neighbour.acceptance, "halt_lane", lambda *a, **k: {})
+    monkeypatch.setattr(neighbour.noencounters, "WinuaeState", lambda path: State())
+    monkeypatch.setattr(neighbour.noencounters, "winuae_state_path", lambda holder: tmp_path / "gate.json")
+    args = argparse.Namespace(manifest=original, holder="fake-holder", out=tmp_path / "result",
+                              budget=5, wait_lane=0, retry_of=None)
+    with pytest.raises(RouteError, match="expected world, saw loaded_menu"):
+        neighbour.run(args, guest=guest, guards=Guards(),
+                      reader=lambda holder: pytest.fail("the world was never shown"))
+    assert guest.keys == ["P", "L", "D", "B"]
+
+
+def test_timeout_names_the_pressed_screen_only_when_it_was_last_shown(tmp_path, monkeypatch):
+    run, guest = _guarded_run(tmp_path, monkeypatch, ["party_menu", "party_menu", "unknown"])
+    run.press("party_menu", "L")
+    with pytest.raises(RouteError, match=r"load_picker did not match within 0.05s; last shot"):
+        run.see("load_picker", 0.05)
+    assert guest.keys == ["L"]
+
+
+def test_a_match_ends_the_wait_past_the_pressed_screen(tmp_path, monkeypatch):
+    run, guest = _guarded_run(tmp_path, monkeypatch, ["party_menu", "load_picker", "party_menu"])
+    run.press("party_menu", "L")
+    run.see("load_picker", 60)
+    with pytest.raises(RouteError, match="expected loaded_menu, saw party_menu"):
+        run.see("loaded_menu", 60)
+    assert guest.keys == ["L"]
