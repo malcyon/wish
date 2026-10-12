@@ -16,6 +16,9 @@ this run does not. A byte-identity test is not a loaded game
                         --to dos --out DIR2 --steps 2
     tools/convert/convertrun.py --source ~/wish-specimens/por-dos/WISH-SPEC-por-party-l1-intown \
                         --to amiga --amiga-disk POR2.ADF --out DIR3
+    tools/convert/convertrun.py --source CURSE-DOS-SAVE-FOLDER --source-slot C \
+                        --to amiga --amiga-disk CURSE_B.ADF \
+                        --amiga-disk-one CURSE_A.ADF --out DIR4
 
 What it does, in order:
 
@@ -31,7 +34,10 @@ What it does, in order:
    and saved back by `ENCAMP ▸ SAVE` so the engine's own rewrite can be
    diffed against ours. An Amiga destination is written into a copy of the
    player's disk 2 (`--amiga-disk`, as the editor's Save As asks for it) and
-   the run stops there: no Amiga emulator is driven from this tool.
+   the run stops there: no Amiga emulator is driven from this tool. A Curse
+   or Silver Blades slot is written onto a copy of the title's disk 1
+   instead, named with `--amiga-disk-one`, and a Pools of Darkness slot onto
+   a copy of its disk 3, named with `--amiga-disk-three`.
 
 Nothing here writes to the player's disks: the C64 sides are copied into the
 pool slot by `tools.c64.session.stage_disks`, and the DOS game tree is
@@ -163,11 +169,16 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
                       names: "dict[int, str] | None" = None,
                       leave: "dict[int, set[int]] | None" = None,
                       leave_effects: "dict[int, set[int]] | None" = None,
-                      amiga_disk: pathlib.Path | None = None) -> dict:
+                      amiga_disk: pathlib.Path | None = None,
+                      amiga_disk_one: pathlib.Path | None = None,
+                      amiga_disk_three: pathlib.Path | None = None) -> dict:
     """Save As the source to `to` and say what landed.
 
     `to` is `"c64"`, `"dos"` or `"amiga"`, the destination port; `amiga_disk`
-    is the Amiga disk 2 the editor writes the slot onto. `source_slot` picks
+    is the Amiga disk 2 the editor reads the title's game data from and
+    writes a Pool of Radiance slot onto; `amiga_disk_one` is the Curse or
+    Silver Blades disk 1 and `amiga_disk_three` the Pools of Darkness disk 3
+    a later title's slot is written onto a copy of. `source_slot` picks
     which saved game a multi-slot DOS folder or Amiga disk holds, the same
     letter `editor.convert.Source.detect` takes; `None` keeps its default,
     the alphabetically first slot. `names` is `{position: name}`, what a
@@ -195,6 +206,8 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
             c64_folder=disks if to == "c64" else None,
             dos_folder=game if to == "dos" else None,
             amiga_disk=amiga_disk if to == "amiga" else None,
+            amiga_disk_one=amiga_disk_one if to == "amiga" else None,
+            amiga_disk_three=amiga_disk_three if to == "amiga" else None,
             source_slot=source_slot, names=names, leave=leave,
             leave_effects=leave_effects)
     finally:
@@ -454,6 +467,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--amiga-disk", default=None, metavar="ADF",
                    help="the Amiga disk 2 an Amiga destination is written "
                         "onto; read, never written")
+    p.add_argument("--amiga-disk-one", default=None, metavar="ADF",
+                   help="the Curse or Silver Blades Amiga disk 1 an Amiga "
+                        "destination of that title is written onto a copy "
+                        "of; read, never written")
+    p.add_argument("--amiga-disk-three", default=None, metavar="ADF",
+                   help="the Pools of Darkness Amiga disk 3 an Amiga "
+                        "destination of that title is written onto a copy "
+                        "of; read, never written")
     p.add_argument("--disks", default=None,
                    help="the player's C64 game disks; read, never written")
     p.add_argument("--name", action="append", default=[],
@@ -494,9 +515,14 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--no-encounters is for a C64 destination")
     if args.to == "amiga" and not args.amiga_disk:
         p.error("--to amiga needs --amiga-disk")
-    if args.to == "amiga" and not pathlib.Path(
-            args.amiga_disk).expanduser().is_file():
-        p.error(f"There is no Amiga disk at {args.amiga_disk}.")
+    for option, named in (("--amiga-disk-one", args.amiga_disk_one),
+                          ("--amiga-disk-three", args.amiga_disk_three)):
+        if named is not None and args.to != "amiga":
+            p.error(f"{option} is for an Amiga destination")
+    for named in (args.amiga_disk, args.amiga_disk_one, args.amiga_disk_three):
+        if args.to == "amiga" and named is not None and not pathlib.Path(
+                named).expanduser().is_file():
+            p.error(f"There is no Amiga disk at {named}.")
 
     # Both destinations read C64 disks: a C64 destination for its icon and
     # `ANIMATE00` tables, and a C64 source going to DOS for the source title's
@@ -560,7 +586,11 @@ def main(argv: list[str] | None = None) -> int:
         names=names or None, leave=leave or None,
         leave_effects=leave_effects or None,
         amiga_disk=(pathlib.Path(args.amiga_disk).expanduser()
-                    if args.amiga_disk else None))
+                    if args.amiga_disk else None),
+        amiga_disk_one=(pathlib.Path(args.amiga_disk_one).expanduser()
+                        if args.amiga_disk_one else None),
+        amiga_disk_three=(pathlib.Path(args.amiga_disk_three).expanduser()
+                          if args.amiga_disk_three else None))
     written = [pathlib.Path(p) for p in report["write"].get("written", [])]
     if not written:
         print(json.dumps(report, indent=2))

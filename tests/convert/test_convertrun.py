@@ -7,6 +7,7 @@ without either.
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 import pytest
@@ -512,3 +513,107 @@ def test_an_amiga_destination_needs_no_c64_disks(tmp_path, monkeypatch):
     assert rc == 1
     ((args, _kwargs),) = ran
     assert args[4] is None
+
+
+def test_amiga_disk_one_reaches_save_as(tmp_path, monkeypatch):
+    ran = _no_write(monkeypatch)
+    monkeypatch.setattr(convertrun, "disks_dir", lambda named=None: None)
+    two, one = tmp_path / "curse2.adf", tmp_path / "curse1.adf"
+    two.write_bytes(b"x")
+    one.write_bytes(b"y")
+
+    rc = convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
+                          "--amiga-disk", str(two), "--amiga-disk-one", str(one),
+                          "--out", str(tmp_path / "out")])
+
+    assert rc == 1
+    ((_args, kwargs),) = ran
+    assert kwargs["amiga_disk"] == two
+    assert kwargs["amiga_disk_one"] == one
+    assert kwargs["amiga_disk_three"] is None
+
+
+def test_amiga_disk_three_reaches_save_as(tmp_path, monkeypatch):
+    ran = _no_write(monkeypatch)
+    monkeypatch.setattr(convertrun, "disks_dir", lambda named=None: None)
+    two, three = tmp_path / "pod2.adf", tmp_path / "pod3.adf"
+    two.write_bytes(b"x")
+    three.write_bytes(b"z")
+
+    convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
+                     "--amiga-disk", str(two), "--amiga-disk-three", str(three),
+                     "--out", str(tmp_path / "out")])
+
+    ((_args, kwargs),) = ran
+    assert kwargs["amiga_disk_three"] == three
+    assert kwargs["amiga_disk_one"] is None
+
+
+@pytest.mark.parametrize("option", ["--amiga-disk-one", "--amiga-disk-three"])
+def test_a_missing_amiga_disk_one_or_three_stops_naming_its_path(
+        tmp_path, monkeypatch, capsys, option):
+    ran = _no_write(monkeypatch)
+    two, gone = tmp_path / "disk2.adf", tmp_path / "gone.adf"
+    two.write_bytes(b"x")
+    with pytest.raises(SystemExit):
+        convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
+                         "--amiga-disk", str(two), option, str(gone),
+                         "--out", str(tmp_path / "out")])
+    assert f"There is no Amiga disk at {gone}." in capsys.readouterr().err
+    assert not ran
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("option", ["--amiga-disk-one", "--amiga-disk-three"])
+def test_amiga_disk_one_or_three_is_blocked_for_another_destination(
+        tmp_path, monkeypatch, capsys, option):
+    ran = _no_write(monkeypatch)
+    one = tmp_path / "disk.adf"
+    one.write_bytes(b"y")
+    with pytest.raises(SystemExit):
+        convertrun.main(["--source", str(tmp_path / "S"), "--to", "dos",
+                         option, str(one), "--out", str(tmp_path / "out")])
+    assert f"{option} is for an Amiga destination" in capsys.readouterr().err
+    assert not ran
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_curse_amiga_destination_is_written_onto_a_copy_of_disk_one(
+        tmp_path, capsys):
+    """A DOS Curse save holding EVOKER, a Pool of Radiance import with a
+    permanent strength of 100, goes to the Amiga with the title's disk 1 and
+    disk 2 named; the written slot holds him and passes the save checker, and
+    neither disk nor the source changes."""
+    from gamedata import specimen
+
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import amigasavecheck
+    from tools.convert import convertdrops
+
+    source = specimen("wish303-s9-curse-evoker-dos-resave", platform="dos")
+    key = "curse-of-the-azure-bonds"
+    two = convertdrops.amiga_game_disks(tmp_path).get(key)
+    one = convertdrops.amiga_disks_one(tmp_path).get(key)
+    if two is None or one is None:
+        pytest.skip("needs Curse's own Amiga disks 1 and 2")
+    digest = {**_digests(source, two), **_digests(source, one)}
+    out = tmp_path / "out"
+
+    rc = convertrun.main(["--source", str(source), "--source-slot", "D",
+                          "--to", "amiga", "--amiga-disk", str(two),
+                          "--amiga-disk-one", str(one), "--out", str(out)])
+
+    assert rc == 0
+    written = list(out.rglob("*.ADF"))
+    assert len(written) == 1
+    assert {**_digests(source, two), **_digests(source, one)} == digest
+    slot = json.loads(capsys.readouterr().out)["write"]["slot"]
+    save = amiga_savegame.read_slot(AmigaDisk.open(str(written[0])), slot,
+                                    amiga_savegame.CURSE)
+    names = [c.name for c in save.characters]
+    assert "EVOKER" in names
+    at = save.blocks[names.index("EVOKER")][0]
+    assert save.data[at + 0x10] == 100
+    assert [claim for claim, ok, _ in amigasavecheck.check(save)
+            if not ok] == []

@@ -606,19 +606,33 @@ def read_amiga_guy(path) -> AmigaCharacter:
     return char
 
 
+#: The highest byte the game writes into either byte of the strength pair.
+#: Amiga Curse's Pool of Radiance import (`/Curse` file offset `0x25590`) loads
+#: the race and sex row of its limit table (`g0f14`), takes the exceptional
+#: strength maximum at `+4` (100 for a human man, 99, 90, 75, 50 or 0 for the
+#: others), and raises the permanent strength byte `$10` to it when it is
+#: higher, so every human man it imports has a permanent strength of 100.
+#: The recompute at `0xf5ee` seeds the score in force from that byte.
+AMIGA_STRENGTH_PAIR_MAX = 100
+
+#: The bound on both bytes of the other five ability pairs, which the import
+#: clamps to its table's maximum of 19.
+AMIGA_ABILITY_PAIR_MAX = 25
+
+
 def looks_like_amiga_record(data: bytes, at: int, deltas: AmigaDeltas) -> bool:
     """Whether a character record plausibly starts here.
 
     Two things a saved game's other bytes do not do together: **16 bytes of
     printable ASCII terminated and padded with NUL**, and **six ability
-    pairs of legal bytes** (1 to 25) at `0x010`.  On the two saved games this
-    project has, it finds the four Curse characters at `0x3219`, `0x3453`,
-    `0x36A1` and `0x391D` and the six Silver Blades ones at `0x1417` onwards,
-    and nothing else in 22 454 bytes.
+    pairs of legal bytes** at `0x010`: 1 to `AMIGA_STRENGTH_PAIR_MAX` for
+    strength, 1 to `AMIGA_ABILITY_PAIR_MAX` for the other five.
 
     **The two bytes of a pair are not required to match.**  Byte 0 is the
     permanent score and byte 1 the score in force, so a character whose
-    strength has been drained or boosted has them apart.
+    strength has been drained or boosted has them apart, and a character
+    Amiga Curse imported from Pool of Radiance has a permanent strength of
+    up to 100 (see `AMIGA_STRENGTH_PAIR_MAX`).
     """
     if at < 0 or at + deltas.record_size > len(data):
         return False
@@ -629,8 +643,9 @@ def looks_like_amiga_record(data: bytes, at: int, deltas: AmigaDeltas) -> bool:
     if not all(0x20 <= b < 0x7F for b in name[:stop]):
         return False
     for i in range(6):
+        top = AMIGA_STRENGTH_PAIR_MAX if i == 0 else AMIGA_ABILITY_PAIR_MAX
         for byte in data[at + 0x10 + 2 * i:at + 0x12 + 2 * i]:
-            if not 1 <= byte <= 25:
+            if not 1 <= byte <= top:
                 return False
     return True
 

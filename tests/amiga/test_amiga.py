@@ -2568,9 +2568,54 @@ def test_a_record_whose_ability_pairs_differ_is_found_and_detected():
 
 def test_the_signature_still_blocks_an_illegal_ability_byte():
     deltas = amiga_port.CURSE_DELTAS
-    for bad in (0, 26):
+    for bad in (0, 101):
         data, starts = _unequal_pair_save(deltas, (9, bad))
         assert not amiga_later.looks_like_amiga_record(data, starts[0], deltas)
+    for bad in (0, 26):
+        data, starts = _unequal_pair_save(deltas, (9, 17))
+        record = bytearray(data)
+        record[starts[0] + 0x13] = bad
+        assert not amiga_later.looks_like_amiga_record(
+            bytes(record), starts[0], deltas), bad
+
+
+def test_a_pool_import_permanent_strength_of_100_is_found_and_detected():
+    """Amiga Curse's Pool of Radiance import raises a human man's permanent
+    strength byte to 100, the exceptional strength maximum in its limit
+    table, and keeps the score in force; the scan and `detect` find him.
+    """
+    for deltas in (amiga_port.CURSE_DELTAS, amiga_port.SILVER_BLADES_DELTAS):
+        data, starts = _unequal_pair_save(deltas, (100, 10))
+        assert [at for at in range(len(data))
+                if amiga_later.looks_like_amiga_record(data, at, deltas)] \
+            == starts, deltas.key
+        assert amiga_savegame.detect(data).deltas is deltas, deltas.key
+
+
+def test_the_game_written_pool_import_is_found_by_the_scan_and_the_checker():
+    """Slot D of the WISH-303 stage 8 disk holds EVOKER, whom Amiga Curse
+    imported from Pool of Radiance and saved itself, with the strength pair
+    (100, 10) at 0x3B75: the scan finds all five blocks and the save checker
+    passes the slot.
+    """
+    from gamedata import specimen
+
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import amigasavecheck
+    where = specimen("wish-plane-303-curse-evoker-add", platform="amiga")
+    disk = AmigaDisk.open(where / "fetched-save.adf")
+    save = amiga_savegame.read_slot(disk, "D", amiga_savegame.CURSE)
+    evoker = save.blocks[[c.name for c in save.characters].index("EVOKER")][0]
+    assert evoker == 0x3B75
+    assert list(save.data[evoker + 0x10:evoker + 0x12]) == [100, 10]
+    assert [at for at in range(len(save.data))
+            if amiga_later.looks_like_amiga_record(
+                save.data, at, amiga_port.CURSE_DELTAS)] \
+        == [start for start, _ in save.blocks]
+    assert len(amiga_later.party_in_savegame(
+        save.data, amiga_port.CURSE_DELTAS)) == 5
+    failed = [claim for claim, ok, _ in amigasavecheck.check(save) if not ok]
+    assert failed == []
 
 
 def test_a_specimen_with_unequal_ability_pairs_finds_all_six():
