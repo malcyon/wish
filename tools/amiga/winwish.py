@@ -43,6 +43,7 @@ import base64
 import binascii
 import contextlib
 import hashlib
+import html
 import json
 import os
 import pathlib
@@ -848,6 +849,9 @@ def ui_dump_file(token: str) -> str:
 DUMP_BEGIN = "WISHUI-DUMP-BEGIN"
 DUMP_END = "WISHUI-DUMP-END"
 
+#: How often `ui_script` opens the answer file, 100 ms apart, before a read error is the answer.
+UI_READ_TRIES = 20
+
 #: Added to a UI call's wait when it also takes a picture.
 SHOT_EXTRA_SECONDS = 5
 
@@ -870,6 +874,8 @@ def ui_script(token: str, timeout: float, shot: bool = False, dump: bool = False
     args = f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{file}"'
     return "\n".join([
         "$ErrorActionPreference = 'Stop'",
+        # Progress records reach stderr as CLIXML and would bury an error record there.
+        "$ProgressPreference = 'SilentlyContinue'",
         f"$task = {q(task)}",
         f"$out = {q(out)}",
         "Remove-Item $out, \"$out.tmp\" -ErrorAction SilentlyContinue",
@@ -884,7 +890,25 @@ def ui_script(token: str, timeout: float, shot: bool = False, dump: bool = False
         "  while (-not (Test-Path $out) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }",
         "  if (-not (Test-Path $out)) { 'fail the Wish window did not answer in ' + " f"{int(timeout)}" " + 's'; exit 1 }",
         f"  '{UI_BEGIN}'",
-        "  Get-Content -LiteralPath $out",
+        # The task's `Move-Item` renames through a handle opened with DELETE access, and the
+        # new name is visible before that handle closes; an open without FileShare.Delete
+        # (as Get-Content's) fails with a sharing violation then, which with
+        # $ErrorActionPreference = 'Stop' ended this script before the end marker.
+        "  try {",
+        "    $text = $null",
+        "    for ($try = 1; $null -eq $text; $try++) {",
+        "      try {",
+        "        $fs = [IO.File]::Open($out, 'Open', 'Read', 'ReadWrite, Delete')",
+        "        try { $text = (New-Object IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }",
+        "      } catch [IO.IOException] {",
+        f"        if ($try -ge {UI_READ_TRIES}) {{ throw }}",
+        "        Start-Sleep -Milliseconds 100",
+        "      }",
+        "    }",
+        "    $text.TrimEnd(\"`r\", \"`n\") -split \"`r?`n\"",
+        "  } catch {",
+        "    'fail the answer could not be read: ' + $_.Exception.GetType().FullName + ': ' + $_.Exception.Message",
+        "  }",
         f"  '{UI_END}'",
         *([f"  if (Test-Path {q(png)}) {{",
            f"    '{winvmguest.SHOT_BEGIN}'",
@@ -907,9 +931,45 @@ def ui_script(token: str, timeout: float, shot: bool = False, dump: bool = False
     ])
 
 
-def ui_lines(text: str, kind: str | None = None) -> list[str]:
-    """The lines between the markers of a `ui_script` reply; a `fail` line is an error."""
+CLIXML = "#< CLIXML"
+CLIXML_ERROR = re.compile(r'<S S="Error">(.*?)</S>', re.S)
+CLIXML_ESCAPE = re.compile(r"_x([0-9A-Fa-f]{4})_")
+
+
+def clixml_errors(text: str) -> str:
+    """The error records in the CLIXML PowerShell writes to a redirected stderr, as text."""
+    if CLIXML not in text:
+        return ""
+    xml = text[text.index(CLIXML):]
+    found = "".join(html.unescape(m) for m in CLIXML_ERROR.findall(xml))
+    found = CLIXML_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), found)
+    return " ".join(found.split())
+
+
+def _cut_reply(text: str, rc: int | None) -> str:
+    """Why a `ui_script` reply has no end marker, from its exit code, its last output and stderr's errors."""
+    out = text[:text.index(CLIXML)] if CLIXML in text else text
+    last = [line.strip() for line in out.splitlines() if line.strip()]
+    errors = clixml_errors(text)
+    # ssh's own complaint, if any, follows PowerShell's CLIXML on stderr.
+    after = " ".join(text[text.rindex("</Objs>") + len("</Objs>"):].split()) if "</Objs>" in text else ""
+    return ("the window's answer stopped after "
+            + (repr(last[-1]) if last else "no output")
+            + f" (exit {'unknown' if rc is None else rc}); "
+            + (f"PowerShell: {errors[:600]}" if errors else
+               "PowerShell wrote no error, so the ssh session or its process ended early")
+            + (f"; then: {after[:300]}" if after else ""))
+
+
+def ui_lines(text: str, kind: str | None = None, rc: int | None = None) -> list[str]:
+    """The lines between the markers of a `ui_script` reply; a `fail` line is an error.
+
+    `rc` is the exit code of the `winvm ps` that gave `text`, for the error when the end
+    marker is missing.
+    """
     lines = [line.strip() for line in text.splitlines()]
+    if UI_BEGIN in lines and UI_END not in lines[lines.index(UI_BEGIN):]:
+        raise WinwishError(_cut_reply(text, rc))
     try:
         body = lines[lines.index(UI_BEGIN) + 1:lines.index(UI_END)]
     except ValueError:
@@ -917,7 +977,7 @@ def ui_lines(text: str, kind: str | None = None) -> list[str]:
         raise WinwishError(fail or "the window answered with nothing: "
                            + (text.strip()[:200] or "no output")) from None
     if not body or body[0] != "ok":
-        raise WinwishError(body[0] if body else "the window answered with nothing")
+        raise WinwishError(body[0] if body and body[0] else "the window answered with nothing")
     lines = []
     for line in body[1:]:
         if not line.startswith("MSAA|"):
@@ -973,7 +1033,7 @@ def _session_one(guest: "Guest", holder: str, make_inner: Callable[[str], str],
             guest.winvm("put", str(local), ui_file(token).replace("\\", "/"), timeout=CALL_SECONDS)
         rc, text = guest.run(["winvm", "ps", ui_script(token, timeout, shot, dump is not None)],
                              timeout + 20)
-        lines = ui_lines(text, kind)
+        lines = ui_lines(text, kind, rc)
         png = None
         if shot:
             try:

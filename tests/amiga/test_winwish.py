@@ -1279,6 +1279,44 @@ def test_no_answer_at_all_is_one_sentence():
         winwish.ui(winwish.Guest(run), "h", "controls")
 
 
+CUT_PROGRESS = ('<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+                '<Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject'
+                '</T></TN><MS><PR N="Record"><AV>Preparing modules for first use.</AV></PR></MS></Obj>')
+
+
+def test_the_answer_file_is_read_beside_a_rename_handle_and_a_read_error_keeps_the_end_marker():
+    script = winwish.ui_script("abc", 30)
+    between = script[script.index(f"'{winwish.UI_BEGIN}'"):script.index(f"'{winwish.UI_END}'")]
+    assert "Get-Content" not in between
+    assert "[IO.File]::Open($out, 'Open', 'Read', 'ReadWrite, Delete')" in between
+    assert f"if ($try -ge {winwish.UI_READ_TRIES}) {{ throw }}" in between
+    assert between.index("} catch {") < between.index("'fail the answer could not be read: '")
+    assert "$ProgressPreference = 'SilentlyContinue'" in script
+
+
+def test_an_answer_cut_after_the_begin_marker_names_powershells_error_and_the_exit_code():
+    err = ('<S S="Error">Get-Content : The process cannot access the file &apos;C:\\o.txt&apos; '
+           'because it is being used by another process._x000D__x000A_</S></Objs>')
+    run = FakeRun([(lambda a: a[1] == "ps", 1,
+                    "\n".join([winwish.UI_BEGIN, "#< CLIXML", CUT_PROGRESS + err]))])
+    with pytest.raises(winwish.WinwishError) as caught:
+        winwish.ui(winwish.Guest(run), "h", "controls")
+    message = str(caught.value)
+    assert message.startswith(f"the window's answer stopped after '{winwish.UI_BEGIN}' (exit 1); "
+                              "PowerShell: Get-Content : The process cannot access the file 'C:\\o.txt'")
+    assert "progress" not in message and "_x000D_" not in message
+
+
+def test_an_answer_cut_with_no_powershell_error_blames_the_session_and_keeps_sshs_words():
+    run = FakeRun([(lambda a: a[1] == "ps", 255,
+                    "\n".join([winwish.UI_BEGIN, "ok", "#< CLIXML",
+                               CUT_PROGRESS + "</Objs>Connection to 10.0.0.2 closed by remote host."]))])
+    with pytest.raises(winwish.WinwishError, match=r"stopped after 'ok' \(exit 255\); PowerShell wrote no "
+                       r"error, so the ssh session or its process ended early; then: Connection to "
+                       r"10\.0\.0\.2 closed by remote host\.$"):
+        winwish.ui(winwish.Guest(run), "h", "controls")
+
+
 def test_the_click_script_checks_enabled_before_invoking_and_walks_every_window():
     inner = winwish.ui_inner(r"C:\b", "click", ("File", "Preferences..."), None, r"C:\o.txt")
     assert "if (-not $hit[0].Current.IsEnabled) { throw" in inner
