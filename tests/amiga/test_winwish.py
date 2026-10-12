@@ -1333,6 +1333,44 @@ def test_the_click_script_checks_enabled_before_invoking_and_walks_every_window(
     assert "InvokePattern" in inner and "SelectionItemPattern" in inner
 
 
+def _click_loop(inner: str) -> list[str]:
+    """The lines of the click script's search loop for one name, `while ($true) {` to its `}`."""
+    lines = inner.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip() == "while ($true) {"
+                 and "foreach ($name in $names)" in "\n".join(lines[max(0, i - 10):i]))
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    end = next(i for i in range(start + 1, len(lines))
+               if lines[i] == " " * indent + "}")
+    return lines[start:end + 1]
+
+
+def test_a_found_control_with_nothing_to_click_is_looked_up_again_inside_the_search_loop():
+    inner = winwish.ui_inner(r"C:\b", "click", ("View", "Automapper"), "MenuItem", r"C:\o.txt")
+    use = inner[inner.index("function Use-Control"):inner.index("function Use-Control") + 2000]
+    use = use[:use.index("\n  }")]
+    # Use-Control answers $null for a control that offers no pattern, so the loop can look again.
+    assert "return $null" in use and "throw" not in use
+    loop = "\n".join(_click_loop(inner))
+    assert "$used = Use-Control $hit[0]" in loop
+    assert f"AddSeconds({winwish.CLICK_RETRY})" in loop
+    assert loop.index("$used = Use-Control $hit[0]") < loop.index("Start-Sleep -Milliseconds 200")
+
+
+def test_a_control_still_unclickable_is_named_with_its_patterns_and_what_was_clicked_before_it():
+    inner = winwish.ui_inner(r"C:\b", "click", ("View", "Automapper"), "MenuItem", r"C:\o.txt")
+    assert "the control offers no way to be clicked" not in inner
+    after = inner[inner.index("\n".join(_click_loop(inner))):]
+    assert "offers no way to be clicked" in after
+    assert "Get-Line $bare" in after
+    assert "GetSupportedPatterns()" in after
+    assert "$lines -join" in after
+
+
+def test_the_click_wait_covers_the_search_and_the_retry_of_every_name():
+    for count in (1, 2, winwish.UI_MAX_NAMES):
+        assert winwish.ui_timeout(count) >= 20 + (winwish.UI_WAIT + winwish.CLICK_RETRY) * count
+
+
 def test_the_ui_task_is_removed_whatever_happens():
     script = winwish.ui_script("abc", 30)
     assert script.index("} finally {") < script.index("Unregister-ScheduledTask -TaskName $task")

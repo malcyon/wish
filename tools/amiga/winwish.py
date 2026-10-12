@@ -513,9 +513,12 @@ UI_BEGIN = "WISHUI-BEGIN"
 UI_END = "WISHUI-END"
 #: Seconds a name is searched for: a menu's items exist only once it is open.
 UI_WAIT = 4
+#: Seconds a found control that offers no pattern to use is looked up again before the
+#: click fails: a Qt menu item can be read once with none and with its usual one a moment later.
+CLICK_RETRY = 3
 
 
-#: At most this many names in one `click`: each may wait `UI_WAIT` seconds, and the
+#: At most this many names in one `click`: each may wait `UI_WAIT` and `CLICK_RETRY` seconds, and the
 #: task is stopped after two minutes.
 UI_MAX_NAMES = 8
 #: Seconds `stop` waits for Wish to exit after its window is closed, before forcing it.
@@ -523,13 +526,13 @@ CLOSE_SECONDS = 10
 
 
 def ui_timeout(count: int, action: str = "click") -> float:
-    """Seconds to wait for a `click` of `count` names: the wait per name plus a fixed start.
+    """Seconds to wait for a `click` of `count` names: the search and retry per name plus a fixed start.
 
     `controls` starts slower, because it compiles the MSAA helper and walks each dialog.
     """
     if action in ("controls", "close"):
         return 50.0
-    return 20.0 + (UI_WAIT + 2) * max(1, count)
+    return 20.0 + (UI_WAIT + CLICK_RETRY + 2) * max(1, count)
 
 
 #: Reads a window through MSAA (oleacc), which Qt answers while a modal dialog is up
@@ -613,7 +616,11 @@ def _expand_function() -> list[str]:
 
 
 def _use_functions() -> list[str]:
-    """How `click` uses a control: invoke, select, toggle, expand or close, in that order."""
+    """How `click` uses a control: invoke, select, toggle, expand or close, in that order.
+
+    A control that offers none of these gives `$null`, having done nothing, so the click
+    loop can look it up again.
+    """
     return [
         # `Invoke` on an item that opens a modal dialog does not return until the dialog
         # closes, which would hold this task until it was killed; so it runs on its own
@@ -640,7 +647,7 @@ def _use_functions() -> list[str]:
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
         # A dialog has no button of its own in the tree to some builds; closing its window is the exit.
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$o)) { $o.Close(); return 'closed' }",
-        "    throw 'the control offers no way to be clicked'",
+        "    return $null",
         "  }",
     ]
 
@@ -659,7 +666,9 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     takes the one control whose `AutomationId` equals it or ends with `.` and it, in
     place of a name; `names` is then that id, and `prefix` is not used.  A name matches a control's Name exactly for the whole wait; with
     `prefix`, a prefix match is tried once the wait has run out.  The line reports the
-    control's full name.  A disabled control is never invoked, because `Invoke` on one
+    control's full name.  A found control that offers no pattern to use is looked up
+    again for `CLICK_RETRY` seconds; if it still offers none, the failure names it, the
+    patterns it does report and the names clicked before it.  A disabled control is never invoked, because `Invoke` on one
     returns without an error; but a control under a modal dialog can still read enabled,
     so a click that the dialog swallows is not an error.  With `expand`, a `click` only
     uses `ExpandCollapsePattern`, so a split button opens its menu and is not invoked;
@@ -776,6 +785,9 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         f"      $until = (Get-Date).AddSeconds({UI_WAIT})",
         "      $hit = @()",
         "      $expired = $false",
+        "      $used = $null",
+        "      $bare = $null",
+        "      $retry = $null",
         "      while ($true) {",
         *(["        $all = @(Get-Controls | Where-Object { $_.Current.AutomationId -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
            "        $hit = @($all | Where-Object { $_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase) })"]
@@ -783,13 +795,32 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
           ["        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
            "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })"]),
         "        if ($hit.Count -eq 0 -and $expired -and $prefix) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
-        "        if ($hit.Count -gt 0 -or $expired) { break }",
+        "        if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
+        "        if ($hit.Count -eq 1) {",
+        "          if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
+        "          $used = Use-Control $hit[0]",
+        "          if ($null -ne $used) { break }",
+        # Nothing was done to it: it is looked up again, as a fresh element, until CLICK_RETRY runs out.
+        f"          if ($null -eq $retry) {{ $retry = (Get-Date).AddSeconds({CLICK_RETRY}) }}",
+        "          $bare = $hit[0]",
+        "          if ((Get-Date) -gt $retry) { break }",
+        "          Start-Sleep -Milliseconds 200",
+        "          continue",
+        "        }",
+        "        if ($expired) { break }",
+        "        if ($null -ne $retry) { if ((Get-Date) -gt $retry) { break }; Start-Sleep -Milliseconds 200; continue }",
         "        if ((Get-Date) -gt $until) { if ($prefix) { $expired = $true } else { break } } else { Start-Sleep -Milliseconds 200 }",
         "      }",
-        f"      if ($hit.Count -eq 0) {{ throw \"no control {'with automation id' if by_id else 'named'} $name\" }}",
-        "      if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
-        "      if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
-        "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + (Use-Control $hit[0]))",
+        "      if ($null -eq $used -and $null -ne $bare) {",
+        "        $line = 'unreadable'; try { $line = Get-Line $bare } catch {}",
+        "        $patterns = 'unreadable'",
+        "        try { $patterns = (@($bare.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) -join ', ') } catch {}",
+        "        if ($patterns -eq '') { $patterns = 'none' }",
+        "        $before = 'nothing'; if ($lines.Count -gt 0) { $before = $lines -join '; ' }",
+        f"        throw ($name + ' offers no way to be clicked after {CLICK_RETRY}s (' + $line + '; patterns: ' + $patterns + '; clicked before it: ' + $before + ')')",
+        "      }",
+        f"      if ($null -eq $used) {{ throw \"no control {'with automation id' if by_id else 'named'} $name\" }}",
+        "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + $used)",
         "      Start-Sleep -Milliseconds 400",
         "    }",
         *(["    " + line for line in _dump_lines(controls_after)] if controls_after else []),
