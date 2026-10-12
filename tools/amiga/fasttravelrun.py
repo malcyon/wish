@@ -31,7 +31,13 @@ pixel guard (`guards_*.json`) matches the frame, because a picture animated
 beside the PRESS RETURN bar never holds still; the `arrival_answer` event
 records the gate and the count of unchanged polls. A leg whose last area equals
 its start area (A to B to A) gets no arrival key.
-`--back` makes `apply_back` once the trip has finished.
+After each leg a `return_verdict` event records what this run's own
+`back_verdict` says, offered or withheld with its reason, which is what the
+tab's Return button would show at that moment.
+`--back` makes `apply_back` once the trip has finished. With `--legality` it
+adds a `back` line: Return's verdict and reason from `back_verdict`, the check
+the tab's Return button asks. A new process has no Return of its own, so that
+line is withheld unless `--waypoint` stages one.
 `--waypoint AREA,X,Y,F` stages `fasttravel.back` as a party that stood on that
 square of that area, and with `--back` and no `--to` the run makes `apply_back`
 alone; it is staged input, for a Return no forward trip of this run produced.
@@ -477,6 +483,14 @@ def legality_report(fasttravel, target, rows) -> list[str]:
     return lines
 
 
+def back_report(fasttravel, target) -> str:
+    """One line for Return: whether `back_verdict`, the check the tab's Return
+    button asks, offers it, and why not."""
+    verdict = fasttravel.back_verdict(target)
+    state = "offered" if verdict else "withheld"
+    return f"back\t{state}\t{verdict.reason}".rstrip("\t")
+
+
 def _area(to: int | None, title: str) -> object | None:
     """The destination area for id `to`, or None when `to` is None or names no area of `title`."""
     if to is None:
@@ -514,6 +528,16 @@ def run_legs(title: str, disks: str, to: int | None, back: bool, arrival_answer:
         results.append(result)
         return result
 
+    def offer_back() -> None:
+        # What the tab's Return button would show now, from this run's own
+        # object: a new process has no Return to ask about.
+        try:
+            verdict = fasttravel.back_verdict(target)
+        except Exception as exc:
+            log("return_verdict", leg=leg, error=type(exc).__name__)
+            return
+        log("return_verdict", leg=leg, offered=bool(verdict), reason=verdict.reason)
+
     with open(out / "fasttravel.jsonl", "w") as stream:
         log = Log(stream, time.monotonic)
         at_continue = continue_guard(title, out, log=log)
@@ -528,6 +552,7 @@ def run_legs(title: str, disks: str, to: int | None, back: bool, arrival_answer:
                                       party=amigaparty.read_party,
                                       peek_vars=peek_vars, title=title,
                                       at_continue=at_continue))
+                    offer_back()
                 if back and results and results[0]["result"] == "idle" \
                         and not results[0]["settled"]:
                     finished({"result": "skipped", "reason": "leg 1 never became ready"})
@@ -540,6 +565,7 @@ def run_legs(title: str, disks: str, to: int | None, back: bool, arrival_answer:
                                       party=amigaparty.read_party,
                                       peek_vars=peek_vars, title=title,
                                       at_continue=at_continue))
+                    offer_back()
         except BaseException as exc:
             log("interrupted", error=type(exc).__name__, leg=leg)
             raise
@@ -556,7 +582,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="the amiga.MACHINES key of the title in the machine")
     parser.add_argument("--to", type=int, help="the destination area id")
     parser.add_argument("--legality", action="store_true",
-                        help="print each area with its legality verdict and make no trip")
+                        help="print each area with its legality verdict and make no trip; "
+                             "with --back, also print Return's verdict")
     parser.add_argument("--answer", help="the key that answers the game's question")
     parser.add_argument("--arrival-answer", action="append",
                         help="the key that answers a question in the destination area; "
@@ -610,9 +637,13 @@ def main(argv: list[str] | None = None) -> int:
         except (DriverError, amiga.GuestError) as exc:
             raise SystemExit(str(exc)) from exc
         fasttravel = amigafasttravel.AmigaFastTravel(args.title, args.disks)
+        if waypoint is not None:
+            fasttravel.back = waypoint
         with (measuring_row(args.title, lambda *_, **__: None) if args.measure_row
               else contextlib.nullcontext()):
             report = legality_report(fasttravel, target, candidate_areas(machine.title))
+            if args.back:
+                report.append(back_report(fasttravel, target))
         print("\n".join(report))
         return 0
     area = _area(args.to, machine.title)

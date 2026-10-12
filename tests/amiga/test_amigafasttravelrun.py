@@ -1330,3 +1330,127 @@ def test_main_runs_the_same_legs_run_legs_runs(monkeypatch, tmp_path):
                            report=reported.append)
     assert seen == via_main and len(seen) == 2 and results == reported
     assert [leg[:2] for leg in seen] == [(3, False), (None, True)]
+
+
+def _legality_main(monkeypatch, capsys, argv, fasttravel_class):
+    """Run `main --legality` over a fake machine and one area; returns the printed lines."""
+    from automap import amiga, amigafasttravel
+    from tools.amiga import amigadrive
+
+    class T:
+        def __init__(self, pipe, machine):
+            pass
+
+        def locate(self):
+            return 1
+
+    monkeypatch.setattr(amiga, "WinuaePipe", _Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget", T)
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", fasttravel_class)
+    monkeypatch.setattr(amigadrive, "shot", lambda *a: None)
+    monkeypatch.setattr(ftr, "candidate_areas", lambda title: [SimpleNamespace(id=1, name="A")])
+    assert ftr.main(["--holder", "h", "--disks", "D", "--legality", *argv]) == 0
+    return capsys.readouterr().out.splitlines()
+
+
+class _Asking(AmigaFastTravel):
+    """The shipped class, with its trip legality recorded and answered."""
+
+    asked: list = []
+
+    def legality(self, target, area=None, back=False):
+        self.asked.append((getattr(area, "id", None), back))
+        return engine.Verdict(not back, "" if not back else "held for the test")
+
+    def apply_back(self, target):
+        raise AssertionError("a legality run makes no Return")
+
+
+def test_legality_with_back_prints_the_returns_verdict_after_the_areas(monkeypatch, capsys):
+    monkeypatch.setattr(_Asking, "asked", [])
+    lines = _legality_main(monkeypatch, capsys, ["--back"], _Asking)
+    reason = AmigaFastTravel("pool-of-radiance").back_verdict(None).reason
+    assert reason
+    assert lines == ["1\tA\toffered", f"back\twithheld\t{reason}"]
+    assert _Asking.asked == [(1, False)]
+
+
+def test_legality_with_a_staged_waypoint_asks_the_return_of_that_area(monkeypatch, capsys):
+    monkeypatch.setattr(_Asking, "asked", [])
+    lines = _legality_main(monkeypatch, capsys, ["--back", "--waypoint", "0,15,1,3"], _Asking)
+    assert lines == ["1\tA\toffered", "back\twithheld\theld for the test"]
+    assert _Asking.asked == [(1, False), (0, True)]
+
+
+def test_legality_prints_an_offered_return_without_a_reason(monkeypatch, capsys):
+    class Offered(_Asking):
+        def legality(self, target, area=None, back=False):
+            return engine.Verdict(True)
+
+    lines = _legality_main(monkeypatch, capsys, ["--back", "--waypoint", "0,15,1,3"], Offered)
+    assert lines == ["1\tA\toffered", "back\toffered"]
+
+
+def test_legality_without_back_prints_no_return_line(monkeypatch, capsys):
+    monkeypatch.setattr(_Asking, "asked", [])
+    lines = _legality_main(monkeypatch, capsys, [], _Asking)
+    assert lines == ["1\tA\toffered"]
+    assert _Asking.asked == [(1, False)]
+
+
+def _legs_with(monkeypatch, tmp_path, fasttravel_class, trip, **kwargs):
+    """Run `run_legs` with `trip` in place of `run_trip`; returns the log's events."""
+    from automap import amigafasttravel
+
+    monkeypatch.setattr(amigafasttravel, "AmigaFastTravel", fasttravel_class)
+    monkeypatch.setattr(ftr, "run_trip", trip)
+    ftr.run_legs("pool-of-radiance", "D", kwargs.pop("to", None), True, None, (), tmp_path,
+                 object(), lambda path: None, lambda key: None, 1.0,
+                 report=lambda result: None, **kwargs)
+    return [json.loads(line) for line in (tmp_path / "fasttravel.jsonl").read_text().splitlines()]
+
+
+def _cleared(fasttravel, *args, **kwargs):
+    """A leg like the Fatima NO one: the door walk armed, Return given up."""
+    fasttravel.back = None
+    return {"result": "idle", "settled": True}
+
+
+def test_each_leg_logs_the_returns_verdict_from_the_runs_own_fast_travel(monkeypatch, tmp_path):
+    events = _legs_with(monkeypatch, tmp_path, _Asking, _cleared,
+                        waypoint=ftr.parse_waypoint("0,15,1,3"))
+    reason = AmigaFastTravel("pool-of-radiance").back_verdict(None).reason
+    verdicts = [e for e in events if e["event"] == "return_verdict"]
+    assert [(e["leg"], e["offered"], e["reason"]) for e in verdicts] == [(1, False, reason)]
+
+
+def test_a_return_still_held_after_the_leg_is_logged_as_offered(monkeypatch, tmp_path):
+    class Offered(_Asking):
+        def legality(self, target, area=None, back=False):
+            return engine.Verdict(True)
+
+    def kept(fasttravel, *args, **kwargs):
+        return {"result": "idle", "settled": True}
+
+    events = _legs_with(monkeypatch, tmp_path, Offered, kept,
+                        waypoint=ftr.parse_waypoint("0,15,1,3"))
+    verdicts = [e for e in events if e["event"] == "return_verdict"]
+    assert [(e["leg"], e["offered"], e["reason"]) for e in verdicts] == [(1, True, "")]
+
+
+def test_a_forward_leg_and_its_return_each_log_the_returns_verdict(monkeypatch, tmp_path):
+    monkeypatch.setattr(ftr, "_area", lambda to, title: SimpleNamespace(id=to))
+    events = _legs_with(monkeypatch, tmp_path, _Asking, _cleared, to=8)
+    assert [e["leg"] for e in events if e["event"] == "return_verdict"] == [1, 2]
+
+
+def test_a_return_verdict_that_cannot_be_read_is_logged_and_the_run_goes_on(monkeypatch, tmp_path):
+    class Lost(_Asking):
+        def back_verdict(self, target):
+            raise OSError("the machine went away")
+
+    events = _legs_with(monkeypatch, tmp_path, Lost, _cleared,
+                        waypoint=ftr.parse_waypoint("0,15,1,3"))
+    verdicts = [e for e in events if e["event"] == "return_verdict"]
+    assert [(e["leg"], e["error"]) for e in verdicts] == [(1, "OSError")]
+    assert "interrupted" not in [e["event"] for e in events]
