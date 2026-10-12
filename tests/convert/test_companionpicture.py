@@ -75,19 +75,26 @@ def test_an_amiga_companion_comes_back_with_his_own_picture(route, picture):
     assert route(char) == char.raw[AMIGA_PICTURE]
 
 
-def _dos_curse(control: int, picture: int, name: bytes = b"WORG") -> bytes:
-    raw = bytearray(CURSE.record_size)
+def _dos_record(deltas, control: int, picture: int,
+                name: bytes = b"WORG") -> bytes:
+    """A synthetic record of `deltas`' title with the control byte set."""
+    fields = dos_port.FIELDS_BY_NAME_FOR[deltas.key]
+    raw = bytearray(deltas.record_size)
     raw[0] = len(name)
     raw[1:1 + len(name)] = name
-    f83 = dos_port.FIELDS_BY_NAME_FOR[CURSE.key]["field_83_87"]
-    raw[f83.offset + 1] = control
-    raw[PICTURE.offset] = picture
+    f83 = fields["field_83_87"]
+    raw[f83.offset + (1 if f83.size == 5 else 0)] = control
+    raw[fields["unnamed_0ab"].offset] = picture
     return bytes(raw)
 
 
-def _rewrite(record: bytes) -> bytes:
+def _dos_curse(control: int, picture: int, name: bytes = b"WORG") -> bytes:
+    return _dos_record(CURSE, control, picture, name)
+
+
+def _rewrite(record: bytes, deltas=CURSE) -> bytes:
     rec, _, _, _ = dos_codec.write(
-        dos_codec.to_neutral(dos_codec.DosCharacter(record)), deltas=CURSE)
+        dos_codec.to_neutral(dos_codec.DosCharacter(record)), deltas=deltas)
     return rec
 
 
@@ -112,11 +119,35 @@ def test_pool_of_radiance_has_no_companion_picture():
     assert not dos_codec.holds_companion_picture(_dos_curse(0x7F, WORG))
 
 
-def test_a_player_the_engine_has_taken_over_keeps_a_player_s_rule():
-    """Control 0xB3 passes the loader's test, but his byte is his own draw."""
-    assert not dos_codec.holds_companion_picture(_dos_curse(0xB3, WORG))
-    rec = _rewrite(_dos_curse(0xB3, WORG))
-    assert rec[PICTURE.offset] == dos_codec.identity_byte(rec, CURSE)
+def test_a_player_the_engine_has_taken_over_keeps_his_picture():
+    """Control 0xB3 passes the loader's test, so his byte is drawn from CPIC."""
+    assert dos_codec.holds_companion_picture(_dos_curse(0xB3, WORG))
+    assert _rewrite(_dos_curse(0xB3, WORG))[PICTURE.offset] == WORG
+
+
+@pytest.mark.parametrize("control, companion", [
+    (0x7F, False), (0x80, True), (0xB2, True), (0xB3, True),
+    (0xB4, True), (0xFF, True),
+])
+def test_the_control_byte_boundaries(control, companion):
+    """Bit 7 is the loader's test, the taken-over 0xB3 included."""
+    record = _dos_curse(control, WORG)
+    assert dos_codec.holds_companion_picture(record) is companion
+    got = _rewrite(record)[PICTURE.offset]
+    if companion:
+        assert got == WORG
+    else:
+        assert got != WORG
+
+
+def test_silver_blades_reads_its_control_byte_at_the_field_start():
+    """Its 4-byte `field_83_87` has the control byte at +0, Curse's 5-byte at +1."""
+    silver = dos_port.SECRET_OF_THE_SILVER_BLADES
+    offset = dos_port.FIELDS_BY_NAME_FOR[silver.key]["unnamed_0ab"].offset
+    for control, companion in ((0x7F, False), (0x80, True), (0xFF, True)):
+        record = _dos_record(silver, control, WORG)
+        assert dos_codec.holds_companion_picture(record) is companion
+        assert (_rewrite(record, silver)[offset] == WORG) is companion
 
 
 def test_a_same_named_player_moves_and_the_companion_keeps_his_picture():
@@ -147,3 +178,45 @@ def test_the_c64_curse_reader_takes_only_a_converted_companion_s_picture(
         control, pair, want):
     char = c64_codec.read(_c64(control, pair), game="curse-of-the-azure-bonds")
     assert char.get("unnamed_0ab") == want
+
+
+# --- BRUTUS: a player Animate Dead raised, control 0xB3 ---------------------
+# DOS Curse's Animate Dead (`GAME.OVR` 0x30EC9-0x30EDF) writes 0xB2 over a
+# companion's control byte and 0xB3 over a player's; the party loader draws
+# either from `CPIC` by this byte.  BRUTUS was imported from Pool already
+# animated, so his `$127` is his Pool draw, 0x57, which Amiga Curse finds.
+
+def _brutus():
+    from tools.registry import scratch
+    where = scratch.cache_dir("acceptance", "WISH-303", "s5-c64",
+                              "source-save.adf")
+    if not where.is_file():
+        pytest.skip("needs the WISH-303 s5-c64 source save")
+    slot = amiga_savegame.read_slot(AmigaDisk.open(str(where)), "D",
+                                    "curse-of-the-azure-bonds")
+    return next(m for m in slot.characters if m.name == "BRUTUS")
+
+
+def test_a_raised_player_keeps_his_picture_through_dos():
+    """Amiga to DOS and back, still raised: 0xB3 and his own 0x57."""
+    brutus = _brutus()
+    assert (brutus.raw[0xF7], brutus.raw[AMIGA_PICTURE]) == (0xB3, WORG)
+    rec, _, _, _ = dos_codec.write(amiga_later.to_neutral_later(brutus),
+                                   deltas=CURSE)
+    back, _ = amiga_later.write_later(
+        dos_codec.to_neutral(dos_codec.DosCharacter(rec)), CURSE.key)
+    assert (back.raw[0xF7], back.raw[AMIGA_PICTURE]) == (0xB3, WORG)
+
+
+def test_the_c64_route_makes_a_raised_player_living():
+    """The C64 writer turns him into a living player under the player's
+    orders, so he comes back at control 0 and the loader composes his
+    player figure; `$127` is then only the ADD CHARACTER tie-break."""
+    neutral = amiga_later.to_neutral_later(_brutus())
+    rec, _ = c64_codec.write(neutral)
+    back, _ = amiga_later.write_later(c64_codec.read(rec, game=neutral.game),
+                                      CURSE.key)
+    assert back.raw[0xF7] == 0x00
+    assert not dos_codec.holds_companion_picture(
+        dos_codec.write(c64_codec.read(rec, game=neutral.game),
+                        deltas=CURSE)[0])

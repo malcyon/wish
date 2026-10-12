@@ -29,6 +29,7 @@ from typing import Any, NamedTuple, Sequence
 from . import amiga_later, amiga_por, c64_codec, c64_port, dos_codec, dos_port
 from .amiga_port import AmigaRecordError
 from .iconparts import DosIcon, amiga_combat_icon
+from .layout import Confidence
 from .record import CharacterRecord
 
 
@@ -222,6 +223,27 @@ def _carry_window(char: Any, original: bytes, spans: Sequence[Span]) -> None:
     if span is not None:
         dos_codec.set_window_source(char,
                                     original[span.at:span.at + span.size])
+
+
+def _carry_picture(char: Any, original: bytes, deltas: Any,
+                   at: Any = None) -> None:
+    """Give a rendering the record's own combat picture, when it has one.
+
+    A later-title member whose control byte has bit 7 set is drawn from
+    `CPIC` by `unnamed_0ab` (`goldbox.dos_codec.holds_companion_picture`),
+    but the C64 record the sheet binds to keeps that byte only for a
+    companion, so a player the engine has taken over would get a digest.
+    `at` maps a DOS offset to the record's own; the identity for DOS.
+    """
+    at = (lambda offset: offset) if at is None else at
+    table = dos_codec.FIELDS_BY_NAME_FOR[deltas.key]
+    if deltas.key not in dos_codec.COMPANION_PICTURE_TITLES:
+        return
+    f83 = table["field_83_87"]
+    control = original[at(f83.offset + (1 if f83.size == 5 else 0))]
+    if control >= 0x80:
+        char.set("unnamed_0ab", original[at(table["unnamed_0ab"].offset)],
+                 "the record's own combat picture", Confidence.CONFIRMED)
 
 
 def _span_named(spans: Sequence[Span], name: str) -> Span:
@@ -541,6 +563,7 @@ def rewrite_dos(original: "dos_codec.DosCharacter",
         neutral = c64_codec.read(rec, game=game)
         dos_codec.set_rewrite_render(neutral)
         _carry_window(neutral, original.to_bytes(), spans)
+        _carry_picture(neutral, original.to_bytes(), deltas)
         record, itm, _spc, _rep = dos_codec.write(neutral, deltas=deltas,
                                                   icon=icon)
         return record, itm
@@ -652,6 +675,7 @@ def rewrite_amiga_later(original: "amiga_later.AmigaCharacter",
         neutral = c64_codec.read(rec, game=game)
         dos_codec.set_rewrite_render(neutral)
         _carry_window(neutral, original.raw, spans)
+        _carry_picture(neutral, original.raw, deltas.dos, deltas.offset)
         written, _rep = amiga_later.write_later(neutral, deltas=deltas,
                                                 icon=icon)
         return written.raw

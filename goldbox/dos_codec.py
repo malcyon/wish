@@ -77,7 +77,7 @@ from . import (
     world_state,
 )
 from . import levels as level_tables
-from .c64_codec import DOS_PC_TAKEN_OVER, Report
+from .c64_codec import Report
 from .c64_codec import c64_share_from_dos as c64_share_from_dos
 from .dos_port import (
     CLASS_NUMBERS,
@@ -4509,19 +4509,20 @@ def holds_companion_picture(record: bytes | bytearray,
 
     True for a later-title record whose control byte has bit 7 set, the
     test the party loader makes before reading the byte as a `CPIC` block
-    (:data:`COMPANION_PICTURE_TITLES`).  Such a byte is the companion's own
+    (:data:`COMPANION_PICTURE_TITLES`).  Such a byte is the member's own
     picture and is never replaced by a digest or a tie-break.
 
-    A player character the engine has taken over (`DOS_PC_TAKEN_OVER`) is
-    not one: the loader makes the same test on him, but his byte is the
-    identity draw creation made, so he keeps a player's rule.
+    That includes a player character the engine has taken over
+    (`DOS_PC_TAKEN_OVER`, which Animate Dead and the charm handlers write
+    for a member below 0x80): the loader draws him from `CPIC` by the same
+    byte, his creation draw, so he keeps his own as a companion does.
     """
     deltas = deltas_for(len(record) if deltas is None else deltas)
     if deltas.key not in COMPANION_PICTURE_TITLES:
         return False
     f83 = FIELDS_BY_NAME_FOR[deltas.key]["field_83_87"]
     control = record[f83.offset + (1 if f83.size == 5 else 0)]
-    return control >= 0x80 and control != DOS_PC_TAKEN_OVER
+    return control >= 0x80
 
 #: Ports `write` recomputes `thac0_base` for, rather than copying the
 #: source's own byte -- see the comment above the call in `write` itself.
@@ -7218,6 +7219,8 @@ def write(char: NeutralCharacter,
                  f"{_derived_name}: {rec[f.offset]:#04x} <- "
                  f"{supplied.origin}{what}")
     else:
+        # Also reached by a companion whose source supplied no byte
+        # (`supplied` is None): the digest stands in for it.
         rec[f.offset] = identity_byte(rec, deltas)
         rep.note(f.offset, f.size,
                  f"{_derived_name}: {rec[f.offset]:#04x} -- {_derived_why}")
