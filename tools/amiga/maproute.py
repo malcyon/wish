@@ -291,6 +291,18 @@ def _ssb_walk() -> Phase:
     return Phase("walk", "world", tuple(steps))
 
 
+def _ssb_transition() -> Phase:
+    # WISH-1 comments f911dc9f and 582a3174: the exit square's NP8 asks the leave-town
+    # question, and YES reached The Ruins (area 32) at 11,2,E in the recorded run.
+    return _phase(
+        "transition", "world",
+        Step("move", "leave_town", key="NP8"),
+        Step("key", "world", key="Y", checkpoint="ssb_ruins_arrival",
+             expected=Expected(engine={"area": 32, "x": 11, "y": 2, "facing": 1},
+                               compare_to="ssb_facing_exit", relation="area_changed")),
+    )
+
+
 def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
     if title == "pool":
         needs = {
@@ -310,7 +322,6 @@ def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
         }
     elif title == "ssb":
         needs = {
-            "transition": "The leave-town YES prompt has no measured guard in guards_silver_blades.json.",
             "reload": "The game's no-save return to the load picker is not measured.",
             "reopen_step": "The post-restart Ruins step is not measured.",
         }
@@ -324,8 +335,8 @@ def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
         }
     if title == "ssb":
         return (
-            load, _ssb_stationary(), _ssb_walk(),
-            *(_missing(name, "world", needs[name]) for name in _REQUIRED[3:]),
+            load, _ssb_stationary(), _ssb_walk(), _ssb_transition(),
+            *(_missing(name, "world", needs[name]) for name in _REQUIRED[4:]),
         )
     if title in ("pool", "curse"):
         return (

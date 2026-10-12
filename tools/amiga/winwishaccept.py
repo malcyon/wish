@@ -59,6 +59,8 @@ OPENING_THIRD_RULE = {
     "and": [{"box": [186, 404, 586, 426],
              "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
 }
+#: Discovery modes that walk the measured route to the east gate; the second answers YES.
+LEAVE_MODES = ("ssb-leave", "ssb-leave-yes")
 OPENING_MODES = ("ssb-opening-first", "ssb-opening-second", "ssb-opening-after-second",
                  "ssb-opening-after-third")
 
@@ -128,6 +130,16 @@ def _discovery_phases(route: Any) -> dict[str, Any]:
                                     maproute._ssb_stationary(), maproute._ssb_walk()):
         raise AcceptanceStop("discovery prefix differs from the guarded measured route")
     return {name: phases[name] for name in ("load", "stationary", "walk")}
+
+
+def _transition_phase(route: Any) -> Any:
+    """The measured leave-town YES, unchanged from the guarded route."""
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    phase = next((p for p in route.phases if p.name == "transition"), None)
+    if phase is None or not phase.ready or phase != maproute._ssb_transition():
+        raise AcceptanceStop("leave-town YES needs the guarded leave-town transition")
+    return phase
 
 def _action_budget(route: Any) -> int:
     from automap import amigaparty  # noqa: PLC0415
@@ -232,7 +244,7 @@ def _deadline_limit(mode: str | None) -> int:
     """The largest total deadline, cleanup included, that a mode may run with."""
     if mode == "ssb-opening-after-third":
         return OPENING_THIRD_SECONDS
-    if mode == "ssb-leave":
+    if mode in LEAVE_MODES:
         return LEAVE_DISCOVERY_SECONDS
     return DISCOVERY_SECONDS if mode else MAX_SECONDS
 
@@ -244,7 +256,7 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
     mode = getattr(args, "discover", None)
     opening = mode in OPENING_MODES
-    discovery = mode == "ssb-leave" or opening
+    discovery = mode in LEAVE_MODES or opening
     maximum = _deadline_limit(mode)
     if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
@@ -264,6 +276,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
             _opening_first_phase(route)
         else:
             _discovery_phases(route)
+            if mode == "ssb-leave-yes":
+                _transition_phase(route)
         from tools.amiga import route_silver_blades  # noqa: PLC0415
 
         route_silver_blades.journal_preflight(sys.executable)
@@ -312,8 +326,10 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         if mode == "ssb-opening-after-third":
             states.add("ssb_opening_third")
     elif discovery:
+        prefix = [*_discovery_phases(route).values(),
+                  *((_transition_phase(route),) if mode == "ssb-leave-yes" else ())]
         states = {"title"} | _page_states(route) | {
-            state for phase in _discovery_phases(route).values()
+            state for phase in prefix
             for state in (phase.initial_state, *(s.state for s in phase.steps))}
     else:
         states = _states(route)
@@ -455,7 +471,7 @@ class Controller:
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         self.action_limit = _action_budget(route)
-        self.discovery = getattr(args, "discover", None) in ("ssb-leave", *OPENING_MODES)
+        self.discovery = getattr(args, "discover", None) in (*LEAVE_MODES, *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
         self.encounters_on = False
@@ -1639,6 +1655,8 @@ class Controller:
         self.summary["challenge_key_count_verified"] = False
         try:
             phases = _discovery_phases(self.route)
+            answer_yes = getattr(self.args, "discover", None) == "ssb-leave-yes"
+            transition = _transition_phase(self.route) if answer_yes else None
             self._up()
             self._game_section()
             title = self._await("title", limit=300)
@@ -1654,6 +1672,13 @@ class Controller:
             if self.checkpoints.get("ssb_facing_exit", {}).get("comparison", {}).get(
                     "status") != "awaiting image review":
                 raise AcceptanceStop("terminal 15,8,E checkpoint is not verified")
+            if transition is not None:
+                # NP8 waits for the leave-town guard; Y goes only after it matches.
+                self.run_phase(transition)
+                self.summary["mapping"]["transition"] = row("awaiting image review")
+                self.summary["discovery"]["status"] = "awaiting image review"
+                self.summary["discovery"]["reason"] = "The Ruins arrival pair awaits image review"
+                return self.summary
             self.game.snapshot("ssb_leave_terminal", self.args.holder)
             self._press("NP8")
             # The five seconds count from the key, as in the opening modes, not from before
@@ -1726,7 +1751,7 @@ class Controller:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--title", choices=("pool", "curse", "ssb", "darkness"), required=True)
-    parser.add_argument("--discover", choices=("ssb-leave", *OPENING_MODES))
+    parser.add_argument("--discover", choices=(*LEAVE_MODES, *OPENING_MODES))
     parser.add_argument("--manifest", type=pathlib.Path, required=True)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--holder", required=True)
