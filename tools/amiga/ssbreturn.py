@@ -144,8 +144,8 @@ def return_leg(run: nb.GuardedRun, disks: pathlib.Path, out: pathlib.Path, leg: 
 
 
 def shots(root: pathlib.Path) -> dict[str, str]:
-    """Every screenshot under `root`, by relative path, with its SHA-256."""
-    return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+    """Every screenshot under `root`, by its relative path written with `/` on every OS, with its SHA-256."""
+    return {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(root.rglob("*.png"))}
 
 
