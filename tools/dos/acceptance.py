@@ -700,6 +700,10 @@ CURSE_BEGIN_CONTINUE_ROUNDS = 8
 CURSE_LOADING_WORD = "LOADING"
 CURSE_LOADING_ALONE = frozenset({"PLEASE", "WAIT"})
 CURSE_LOAD_SECONDS = 120.0
+#: The two loading bars by `Screen.glyphs(dosbox.BAR)`, so a bar that is
+#: neither, nor blank, needs no font to pass: `LOADING...PLEASE` (one boot)
+#: and `WAIT` (two boots), from BEGIN into the Pit of Moander.
+CURSE_LOADING_BARS = frozenset({"8e4285dd27f81e69", "348275b7a48004cb"})
 #: How long the loaded bar must stay still on the second settle.
 CURSE_LOAD_HOLD = 1.5
 #: The `PRESS <ENTER>/<RETURN> TO CONTINUE` story box a `walk` step can land
@@ -4893,7 +4897,12 @@ class Driver:
         """Curse: wait while the bar is blank or reads `LOADING` or `WAIT`
         alone, as it does while an area script run at the start loads its map
         (`CURSE_LOAD_SECONDS` at most), and return the screen once a loaded
-        bar has held, with the same words, on two settled frames."""
+        bar has held, with the same words, on two settled frames.  A screen
+        whose bar is neither blank nor one of `CURSE_LOADING_BARS` is
+        returned as it is, without the font."""
+        if (not screen.flat(dosbox.BAR)
+                and screen.glyphs(dosbox.BAR) not in CURSE_LOADING_BARS):
+            return screen
         font = self.display_font()
 
         def loaded(sc) -> bool:

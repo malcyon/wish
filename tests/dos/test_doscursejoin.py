@@ -352,6 +352,16 @@ class FakeLoading(FakeBegin):
         self.holds = [n for _, n in loading]
         self.frames = 0
 
+    def loading_bars(self) -> set[str]:
+        """The glyphs of the fake's loading bars, which stand in for the
+        measured `CURSE_LOADING_BARS`."""
+        was, out = self.at, set()
+        for at in range(1, 1 + len(self.holds)):
+            self.at = at
+            out.add(FakePit.frame(self).glyphs(dosbox.BAR))
+        self.at = was
+        return out
+
     def frame(self):
         if self.at is not None and self.script[self.at][1] is None:
             self.frames += 1
@@ -369,6 +379,7 @@ class FakeLoading(FakeBegin):
 def test_curse_begin_waits_out_the_loading_bar_before_the_boxes(
         tmp_path, monkeypatch, font):
     game = FakeLoading(tmp_path, 5)
+    monkeypatch.setattr(da, "CURSE_LOADING_BARS", game.loading_bars())
     monkeypatch.setattr(da, "CURSE_CONTINUE_BAR", game.frame_at(4).glyphs(dosbox.BAR))
     d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
     d.logged = []
@@ -386,6 +397,7 @@ def test_curse_begin_does_not_take_one_passing_frame_for_the_loaded_screen(
     # neither and must not end the wait.
     game = FakeLoading(tmp_path, 5, (("LOADING...PLEASE", 3), ("...PLEASE", 1),
                                      ("     WAIT", 6), ("", 3)))
+    monkeypatch.setattr(da, "CURSE_LOADING_BARS", game.loading_bars())
     monkeypatch.setattr(da, "CURSE_CONTINUE_BAR", game.frame_at(5).glyphs(dosbox.BAR))
     d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
     d.logged = []
@@ -398,6 +410,7 @@ def test_curse_begin_does_not_take_one_passing_frame_for_the_loaded_screen(
 
 def test_curse_begin_stops_when_the_bar_stays_on_wait(tmp_path, monkeypatch, font):
     game = FakeLoading(tmp_path, 5, (("LOADING...PLEASE", 3), ("     WAIT", 10 ** 6)))
+    monkeypatch.setattr(da, "CURSE_LOADING_BARS", game.loading_bars())
     monkeypatch.setattr(da, "CURSE_LOAD_SECONDS", 2.0)
     d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
     d.logged = []
@@ -407,6 +420,28 @@ def test_curse_begin_stops_when_the_bar_stays_on_wait(tmp_path, monkeypatch, fon
         d.begin()
     assert "lost-begin-loading" in str(got.value)
     assert game.keys == [da.PARTY_BEGIN] and d.where == "party"
+
+
+def test_curse_begin_reads_no_font_when_no_loading_bar_shows(tmp_path, monkeypatch):
+    def no_font(self):
+        raise da.StepFailed("no archives")
+
+    monkeypatch.setattr(da.Driver, "display_font", no_font)
+    game = FakeBegin(tmp_path, 0)
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.where = "party"
+    d.begin()
+    assert game.keys == [da.PARTY_BEGIN] and d.where == "map"
+
+
+@pytest.mark.parametrize("run, glyphs", [("02f07922bb-pit-join-init", "8e4285dd27f81e69"),
+                                         ("02f07922bb-pit-join-init3", "348275b7a48004cb")])
+def test_the_captured_loading_bars_are_the_measured_ones(run, glyphs):
+    from tests.dos.test_dosacceptance import _capture
+    screen = _capture(run, "004-map", "387")
+    assert screen.glyphs(dosbox.BAR) == glyphs and glyphs in da.CURSE_LOADING_BARS
 
 
 def test_curse_begin_answers_the_pits_five_arrival_boxes(tmp_path, monkeypatch, font):
