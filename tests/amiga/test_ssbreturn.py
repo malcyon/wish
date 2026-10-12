@@ -19,9 +19,7 @@ def test_the_four_returns_carry_the_rederived_arguments():
         (82, ["--waypoint", "82,5,5,1", "--back", "--peek-var", "4CFD,4CFE,4C6C,4C6D"]),
         (51, ["--waypoint", "51,8,8,1", "--back", "--arrival-answer", "Return",
               "--peek-var", "4CFD,4CFE,4C6A,4C6F"]),
-        (81, ["--waypoint", "81,5,8,1", "--back", "--arrival-answer", "l",
-              "--arrival-answer", "Return", "--arrival-answer", "Return",
-              "--peek-var", "4CFD,4CFE,4C6C,4C6D"]),
+        (81, ["--waypoint", "81,5,8,1", "--back", "--peek-var", "4CFD,4CFE,4C6C,4C6D"]),
         (52, ["--waypoint", "52,7,3,2", "--back", "--arrival-answer", "Return",
               "--arrival-answer", "Return", "--peek-var", "4CFD,4CFE"]),
     ]
@@ -29,6 +27,12 @@ def test_the_four_returns_carry_the_rederived_arguments():
     assert {leg.dest: leg.landing for leg in driver.RETURNS} == {
         82: (1, 11, 1), 51: (3, 3, 1), 81: (0, 8, 1), 52: (7, 0, 2)}
     assert driver.RETURNS[-1].dest == 52
+    # The giants' menu has no PRESS RETURN bar: every village key goes behind its own guard.
+    assert {leg.dest: leg.guarded for leg in driver.RETURNS} == {
+        82: (), 51: (), 52: (),
+        81: (("giants_menu", "L"), ("village_keys_page", "RET"),
+             ("village_teleporter_page", "RET"))}
+    assert {state for leg in driver.RETURNS for state, _ in leg.guarded} <= driver.GUARDS_NEEDED
 
 
 def _child_log(leg, *, landing=None, bar=True, keys=None, extra_read=None):
@@ -52,7 +56,8 @@ def _child_log(leg, *, landing=None, bar=True, keys=None, extra_read=None):
 def test_a_return_child_is_accepted_only_on_its_entrance_and_guarded_keys(
         tmp_path, monkeypatch, dest, change):
     leg = next(leg for leg in driver.RETURNS if leg.dest == dest)
-    summary = {"result": "idle", "settled": change != "unsettled",
+    pending = bool(leg.guarded)
+    summary = {"result": "idle", "settled": (change == "unsettled") == pending,
                "areas_seen": list(leg.areas) + ([33] if change == "areas" else []),
                "arrival_keys": list(leg.keys) + (["N"] if change == "keys" else []),
                "arrival_answered": bool(leg.keys) != (change == "answered"),
@@ -67,10 +72,11 @@ def test_a_return_child_is_accepted_only_on_its_entrance_and_guarded_keys(
     stdout = json.dumps(summary) + "\n" + (json.dumps(summary) + "\n" if change == "two_rows" else "")
 
     class Child:
-        returncode = 1 if change == "code" else 0
+        returncode = 2 if change == "code" else int(pending)
 
         def communicate(self, timeout):
-            return stdout, ""
+            waiting = driver.nb.WELL_PENDING_STDERR.replace("area 33", f"area {dest}")
+            return stdout, waiting if pending else ""
 
         def poll(self):
             return self.returncode
@@ -242,8 +248,16 @@ def test_four_returns_save_and_reload_in_order(tmp_path, monkeypatch):
                     ("restore", "ret1", "s0"), ("return", 81), ("restore", "ret1", "s0"),
                     ("return", 52)]
     # Each Return is followed by one switched step, the switch off again.
-    after = [events[i + 1:i + 4] for i, e in enumerate(events) if e[0] == "return"]
-    assert after == [[("switch", "on"), ("switch", "NP8"), ("switch", "off")]] * 4
+    after = {e[1]: events[i + 1:i + 7] for i, e in enumerate(events) if e[0] == "return"}
+    step = [("switch", "on"), ("switch", "NP8"), ("switch", "off")]
+    assert {dest: keys[:3] for dest, keys in after.items() if dest != 81} == {
+        82: step, 51: step, 52: step}
+    # The village keys go out after the child, each behind its own screen's guard.
+    assert after[81] == [("press", "ret1", "L"), ("press", "ret1", "RET"),
+                         ("press", "ret1", "RET"), *step]
+    assert receipt["returns"]["81"]["guarded"] == [
+        {"screen": "giants_menu", "key": "L"}, {"screen": "village_keys_page", "key": "RET"},
+        {"screen": "village_teleporter_page", "key": "RET"}]
     save = events.index(("press", "ret1", "E"))
     assert events[save:save + 6] == [("press", "ret1", "E"), ("press", "ret1", "S"),
                                      ("press", "ret1", "B"), ("press", "ret1", "N"),
@@ -291,3 +305,67 @@ def test_the_reload_needs_its_own_holder(tmp_path, monkeypatch):
     with pytest.raises(RouteError, match="its own holder"):
         driver.run(args, **options)
     assert events == []
+
+
+def test_every_arrival_key_needs_the_continue_bar_not_only_return(tmp_path, monkeypatch):
+    # A letter pressed by the child on a frame without the bar is a key on an unrecognised
+    # screen; the leg is not accepted.
+    leg = driver.Return(82, "82,5,5,1", ("l",), "4CFD,4CFE", (16, 82),
+                        (1, 11, 1), (82, (1, 11, 1)), (2, 11, 1))
+    summary = {"result": "idle", "settled": True, "areas_seen": [16, 82], "arrival_keys": ["l"],
+               "arrival_answered": True, "party_before": NAMES, "party_after": NAMES}
+
+    class Child:
+        returncode = 0
+
+        def communicate(self, timeout):
+            return json.dumps(summary) + "\n", ""
+
+        def poll(self):
+            return 0
+
+    def popen(command, **kwargs):
+        out = pathlib.Path(command[command.index("--out") + 1])
+        (out / "fasttravel.jsonl").write_text(_child_log(leg, bar=False))
+        return Child()
+
+    class Run:
+        holder = "fake-holder"
+
+        def left(self, cap):
+            return cap
+
+    monkeypatch.setattr(driver.nb.subprocess, "Popen", popen)
+    with pytest.raises(RouteError, match="arrival key was not on the continue bar"):
+        driver.return_leg(Run(), tmp_path, tmp_path / "child", leg)
+
+
+def test_the_village_guards_match_their_own_page_only():
+    rules = json.loads(driver.nb.GUARDS.read_text())["guards"]
+    village = ("giants_menu", "village_keys_page", "village_teleporter_page")
+    assert {name: (rules[name]["box"], rules[name]["and"][0]["box"]) for name in village} == {
+        "giants_menu": ([88, 302, 700, 370], [68, 404, 368, 426]),
+        "village_keys_page": ([88, 302, 700, 370], rules["continue"]["box"]),
+        "village_teleporter_page": ([88, 302, 700, 370], rules["continue"]["box"])}
+    # The two pages share the bar and differ in their text, so a Return on the first
+    # page cannot be taken for the second.
+    assert rules["village_keys_page"]["and"][0]["sha256"] == rules["continue"]["sha256"]
+    assert rules["village_teleporter_page"]["and"][0]["sha256"] == rules["continue"]["sha256"]
+    assert len({rules[name]["sha256"] for name in village}) == 3
+
+
+def test_an_interrupt_is_cleaned_up_and_raised_as_itself(tmp_path, monkeypatch):
+    args, options, events = _fake_run(tmp_path, monkeypatch)
+    execute = options["executor"]
+
+    def interrupted(run, disks, out, leg):
+        if leg.dest == 51:
+            raise KeyboardInterrupt
+        return execute(run, disks, out, leg)
+
+    options["executor"] = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        driver.run(args, **options)
+    assert events.count(("halt", "ret1")) == 1 and ("discard", "ret1", "s0") in events
+    receipt = json.loads((args.out / "receipt.json").read_text())
+    assert receipt["success"] is False and receipt["error"].startswith("KeyboardInterrupt")

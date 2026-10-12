@@ -1506,6 +1506,28 @@
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/16-exit_game.png",
       "sha256": "064bd9daefcf323f6930d88d56f03b24a92c6f020e1b17267d390ccd4f24b3de"
     },
+    "giants_menu": {
+      "also": [],
+      "and": [
+        {
+          "box": [
+            68,
+            404,
+            368,
+            426
+          ],
+          "sha256": "65b9fcad6dbc2223c7c8a1d6cb1ea947683ab862815f379b87f739773583c179"
+        }
+      ],
+      "box": [
+        88,
+        302,
+        700,
+        370
+      ],
+      "example": "WISH-367/village-guards/giants_menu-canonical.png",
+      "sha256": "85837f70c2b61bdb0af5279375d8b91f54cdf0046a18ed92a0f21f5f3df9ecfd"
+    },
     "heal_whom": {
       "also": [],
       "box": [
@@ -1834,6 +1856,54 @@
       "box": [72, 404, 606, 426],
       "example": "WISH-367/amiga-neighbour/guard4/screens/051-world.png",
       "sha256": "50cfbd7d2a3717965dc5c99b09138bee54b0634c64bfc0ddb256bfd7605f92b4"
+    },
+    "village_keys_page": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [
+            186,
+            404,
+            586,
+            426
+          ],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [
+        88,
+        302,
+        700,
+        370
+      ],
+      "example": "WISH-367/village-guards/village_keys_page-canonical.png",
+      "sha256": "8b1de221f17201010270f9f299a6183c176ffb3ddb1e7ecf4ce854b8217a5238"
+    },
+    "village_teleporter_page": {
+      "also": [
+        "continue"
+      ],
+      "and": [
+        {
+          "box": [
+            186,
+            404,
+            586,
+            426
+          ],
+          "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
+        }
+      ],
+      "box": [
+        88,
+        302,
+        700,
+        370
+      ],
+      "example": "WISH-367/village-guards/village_teleporter_page-canonical.png",
+      "sha256": "9a01ac0332081150390a67b625fdd413e1060e6788696a250322195f1cccec19"
     },
     "well_entry_continue": {
       "also": [

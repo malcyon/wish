@@ -28,7 +28,6 @@ if __package__ in (None, ""):
 from tools.amiga import (  # noqa: E402
     acceptance,
     amigabladesjournal,
-    amigakeys,
     fasttravelrun,
     noencounters,
     route_silver_blades,
@@ -45,7 +44,8 @@ SAVE_LETTER = "B"
 SAVED = {"area": 52, "x": 7, "y": 1, "facing": 2}
 STEP_AFTER_SAVE = (7, 2, 2)
 GUARDS_NEEDED = {"title", "party_menu", "load_picker", "loaded_menu", "journal", "world",
-                 "camp", "camp_save_picker", "exit_game"}
+                 "camp", "camp_save_picker", "exit_game", "giants_menu", "village_keys_page",
+                 "village_teleporter_page"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,7 +54,10 @@ class Return:
 
     `landing` is the area's normal entrance, read in the child's first poll that sees
     `dest`; `end` is the area and square once the arrival keys are answered, and `step`
-    the square one NP8 later.
+    the square one NP8 later. `keys` go to the child, which presses each only on a frame
+    showing the PRESS RETURN bar. `guarded` are (screen, key) pairs this driver presses
+    itself after the child, each only once that screen's own guard matches; the child
+    then stops unsettled on the first of those screens.
     """
 
     dest: int
@@ -65,6 +68,7 @@ class Return:
     landing: tuple[int, int, int]
     end: tuple[int, tuple[int, int, int]]
     step: tuple[int, int, int]
+    guarded: tuple[tuple[str, str], ...] = ()
 
     def flags(self) -> list[str]:
         answers = [flag for key in self.keys for flag in ("--arrival-answer", key)]
@@ -78,9 +82,12 @@ RETURNS = (
     # "You have reached the temple level" over PRESS RETURN.
     Return(51, "51,8,8,1", ("Return",), "4CFD,4CFE,4C6A,4C6F", (16, 51),
            (3, 3, 1), (51, (3, 3, 1)), (4, 3, 1)),
-    # The giants' ATTACK/TALK/LEAVE menu, then two PRESS RETURN pages; LEAVE ends in 80.
-    Return(81, "81,5,8,1", ("l", "Return", "Return"), "4CFD,4CFE,4C6C,4C6D", (16, 81, 80),
-           (0, 8, 1), (80, (3, 5, 3)), (2, 5, 3)),
+    # The giants' ATTACK/TALK/LEAVE menu has no PRESS RETURN bar, so LEAVE and the two
+    # pages after it are pressed here behind their own guards; LEAVE ends in 80.
+    Return(81, "81,5,8,1", (), "4CFD,4CFE,4C6C,4C6D", (16, 81),
+           (0, 8, 1), (80, (3, 5, 3)), (2, 5, 3),
+           (("giants_menu", "L"), ("village_keys_page", "RET"),
+            ("village_teleporter_page", "RET"))),
     # Two Temple of Tyr pages, each over PRESS RETURN.
     Return(52, "52,7,3,2", ("Return", "Return"), "4CFD,4CFE", (16, 52),
            (7, 0, 2), (52, (7, 0, 2)), (7, 1, 2)),
@@ -98,8 +105,9 @@ def _events(log: pathlib.Path) -> list[dict]:
 def return_leg(run: nb.GuardedRun, disks: pathlib.Path, out: pathlib.Path, leg: Return) -> dict:
     """Run one Return child and accept it only as `leg` describes it.
 
-    Every Return key must be logged on a frame the title's continue guard matched, and the
-    first poll in the destination must read the area's normal entrance.
+    Every arrival key must be logged on a frame the title's continue guard matched, and the
+    first poll in the destination must read the area's normal entrance. A leg with
+    `guarded` keys must stop unsettled in its destination with no key pressed.
     """
     out.mkdir()
     command = [sys.executable, str(pathlib.Path(fasttravelrun.__file__)),
@@ -107,12 +115,15 @@ def return_leg(run: nb.GuardedRun, disks: pathlib.Path, out: pathlib.Path, leg: 
                "--measure-row", "--budget", "300", "--out", str(out), *leg.flags()]
     code, stdout, stderr = nb.run_child(run, out, command)
     rows = [json.loads(line) for line in stdout.splitlines() if line.startswith("{")]
-    nb.require(code == 0, f"Return into {leg.dest} stopped with {code}: {stderr[-500:]}")
+    pending = bool(leg.guarded)
+    waiting = nb.WELL_PENDING_STDERR.replace("area 33", f"area {leg.dest}")
+    nb.require(code == 0 if not pending else (code == 1 and stderr == waiting),
+               f"Return into {leg.dest} stopped with {code}: {stderr[-500:]}")
     nb.require(len(rows) == 1 and isinstance(rows[0], dict), f"Return into {leg.dest} "
                f"did not print one result: {out}")
     result = rows[0]
     names = result.get("party_before")
-    nb.require(result.get("result") == "idle" and result.get("settled") is True
+    nb.require(result.get("result") == "idle" and result.get("settled") is not pending
                and result.get("areas_seen") == list(leg.areas)
                and result.get("arrival_keys") == list(leg.keys)
                and result.get("arrival_answered") is bool(leg.keys)
@@ -122,9 +133,8 @@ def return_leg(run: nb.GuardedRun, disks: pathlib.Path, out: pathlib.Path, leg: 
     events = _events(out / "fasttravel.jsonl")
     answers = [event for event in events if event.get("event") == "arrival_answer"]
     nb.require([event.get("key") for event in answers] == list(leg.keys)
-               and all(event.get("at_continue") is True for event in answers
-                       if amigakeys.lookup(str(event.get("key"))).name == "RET"),
-               f"Return into {leg.dest}: an arrival Return was not on the continue bar: {out}")
+               and all(event.get("at_continue") is True for event in answers),
+               f"Return into {leg.dest}: an arrival key was not on the continue bar: {out}")
     landed = next((event for event in events if event.get("event") == "read"
                    and event.get("area") == leg.dest), None)
     nb.require(landed is not None and tuple(landed.get("square") or ()) == leg.landing,
@@ -310,7 +320,10 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
                 guest.restore("s0", args.holder)
                 lane.read(f"restored-{leg.dest}", names, *START)
             child = executor(lane.run, disks, args.out / f"return-{leg.dest}", leg)
-            entry = receipt["returns"][str(leg.dest)] = {"child": child}
+            entry = receipt["returns"][str(leg.dest)] = {"child": child, "guarded": []}
+            for state, key in leg.guarded:
+                lane.run.press(state, key)
+                entry["guarded"].append({"screen": state, "key": key})
             entry["after"] = nb.logged(lane.read(f"{leg.dest}", names, *leg.end))
             entry["step"] = nb.logged(lane.step(f"{leg.dest}-step", names, leg.end[0], leg.step))
         nb.require(not lane.state.load()["on"] and not lane.state.load()["rows"],
@@ -349,8 +362,12 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         receipt["reloaded_step"] = nb.logged(second.step("reloaded-step", names, SAVED["area"],
                                                          STEP_AFTER_SAVE))
         receipt["reload_halt"] = second.halt(receipt["cleanup"])
-    except BaseException as exc:
+    except Exception as exc:  # noqa: BLE001 - recorded, then raised as RouteError after cleanup
         receipt["error"] = f"{type(exc).__name__}: {exc}"
+    except BaseException as exc:
+        # An interrupt is recorded and cleaned up like any stop, then goes on as itself.
+        receipt["error"] = f"{type(exc).__name__}: {exc}"
+        raise
     finally:
         receipt["screens"] = [event for lane in lanes if lane.run is not None
                               for event in lane.run.events]
