@@ -235,6 +235,11 @@ def _distance(a: bytes, b: bytes) -> int:
     return sum(x != y for x, y in zip(a, b))
 
 
+def near_enough(a: bytes, b: bytes) -> bool:
+    """Are these two blocks the same map, by the tolerance `verdict` uses?"""
+    return _distance(a, b) <= NEAR_ENOUGH
+
+
 @dataclass(frozen=True)
 class MapEvidence:
     """The four numbers `looks_like_a_map` decides on, so a tool can print them.

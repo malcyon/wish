@@ -27,6 +27,7 @@ from .area import (
     Candidates,
     Fingerprint,
     ResidentGeo,
+    near_enough,
 )
 from .notes import Note
 from .paths import data_dir as _data_dir
@@ -410,13 +411,16 @@ class Automapper:
     #: `_check_resident` runs every `RESIDENT_EVERY` polls, so two is about
     #: four seconds and no player notices the difference.
     #:
-    #: **They must be readings of the same block, at least `RESIDENT_EVERY`
-    #: polls apart.** A block caught while the game is still writing it is
-    #: half the old map and half the new one, which is a Gold Box map and none
-    #: of ours: 270 of the 272 ordered pairs of Silver Blades' own maps read
-    #: `NOT_OURS` torn at byte 512. A load that is being read once a poll
-    #: changes between readings, or finishes inside the span; somebody else's
-    #: map sits still, and two ordinary periodic checks see the same bytes.
+    #: **They must read the same map across `RESIDENT_EVERY` polls.** A block
+    #: caught while the game is still writing it is half the old map and half
+    #: the new one, which is a Gold Box map and none of ours: 270 of the 272
+    #: ordered pairs of Silver Blades' own maps read `NOT_OURS` torn at byte
+    #: 512. So once one reading contradicts the title, the block is read on
+    #: every poll; a reading more than `NEAR_ENOUGH` bytes from the first, or
+    #: one that finds no map at all, starts the count again, and the controls
+    #: come off on the poll `RESIDENT_EVERY` after the first reading. A load
+    #: changes the block or finishes inside that span; somebody else's map
+    #: stays put. Nothing is recorded while the count runs.
     CONTRADICTIONS_BEFORE_DISABLING = 2
 
     def __init__(self, target, maps: dict[str, Geo] | None = None,
@@ -645,8 +649,13 @@ class Automapper:
         jumped = moved and self._started and not self._adjacent(fix.x, fix.y)
         if not changed_area and (jumped or self._ticks % self.RESIDENT_EVERY == 0
                 or self._pending is not None
+                or self._contradicting is not None
                 or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
+        if self._contradicting is not None:
+            # The block may be somebody else's map: their party's squares
+            # must not go into this title's explored set.
+            return False
         if (self._verdict is not None and self._verdict is not OURS
                 and (jumped or self._pending is not None)):
             # Perhaps a load, perhaps a fight: either way the dwell starts again,
@@ -1122,7 +1131,11 @@ class Automapper:
             self._contradicted(self.resident.block)
             return False
         if verdict is not OURS:
-            return False            # no map loaded: combat, a menu, the title
+            # No map loaded: combat, a menu, the title, a load. A contradiction
+            # on either side of it is a separate reading.
+            self._contradicting = None
+            self._contradictions = 0
+            return False
         # A map we hold, at the address the loader leaves it: this is also the
         # proof `_running` needs that a game is running, and the proof that the
         # game is the one we think it is.
@@ -1143,9 +1156,10 @@ class Automapper:
         player's own disk read through an emulator monitor, and one bad read
         that took a control away would be a worse bug than the one this is
         for; `CONTRADICTIONS_BEFORE_DISABLING` is how many it takes, and they
-        count only while they read the same `block` and only once they span
-        `RESIDENT_EVERY` polls, so a map read while the game is loading it
-        never takes the controls off. A different block starts the count again.
+        count only while `block` stays within `NEAR_ENOUGH` of the run's first
+        reading and only once they span `RESIDENT_EVERY` polls, so a map read
+        while the game is loading it never takes the controls off. A block
+        further away starts the count again.
 
         The rejection then **stands until it is positively contradicted**. Two
         things lift it and neither is the absence of evidence: one of our own
@@ -1157,7 +1171,8 @@ class Automapper:
         """
         if self.title_check is NOT_OURS:
             return
-        if block is None or block != self._contradicting:
+        if (block is None or self._contradicting is None
+                or not near_enough(block, self._contradicting)):
             self._contradicting = block
             self._contradicting_since = self._ticks
             self._contradictions = 0

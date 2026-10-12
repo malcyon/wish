@@ -269,10 +269,10 @@ def counting_contradictions(mapper, monkeypatch) -> list[tuple]:
 
 def test_a_map_read_while_the_game_loads_it_is_no_wrong_disk(
         app, ours, notes_elsewhere, monkeypatch):
-    """A trip moves the party and the game loads the new area's map. Reads
-    taken while it is still writing the block see half of each map, and the
-    window used to say the wrong-disk error for two of them and take every
-    control away until the finished map turned up a moment later."""
+    """A trip moves the party and the game loads the new area's map. Five
+    reads taken while it is still writing the block see half of each map;
+    the window says no wrong-disk error, keeps Fast Travel attached and names
+    the new area once the finished map is read."""
     target = machine(ours["GEO00"])
     window = ticked(window_on(target, ours, SILVER))
     assert window.mapper.title_check is OURS
@@ -313,15 +313,82 @@ def test_a_load_that_pauses_on_a_half_written_map_is_no_wrong_disk(
     assert mapper.title_check is OURS
 
 
-def test_somebody_elses_map_is_caught_within_two_periodic_checks(
-        ours, theirs, notes_elsewhere):
-    """The real wrong disk: the stranger's map does not change, so the same
-    block read across `RESIDENT_EVERY` polls takes the controls off."""
-    mapper = polled(Automapper(playing(theirs), ours, title=SILVER),
-                    Automapper.RESIDENT_EVERY)
-    assert mapper.title_check is not NOT_OURS
-    polled(mapper, Automapper.RESIDENT_EVERY)
+def contradiction_ticks(mapper, monkeypatch) -> list[int]:
+    """The poll each contradiction was counted on."""
+    ticks: list[int] = []
+    real = mapper._contradicted
+
+    def spy(*args):
+        ticks.append(mapper._ticks)
+        real(*args)
+    monkeypatch.setattr(mapper, "_contradicted", spy)
+    return ticks
+
+
+def status_line(status: str) -> dict[int, bytes]:
+    """The screen row `playing` draws, now drawing `status`."""
+    from automap.screen import SCREEN_COLS
+    row = 0xCC00 + 14 * SCREEN_COLS
+    return {row: playing(Geo(bytes(GEO_SIZE)), status).memory[row]}
+
+
+def test_somebody_elses_map_is_caught_resident_every_polls_after_it_is_seen(
+        ours, theirs, notes_elsewhere, monkeypatch):
+    """The real wrong disk, first read on a poll off the periodic check's
+    cadence, in a session drawing its status line: the controls come off
+    `RESIDENT_EVERY` polls later, not at the periodic check after that, and
+    the square the party stands on meanwhile is not recorded."""
+    target = playing(ours["GEO00"])
+    mapper = polled(Automapper(target, ours, title=POOL),
+                    Automapper.RESIDENT_EVERY + 3)
+    assert mapper.title_check is OURS
+    seen = set(mapper.state.exploration.seen)
+    ticks = contradiction_ticks(mapper, monkeypatch)
+    target.memory[RESIDENT_GEO] = theirs.to_bytes()
+    target.memory.update(status_line("E 16:49 12,12"))
+    mapper.poll()
+    assert ticks and ticks[0] % Automapper.RESIDENT_EVERY != 0
+    first = ticks[0]
+    while mapper._ticks < first + Automapper.RESIDENT_EVERY - 1:
+        mapper.poll()
+        assert mapper.title_check is not NOT_OURS
+    mapper.poll()
     assert mapper.title_check is NOT_OURS
+    assert mapper.state.exploration.seen == seen
+    assert mapper.state.area == "GEO00"
+
+
+def test_somebody_elses_map_that_changes_a_little_is_still_caught(
+        ours, theirs, notes_elsewhere):
+    """A stranger's game may write into the block it is drawing. Two bytes a
+    poll, well inside `NEAR_ENOUGH` over the span, is still the same map."""
+    target = machine(theirs)
+    mapper = Automapper(target, ours, title=SILVER)
+    for poll in range(2 * Automapper.RESIDENT_EVERY):
+        target.memory[RESIDENT_GEO] = a_few_bytes_different(theirs, poll).to_bytes()
+        mapper.poll()
+    assert mapper.title_check is NOT_OURS
+
+
+def test_a_read_that_finds_no_map_starts_the_count_again(
+        ours, notes_elsewhere, monkeypatch):
+    """Two loads `RESIDENT_EVERY` polls apart, with no map in between, each
+    caught half-written in the same place: two separate readings, not one
+    block that stayed."""
+    target = machine(ours["GEO00"])
+    mapper = polled(Automapper(target, ours, title=SILVER))
+    ticks = contradiction_ticks(mapper, monkeypatch)
+    torn = loading(ours["GEO00"], ours["GEO01"])[2]
+    target.memory[c64.DEFAULT.live_position] = bytes((12, 12, 0))
+    target.memory[RESIDENT_GEO] = torn
+    polled(mapper, 1)
+    assert ticks
+    target.memory[RESIDENT_GEO] = bytes(GEO_SIZE)
+    polled(mapper, Automapper.RESIDENT_EVERY)
+    target.memory[RESIDENT_GEO] = torn
+    polled(mapper, 2)
+    assert len(ticks) >= 2
+    assert mapper.title_check is not NOT_OURS
 
 
 def test_nothing_is_recorded_once_the_game_is_the_wrong_one(ours, theirs,

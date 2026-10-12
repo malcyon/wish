@@ -568,15 +568,33 @@ def test_a_stranger_s_map_is_not_drawn_as_ours(tmp_path):
     rejection is only reached for a block that `looks_like_a_map`, and a map
     built from the format draws every wall from one side -- 0 edges walled
     from both, where the check wants 20."""
-    from automap.area import NOT_OURS, looks_like_a_map
+    from automap.area import NOT_OURS, OURS, looks_like_a_map
+    from goldbox.geo import DIRECTIONS, EAST
     ours, theirs = list(amiga.load_maps(
         _map_disk("secret-of-the-silver-blades", tmp_path)).values())[:2]
     assert looks_like_a_map(theirs) and ours.to_bytes() != theirs.to_bytes()
-    t, _ = _resident(block=theirs.to_bytes(), extra=square(6, 9, 2))
+
+    def open_somewhere(x, y):
+        return any(ours.is_passable(x, y, d) for d in DIRECTIONS)
+    # A wall to the east of an open square, with an open square beyond it:
+    # stepping through it makes the mapper read the block on that poll.
+    x, y = next((x, y) for y in range(16) for x in range(15)
+                if open_somewhere(x, y) and open_somewhere(x + 1, y)
+                and not ours.is_passable(x, y, EAST))
+    t, guest = _resident(block=ours.to_bytes(), extra=square(x, y, 2))
     mapper = _mapper(t, block=ours.to_bytes())
+    mapper.poll()
+    assert mapper.title_check is OURS
+    area, seen = mapper.state.area, set(mapper.state.exploration.seen)
+    assert area == "GEO10" and seen
+
+    guest.memory[GEO_AT] = theirs.to_bytes()
     for _ in range(2 * mapper.RESIDENT_EVERY):
+        guest.memory.update(square(x + 1, y, 2))
         mapper.poll()
     assert mapper.title_check is NOT_OURS
+    assert mapper.state.area == area
+    assert mapper.state.exploration.seen == seen
 
 
 # -- the maps, off the player's own Amiga disk --------------------------------
