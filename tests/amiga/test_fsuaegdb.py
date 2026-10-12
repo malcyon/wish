@@ -2853,10 +2853,15 @@ def test_a_roll_opcode_with_a_different_hash_is_not_written(scripted, tmp_path):
 
 def test_the_slums_roll_has_its_constant_zeroed_and_put_back(monkeypatch):
     from tools.amiga import noencounters
-    memory = {0x1000: bytes([0x08, 0x00, 0x0D, 0x01, 0x02, 0x03])}
+    # The Slums script's entry table, which the row names as its area.
+    entries = bytes(range(0x40, 0x40 + noencounters.ENTRY_TABLE))
+    memory = {0x1000: bytes([0x08, 0x00, 0x0D, 0x01, 0x02, 0x03]), 0x800: entries}
     monkeypatch.setattr(noencounters, "ROWS", tuple(
-        dataclasses.replace(r, digest=noencounters.digest(memory[0x1000]))
+        dataclasses.replace(r, digest=noencounters.digest(memory[0x1000]),
+                            area=noencounters.digest(entries))
         if r.spec == "*0xA4+0x23A" else r for r in noencounters.ROWS))
+    gate = next(r for r in noencounters.ROWS if r.spec == "*0xA4+0x23A")
+    at = {gate.spec: 0x1000, noencounters.script_spec(gate): 0x800}
     writes = []
 
     def read(address, n):
@@ -2868,7 +2873,7 @@ def test_the_slums_roll_has_its_constant_zeroed_and_put_back(monkeypatch):
         return {}
     switch = noencounters.EncounterSwitch(
         "pool-of-radiance",
-        lambda spec: 0x1000 if spec == "*0xA4+0x23A" else None, read, write)
+        at.get, read, write)
     switch.apply()
     assert memory[0x1000][:3] == bytes([0x09, 0x00, 0x00])
     switch.off()
@@ -3003,17 +3008,21 @@ def _with_digest(noencounters, statement, memory, addresses=(0x3000,)):
 def test_off_restores_every_row_even_when_one_restore_fails():
     from tools.amiga import noencounters
     statement = bytes([0x08, 1, 2, 3, 4, 5])
+    # One script's entry table, which both rows name as their area.
+    entries = bytes(range(0x40, 0x40 + noencounters.ENTRY_TABLE))
     pool = [r for r in noencounters.ROWS if r.title == "pool-of-radiance"
             and r.kind == noencounters.GATE][:2]
-    memory = Memory({0x3000: statement, 0x4000: statement})
+    memory = Memory({0x3000: statement, 0x4000: statement, 0x2000: entries})
     import pytest as _pytest
     with _pytest.MonkeyPatch.context() as mp:
         mp.setattr(noencounters, "ROWS", tuple(
-            dataclasses.replace(r, digest=noencounters.digest(statement))
+            dataclasses.replace(r, digest=noencounters.digest(statement),
+                                area=noencounters.digest(entries))
             if r.spec in {p.spec for p in pool} else r
             for r in noencounters.ROWS))
         switch = switch_over(memory, {pool[0].spec: 0x3000,
-                                      pool[1].spec: 0x4000},
+                                      pool[1].spec: 0x4000,
+                                      noencounters.script_spec(pool[0]): 0x2000},
                              title="pool-of-radiance")
         switch.rows = [r for r in switch.rows
                        if r.spec in {p.spec for p in pool}]
