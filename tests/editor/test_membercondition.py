@@ -48,8 +48,9 @@ def test_a_roster_disk_character_keeps_its_tail(tmp_path):
     assert party.members[0].roster_tail == TAIL
 
 
-def _party_with_block(tmp_path, monkeypatch, byte):
-    """A synthetic save whose slot 0 roster block holds `byte` and TAIL."""
+def _party_with_block(tmp_path, monkeypatch, byte, game=None):
+    """A synthetic save of `game` (Pool of Radiance when None) whose slot 0
+    roster block holds `byte` and TAIL."""
     import editor.roster as roster
     real = roster.load_save
 
@@ -62,7 +63,7 @@ def _party_with_block(tmp_path, monkeypatch, byte):
         return game, sg0, sg1
 
     monkeypatch.setattr(roster, "load_save", patched)
-    return Party(str(synthetic_save(tmp_path)))
+    return Party(str(synthetic_save(tmp_path, game=game)))
 
 
 def test_a_c64_save_reads_the_condition_and_tail_from_its_roster_block(
@@ -78,6 +79,18 @@ def test_a_c64_save_zombie_byte_reads_animated_in_pool(tmp_path, monkeypatch):
     party = _party_with_block(tmp_path, monkeypatch, 0x03)
     member = next(m for m in party.members if m.index == 0)
     assert member.condition == ("animated", True)
+
+
+@pytest.mark.parametrize("game, expected", [
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, ("animated", True)),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, ("dead", True)),
+])
+def test_a_later_c64_save_zombie_byte_reads_as_its_engine_runs_it(
+        tmp_path, monkeypatch, game, expected):
+    party = _party_with_block(tmp_path, monkeypatch, 0x03, game=game)
+    member = next(m for m in party.members if m.index == 0)
+    assert party.game.key == game.key
+    assert member.condition == expected
 
 
 def test_a_c64_save_with_no_roster_block_leaves_the_condition_unread(

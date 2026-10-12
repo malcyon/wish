@@ -1438,17 +1438,34 @@ def test_the_amiga_curse_zombie_companion_writes_as_a_c64_zombie():
         "animated", 0xB2)
 
 
-@pytest.mark.parametrize("raw, title, expected", [
-    (0x03, _LATER_CURSE, "animated"),
-    (0x03, "pool-of-radiance", "animated"),
-    (0x03, _LATER_SSB, "dead"),
-    (0x83, _LATER_CURSE, "dead"),
-])
-def test_only_titles_that_run_the_zombie_byte_read_it_as_animated(
-        raw, title, expected):
-    animated = title in c64_codec.ANIMATED_STATUS_TITLES
-    assert c64_codec.status_from_byte(raw, animated_title=animated)[0] == (
-        expected)
+def test_a_curse_zombie_byte_on_a_player_character_converts_living():
+    char = c64_codec.read(_pool_c64(0x00, 0x03),
+                          game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert c64_codec.zombie_player(char)
+    living = c64_codec.living_player(char)
+    assert (living.get("status"), living.get("active")) == ("okay", True)
+    rec, rep = c64_codec.write(living)
+    assert (rec.get("roster_in_use"), rec.get("flags_0b8")) == (0x01, 0x00)
+    assert not [d for d in rep.dropped if d.startswith("Animated by a spell")]
+
+
+def test_a_c64_curse_zombie_companion_stays_one_on_dos_and_the_amiga():
+    char = c64_codec.read(_pool_c64(0xB2, 0x03),
+                          game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert c64_codec.living_player(char) is char
+    curse = dos_port.CURSE_OF_THE_AZURE_BONDS
+    dos, _itm, _spc, _rep = dos_codec.write(char, deltas=curse)
+    offsets = _LATER_OFFSETS[_LATER_CURSE]
+    assert (dos[offsets["status"]], dos[offsets["ctl"]]) == (1, 0xB2)
+    back = dos_codec.to_neutral(dos_codec.DosCharacter(dos, deltas=curse))
+    amiga = amiga_later.to_neutral_later(
+        amiga_later.write_later(char, _LATER_CURSE)[0])
+    for other in (back, amiga):
+        assert (other.get("status"), other.get("npc_control_byte")) == (
+            "animated", 0xB2)
+        nodes = (other.get("granted_effects") or []) + (
+            other.get("running_effects") or [])
+        assert 32 not in [bytes(n)[0] for n in nodes]
 
 
 def test_living_player_keeps_silver_blades_effect_32():

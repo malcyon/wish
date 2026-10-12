@@ -4011,6 +4011,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     pool_zombie_pc = bool(
         deltas is POOL_OF_RADIANCE_RECORD and is_npc
         and rec.get("flags_0b8") >= 0xFE and raw == 0x03)
+    # Curse runs `$03` as a zombie (`ANIMATED_STATUS_TITLES`) but no Curse
+    # code writes it. With 0x0B8 bit 7 clear it is a zombie player character,
+    # which DOS and the Amiga hold under the taken-over byte, so
+    # `living_player` makes him living the same way.
+    curse_zombie_pc = bool(deltas is CURSE_RECORD and not is_npc
+                           and raw == ZOMBIE_STATUS)
 
     if pool_zombie_pc:
         out.set("npc", True, "bit 7 of the C64's 0x0B8 is set, and the roster "
@@ -4022,6 +4028,15 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "the C64's $FE or $FF at 0x0B8 is for a zombie "
                 "(SPELLE04 $AA04, SQRPACI64 $05B5)", grade("flags_0b8"),
                 Provenance.RESHAPED)
+    elif curse_zombie_pc:
+        out.set("npc", True, "bit 7 of the C64's 0x0B8 is clear and the "
+                "roster status is $03: a zombie player character, which DOS "
+                "and the Amiga hold as one the engine has taken over",
+                grade("flags_0b8"))
+        out.set("npc_control_byte", DOS_PC_TAKEN_OVER,
+                "DOS's own player-character-taken-over value, which Curse's "
+                "Animate Dead writes over a player character", grade(
+                    "flags_0b8"), Provenance.RESHAPED)
     elif not is_npc and (fear_row_converted or charm_row_converted):
         # `0x0B8` bit 7 clear says a player character, but this character
         # also holds a converted Fear or Pool charm row: neither C64 title turns a
