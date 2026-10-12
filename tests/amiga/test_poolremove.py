@@ -120,6 +120,34 @@ def test_a_slot_difference_is_listed_and_only_the_named_bytes_fail_it(tmp_path):
     assert any("control, status or creature type" in p for p in verdict["problems"])
 
 
+def test_a_cha_already_on_the_disk_that_remove_did_not_rewrite_fails(tmp_path):
+    live = record(b"MAGNUS")
+    cha = poolremove.cleaned_record(live)
+    before, after = disks(tmp_path, {"/MAGNUS.cha": cha})
+    before.write_file("/MAGNUS.cha", cha)
+    verdict = poolremove.judge(before, after, live, live)
+    assert not verdict["success"]
+    assert any("did not write MAGNUS.cha" in p for p in verdict["problems"])
+
+
+def test_a_cha_already_on_the_disk_that_remove_rewrote_passes(tmp_path):
+    live = record(b"MAGNUS")
+    before, after = disks(tmp_path, {"/MAGNUS.cha": poolremove.cleaned_record(live)})
+    before.write_file("/MAGNUS.cha", record(b"MAGNUS", 0x22))
+    verdict = poolremove.judge(before, after, live, live)
+    assert verdict["success"], verdict["problems"]
+    assert "/magnus.cha" in verdict["changed"] and verdict["other_changes"] == []
+
+
+def test_a_fetched_disk_that_fails_verification_fails(tmp_path):
+    live = record(b"MAGNUS")
+    before, after = disks(tmp_path, {"/MAGNUS.cha": poolremove.cleaned_record(live)})
+    after.verify = lambda: ["block 881: bitmap marks a used block free"]
+    verdict = poolremove.judge(before, after, live, live)
+    assert not verdict["success"]
+    assert any("bitmap marks a used block free" in p for p in verdict["problems"])
+
+
 # -- the walk ------------------------------------------------------------------------------
 
 
@@ -203,6 +231,7 @@ class Game:
         self.current = self.party[0]
         self.stuck, self.remove_works = stuck, remove_works
         self.removed: bytes | None = None
+        self.after_remove = "menu"
         self.keys: list[str] = []
 
     def press(self, key):
@@ -222,6 +251,7 @@ class Game:
             self.removed = self.records[self.current]
             self.party.remove(self.current)
             self.current = self.party[0]
+            self.screen = self.after_remove
 
     def walk(self, key):
         area, x, y, facing = self.place
@@ -252,9 +282,6 @@ class Guest:
         crop.write_text(self.game.screen)
         return True
 
-    def capture(self, state, raw, crop, timeout):
-        crop.write_text(self.game.screen)
-
     def press(self, holder, key, timeout):
         self.game.press(key)
         return "ok"
@@ -278,7 +305,8 @@ class Guards:
     """Every state's guard is the fake screen's name; the hall states are `question` and `menu`."""
 
     screens = {"title": "title", "wheel": "wheel", "party_menu": "party_menu",
-               "save_path": "save_path", "load_picker": "load_picker", "world": "world"}
+               "save_path": "save_path", "load_picker": "load_picker", "world": "world",
+               "hall_question": "question", "hall_menu": "menu"}
 
     def __init__(self, path):
         self.rules = dict(self.screens)
@@ -385,9 +413,9 @@ def rig(tmp_path, monkeypatch):
     path = inputs / "prepare.json"
     path.write_text(json.dumps(manifest))
 
-    def go(member="MAGNUS", capture=True, **options):
+    def go(member="MAGNUS", **options):
         args = argparse.Namespace(manifest=path, member=member, holder="h", out=tmp_path / "out",
-                                  capture=capture, guards=None, wait_lane=0, walk_retry=1,
+                                  guards=None, wait_lane=0, walk_retry=1,
                                   budget=2400)
         return poolremove.run(args, guest=Guest(game), live_factory=lambda holder: Live(game),
                               switch_factory=lambda target: Switch(game),
@@ -396,25 +424,30 @@ def rig(tmp_path, monkeypatch):
     return types.SimpleNamespace(game=game, events=events, go=go, out=tmp_path / "out")
 
 
-def test_the_capture_run_removes_the_member_and_judges_the_disk(rig):
+def test_the_run_removes_the_member_and_judges_the_disk(rig):
     receipt = rig.go()
     assert receipt["success"] and receipt["verdict"]["file"] == "MAGNUS.cha"
     assert rig.events == ["boot", "halt"]
-    assert rig.game.keys[-3:] == ["NP1", "R", "B"]
+    assert rig.game.keys[-3:] == ["NP1", "R", "B"] and "E" not in rig.game.keys
     assert (rig.out / "member-memory.bin").read_bytes() == rig.game.records[0x1200]
 
 
 def test_a_member_the_slot_lacks_stops_before_any_lane(rig):
     with pytest.raises(RouteError, match="exactly one ROLAND"):
         rig.go(member="ROLAND")
-    assert rig.events == [] and not rig.out.exists()
+    assert rig.events == [] and not rig.out.exists() and "E" not in rig.game.keys
 
 
-def test_the_guarded_run_needs_the_hall_guards_before_any_lane(rig, monkeypatch):
+def test_the_run_needs_the_hall_guards_before_any_lane(rig, monkeypatch):
     monkeypatch.setattr(poolremove, "HALL_GUARDS", {})
-    with pytest.raises(RouteError, match="--capture first"):
-        rig.go(capture=False)
-    assert rig.events == []
+    with pytest.raises(RouteError, match="the hall's screens have no guards"):
+        rig.go()
+    assert rig.events == [] and "E" not in rig.game.keys
+
+
+def test_a_manifest_with_no_place_is_blocked_with_a_sentence():
+    with pytest.raises(RouteError, match="records no loaded place"):
+        poolremove.manifest_place({"title": "pool"})
 
 
 def test_a_step_that_does_not_move_retries_once_then_halts(rig):
@@ -423,7 +456,7 @@ def test_a_step_that_does_not_move_retries_once_then_halts(rig):
         rig.go()
     receipt = json.loads((rig.out / "receipt.json").read_text())
     assert rig.events == ["boot", "halt"] and not receipt["success"]
-    assert len(receipt["walk"]) == 2 and "R" not in rig.game.keys
+    assert len(receipt["walk"]) == 2 and "R" not in rig.game.keys and "E" not in rig.game.keys
 
 
 def test_a_remove_that_leaves_the_member_halts_without_a_verdict_pass(rig):
@@ -432,7 +465,16 @@ def test_a_remove_that_leaves_the_member_halts_without_a_verdict_pass(rig):
         rig.go()
     receipt = json.loads((rig.out / "receipt.json").read_text())
     assert rig.events == ["boot", "halt"] and not receipt["success"]
-    assert "B" not in rig.game.keys
+    assert "B" not in rig.game.keys and "E" not in rig.game.keys
+
+
+def test_an_unknown_screen_after_remove_leaves_begin_unsent(rig):
+    rig.game.after_remove = "unknown"
+    with pytest.raises(RouteError, match="hall_menu did not match"):
+        rig.go()
+    receipt = json.loads((rig.out / "receipt.json").read_text())
+    assert rig.events == ["boot", "halt"] and not receipt["success"]
+    assert rig.game.keys[-1] == "R" and "B" not in rig.game.keys and "E" not in rig.game.keys
 
 
 def test_the_built_in_hall_guards_load_beside_the_pool_guards(tmp_path):
@@ -440,8 +482,7 @@ def test_the_built_in_hall_guards_load_beside_the_pool_guards(tmp_path):
     assert set(poolremove.HALL_STATES) <= set(rules) and "world" in rules
 
 
-def test_the_guarded_run_matches_the_hall_screens(rig, monkeypatch):
-    monkeypatch.setattr(Guards, "screens", {**Guards.screens, "hall_question": "question",
-                                            "hall_menu": "menu"})
-    receipt = rig.go(capture=False)
+def test_every_screen_of_the_run_is_matched_by_a_guard(rig):
+    receipt = rig.go()
     assert receipt["success"] and not any(e.get("settled") for e in receipt["screens"])
+    assert "E" not in rig.game.keys

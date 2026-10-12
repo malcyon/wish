@@ -10,7 +10,7 @@ just before `R` and with his record in the loaded slot.
 
     tools/amiga/poolremove.py plan --manifest PREPARE.json
     tools/amiga/poolremove.py run --manifest PREPARE.json --member MAGNUS \\
-        --holder H --out DIR [--capture] [--wait-lane S]
+        --holder H --out DIR [--wait-lane S]
     tools/amiga/poolremove.py judge --out DIR
 
 The walk starts in New Phlan, or on the Slums square west of its gate
@@ -21,13 +21,14 @@ which asks whether to train; YES opens the party menu (ECL0B `PROGRAM 0`).
 Every turn and step is checked against the party's square in memory, under the
 encounter switch, after a machine snapshot the walk can go back to.
 
-`--capture` is the first boot's mode: the hall's question and menu, which
-`guards_pool.json` lacks, are recorded once they stop changing rather than
-matched, and the frames after `R` are kept. Without it every screen is matched
-against a guard (`HALL_GUARDS` here) and an unknown one stops the run.
+Every screen is matched against a guard, `guards_pool.json`'s or the hall's own
+(`HALL_GUARDS` here), before a key goes in, and an unknown one stops the run; the
+frames after `R` are kept.
 
-The verdict passes when the save disk gains the member's `.cha` (with `.itm`
-and `.spc`) and nothing else changes but `charlist.txt`, and the `.cha` equals
+The verdict passes when REMOVE wrote the member's `.cha` (a new file, or a
+changed one where the name was already on the disk), nothing else changes but
+`charlist.txt` and the member's `.itm` and `.spc`, the fetched disk verifies,
+and the `.cha` equals
 the in-memory record outside the cleaned name and the pointer fields
 `POINTER_FIELDS`. Every difference from the slot record is listed, and the
 control, status and creature-type bytes must agree with it.
@@ -94,7 +95,7 @@ RECORD_SIZE = amiga_por.AMIGA_POR_RECORD_SIZE
 #: A file REMOVE may rewrite besides the three it creates.
 CHARLIST = "charlist.txt"
 
-#: Guards for the hall's screens, cut from a `--capture` boot's crops: the school's `YES NO` bar
+#: Guards for the hall's screens, cut from a boot's crops: the school's `YES NO` bar
 #: with its question, and the party menu's eleven items with `CHOOSE A FUNCTION` (the start
 #: menu has the same bar but other items; `DISK ACCESS, PLEASE WAIT...` replaces the bar).
 HALL_GUARDS: dict[str, Any] = {
@@ -116,7 +117,7 @@ KNOWN = ("title", "wheel", "party_menu", "save_path", "load_picker", "world", "c
 
 TITLE_LIMIT = 600.0
 MOVE_SETTLE = 5.0
-#: Seconds left for a screen the script draws in stages before it is captured.
+#: Seconds left for a screen the script draws in stages before it is matched.
 SCREEN_SETTLE = 5.0
 #: Highlight readbacks, a second apart, after each `NP1` before the move counts as missed.
 SELECT_READS = 8
@@ -196,8 +197,9 @@ def judge(before: amiga_adf.AmigaDisk, after: amiga_adf.AmigaDisk, live: bytes,
     """Whether REMOVE wrote the member's `.cha` from memory and changed nothing else on the disk.
 
     `live` is the member's record read from memory before `R`; `slot_record` is his record
-    in the loaded slot. Passes when the disk gained `NAME.cha` (with any of `.itm` and `.spc`),
-    no other file but `charlist.txt` appeared, changed or went, the `.cha` is one record long
+    in the loaded slot. Passes when `NAME.cha` was added or rewritten, no file but it,
+    `charlist.txt`, `NAME.itm` and `NAME.spc` appeared or changed, none went, the fetched
+    disk verifies, the `.cha` is one record long
     and equals `live` outside the cleaned name and the pointer fields, and its control, status
     and creature type equal the slot record's. Every difference from the slot record is listed.
     """
@@ -208,18 +210,24 @@ def judge(before: amiga_adf.AmigaDisk, after: amiga_adf.AmigaDisk, live: bytes,
     changed = sorted(p for p in set(old) & set(new) if old[p] != new[p])
     removed = sorted(set(old) - set(new))
     others = ([p for p in added if p not in created]
-              + [p for p in changed if p != f"/{CHARLIST}"] + removed)
+              + [p for p in changed if p != f"/{CHARLIST}".casefold() and p not in created]
+              + removed)
     verdict: dict[str, Any] = {
         "member": record_name(live).decode("latin1"), "file": f"{stem}.cha",
         "added": added, "changed": changed, "removed": removed, "other_changes": others,
         "verify": after.verify()}
-    cha = new.get(f"/{stem}.cha".casefold())
+    path = f"/{stem}.cha".casefold()
+    cha = new.get(path)
     problems = [f"no other file may change, but {', '.join(others)} did"] if others else []
+    problems += [f"the fetched disk fails verification: {problem}"
+                 for problem in verdict["verify"]]
     if cha is None:
         problems.append(f"the disk has no {stem}.cha")
         verdict.update(problems=problems, success=False)
         return verdict
     verdict["cha_sha256"] = hashlib.sha256(cha).hexdigest()
+    if path not in added and path not in changed:
+        problems.append(f"REMOVE did not write {stem}.cha: the disk held it unchanged before")
     for suffix in (".itm", ".spc"):
         found = new.get(f"/{stem}{suffix}".casefold())
         verdict[suffix[1:]] = None if found is None else {
@@ -330,7 +338,9 @@ def plan_walk(place: Place, walls: Any) -> list[WalkStep]:
 
 
 def manifest_place(manifest: dict) -> Place:
-    state = manifest["state_a"]
+    state = manifest.get("state_a")
+    require(isinstance(state, dict) and all(k in state for k in ("area", "x", "y", "facing")),
+            "the manifest records no loaded place (state_a with area, x, y and facing)")
     return (state["area"], state["x"], state["y"], state["facing"])
 
 
@@ -383,12 +393,12 @@ def _folded(name: str) -> str:
 
 
 class Screens:
-    """Presses keys only on a recognised screen; in capture mode records the screens it has no guard for."""
+    """Presses keys only on a screen its guard recognises."""
 
     def __init__(self, guest: Any, holder: str, out: pathlib.Path, guards: PixelGuards,
-                 deadline: float, capture: bool):
+                 deadline: float):
         self.guest, self.holder, self.out = guest, holder, out
-        self.guards, self.deadline, self.capture = guards, deadline, capture
+        self.guards, self.deadline = guards, deadline
         self.events: list[dict] = []
         self.count = 0
         self.pressed_on: str | None = None
@@ -427,31 +437,6 @@ class Screens:
             time.sleep(min(1.0, max(0.0, end - time.monotonic())))
         raise RouteError(f"{state} did not match within {limit:.0f}s; last shot {raw}")
 
-    def settle(self, state: str, limit: float, unlike: Sequence[str] = (),
-               away_from: Sequence[pathlib.Path] = ()) -> pathlib.Path:
-        """Capture mode: grab until the screen stops changing, matches no guard in `unlike` and is none of `away_from`."""
-        end = time.monotonic() + self.left(limit)
-        earlier = {pathlib.Path(p).read_bytes() for p in away_from}
-        while time.monotonic() < end:
-            raw, crop = self._paths(state)
-            self.guest.capture(state, raw, crop, self.left(min(60.0, end - time.monotonic())))
-            if (crop.read_bytes() not in earlier
-                    and not any(other in self.guards and self.guards(other, crop)
-                                for other in unlike)):
-                self.events.append({"screen": state, "crop": str(crop), "settled": True})
-                self.pressed_on = None
-                return crop
-            time.sleep(1.0)
-        raise RouteError(f"{state} did not appear within {limit:.0f}s")
-
-    def reach(self, state: str, limit: float, unlike: Sequence[str] = (),
-              away_from: Sequence[pathlib.Path] = ()) -> pathlib.Path:
-        """`see` when the state has a guard, `settle` in capture mode when it has none."""
-        if state in self.guards:
-            return self.see(state, limit)
-        require(self.capture, f"no guard for {state}; run with --capture first")
-        return self.settle(state, limit, unlike, away_from)
-
     def press(self, state: str, key: str) -> None:
         self.guest.press(self.holder, key, timeout=self.left(30))
         self.pressed_on = state
@@ -466,6 +451,7 @@ class Screens:
         while time.monotonic() < end:
             raw, crop = self._paths(name)
             if not self.guest.grab(name, raw, crop, self.left(30)):
+                time.sleep(1.0)
                 continue
             digest = hashlib.sha256(crop.read_bytes()).hexdigest()
             if digest not in seen:
@@ -482,7 +468,7 @@ class Screens:
 # -- the run -------------------------------------------------------------------------------
 
 
-def preflight(manifest_path: pathlib.Path, member: str, capture: bool,
+def preflight(manifest_path: pathlib.Path, member: str,
               load_geo: Callable[[str], Any]) -> tuple[dict, list[WalkStep], int]:
     """The manifest, the walk and the member's party line, all checked before any lane is claimed."""
     manifest = json.loads(manifest_path.read_text())
@@ -495,8 +481,8 @@ def preflight(manifest_path: pathlib.Path, member: str, capture: bool,
     wanted = _folded(member)
     require(names.count(wanted) == 1, f"the loaded party {manifest.get('names_a')} does not hold "
                                       f"exactly one {member}")
-    require(capture or all(state in HALL_GUARDS for state in HALL_STATES),
-            "the hall's screens have no guards yet: run with --capture first")
+    require(all(state in HALL_GUARDS for state in HALL_STATES),
+            "the hall's screens have no guards")
     steps = plan_walk(manifest_place(manifest), load_geo("GEO00"))
     return manifest, steps, names.index(wanted) + 1
 
@@ -560,17 +546,16 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
         switch_factory: Callable[..., Any] | None = None,
         load_geo: Callable[[str], Any] = route_pool._disk_geo) -> dict:
     """Load, walk to the hall, remove the member, halt, fetch the save disk and judge it."""
-    manifest, steps, line = preflight(args.manifest, args.member, args.capture, load_geo)
+    manifest, steps, line = preflight(args.manifest, args.member, load_geo)
     require(not args.out.exists(), f"the output folder {args.out} already exists")
     require(0 <= args.wait_lane <= 3600, "the lane wait is longer than an hour")
     args.out.mkdir(parents=True)
     command = [str(pathlib.Path(__file__)), "run", "--manifest", str(args.manifest), "--member",
-               args.member, "--holder", args.holder, "--out", str(args.out),
-               *(["--capture"] if args.capture else [])]
+               args.member, "--holder", args.holder, "--out", str(args.out)]
     receipt: dict[str, Any] = {
         "started_utc": datetime.now(timezone.utc).isoformat(), "command": command,
         "manifest": str(args.manifest.resolve()), "holder": args.holder,
-        "member": args.member, "line": line, "capture": args.capture,
+        "member": args.member, "line": line,
         "plan": [[s.key, None if s.expect is None else list(s.expect)] for s in steps],
         "walk": [], "cleanup": [], "success": False}
     guest = guest or WinGuest()
@@ -600,7 +585,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
         booted = True
         # The budget runs from the start of the emulator, not from the wait for a lane.
         deadline = time.monotonic() + args.budget
-        screens = Screens(guest, args.holder, args.out / "screens", guards, deadline, args.capture)
+        screens = Screens(guest, args.holder, args.out / "screens", guards, deadline)
         _load(screens, manifest)
         live = live_factory(args.holder)
         start = live.place()
@@ -639,11 +624,10 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
                 f"the encounter switch did not go off: {off}")
         receipt["switch_off"] = off
         time.sleep(SCREEN_SETTLE)
-        question = screens.reach("hall_question", 90, unlike=("world",))
+        screens.see("hall_question", 90)
         screens.press("hall_question", "Y")
         time.sleep(SCREEN_SETTLE)
-        menu = screens.reach("hall_menu", 90, unlike=("world", "hall_question"),
-                             away_from=(question,))
+        menu = screens.see("hall_menu", 90)
         require(live.current() != 0, "the menu opened with no member highlighted")
         party = live.members()
         lines = [n for n, (name, _a, _r) in enumerate(party, 1)
@@ -652,7 +636,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
         chosen = live.select(str(lines[0]), lambda key: guest.press(args.holder, key, timeout=30))
         receipt["select"] = chosen
         require("error" not in chosen, f"the highlight did not reach {args.member}: {chosen}")
-        screens.reach("hall_menu", 60, unlike=("world", "hall_question"), away_from=(question,))
+        screens.see("hall_menu", 60)
         address = int(chosen["address"], 16)
         rows = [(name, raw) for name, a, raw in live.members() if a == address]
         require(len(rows) == 1 and live.current() == address
@@ -671,8 +655,10 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
         receipt["after_remove_frames"] = screens.frames("remove", 120, gone)
         require(gone(), f"{args.member} is still in the party after REMOVE")
         receipt["after_remove"] = [n for n, _a, _r in live.members()]
-        screens.reach("hall_menu", 60, unlike=("world", "hall_question"))
+        screens.see("hall_menu", 60)
         time.sleep(10.0)
+        # Matched again just before the key: `B` is BEGIN ADVENTURING only on this menu.
+        screens.see("hall_menu", 30)
         screens.press("hall_menu", "B")
         try:
             screens.see("world", 90)
@@ -752,8 +738,6 @@ def main(argv: list[str] | None = None) -> int:
     go.add_argument("--member", required=True, help="the member's name, spaces optional")
     go.add_argument("--holder", required=True)
     go.add_argument("--out", type=pathlib.Path, required=True)
-    go.add_argument("--capture", action="store_true",
-                    help="record the hall's screens instead of matching guards")
     go.add_argument("--guards", type=pathlib.Path, default=None,
                     help="extra guard rules, merged over the built-in ones")
     go.add_argument("--wait-lane", type=float, default=0)
