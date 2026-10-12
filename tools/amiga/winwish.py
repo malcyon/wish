@@ -6,7 +6,8 @@ artifact that `.github/workflows/release.yml` builds for a pushed SHA.  This
 fetches it with `gh`, copies it to `C:\\Amiga\\wish\\<sha>\\`, starts `wish.exe`
 through an Interactive scheduled task (an ssh login is session 0 and cannot show a
 window; see `winuae.ps1`), grabs the Wish window, stops and restarts it, and brings
-the debug log back.  `up` without `--df0` starts no WinUAE but still takes every lane.
+the debug log back.  `up` claims one lane and names its emulator's pipe to Wish through
+`WISH_WINUAE_PIPE`; with `--keep-lanes`, with no `--df0` or for a build that does not read that variable it takes every lane.
 WinUAE itself is started through `winuaesession.WinGuest`, so
 the lane claim, the audio proof and the receipts are the ones every other WinUAE
 run uses.
@@ -57,6 +58,7 @@ if __package__ in (None, ""):
 
 from tools.amiga import winvmguest  # noqa: E402
 from tools.amiga.winuaesession import (  # noqa: E402
+    WINUAE_PS,
     RouteError,
     WinGuest,
     _mute_proof,
@@ -71,6 +73,8 @@ FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
 #: The spelling of `automap.amigaactions.ACTIONS_ENV` and
 #: `automap.amigafasttravel.FAST_TRAVEL_ENV`; a test pins them equal.
 ACTIONS_FLAG = "WISH_EXPERIMENTAL_AMIGA_ACTIONS"
+#: Pinned equal to `wish.winuae.PIPE_ENV` by a test; `wish` is not imported here.
+PIPE_ENV = "WISH_WINUAE_PIPE"
 FAST_TRAVEL_FLAG = "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"
 HOLDER = winvmguest.HOLDER
 #: DF0 and DF1 hold a title's game disks; Wish reads its maps from those. DF2 and up
@@ -165,11 +169,13 @@ def settings_json(game: str | None = None, folder: str | None = None,
     return json.dumps(values, indent=1) + "\n"
 
 
-def environment(flag: bool, holder: str, features: bool = True) -> dict[str, str]:
+def environment(flag: bool, holder: str, features: bool = True,
+                pipe: str | None = None) -> dict[str, str]:
     """What `wish.exe` is started with; the flag is left unset for the control.
 
     With `features` false the backend flag is set but the action and Fast Travel
-    flags are not, so the map attaches with those controls greyed.
+    flags are not, so the map attaches with those controls greyed. `pipe` names the
+    WinUAE pipe Wish opens, so it cannot attach to another lane's emulator.
     """
     env = {"APPDATA": rf"{run_dir(holder)}\appdata",
            "LOCALAPPDATA": rf"{run_dir(holder)}\local",
@@ -179,12 +185,14 @@ def environment(flag: bool, holder: str, features: bool = True) -> dict[str, str
     if flag and features:
         env[ACTIONS_FLAG] = "1"
         env[FAST_TRAVEL_FLAG] = "1"
+    if flag and pipe:
+        env[PIPE_ENV] = pipe
     return env
 
 
 #: Cleared in the task whatever the holder's own session has, so the window can
 #: reach no other backend and the flag-off control really has no Amiga row.
-CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, FAST_TRAVEL_FLAG, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
+CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, FAST_TRAVEL_FLAG, PIPE_ENV, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
            "POR_ULTIMATE", "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
 
 
@@ -1402,10 +1410,17 @@ class Guest:
             raise WinwishError(f"the guest said: {out or 'nothing'}")
         return out
 
-    def holds_lane(self, holder: str) -> None:
+    def holds_lane(self, holder: str) -> str:
         rc, out = self.run(["winvm", "lane", "--expect", holder], CALL_SECONDS)
         if rc:
             raise WinwishError(f"{holder} does not hold the WinUAE lane ({out})")
+        return out
+
+    def lane_pipe(self, holder: str) -> str | None:
+        """The pipe name of `holder`'s running emulator, or None when it runs none."""
+        rc, out = self.run(["winvm", "ssh", f"{WINUAE_PS} lane -Holder {holder}"], CALL_SECONDS)
+        found = re.search(r"\bpipe=(WinUAE(?:_[1-9])?)(?![\w])", out) if rc == 0 else None
+        return found.group(1) if found else None
 
     def gh(self, *args: str, timeout: float = CALL_SECONDS) -> str:
         rc, out = self.run(["gh", *args], timeout)
@@ -1574,15 +1589,27 @@ def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, .
                open_path: str | None = None,
                travel_targets: dict[str, list[int]] | None = None,
                features: bool = True) -> str:
-    guest.holds_lane(holder)
+    held = guest.holds_lane(holder)
+    pipe = guest.lane_pipe(holder) if flag else None
+    if flag and pipe is None and not _holds_every_lane(held, holder):
+        raise WinwishError(f"{holder} runs no WinUAE and does not hold every lane, "
+                           "so Wish could attach to another holder's emulator")
     try:
-        return guest.ps(start_script(holder, environment(flag, holder, features), disks=disks,
+        return guest.ps(start_script(holder, environment(flag, holder, features, pipe), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
                         timeout=START_SECONDS + 30)
     except WinwishError:
         _quietly(guest.ps, probe_close_script(holder))
         raise
+
+
+def _holds_every_lane(held: str, holder: str) -> bool:
+    """Whether `winvm lane` output shows `holder` on every lane."""
+    segments = [seg.strip() for seg in held.split("|")]
+    if len(segments) == 1:
+        return segments[0].startswith(f"held by {holder} ")
+    return all(re.match(rf"\d+: held by {re.escape(holder)} ", seg) for seg in segments)
 
 
 def stop_wish(guest: Guest, holder: str) -> str:
@@ -1680,18 +1707,13 @@ def uae_options(values: list[str] | None) -> tuple[str, ...]:
 
 
 def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
-    """Fetch, stage, claim every lane, start WinUAE (when there are drives), start Wish, give lanes back.
+    """Fetch, stage, claim a lane, start WinUAE (when there are drives), start Wish.
 
-    With no drive no WinUAE is started, but the claim is still exclusive and the mute
-    proof still required. The claim takes every lane because Wish attaches to the
-    lowest-numbered WinUAE pipe, whichever lane that belongs to: beside another running
-    lane it can attach to that holder's emulator. With `--wait-lanes N` the claim
-    reserves the lanes and waits up to N seconds for the other holders to release them.
-
-    Once Wish is up and the run's own emulator owns the `WinUAE` pipe, every lane but
-    that emulator's is released: an emulator started later takes `WinUAE_1` or higher,
-    so Wish stays on its own. Wish alone, an emulator on another pipe name, or
-    `--keep-lanes` keeps every lane until `down`.
+    The claim is one lane, and `start_wish` names that lane's pipe to Wish. It takes
+    every lane, kept until `down`, with `--keep-lanes`, with no drive (no WinUAE is
+    started, and the mute proof is still required), and for a build that does not read
+    `WISH_WINUAE_PIPE`, which would attach to the lowest-numbered pipe. With
+    `--wait-lanes N` the claim waits up to N seconds for the lanes it needs.
 
     Anything that goes wrong between the claim and the end of `start_wish` -- an
     error, Ctrl-C or SIGTERM -- stops Wish (if it was attempted), stops WinUAE and
@@ -1714,7 +1736,11 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     claimed = started = wish_tried = done = False
     with terminating():
         try:
-            if args.wait_lanes > 0:
+            every = args.keep_lanes or not drives or not _build_reads_pipe(guest, sha)
+            result["lanes"] = "every" if every else "one"
+            if not every:
+                result["claim"] = lane.claim(args.holder, CALL_SECONDS, wait=args.wait_lanes)
+            elif args.wait_lanes > 0:
                 result["claim"] = lane.claim_every_lane(args.holder, CALL_SECONDS, args.wait_lanes)
             else:
                 result["claim"] = lane.claim(args.holder, CALL_SECONDS, exclusive=True)
@@ -1729,8 +1755,6 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
             result["wish"] = start_wish(guest, args.holder, not args.no_flag,
                                         tuple(drives[:GAME_DISKS]), args.game, reseed=True,
                                         travel_targets=targets, features=not args.map_only)
-            if drives and not args.keep_lanes and re.search(r"\bpipe=WinUAE(?![\w])", result["winuae"]):
-                result["lanes"] = _give_back_lanes(lane, args.holder)
             done = True
         finally:
             if not done:
@@ -1738,28 +1762,10 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     return result
 
 
-def _held_lanes(lane: Any, holder: str) -> list[int]:
-    """The lanes the guest's `status` shows `holder` holding."""
-    held = []
-    for line in lane.status(CALL_SECONDS).splitlines():
-        found = re.match(r"\s*claim(?: (\d+))? = (\S+) since ", line)
-        if found and found.group(2) == holder:
-            held.append(int(found.group(1) or 1))
-    return held
-
-
-def _give_back_lanes(lane: Any, holder: str) -> str:
-    """Release every lane but the emulator's own; on a failure say which lanes are still held."""
-    try:
-        kept = lane.lane(holder, CALL_SECONDS)
-        freed = lane.release_other_lanes(holder, kept, CALL_SECONDS)
-    except Exception as exc:  # noqa: BLE001 - holding too many lanes is the safe direction
-        try:
-            still = f"lanes still held: {', '.join(map(str, _held_lanes(lane, holder)))}"
-        except Exception:  # noqa: BLE001
-            still = "lanes still held: unknown, run `status`"
-        return f"failed ({exc}); {still}"
-    return f"ok kept lane {kept}, gave back {', '.join(map(str, freed)) or 'none'}"
+def _build_reads_pipe(guest: Guest, sha: str) -> bool:
+    """Whether the build at `sha` reads `WISH_WINUAE_PIPE`; a git failure counts as no."""
+    rc, _ = guest.run(["git", "grep", "-q", "-F", PIPE_ENV, sha, "--", "wish/winuae.py"], CALL_SECONDS)
+    return rc == 0
 
 
 def _undo(guest: Guest, lane: Any, holder: str, wish_tried: bool,
@@ -1831,7 +1837,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mute-proof", required=True,
                    help="the JSON that winuaemute.ps1 printed, under five minutes old")
     p.add_argument("--df0", help="a staged ADF on the guest for DF0; with no drive at all "
-                   "WinUAE is not started and the lane is still claimed")
+                   "WinUAE is not started and every lane is still claimed")
     p.add_argument("--df1", help="a staged ADF on the guest for DF1")
     p.add_argument("--df2", help="a staged ADF on the guest for DF2 (Pool of Radiance's save disk)")
     p.add_argument("--df3", help="a staged ADF on the guest for DF3; needs --df2")
@@ -1850,11 +1856,11 @@ def _parser() -> argparse.ArgumentParser:
                    help="set the backend flag but not the action and Fast Travel flags, "
                    "so the map attaches with those controls greyed")
     p.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
-                   help="reserve every lane and wait up to this long for the other holders "
-                   "to release theirs (default: claim once and fail)")
+                   help="wait up to this long for the claim, one lane or, with --keep-lanes, "
+                   "every lane (default: claim once and fail)")
     p.add_argument("--keep-lanes", action="store_true",
-                   help="keep every lane until `down` instead of giving back the ones the "
-                   "run's emulator is not in, for a run that restarts its pipe or uses `display --set`")
+                   help="claim every lane and keep them until `down`, for a run that uses `display --set`, "
+                   "which changes the whole desktop")
 
     p = sub.add_parser("stage-save", help="copy a save to the guest and check its hash there")
     holder(p)

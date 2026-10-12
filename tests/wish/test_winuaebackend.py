@@ -164,6 +164,41 @@ def test_the_first_pipe_is_used_and_a_different_one_replaces_it():
     assert first.closed == 1
 
 
+def _opened(monkeypatch, value, names=("WinUAE", "WinUAE_1", "WinUAE_2")):
+    """The pipe names `connect` opened with the switch set to `value` (None: unset)."""
+    if value is None:
+        monkeypatch.delenv(winuae.PIPE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(winuae.PIPE_ENV, value)
+    asked = []
+
+    def factory(pipe):
+        asked.append(pipe)
+        return FakeTransport(pipe, loaded())
+
+    winuae.connect(pipes=lambda: list(names), factory=factory)
+    return asked
+
+
+def test_the_pipe_switch_names_the_pipe_opened(monkeypatch):
+    assert _opened(monkeypatch, "WinUAE_1") == ["WinUAE_1"]
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_without_the_pipe_switch_the_first_pipe_is_opened(monkeypatch, value):
+    assert _opened(monkeypatch, value) == ["WinUAE"]
+
+
+@pytest.mark.parametrize("value", ["WinUAE_3", "WinUAE_x", "pipe\\\\other"])
+def test_a_pipe_switch_that_names_no_listed_pipe_opens_nothing(monkeypatch, value):
+    asked = []
+    monkeypatch.setenv(winuae.PIPE_ENV, value)
+    with pytest.raises(amiga.PipeError, match="no WinUAE pipe called"):
+        winuae.connect(pipes=lambda: ["WinUAE", "WinUAE_1"],
+                       factory=lambda pipe: asked.append(pipe))
+    assert asked == []
+
+
 class _Done:
     """An overlapped call that has finished with `data`."""
 

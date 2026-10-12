@@ -14,6 +14,8 @@ because the next read opens the pipe again.
 
 from __future__ import annotations
 
+import os
+
 from automap import amiga, winuae
 
 from .amigalocate import Locator
@@ -56,20 +58,32 @@ def reset() -> None:
     _locator.forget()
 
 
+#: Names the WinUAE pipe Wish opens, for test runs where another lane's emulator
+#: may own the lowest name. A permanent test switch like `WISH_DEBUG`, not a
+#: feature flag; its value is a pipe name, so the truthiness rule does not apply.
+PIPE_ENV = "WISH_WINUAE_PIPE"
+
+
 def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
             locator: Locator | None = None) -> WinuaeTarget:
     """A target on the running Amiga, or a `NotConnected` saying what is missing.
 
-    Uses the first pipe WinUAE created. Raises `amiga.PipeError` when there is
+    Uses the first pipe WinUAE created, or the one `WISH_WINUAE_PIPE` names. Raises `amiga.PipeError` when there is
     none, when WinUAE does not answer, and when no known title is loaded yet.
     """
     global _transport
     names = pipes()
     if not names:
         raise amiga.PipeError("There is no WinUAE pipe.")
-    if _transport is None or _transport.pipe != names[0]:
+    name = os.environ.get(PIPE_ENV, "").strip()
+    if name:
+        if not winuae._NAME.fullmatch(name) or name not in names:
+            raise amiga.PipeError(f"There is no WinUAE pipe called {name}.")
+    else:
+        name = names[0]
+    if _transport is None or _transport.pipe != name:
         reset()
-        _transport = factory(pipe=names[0])
+        _transport = factory(pipe=name)
     locator = locator or _locator
     try:
         return locator.target(_transport.read_memory, _transport,

@@ -36,6 +36,8 @@ class FakeRun:
         for match, rc, out in self.rules:
             if match(argv):
                 return rc, out
+        if argv[:2] == ["winvm", "ssh"] and " lane -Holder " in argv[2]:
+            return 0, "ok lane=2 pid=1 started=t pipe=WinUAE_1"
         return 0, "ok"
 
     def verbs(self):
@@ -61,8 +63,9 @@ class FakeLane:
             raise self.exc(f"{name} failed")
         return f"ok {name}"
 
-    def claim(self, holder, timeout, exclusive=False):
+    def claim(self, holder, timeout, exclusive=False, wait=0.0):
         self.exclusive = exclusive
+        self.claim_wait = wait
         return self._do("claim")
 
     def claim_every_lane(self, holder, timeout, wait):
@@ -80,11 +83,6 @@ class FakeLane:
 
     def status(self, timeout):
         return self.status_text
-
-    def release_other_lanes(self, holder, keep, timeout):
-        self.keep = keep
-        self._do("release_other_lanes")
-        return [2, 3, 4]
 
     def stop(self, holder, timeout):
         return self._do("stop")
@@ -441,74 +439,92 @@ def test_up_runs_the_steps_in_order(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
     assert lane.log == ["claim", r"drives=C:\Amiga\Disks\a.adf", "start"]
-    assert run.verbs() == ["ps", "put", "ps", "ps", "lane", "ps"]
+    assert run.verbs() == ["ps", "put", "ps", "git grep -q", "ps", "lane", "ssh", "ps"]
 
 
-def test_up_claims_every_lane(tmp_path, monkeypatch):
-    """Wish opens the lowest-numbered WinUAE pipe, so no other lane may be running beside it."""
+def test_up_claims_one_lane(tmp_path, monkeypatch):
+    """Wish is told its emulator's pipe, so another lane may run beside it."""
     lane = FakeLane()
-    winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
+    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
+    assert lane.exclusive is False
+    assert "claim_every_lane" not in lane.log
+    assert result["lanes"] == "one"
+
+
+def test_the_started_task_names_the_emulators_pipe(tmp_path, monkeypatch):
+    run = FakeRun()
+    winwish.up(winwish.Guest(run), FakeLane(), _args(tmp_path, monkeypatch))
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+    assert "$env:WISH_WINUAE_PIPE = 'WinUAE_1'" in _task_text(start)
+
+
+def test_up_with_wait_lanes_makes_one_claim_that_waits(tmp_path, monkeypatch):
+    lane = FakeLane()
+    winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch, "--wait-lanes", "900"))
+    assert lane.claim_wait == 900
+    assert lane.log[0] == "claim" and "claim_every_lane" not in lane.log
+
+
+def test_up_keep_lanes_with_wait_lanes_waits_for_every_lane(tmp_path, monkeypatch):
+    lane = FakeLane()
+    winwish.up(winwish.Guest(FakeRun()), lane,
+               _args(tmp_path, monkeypatch, "--keep-lanes", "--wait-lanes", "900"))
+    assert lane.waited == 900
+    assert lane.log[0] == "claim_every_lane"
+
+
+def test_up_keep_lanes_claims_every_lane(tmp_path, monkeypatch):
+    lane = FakeLane()
+    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch, "--keep-lanes"))
+    assert lane.exclusive is True and result["lanes"] == "every"
+
+
+def test_up_claims_every_lane_for_a_build_that_ignores_the_pipe_variable(tmp_path, monkeypatch):
+    lane = FakeLane()
+    run = FakeRun([(lambda a: a[0] == "git" and a[1] == "grep", 1, "")])
+    winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
     assert lane.exclusive is True
 
 
-def test_up_with_wait_lanes_reserves_and_waits_for_every_lane(tmp_path, monkeypatch):
-    lane = FakeLane()
-    winwish.up(winwish.Guest(FakeRun()), lane,
-               _args(tmp_path, monkeypatch, "--wait-lanes", "900"))
-    assert lane.waited == 900
-    assert lane.log[0] == "claim_every_lane"
-    assert "claim" not in lane.log
-
-
-def test_up_gives_back_every_lane_but_its_emulators_once_wish_is_up(tmp_path, monkeypatch):
-    lane = FakeLane()
-    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
+def test_the_build_is_searched_for_the_variable_at_its_sha(tmp_path, monkeypatch):
     run = FakeRun()
-    winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
-    assert lane.log.count("release_other_lanes") == 1
-    assert lane.keep == 1
-    assert lane.log.index("release_other_lanes") > lane.log.index("start")
-    assert run.verbs()[-1] == "ps"
-    assert "release" not in lane.log
+    winwish.up(winwish.Guest(run), FakeLane(), _args(tmp_path, monkeypatch))
+    grep = next(c for c in run.calls if c[:2] == ["git", "grep"])
+    assert SHA in grep and "WISH_WINUAE_PIPE" in grep
 
 
-def test_up_keeps_every_lane_when_its_emulator_is_not_on_the_first_pipe(tmp_path, monkeypatch):
-    lane = FakeLane()
-    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE_1"
-    winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
-    assert "release_other_lanes" not in lane.log
+def _two_lanes_one_holder(holder):
+    return f"1: held by {holder} since t | 2: free"
 
 
-def test_up_keep_lanes_holds_every_lane(tmp_path, monkeypatch):
-    lane = FakeLane()
-    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
-    winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch, "--keep-lanes"))
-    assert "release_other_lanes" not in lane.log
+def test_start_without_a_pipe_needs_every_lane():
+    run = FakeRun([(lambda a: a[1] == "ssh", 1, "no emulator"),
+                   (lambda a: a[1] == "lane", 0, _two_lanes_one_holder("h"))])
+    with pytest.raises(winwish.WinwishError, match="does not hold every lane"):
+        winwish.start_wish(winwish.Guest(run), "h")
+    assert "ps" not in run.verbs()
 
 
-def test_a_failed_give_back_leaves_up_standing_with_every_lane(tmp_path, monkeypatch):
-    lane = FakeLane(fail_on="release_other_lanes")
-    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
-    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
-    assert result["lanes"].startswith("failed")
-    assert "release" not in lane.log and "stop" not in lane.log
+def test_start_without_a_pipe_but_with_every_lane_sets_no_variable():
+    run = FakeRun([(lambda a: a[1] == "ssh", 1, "no emulator"),
+                   (lambda a: a[1] == "lane", 0, "1: held by h since t | 2: held by h since t")])
+    winwish.start_wish(winwish.Guest(run), "h")
+    start = next(c[2] for c in run.calls if c[1] == "ps")
+    assert "WISH_WINUAE_PIPE = " not in _task_text(start)
 
 
-def test_a_give_back_that_fails_partway_names_the_lanes_still_held(tmp_path, monkeypatch):
-    lane = FakeLane(fail_on="release_other_lanes")
-    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
-    lane.status_text = "claim = h since t\nclaim 2 = other since t\nclaim 4 = h since t"
-    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
-    assert result["lanes"].endswith("lanes still held: 1, 4")
+def test_start_without_the_flag_looks_up_no_pipe():
+    run = FakeRun()
+    winwish.start_wish(winwish.Guest(run), "h", flag=False)
+    assert "ssh" not in run.verbs()
+    start = next(c[2] for c in run.calls if c[1] == "ps")
+    assert "WISH_WINUAE_PIPE = " not in _task_text(start)
 
 
-def test_up_keeps_the_lane_its_emulator_is_in_when_that_is_not_lane_1(tmp_path, monkeypatch):
-    lane = FakeLane()
-    lane.start_reply = "ok pid=1 session=1 pipe=WinUAE"
-    lane.emulator_lane = 3
-    result = winwish.up(winwish.Guest(FakeRun()), lane, _args(tmp_path, monkeypatch))
-    assert lane.keep == 3
-    assert result["lanes"].startswith("ok kept lane 3")
+def test_the_pipe_variable_name_matches_wishs_and_is_cleared():
+    from wish import winuae as wish_winuae
+    assert winwish.PIPE_ENV == wish_winuae.PIPE_ENV
+    assert winwish.PIPE_ENV in winwish.CLEARED
 
 
 def test_claim_every_lane_polls_until_the_guest_says_ok(monkeypatch):
@@ -1808,6 +1824,8 @@ def _events(journal):
             text = pathlib.Path(argv[2]).read_text(encoding="utf-8-sig")
             last[:] = ["display" if "Remove-Item -LiteralPath $journal" in text else "wish-close"]
             events.append(last[0])
+        elif argv[1] == "ssh" and " lane -Holder " in argv[2]:
+            return 0, "ok lane=2 pid=1 started=t pipe=WinUAE_1"
         elif argv[1] == "ps":
             script = argv[2]
             if "display-original.json" in script and "Test-Path" in script:

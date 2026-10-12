@@ -1215,6 +1215,8 @@ directory and opens nothing, because WinUAE serves one client at a time.
   `WISH_EXPERIMENTAL_AMIGA_WINUAE`; it is listed before the FS-UAE row. With either
   Amiga flag on, the window loads the Amiga-only titles' maps and offers the
   Pools of Darkness folder.
+* **`WISH_WINUAE_PIPE` names the pipe Wish opens,** for test runs where another
+  lane's emulator may own the lowest name.
 * **It has run in Wish on Pool of Radiance only.** On WinUAE 6.0.3 Wish's own
   window followed the party through a turn and two steps with the right marker.
   After a restart of Wish the explored squares were lost; the notes are now saved
