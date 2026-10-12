@@ -3409,7 +3409,8 @@ def test_ordinary_silver_blades_preflight_checks_the_journal_answer(tmp_path, mo
 
 
 def _map_walk_controller(tmp_path, monkeypatch, *, tab_seconds=8.0):
-    """The discovery controller with `--walk-tab map`, its tab, key, shot and read calls in one list."""
+    """The discovery controller with `--walk-tab map` over a fake party that a scheduled key
+    moves, with its tab, key, shot, read and switch calls in one list."""
     from automap import amigaparty
     from tools.amiga import amigatarget
 
@@ -3418,15 +3419,25 @@ def _map_walk_controller(tmp_path, monkeypatch, *, tab_seconds=8.0):
     monkeypatch.delattr(controller, "_game_section")
     monkeypatch.delattr(controller, "_checkpoint")
     events = []
+    party = {"x": 3, "y": 3, "facing": 2}
     grab = game.grab
     game.grab = lambda state, raw, crop, timeout: (events.append(("game_shot", state)),
                                                    grab(state, raw, crop, timeout))[1]
     game.press = lambda holder, key, timeout: events.append(("press", key))
-    game.schedule_keys = lambda holder, keys, lead, gap, timeout: (
-        events.append(("schedule", tuple(keys))), "404")[1]
+
+    def schedule_key(holder, key, lead, timeout):
+        events.append(("schedule", key))
+        if key == "NP8":
+            step = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}[party["facing"]]
+            party["x"] += step[0]
+            party["y"] += step[1]
+        else:
+            party["facing"] = (party["facing"] + (1 if key == "NP6" else -1)) % 4
+        return "404"
+    game.schedule_key = schedule_key
 
     def show_tab(guest, holder, name):
-        clock.now += tab_seconds
+        clock.now += tab_seconds if name == "Automapper" else 1.0
         events.append(("tab", name))
         return []
     monkeypatch.setattr(winwishaccept.winwish, "show_tab", show_tab)
@@ -3436,9 +3447,10 @@ def _map_walk_controller(tmp_path, monkeypatch, *, tab_seconds=8.0):
         pathlib.Path(path).write_bytes(b"wish")
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
     monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
-    fix = SimpleNamespace(x=3, y=5, facing=2, outdoors=False, world_map=False,
-                          window=None, heading=None)
-    target = SimpleNamespace(fix=lambda: fix, geo=lambda: b"synthetic", close=lambda: None)
+    target = SimpleNamespace(
+        fix=lambda: SimpleNamespace(**party, outdoors=False, world_map=False,
+                                    window=None, heading=None),
+        geo=lambda: b"synthetic", close=lambda: None)
     monkeypatch.setattr(amigatarget, "connect_pipe",
                         lambda *args: (events.append(("engine_read",)), target)[1])
     monkeypatch.setattr(amigaparty, "read_party", lambda target: None)
@@ -3460,91 +3472,129 @@ def _map_walk_controller(tmp_path, monkeypatch, *, tab_seconds=8.0):
     def switch(enabled):
         controller.encounters = controller.encounters or Encounters()
         controller.encounters_on = enabled
+        events.append(("switch", enabled, clock.now))
     monkeypatch.setattr(controller, "_switch", switch)
     controller.pipe_released = True
-    return controller, events, clock
+    return controller, events, clock, party
 
 
-def test_map_walk_keeps_the_automapper_showing_through_every_walk_key(tmp_path, monkeypatch):
+def test_map_walk_guards_every_key_and_keeps_the_automapper_showing_while_it_lands(
+        tmp_path, monkeypatch):
     from tools.amiga import maproute
 
-    controller, events, _ = _map_walk_controller(tmp_path, monkeypatch)
+    controller, events, _, party = _map_walk_controller(tmp_path, monkeypatch)
     walk = maproute._ssb_walk()
     controller.run_phase(walk)
-    segments, keys = [], []
-    for step in walk.steps:
-        if step.kind in ("move", "turn"):
-            keys.append(step.key)
-            if step.checkpoint:
-                segments.append((tuple(keys), step.checkpoint))
-                keys = []
-    assert not keys and len(segments) == 6
+    keys = [step for step in walk.steps if step.kind in ("move", "turn")]
+    assert len(keys) == 22 and party == {"x": 15, "y": 8, "facing": 1}
     expected = []
-    for keys, name in segments:
-        expected += [("encounters_apply", keys[:1]), ("schedule", keys),
+    for index, step in enumerate(keys, 1):
+        name = step.checkpoint or f"walk_key_{index:02d}"
+        # The screen is guarded, and on the first key the party read, before the key is queued.
+        expected += [("game_shot", "world"), *([("engine_read",)] if index == 1 else []),
+                     ("encounters_apply", (step.key,)), ("schedule", step.key),
                      ("tab", "Automapper"), ("wish_shot", f"wish-{name}.png"),
                      ("tab", "Character Editor"), ("game_shot", "world"), ("engine_read",)]
-    first = events.index(("encounters_apply", segments[0][0][:1]))
-    # No key goes in by the pipe, and nothing changes tab while the scheduled keys land.
+    first = events.index(("encounters_apply", (keys[0].key,))) - 2
+    # No key goes in by the pipe, and nothing changes tab while a queued key lands.
     assert not [event for event in events if event[0] == "press"]
-    # The walk's last step turns encounters off and guards its screen once more.
-    assert events[first:] == expected + [("game_shot", "world")]
-    for _, name in segments:
-        checkpoint = controller.checkpoints[name]
-        assert checkpoint["walk_tab"] == "map"
-        assert checkpoint["schedule"]["tab_shown_s"] < checkpoint["schedule"]["first_key_s"]
+    assert [e for e in events[first:] if e[0] != "switch"] == expected + [("game_shot", "world")]
+    assert [record["key"] for record in controller.summary["map_walk_keys"]] == [
+        step.key for step in keys]
+    for step in keys:
+        if step.checkpoint:
+            checkpoint = controller.checkpoints[step.checkpoint]
+            assert checkpoint["walk_tab"] == "map"
+            schedule = checkpoint["schedule"]
+            assert schedule["tab_shown_s"] < schedule["key_earliest_s"] - winwishaccept.WALK_TAB_MARGIN
+            assert schedule["shot_s"] >= schedule["key_latest_s"] + winwishaccept.WALK_SETTLE
+    assert controller.keys_pending_until is None
     assert controller.summary["completed_sequence"] == ["walk"]
+
+
+def test_map_walk_stops_when_a_queued_key_leaves_the_party_where_it_was(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, events, _, party = _map_walk_controller(tmp_path, monkeypatch)
+    controller.game.schedule_key = lambda holder, key, lead, timeout: (
+        events.append(("schedule", key)), "404")[1]
+    with pytest.raises(winwishaccept.AcceptanceStop, match="stayed at 3,3"):
+        controller.run_phase(maproute._ssb_walk())
+    assert [event for event in events if event[0] == "schedule"] == [("schedule", "NP8")]
+    assert controller.summary["map_walk_keys"][0]["fix_after"] == {"x": 3, "y": 3, "facing": 2}
 
 
 def test_map_walk_stops_before_the_wish_shot_when_the_automapper_shows_too_late(tmp_path,
                                                                                   monkeypatch):
     from tools.amiga import maproute
 
-    controller, events, _ = _map_walk_controller(tmp_path, monkeypatch, tab_seconds=40.0)
+    controller, events, _, _ = _map_walk_controller(tmp_path, monkeypatch, tab_seconds=40.0)
     with pytest.raises(winwishaccept.AcceptanceStop, match="Automapper"):
         controller.run_phase(maproute._ssb_walk())
-    assert [event for event in events if event[0] == "schedule"] == [("schedule", ("NP8", "NP8"))]
+    assert [event for event in events if event[0] == "schedule"] == [("schedule", "NP8")]
     assert not [event for event in events if event[0] in ("wish_shot", "press")]
 
 
-def test_walk_tab_parser_deadline_and_key_schedule(tmp_path):
+def test_map_walk_stops_before_the_wish_shot_when_route_time_cuts_the_settle(tmp_path,
+                                                                              monkeypatch):
+    from tools.amiga import maproute
+
+    controller, events, _, _ = _map_walk_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "left", lambda limit: min(limit, 20.0))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="could have landed"):
+        controller.run_phase(maproute._ssb_walk())
+    assert not [event for event in events if event[0] in ("wish_shot", "press")]
+
+
+def test_cleanup_waits_for_a_queued_key_before_turning_encounters_off(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, events, clock, _ = _map_walk_controller(tmp_path, monkeypatch, tab_seconds=28.0)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="Automapper"):
+        controller.run_phase(maproute._ssb_walk())
+    pending = controller.keys_pending_until
+    assert pending is not None and clock.now < pending
+    controller._cleanup()
+    switched_off = [event for event in events if event[:2] == ("switch", False)]
+    assert switched_off and switched_off[-1][2] >= pending
+    assert controller.keys_pending_until is None
+    waits = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()
+             if '"scheduled_key_wait"' in line]
+    assert len(waits) == 1 and waits[0]["seconds"] > 0
+
+
+def test_walk_tab_parser_and_computed_deadline(tmp_path):
     parser = winwishaccept._parser()
     base = ["--title", "ssb", "--manifest", str(tmp_path / "prepare.json"),
             "--sha", SHA, "--holder", "test-acw", "--mute-proof",
             str(tmp_path / "mute.json"), "--out", str(tmp_path), "--discover", "ssb-camp-load"]
     assert parser.parse_args(base).walk_tab == "editor"
     assert parser.parse_args(base + ["--walk-tab", "map"]).walk_tab == "map"
-    assert winwishaccept._deadline_limit("ssb-camp-load", "map") > winwishaccept._deadline_limit(
-        "ssb-camp-load")
+    assert winwishaccept._deadline_limit("ssb-camp-load", "map") == (
+        winwishaccept.LEAVE_DISCOVERY_SECONDS - winwishaccept.EDITOR_WALK_SECONDS
+        + -(-11 * winwishaccept.MAP_WALK_KEYS * winwishaccept.MAP_KEY_SECONDS // 10))
     args = _discovery_args(tmp_path)
     args.discover, args.walk_tab = "ssb-opening-first", "map"
     with pytest.raises(winwishaccept.AcceptanceStop, match="walk-tab map"):
         winwishaccept.preflight(args, guest=object(), route_for=None)
-    assert winuaesession.key_schedule(["NP8", "NP4"], 1500, 250) == (
-        'I "delay 1500" "KEY_RAW_DOWN 0x3E" "delay 6" "KEY_RAW_UP 0x3E" '
-        '"delay 244" "KEY_RAW_DOWN 0x2D" "delay 6" "KEY_RAW_UP 0x2D"')
-    for keys, lead, gap in (([], 1500, 250), (["NP8"], 0, 250), (["NP8", "NP8"], 1500, 6),
-                            (["F11"], 1500, 250)):
-        with pytest.raises(winuaesession.RouteError):
-            winuaesession.key_schedule(keys, lead, gap)
 
 
-def test_schedule_keys_sends_one_debugger_line_and_requires_its_reply(monkeypatch):
+def test_schedule_key_queues_one_key_through_the_pipe_and_requires_its_reply(monkeypatch):
     from automap import amiga
 
-    sent = []
+    queued = []
 
-    def execute(self, script):
-        sent.append(script)
-        reply = base64.b64encode(b"404\x00").decode()
-        return f"<<reply>> 1.0 {reply}\n<<end>>\n"
-    monkeypatch.setattr(amiga.WinuaePipe, "_execute", execute)
-    monkeypatch.setattr(amiga.WinuaePipe, "_open_by_lane", lambda self: "  $p=$null")
+    def press_later(self, code, frames, hold=6):
+        queued.append((self.holder, code, frames, hold))
+        return "404"
+    monkeypatch.setattr(amiga.WinuaePipe, "press_later", press_later)
     guest = winuaesession.WinGuest()
-    assert guest.schedule_keys("test-acw", ["NP8"], 1500, 250, 30) == "404"
-    command = winuaesession.key_schedule(["NP8"], 1500, 250)
-    assert base64.b64encode(f"DBG {command}".encode()).decode() in sent[0]
-    monkeypatch.setattr(amiga.WinuaePipe, "_execute", lambda self, script: (
-        "<<reply>> 1.0 " + base64.b64encode(b"Unknown command\x00").decode() + "\n<<end>>\n"))
+    assert guest.schedule_key("test-acw", "NP8", 1500, 30) == "404"
+    assert queued == [("test-acw", 0x3E, 1500, winuaesession.KEY_HOLD_FRAMES)]
+    monkeypatch.setattr(amiga.WinuaePipe, "press_later", lambda self, code, frames, hold=6:
+                        "Unknown command")
     with pytest.raises(winuaesession.RouteError, match="Unknown command"):
-        guest.schedule_keys("test-acw", ["NP8"], 1500, 250, 30)
+        guest.schedule_key("test-acw", "NP8", 1500, 30)
+    for key in ("F11", "NOSUCHKEY"):
+        with pytest.raises(winuaesession.RouteError):
+            guest.schedule_key("test-acw", key, 1500, 30)

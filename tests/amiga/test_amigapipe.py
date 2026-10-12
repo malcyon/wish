@@ -1678,3 +1678,34 @@ def test_a_large_read_on_the_console_route_is_split_too():
     assert got == [bytes([a & 0xFF]) * n for a, n in blocks]
     assert len(sent) > 1
     assert all(len(" ".join(argv)) <= amiga.MAX_GUEST_COMMAND for argv in sent)
+
+
+class KeyGuest(PipeGuest):
+    """`PipeGuest` answering a queued key the way `parsemessage` answers a line with no output."""
+
+    def _answer(self, command: str, dumps: dict[str, bytes]) -> str:
+        return "404\x00" if command.startswith("I ") else super()._answer(command, dumps)
+
+
+def test_press_later_queues_one_key_down_and_up_in_one_debugger_line():
+    p, guest = pipe(guest=KeyGuest())
+    assert p.press_later(0x3E, 1500) == "404"
+    assert PipeGuest.commands(guest.scripts[0]) == [
+        'DBG I "delay 1500" "KEY_RAW_DOWN 0x3E" "delay 6" "KEY_RAW_UP 0x3E"']
+    assert p.sent[-1].startswith('I "delay 1500"')
+
+
+@pytest.mark.parametrize("code, frames, hold", [(0x80, 10, 6), (-1, 10, 6), (0x3E, 0, 6),
+                                                (0x3E, 10, 0)])
+def test_press_later_blocks_a_code_or_delay_it_cannot_send(code, frames, hold):
+    p, guest = pipe(guest=KeyGuest())
+    with pytest.raises(ValueError):
+        p.press_later(code, frames, hold)
+    assert guest.scripts == []
+
+
+def test_press_later_over_ssh_without_a_holder_is_blocked():
+    guest = KeyGuest()
+    with pytest.raises(ValueError, match="lane holder"):
+        amiga.WinuaePipe(runner=guest).press_later(0x3E, 10)
+    assert guest.scripts == []

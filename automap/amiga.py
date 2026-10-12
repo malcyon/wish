@@ -1408,6 +1408,26 @@ Write-Output '<<end>>'
         replies, timings = self._replies(out, list(commands) * repeat)
         return (replies, timings) if with_timings else replies
 
+    def press_later(self, code: int, frames: int, hold: int = 6) -> str:
+        """Press Amiga raw key `code` `frames` frames from now and let it go `hold` frames later.
+
+        One debugger `I` line puts both in WinUAE's queue of delayed input events, so the
+        key lands while another program holds the pipe. WinUAE has no command that takes
+        a queued key back. The reply is WinUAE's own, `404` for a line with no output.
+        """
+        if not 0 <= code <= 0x7F:
+            raise ValueError(f"{code} is not an Amiga raw key code")
+        if frames < 1 or hold < 1:
+            raise ValueError("a queued key needs at least one frame before it and one held")
+        if self.connection == "ssh" and self.holder is None:
+            raise ValueError("a queued key over ssh needs the lane holder, because a pipe "
+                             "opened by name can be another lane's emulator")
+        command = (f'I "delay {frames}" "KEY_RAW_DOWN 0x{code:02X}" '
+                   f'"delay {hold}" "KEY_RAW_UP 0x{code:02X}"')
+        self.sent.append(command)
+        out = self._execute(self._framed([f"DBG {command}"]))
+        return self._replies(out, [command])[0][0][1].strip()
+
     FLOPPY_PATH = FLOPPY_PATH
 
     #: The lane script that owns the ownership checks and the pipe for a floppy
