@@ -8280,6 +8280,10 @@ class PoolRun:
         return {"kept": str(kept), **decode_save(kept, staged)}
 
 
+#: Words of the bar Tilverton's tavern shows first when the brawl was already fought.
+CURSE_TAVERN_INJURIES_BAR = ("ASK", "ABOUT", "INJURIES", "IGNORE", "THEM")
+CURSE_TAVERN_IGNORE = "IGNORE THEM"
+
 class CurseRun(PoolRun):
     """Read Curse's effects with the shared reader and drive its measured fight route."""
 
@@ -9025,6 +9029,25 @@ class CurseRun(PoolRun):
     def fight_cast(self, arg: str, walk: str, steps: int) -> dict:
         raise self.fail("fight-cast", "Pool of Radiance only")
 
+    def _answer_tavern_injuries(self) -> bool:
+        """Answer `IGNORE THEM` when row 24 holds exactly the bartender's
+        `CURSE_TAVERN_INJURIES_BAR`, which a save whose brawl was already
+        fought shows before the tavern's bar, and wait for the row to change.
+        A row showing only some of those words is left alone."""
+        screen = self.sess.screen()
+        row = "" if screen is None else screen.row(24)
+        if tuple(row.split()) != CURSE_TAVERN_INJURIES_BAR:
+            return False
+        if not self.sess.press_bar(CURSE_TAVERN_IGNORE, timeout=20):
+            raise self.fail("fight", "IGNORE THEM was not selectable")
+        deadline = time.time() + 20.0
+        while time.time() < deadline:
+            screen = self.sess.screen()
+            if screen is not None and screen.row(24) != row:
+                return True
+            time.sleep(0.5)
+        raise self.fail("fight", "the bartender's question stayed after IGNORE THEM")
+
     def fight(self, arg: str, walk: str, steps: int, flee: bool = False) -> dict:
         """The tavern brawl.  With `flee` the party runs from it under
         `fleedrive.Flight`; the drop of the members left behind is spared when
@@ -9081,6 +9104,7 @@ class CurseRun(PoolRun):
             self.observe_curse("before-punch")
             self.stop_at_first_loss()
         if not self.sess.in_combat():
+            self._answer_tavern_injuries()
             pressed = self.sess.press_bar(laterbattle.PUNCH, timeout=20)
             if diagnostic:
                 self.observe_curse("after-punch", chosen=laterbattle.PUNCH,

@@ -15008,3 +15008,83 @@ def test_animate_specimen_registers_under_the_wish_303_name(tmp_path, monkeypatc
     assert name.startswith("por-wish-303-animate" + ("" if rc == 0 else "-failed")
                            + "-")
     assert issue == "WISH-303"
+
+
+# --- Curse's tavern: the bartender's injuries question -----------------------------
+
+def _tavern_fight(monkeypatch, tmp_path, screens):
+    """A Curse fight step whose session shows `screens` (row 24) in turn, one
+    step on each key press; returns the labels pressed and the run."""
+    from types import SimpleNamespace
+
+    from tools.c64 import laterbattle
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    pressed = []
+
+    class Route:
+        last_goto_steps = 1
+
+        def __init__(self, out, quiet):
+            self.file = SimpleNamespace(close=lambda: None)
+
+        def goto(self, target, steps, geo):
+            return True
+
+    class Session:
+        fought = False
+
+        def __init__(self):
+            self.at = 0
+
+        def in_combat(self):
+            return self.fought
+
+        def screen(self):
+            rows = [""] * 25
+            rows[24] = screens[self.at]
+            return FakeScreen(rows)
+
+        def press_bar(self, label, row=24, timeout=0):
+            if label not in screens[self.at]:
+                return False
+            pressed.append(label)
+            self.at = min(self.at + 1, len(screens) - 1)
+            self.fought = label == laterbattle.PUNCH
+            return True
+
+        def await_bar(self, kinds, timeout, interval):
+            return None
+
+        def fight(self, *, budget, tactic):
+            return A.S.FightResult("ended", 1, 1.0, [], [])
+
+    monkeypatch.setattr(laterbattle, "Battle", Route)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO01", object()))
+    run = A.CurseRun.__new__(A.CurseRun)
+    run.attack_by, run.attack_owner = "", None
+    run.attack_evidence = run.quit_evidence = None
+    run.sess, run.out = Session(), tmp_path
+    run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
+    run.to_world = lambda: True
+    run.await_combat = lambda: True
+    run.capture = lambda tag: None
+    run.observe_curse = lambda *a, **k: None
+    return run, pressed
+
+
+def test_curse_fight_answers_the_tavern_injuries_bar_then_punches(monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, [
+        "ASK ABOUT INJURIES IGNORE THEM",
+        "PUNCH BARKEEP HAVE A DRINK LEAVE",
+        "MOVE VIEW AIM"])
+    run.fight("10", "I", 5)
+    assert pressed == ["IGNORE THEM", "PUNCH BARKEEP"]
+
+
+def test_curse_fight_stops_at_a_bar_that_only_partly_matches_the_injuries_bar(
+        monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, ["ASK ABOUT INJURIES"])
+    with pytest.raises(A.StepFailed, match="PUNCH BARKEEP was not selectable"):
+        run.fight("10", "I", 5)
+    assert pressed == []
