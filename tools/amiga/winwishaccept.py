@@ -535,7 +535,8 @@ class Controller:
     def _free_pipe(self) -> str | None:
         """Leave the pipe to the driver for cleanup: the editor tab, or Wish closed when that tab cannot be shown.
 
-        Returns why Wish was closed, or None when the tab was shown.
+        Returns None when the tab was shown, why Wish was closed when it was, or why closing it failed
+        (the pipe is released and Wish is left open).
         """
         try:
             self._game_section()

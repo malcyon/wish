@@ -3237,11 +3237,15 @@ def test_encounters_are_still_turned_off_when_closing_wish_fails(tmp_path, monke
         raise winwishaccept.winwish.WinwishError("ssh: connection lost")
 
     _failing_tab(controller, monkeypatch, calls, stop_wish)
+    controller.discovery = False
+    controller.booted = False
     controller._switch(True)
-    reason = controller._free_pipe()
-    assert "closing Wish failed (ssh: connection lost)" in reason
+    controller._cleanup()
+    errors = controller.summary["cleanup"]["errors"]
+    assert any(error.startswith("encounters: ") and "closing Wish failed (ssh: connection lost)" in error
+               for error in errors)
+    assert controller.pipe_released
     assert not controller.wish_closed
-    controller._switch(False)
     assert calls.index(("stop_wish",)) < calls.index(("switch", False))
     assert controller.encounters.state.load() == {"on": False, "rows": []}
 
