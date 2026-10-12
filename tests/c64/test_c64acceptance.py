@@ -2730,7 +2730,7 @@ class _Pool:
 def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=None,
            pool=_Pool, title="pool", catch=lambda: None, stage_only=False,
            capture_ready=False, preserve_specimen=False, read_at=(),
-           stage_row=()):
+           stage_row=(), issue=None):
     import types
     slot = slot or _Slot(tmp_path)
     _Pool.clock = [0.0]
@@ -2744,7 +2744,8 @@ def _drive(tmp_path, monkeypatch, steps, max_seconds=150.0, claim=None, slot=Non
     args = types.SimpleNamespace(
         title=title, stage_row=list(stage_row), stage_trait=[], stage_item=[],
         stage_only=stage_only, checkpoint=[], pool=None,
-        issue="703" if capture_ready else "700" if preserve_specimen else "i",
+        issue=issue or ("703" if capture_ready else "700" if preserve_specimen
+                        else "i"),
         run="r", disks=None,
         walk="I", walk_steps=1, max_seconds=max_seconds,
         capture_ready=capture_ready, preserve_specimen=preserve_specimen,
@@ -3344,23 +3345,24 @@ def test_cast_and_cure_steps_keep_their_names_and_the_pool_rejects_them(tmp_path
     assert info.value.code == 2
 
 
-def test_pool_cast_takes_animate_dead_with_a_target_and_rejects_other_forms(
+def test_pool_cast_takes_animate_dead_without_a_target_and_rejects_other_forms(
         tmp_path):
     assert A.parse_cast("BRUTUS:animate dead") == ("BRUTUS", "ANIMATE DEAD", None)
     assert A.parse_cast("ROLAND:dispel magic>BRUTUS") == (
         "ROLAND", "DISPEL MAGIC", "BRUTUS")
-    assert A.parse_cast("ROLAND:animate dead>MAGEB") == (
-        "ROLAND", "ANIMATE DEAD", "MAGEB")
-    steps = A.parse_steps(["load", "cast BRUTUS:ANIMATE DEAD>BAKSHI", "save"])
-    assert steps[1].arg == "BRUTUS:ANIMATE DEAD>BAKSHI"
-    for bad in ("BRUTUS:ANIMATE DEAD>EXIT", "BRUTUS:CURE BLINDNESS",
+    steps = A.parse_steps(["load", "cast BRUTUS:ANIMATE DEAD", "save"])
+    assert steps[1].arg == "BRUTUS:ANIMATE DEAD"
+    for bad in ("BRUTUS:ANIMATE DEAD>EXIT", "ROLAND:animate dead>MAGEB",
+                "BRUTUS:CURE BLINDNESS",
                 "ROLAND:DISPEL MAGIC"):
         with pytest.raises(ValueError):
             A.parse_cast(bad)
-    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
-                   "--stage-only", "--steps", "load",
-                   "cast BRUTUS:ANIMATE DEAD>BAKSHI", "save",
-                   "--out", str(tmp_path / "cast")]) == 0
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                "--stage-only", "--steps", "load",
+                "cast BRUTUS:ANIMATE DEAD>BAKSHI", "save",
+                "--out", str(tmp_path / "cast")])
+    assert exc.value.code == 2 and not (tmp_path / "cast").exists()
     assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
                    "--stage-only", "--steps", "load",
                    "cast ROLAND:DISPEL MAGIC>BRUTUS", "save",
@@ -14880,3 +14882,129 @@ def test_temple_probe_issue_comes_from_the_source_digest(
                         observed.append(args.issue) or 0)
     argv[argv.index("--issue") + 1] = "303"
     assert A.main(argv) == 0 and observed == ["303"]
+
+
+# --- WISH-303: untargeted Animate Dead specimens ---------------------------------
+
+def test_animate_dead_with_a_target_stops_at_parse_time_with_one_sentence():
+    with pytest.raises(ValueError, match="no target prompt") as info:
+        A.parse_cast("WISHCLE:ANIMATE DEAD>EVOKER")
+    assert str(info.value).count(".") == 0
+    with pytest.raises(ValueError, match="no target prompt"):
+        A.parse_steps(["load", "cast WISHCLE:ANIMATE DEAD>EVOKER", "save"])
+
+
+_ANIMATE_STEPS = ["load", "view EVOKER", "cast WISHCLE:ANIMATE DEAD",
+                  "view EVOKER", "save"]
+_CONTROL_STEPS = ["load", "view EVOKER", "save"]
+
+
+def test_animate_modes_are_recognised_for_wish_303_only():
+    modes = {tuple(s): m for s, m in ((_ANIMATE_STEPS, "animate"),
+                                     (_CONTROL_STEPS, "animate-control"))}
+    for steps, mode in ((_ANIMATE_STEPS, "animate"),
+                        (_CONTROL_STEPS, "animate-control")):
+        assert A.pool_specimen_mode(A.parse_steps(steps), "WISH-303") == mode
+        assert A.pool_specimen_mode(A.parse_steps(steps), "700") is None
+    assert len(modes) == 2
+    for bad in (["load", "view EVOKER", "cast WISHCLE:ANIMATE DEAD",
+                 "view BRUTUS", "save"],
+                ["load", "view EVOKER", "cast WISHCLE:PRAYER", "view EVOKER", "save"],
+                ["load", "view EVOKER", "save", "save"],
+                ["load", "save"]):
+        assert A.pool_specimen_mode(A.parse_steps(bad), "WISH-303") is None
+    # The issue-700 modes keep their BRUTUS steps and are not WISH-303 modes.
+    brutus = A.parse_steps(["load", "view BRUTUS", "save"])
+    assert A.pool_specimen_mode(brutus) == "control"
+    assert A.pool_specimen_mode(brutus, "WISH-303") == "animate-control"
+
+
+@pytest.mark.parametrize("flags,steps", [
+    (["--issue", "WISH-303"], ["load", "save"]),
+    (["--issue", "WISH-303"], ["load", "view EVOKER", "cast WISHCLE:PRAYER", "save"]),
+    (["--issue", "700"], _ANIMATE_STEPS),
+    (["--issue", "WISH-304"], _CONTROL_STEPS),
+])
+def test_animate_specimen_rejects_other_step_lists_and_issues_before_claim(
+        tmp_path, monkeypatch, flags, steps):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    with pytest.raises(SystemExit) as exc:
+        A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)), *flags,
+                "--preserve-specimen", "--steps", *steps,
+                "--out", str(tmp_path / "rejected")])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("steps", [_ANIMATE_STEPS, _CONTROL_STEPS])
+def test_animate_specimen_modes_parse_and_stage_without_claim(tmp_path, monkeypatch,
+                                                              steps):
+    monkeypatch.setattr(A.S, "claim_slot", lambda *a, **k: pytest.fail("claimed a slot"))
+    assert A.main(["--title", "pool", "--save", str(_fixture_disk(tmp_path)),
+                   "--issue", "WISH-303", "--run", "a", "--preserve-specimen",
+                   "--stage-only", "--steps", *steps,
+                   "--out", str(tmp_path / "prepared")]) == 0
+
+
+def _evoker(status, b8, digest="evoker-record"):
+    return {"party": [{"slot": 0, "name": "EVOKER", "status": status,
+                       "record_bytes": {"0xB8": b8}, "traits": [], "creature_type": 4}],
+            "record_sha256": [digest] + ["other"] * 7}
+
+
+def test_validate_pool_animate_requires_b2_in_the_live_and_saved_record():
+    cast = {"verb": "cast", "party_after": _evoker(0x03, 0xB2)["party"]}
+    saved = {"verb": "save", **_evoker(0x03, 0xB2)}
+    A.validate_pool_animate([{"verb": "load"}, cast, saved], "EVOKER", False)
+    for bad_cast, bad_save in ((0x9E, 0xB2), (0xB2, 0x9E)):
+        results = [{"verb": "load"},
+                   {"verb": "cast", "party_after": _evoker(3, bad_cast)["party"]},
+                   {"verb": "save", **_evoker(3, bad_save)}]
+        with pytest.raises(A.StepFailed, match="0xB2"):
+            A.validate_pool_animate(results, "EVOKER", False)
+
+
+def test_validate_pool_animate_control_requires_83_and_the_same_record():
+    loaded = {"verb": "load", "after": _evoker(0x83, 0x9E)}
+    A.validate_pool_animate([loaded, {"verb": "save", **_evoker(0x83, 0x9E)}],
+                            "EVOKER", True)
+    with pytest.raises(A.StepFailed, match="not at"):
+        A.validate_pool_animate([loaded, {"verb": "save", **_evoker(0x03, 0xB2)}],
+                                "EVOKER", True)
+    with pytest.raises(A.StepFailed, match="differently"):
+        A.validate_pool_animate(
+            [loaded, {"verb": "save", **_evoker(0x83, 0x9E, "changed")}],
+            "EVOKER", True)
+
+
+@pytest.mark.parametrize("b8,rc", [(0xB2, 0), (0x9E, 1)])
+def test_animate_specimen_registers_under_the_wish_303_name(tmp_path, monkeypatch,
+                                                            b8, rc):
+    from tools.registry import specimens
+
+    class Run(_SpecimenPool):
+        def reading(self):
+            return _evoker(0x83, 0x9E)
+
+        def cast(self, arg):
+            return {"spell": "ANIMATE DEAD",
+                    "party_before": [{"slot": 0, "status": 0x83, "traits": []}],
+                    "party_after": _evoker(0x03, b8)["party"]}
+
+        def save(self, staged):
+            kept = self.out / "saved.D64"
+            kept.write_bytes(b"saved")
+            return {"kept": str(kept), **_evoker(0x03, b8)}
+
+    added = []
+    monkeypatch.setattr(A, "validate_pool_party_spells", lambda results: None)
+    monkeypatch.setattr(specimens, "add", lambda platform, name, sources, **kw:
+                        added.append((name, kw["issue"]))
+                        or tmp_path / "registered.D64")
+    monkeypatch.setattr(specimens, "check_specimens", lambda: [])
+    got, slot, out = _drive(tmp_path, monkeypatch, _ANIMATE_STEPS, pool=Run,
+                            preserve_specimen=True, issue="WISH-303")
+    assert got == rc and slot.torn
+    (name, issue), = added
+    assert name.startswith("por-wish-303-animate" + ("" if rc == 0 else "-failed")
+                           + "-")
+    assert issue == "WISH-303"

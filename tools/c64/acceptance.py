@@ -79,7 +79,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
 | `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
-| `cast CASTER:ANIMATE DEAD>TARGET` | Pool: camp cast, the target question answered with the dead member; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
+| `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:SPELL`, `cast CASTER:SPELL>TARGET` | Pool, any other spell, `>TARGET` naming the member a spell's target question (`CURE LIGHT WOUNDS`, `PROTECTION FROM EVIL`) is answered with: camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), `CAST SPELL ON WHOM` captured and TARGET chosen on it as the camp list chooses a member, the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question with no TARGET, a TARGET not on it or never asked for, or a pick that spends nothing fails the step. The result has `target`, `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
 | `cast CASTER:DISPEL MAGIC>TARGET` | Pool: checks the named caster (cleric level 5 or more, Dispel Magic among whatever else he holds), animated target and its eligible id-32 row at index 63 before input; moves the list's highlight onto `DISPEL MAGIC` when other spells are listed, captures the target prompt, all party and effect-row bytes before and after, takes the cast as done once the caster holds one Dispel Magic fewer (leaving the pick prompt by its `EXIT` row when the game puts it back up), and checks the game-written save. `--preserve-specimen --issue 700` registers that save or a matched no-cast BRUTUS view control before teardown; with `--dispel-tries N` a cast the game resists (one Dispel Magic spent, the row and target unchanged) is recorded as `resisted` and the step goes to a new camp, `memorize`s, `rest offered`s and casts again in the same boot, up to N casts |
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
@@ -262,6 +262,7 @@ READY_SPECIMEN_ISSUE = (
     "#703 (A C64 acceptance driver's read step can report a garbled diff "
     "after a save step, because it reads from a disk-transfer staging address "
     "a preceding save's disk swaps leave stale)")
+ANIMATE_SPECIMEN_ISSUE = "WISH-303"
 POOL_SPECIMEN_ISSUE = (
     "#700 (the work on converting a Pool of Radiance C64 party holding a "
     "camp-cast Animate Dead zombie)")
@@ -1095,8 +1096,8 @@ def parse_walk_fight(arg: str) -> tuple[str, str | None]:
 
 def parse_cast(arg: str) -> tuple[str, str, str | None]:
     """CASTER, SPELL and the member named after `>`, or None: a cure and
-    Dispel Magic need one, and any other spell may name the member its
-    target question is answered with."""
+    Dispel Magic need one, a whole-party spell takes none, and any other
+    spell may name the member its target question is answered with."""
     m = re.fullmatch(r"([^:>]+):([^:>]+)(?:>([^:>]+))?", arg.strip())
     if m is None:
         raise ValueError(f"cast {arg!r}: say cast CASTER:SPELL[>TARGET]")
@@ -1110,6 +1111,8 @@ def parse_cast(arg: str) -> tuple[str, str, str | None]:
     if target is None and any(spell == t or spell.startswith(t + " ")
                               for t in TARGETED_CAST_SPELLS):
         raise ValueError(f"cast {arg!r}: {spell} needs a target")
+    if target is not None and spell == "ANIMATE DEAD":
+        raise ValueError(f"cast {arg!r}: {spell} has no target prompt")
     if spell in POOL_TARGET_SPELLS and (caster.isdigit() or target.isdigit()):
         raise ValueError(f"cast {arg!r}: Dispel Magic needs a named caster and target")
     return caster, spell, target
@@ -1564,9 +1567,21 @@ def ready_capture_order(steps: list[Step]) -> bool:
         n < saves[0] for n, _ in ready)
 
 
-def pool_specimen_mode(steps: list[Step]) -> str | None:
-    """Classify one #700 save as a BRUTUS Dispel run or its no-cast control."""
+def pool_specimen_mode(steps: list[Step], issue: str = "700") -> str | None:
+    """Classify one save as a #700 BRUTUS Dispel run or its no-cast control,
+    or, for WISH-303, as an untargeted Animate Dead run on one member or its
+    no-cast control."""
     verbs = [step.verb for step in steps]
+    if issue == ANIMATE_SPECIMEN_ISSUE:
+        if verbs == ["load", "view", "save"] and steps[1].arg.strip():
+            return "animate-control"
+        if (verbs == ["load", "view", "cast", "view", "save"]
+                and steps[1].arg.strip()
+                and steps[1].arg.upper() == steps[3].arg.upper()):
+            _, spell, target = parse_cast(steps[2].arg)
+            if spell == "ANIMATE DEAD" and target is None:
+                return "animate"
+        return None
     if (verbs == ["load", "view", "save"]
             and steps[1].arg.upper() == "BRUTUS"):
         return "control"
@@ -9657,6 +9672,40 @@ def validate_pool_control(results: list[dict]) -> None:
                          "differently from the loaded state")
 
 
+def validate_pool_animate(results: list[dict], who: str, control: bool) -> None:
+    """Require the WISH-303 member to be raised as a companion by the cast, or
+    to stay at roster status $83 with an unchanged record when nothing was cast."""
+    def member(state: dict, where: str) -> dict:
+        found = [p for p in state.get("party", [])
+                 if p.get("name", "").upper() == who.upper()]
+        if len(found) != 1:
+            raise StepFailed(f"{where}: expected one {who}")
+        return found[0]
+
+    saved = results[-1]
+    if control:
+        loaded = results[0].get("after", {})
+        for where, state in (("loaded", loaded), ("saved", saved)):
+            if member(state, where).get("status") != 0x83:
+                raise StepFailed(f"animate control {where}: {who} is not at $83")
+        slot = member(saved, "saved")["slot"]
+        digests = (loaded.get("record_sha256", []), saved.get("record_sha256", []))
+        if (len(digests[0]) != PARTY_SLOTS or len(digests[1]) != PARTY_SLOTS
+                or digests[0][slot] != digests[1][slot]):
+            raise StepFailed(f"animate control saved {who}'s record "
+                             "differently from the loaded state")
+        return
+    act = next((r for r in results if r["verb"] == "cast"), None)
+    if act is None:
+        raise StepFailed("animate did not record the cast")
+    for where, state in (("live after cast", {"party": act.get("party_after", [])}),
+                         ("game-written save", saved)):
+        got = member(state, where).get("record_bytes", {}).get("0xB8")
+        if got != 0xB2:
+            raise StepFailed(f"{where}: {who}'s record byte 0xB8 is "
+                             f"{got if got is None else hex(got)}, not 0xB2")
+
+
 def validate_walks(results: list[dict]) -> None:
     """Require the game-written save to agree with the walks asked.
 
@@ -10370,9 +10419,13 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             if any(r.get("spell") == "ANIMATE DEAD" for r in summary["results"]):
                 validate_pool_party_spells(summary["results"])
             validate_pool_dispel(summary["results"])
-        if (args.title == "pool" and getattr(args, "preserve_specimen", False)
-                and pool_specimen_mode(steps) == "control"):
-            validate_pool_control(summary["results"])
+        if (args.title == "pool" and getattr(args, "preserve_specimen", False)):
+            spec = pool_specimen_mode(steps, args.issue)
+            if spec == "control":
+                validate_pool_control(summary["results"])
+            elif spec in ("animate", "animate-control"):
+                validate_pool_animate(summary["results"], steps[1].arg.strip(),
+                                      spec == "animate-control")
         if args.title == "curse" and any(s.verb in ("cast", "cure") for s in steps):
             kept = next((r["kept"] for r in reversed(summary["results"])
                          if r["verb"] == "save"), None)
@@ -10438,12 +10491,15 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                                   summary["results"][-1].get("verb") == "save" and
                                   summary["results"][-1].get("kept") == str(kept))
             mode = ("ready" if capture_ready and ready_capture_order(steps)
-                    else pool_specimen_mode(steps) if preserve_specimen else None)
+                    else pool_specimen_mode(steps, args.issue) if preserve_specimen else None)
             valid = ((capture_ready and not preserve_specimen and mode == "ready"
                       and args.issue == "703" and args.title == "pool")
                      or (preserve_specimen and not capture_ready
-                         and mode in ("dispel", "control")
-                         and args.issue == "700" and args.title == "pool"
+                         and args.title == "pool"
+                         and ((mode in ("dispel", "control")
+                               and args.issue == "700")
+                              or (mode in ("animate", "animate-control")
+                                  and args.issue == ANIMATE_SPECIMEN_ISSUE))
                          and completed_save))
             if not valid:
                 summary["completed"] = False
@@ -10452,6 +10508,9 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                     reason = "capture-ready and preserve-specimen cannot be combined"
                 elif capture_ready:
                     reason = "BAKSHI READY did not precede the sole save"
+                elif args.issue == ANIMATE_SPECIMEN_ISSUE and mode in (
+                        "animate", "animate-control") and args.title == "pool":
+                    reason = f"no completed save from this {args.issue} run"
                 elif (mode not in ("dispel", "control") or args.issue != "700"
                       or args.title != "pool"):
                     reason = "no validated #700 Dispel or control sequence preceded the sole save"
@@ -10469,8 +10528,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                                      and not summary["completed"] else "")
                     name = (f"por-703-{git['sha'][:10]}-{args.run}"
                             if mode == "ready" else
-                            f"por-700-{mode}{failed_suffix}-{git['sha'][:10]}-"
-                            f"{args.run}").lower()
+                            f"por-{args.issue}-{mode}{failed_suffix}-"
+                            f"{git['sha'][:10]}-{args.run}").lower()
                     what = (f"Game-written save after BAKSHI READY diagnostic "
                             f"{args.run}; evidence {out}" if mode == "ready" else
                             f"Game-written Pool of Radiance {mode} save from "
@@ -10481,6 +10540,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                     registered = specimens.add(
                         "c64", name, [kept], title=game.title,
                         issue=(READY_SPECIMEN_ISSUE if mode == "ready"
+                               else ANIMATE_SPECIMEN_ISSUE
+                               if mode in ("animate", "animate-control")
                                else POOL_SPECIMEN_ISSUE),
                         made_by="tools/c64/acceptance.py through pooled VICE",
                         what=what,
@@ -10734,11 +10795,14 @@ def main(argv: list[str] | None = None) -> int:
                                or not ready_capture_order(steps)):
         ap.error("--capture-ready requires --issue 703, Pool ready "
                  "BAKSHI>LABEL before the sole save step")
-    if args.preserve_specimen and (args.issue != "700" or args.title != "pool"
-                                   or pool_specimen_mode(steps) is None):
+    if args.preserve_specimen and (args.issue not in ("700", ANIMATE_SPECIMEN_ISSUE)
+                                   or args.title != "pool"
+                                   or pool_specimen_mode(steps, args.issue) is None):
         ap.error("--preserve-specimen requires --issue 700, Pool, and exactly "
                  "load/view BRUTUS/save or load/view BRUTUS/"
-                 "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save")
+                 "cast CASTER:DISPEL MAGIC>BRUTUS/view BRUTUS/save; or "
+                 "--issue WISH-303, Pool, and load/view X/save or "
+                 "load/view X/cast CASTER:ANIMATE DEAD/view X/save")
     if args.attack_by and args.title != "curse":
         ap.error("--attack-by requires --title curse")
     if args.fight_watch and (args.title != "pool" or not any(
