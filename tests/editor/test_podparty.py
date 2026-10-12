@@ -366,26 +366,43 @@ def test_saint_eric_keeps_his_lay_on_hands_node(monkeypatch):
         _round_trip("saint eric", eric.record)
 
 
+#: ABAGAIL's slot total by her current cleric level.  At 0 (as shipped) she
+#: keeps the former cleric 11's slots, 25, beside magic-user 12's 21; the
+#: specimen whose ABAGAIL was edited to cleric 1 before a DOS game save holds
+#: the 3 cleric slots that game wrote for cleric 1, beside the same 21.
+ABAGAIL_CAPACITY = {0: 46, 1: 24}
+
+
 def test_abagail_s_capacity_is_her_own_slot_bytes(monkeypatch):
-    """Former cleric 11, magic-user 12: the slots she kept from the cleric
-    count, 46 in all, where her current levels alone give 21."""
+    """Former cleric 11, magic-user 12: the capacity is her record's own slot
+    bytes, which the game rebuilds from her current cleric level."""
     found = list(_member(_opened(monkeypatch), "ABAGAIL"))
     if not found:
         pytest.skip("no save holding ABAGAIL")
-    for _source, abagail in found:
-        assert abagail.record.memorised_capacity() == 46
-        assert abagail.record.former_class() == ("cleric", 11)
-        assert abagail.class_name.endswith("(was cleric 11)")
+    for source, abagail in found:
+        cleric = abagail.record.class_levels()["cleric"]
+        assert cleric in ABAGAIL_CAPACITY, (source.path, cleric)
+        assert abagail.record.memorised_capacity() == \
+            ABAGAIL_CAPACITY[cleric], (source.path, cleric)
+        assert abagail.record.former_class() == ("cleric", 11), source.path
+        assert abagail.class_name.endswith("(was cleric 11)"), source.path
+
+
+#: Specimens whose party crossed an Amiga save before this DOS one: the Amiga
+#: spellbook is one bit a spell, so PAINE's 8 for spell 118 comes back as 1.
+#: Every other specimen holds the shipped 8.
+PAINE_SPELL_118 = {"WISH-SPEC-wish2-d2-former-class-dos-save-d": 1}
 
 
 def test_paine_s_spellbook_byte_of_eight_is_kept(monkeypatch):
     found = list(_member(_opened(monkeypatch), "PAINE"))
     if not found:
         pytest.skip("no save holding PAINE")
-    for _source, paine in found:
+    for source, paine in found:
         record = paine.record
         original = record.to_bytes()
-        assert record.get_raw("spells_known")[117] == 8
+        expected = PAINE_SPELL_118.get(pathlib.Path(source.path).name, 8)
+        assert record.get_raw("spells_known")[117] == expected, source.path
         record.set_known_ids(record.known_ids())
         assert record.to_bytes() == original
 
