@@ -690,6 +690,18 @@ POOL_CONTINUE_BAR = next(digest for width, digest, label in dosbox.PoolOfRadianc
 #: How many continue screens `press_continue_screens` answers for Curse's
 #: BEGIN and rest before it gives up.
 CONTINUE_ROUNDS = 3
+#: How many Curse's BEGIN answers: an area script run at the start can ask
+#: more than `CONTINUE_ROUNDS` -- the Pit of Moander's arrival (`ECL11`
+#: `$80C6`-`$8214`) asks five.
+CURSE_BEGIN_CONTINUE_ROUNDS = 8
+#: What Curse's bar reads while it loads an area's files: `GAME.OVR`'s
+#: `Loading...Please Wait`, which BEGIN into the Pit of Moander draws as
+#: `LOADING...PLEASE` and then `WAIT` alone; and how long `begin` waits it out.
+CURSE_LOADING_WORD = "LOADING"
+CURSE_LOADING_ALONE = frozenset({"PLEASE", "WAIT"})
+CURSE_LOAD_SECONDS = 120.0
+#: How long the loaded bar must stay still on the second settle.
+CURSE_LOAD_HOLD = 1.5
 #: The `PRESS <ENTER>/<RETURN> TO CONTINUE` story box a `walk` step can land
 #: on, by title: Curse shows one at 2,14 in the town (`GHARRI WAS SEEN JUST
 #: OUTSIDE OF TOWN`), over `CURSE_CONTINUE_BAR`.  The box offers nothing but
@@ -3196,6 +3208,25 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                                  f"{step.text!r}")
 
 
+#: A word of a script's menu bar as the title's font reads it.  `?` is what
+#: `read_cell` returns for a cell no glyph matches, so it is not one.
+_SCRIPT_BAR_WORD = re.compile(r"[A-Z0-9'<>/.,!-]+")
+
+
+def script_bar_rejection(screen: dosbox.Screen, text: str) -> str | None:
+    """Why the bar a walk's step left is not a script's menu, or None: a
+    combat command bar or `CONTINUE BATTLE`, a bar with no words, or one with
+    a cell the font does not read."""
+    words = bar_word_list(text)
+    if command_words(bar_words(screen)) or continue_battle_words(bar_words(screen)):
+        return ("the step started combat: the bar is a combat bar, not a "
+                "script's menu")
+    if not words or not all(_SCRIPT_BAR_WORD.fullmatch(w) for w in words):
+        return (f"the map bar did not return after the step and the bar reads "
+                f"{text.strip()!r}, not a script's menu (combat or an unknown screen)")
+    return None
+
+
 def answer_rejection(title: str, where: str, previous: str | None,
                      step: Step) -> str | None:
     """Why `answer` cannot come here, or None: it is driven in
@@ -4858,6 +4889,34 @@ class Driver:
         self.where = "map"
         return {"map_bar": self.world_sig, "map_kind": kind}
 
+    def wait_loaded(self, screen, label: str):
+        """Curse: wait while the bar is blank or reads `LOADING` or `WAIT`
+        alone, as it does while an area script run at the start loads its map
+        (`CURSE_LOAD_SECONDS` at most), and return the screen once a loaded
+        bar has held, with the same words, on two settled frames."""
+        font = self.display_font()
+
+        def loaded(sc) -> bool:
+            words = bar_word_list(text_row(sc, BAR_ROW, font))
+            return bool(words) and not set(words) <= CURSE_LOADING_ALONE and not any(
+                CURSE_LOADING_WORD in w for w in words)
+
+        end = time.time() + self.bounded(CURSE_LOAD_SECONDS, label)
+        while time.time() < end:
+            if not self.s.wait_for(loaded, max(0.0, end - time.time())):
+                break
+            # One passing frame is not the loaded screen: a bar caught
+            # mid-redraw can read as neither, so it must hold on two
+            # settled frames with the same words.
+            first = self.s.settle(quiet=1.0, timeout=self.bounded(60.0, label))
+            again = self.s.settle(quiet=CURSE_LOAD_HOLD,
+                                  timeout=self.bounded(60.0, label))
+            if (loaded(first) and loaded(again)
+                    and text_row(first, BAR_ROW, font) == text_row(again, BAR_ROW, font)):
+                return again
+        raise self.fail(f"{label}-loading", f"the bar was still blank, "
+                        f"{CURSE_LOADING_WORD} or WAIT after {CURSE_LOAD_SECONDS:.0f} s")
+
     def begin(self) -> dict:
         if self.where != "party":
             if self.title.key == "pool" and self.where == "map":
@@ -4881,7 +4940,10 @@ class Driver:
                 raise self.fail("begin", "BEGIN ADVENTURING did not leave the party menu")
         screen = self.s.settle(quiet=1.0, timeout=60.0)
         if self.title.key == "curse":
-            screen = self.press_continue_screens(screen, CURSE_CONTINUE_BAR, "begin")
+            screen = self.wait_loaded(screen, "begin")
+            screen = self.press_continue_screens(screen, CURSE_CONTINUE_BAR, "begin",
+                                                 CURSE_BEGIN_CONTINUE_ROUNDS)
+            screen = self.wait_loaded(screen, "begin")
         elif self.title.key == "pool":
             screen = self.press_continue_screens(screen, POOL_CONTINUE_BAR, "begin",
                                                  POOL_LOAD_CONTINUE_ROUNDS)
@@ -5455,22 +5517,34 @@ class Driver:
         a continue box, waited for while the script prints (`ANSWER_WAIT` a
         box, `WALK_CONTINUE_ROUNDS` boxes at most, each given `Return`), read
         as text and shot, and the party left on it (`where` = `script`) for
-        `answer`."""
+        `answer`.  A bar still blank after `ANSWER_WAIT`, a continue box still
+        up after the last round, a combat bar, or a bar that does not read as
+        words (`script_bar_rejection`) stops the run as the walk did before."""
         font = self.display_font()
         continues = WALK_CONTINUE_BARS[self.title.key]
         for _ in range(WALK_CONTINUE_ROUNDS):
-            self.s.wait_for(lambda sc: text_row(sc, BAR_ROW, font).strip(),
-                            self.bounded(ANSWER_WAIT, "walk-script"))
+            if not self.s.wait_for(lambda sc: text_row(sc, BAR_ROW, font).strip(),
+                                   self.bounded(ANSWER_WAIT, "walk-script")):
+                raise self.fail("walk-step", f"the bar stayed blank {ANSWER_WAIT:.0f} s "
+                                "after the step (combat or an unknown screen)")
             screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, "walk-script"))
             if screen.glyphs(dosbox.BAR) != continues:
                 break
             text = screen.digest(TEXT_WINDOW)
             self.shot("continue-walk-script")
             self.s.key(POD_CONTINUE)
-            self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != text,
-                            self.bounded(ANSWER_WAIT, "walk-script"))
+            if not self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != text,
+                                   self.bounded(ANSWER_WAIT, "walk-script")):
+                raise self.fail("walk-step", "Return changed nothing on the "
+                                "continue box the step reached")
             self.events.append({"kind": "press_continue", "step": "walk-script",
                                 "bar": continues, "answered": POD_CONTINUE})
+        else:
+            raise self.fail("walk-step", f"a continue box is still showing after "
+                            f"{WALK_CONTINUE_ROUNDS} were answered")
+        why = script_bar_rejection(screen, text_row(screen, BAR_ROW, font))
+        if why:
+            raise self.fail("walk-step", why)
         shot = self.shot("walk-script")
         bar = self.bar_text(screen)
         self.where = "script"

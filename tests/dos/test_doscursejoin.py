@@ -40,12 +40,17 @@ SCRIPT = [("COMBAT ADVANCE WAIT FLEE PARLAY", "p"),
           ("YES NO", "y"),
           ("PRESS RETURN TO CONTINUE", "Return")]
 STEP = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
+#: A bar the fake draws as cells no glyph of the font matches.
+NOISE = "#noise"
+BOX = ("PRESS RETURN TO CONTINUE", "Return")
 PARTY = ["ONE", "TWO", "THREE", "FOUR", "FIVE"]
 JOINED = ["ALIAS", "DRAGONBAIT"]
 
 
 def _draw(px: bytearray, row: int, col: int, text: str, ink: bytes) -> None:
     for i, ch in enumerate(text):
+        if ch == " ":
+            continue
         glyph = _FONT_BLOCK[(ord(ch.upper()) % 0x40) * 8:][:8]
         for dy, bits in enumerate(glyph):
             for dx in range(8):
@@ -78,6 +83,12 @@ class FakePit:
             x, y = da.POD_ROSTER["camp"]
             for line, name in enumerate(self.party):
                 _draw(px, y // 8 + line, x // 8, name, _WHITE)
+        elif self.script[self.at][0] == NOISE:
+            # Cells lit everywhere but one pixel: no glyph of the font.
+            for at in range(da.BAR_ROW * 8 * W, (da.BAR_ROW * 8 + 8) * W):
+                if at % W < 24 and at % 7:
+                    px[at * 3:at * 3 + 3] = _WHITE
+            _draw(px, 17, 1, f"SCREEN {chr(0x41 + self.at)}", _WHITE)
         else:
             _draw(px, da.BAR_ROW, 0, self.script[self.at][0], _WHITE)
             _draw(px, 17, 1, f"SCREEN {chr(0x41 + self.at)}", _WHITE)
@@ -85,6 +96,13 @@ class FakePit:
 
     def capture(self):
         return self.frame()
+
+    def frame_at(self, at):
+        was, self.at = self.at, at
+        try:
+            return self.frame()
+        finally:
+            self.at = was
 
     def grab(self):
         return self.frame()
@@ -264,8 +282,7 @@ def test_a_walk_before_an_answer_ends_on_the_scripts_bar(tmp_path, monkeypatch, 
 
 def test_a_walk_onto_a_script_answers_a_continue_box_before_the_first_menu(
         tmp_path, monkeypatch, font):
-    box = ("PRESS RETURN TO CONTINUE", "Return")
-    game = FakePit(tmp_path, [box, box] + SCRIPT)
+    game = FakePit(tmp_path, [BOX, BOX] + SCRIPT)
     d = _driver(game)
     game.at = 0
     monkeypatch.setitem(da.WALK_CONTINUE_BARS, "curse",
@@ -273,6 +290,111 @@ def test_a_walk_onto_a_script_answers_a_continue_box_before_the_first_menu(
     got = d.walked_onto_script(game.frame(), "MI", "status", "1,3")
     assert game.keys == ["Return", "Return"] and game.at == 2
     assert got["script_bar"] == SCRIPT[0][0].split() and d.where == "script"
+
+
+def _walk_onto(tmp_path, monkeypatch, script):
+    game = FakePit(tmp_path, script)
+    d = _driver(game)
+    game.at = 0
+    monkeypatch.setitem(da.WALK_CONTINUE_BARS, "curse",
+                        FakePit(tmp_path / "box", [BOX]).frame_at(0).glyphs(dosbox.BAR))
+    return game, d
+
+
+@pytest.mark.parametrize("bar, why", [
+    ("", "the bar stayed blank"),
+    ("MOVE VIEW AIM USE CAST TURN QUICK DONE", "the step started combat"),
+    (NOISE, "not a script's menu"),
+])
+def test_a_walk_onto_a_screen_that_is_no_scripts_menu_still_stops(
+        tmp_path, monkeypatch, font, bar, why):
+    game, d = _walk_onto(tmp_path, monkeypatch, [(bar, "Return")])
+    with pytest.raises(da.StepFailed, match=why):
+        d.walked_onto_script(game.frame(), "MI", "status", "1,3")
+    assert game.keys == [] and d.where == "map"
+
+
+def test_a_walk_whose_continue_boxes_outlast_the_rounds_stops(
+        tmp_path, monkeypatch, font):
+    game, d = _walk_onto(tmp_path, monkeypatch,
+                         [BOX] * (da.WALK_CONTINUE_ROUNDS + 1) + SCRIPT)
+    with pytest.raises(da.StepFailed, match="continue box is still showing"):
+        d.walked_onto_script(game.frame(), "MI", "status", "1,3")
+    assert game.keys == ["Return"] * da.WALK_CONTINUE_ROUNDS and d.where == "map"
+
+
+class FakeBegin(FakePit):
+    """The party menu, `PARTY_BEGIN`, then `boxes` continue boxes and the map."""
+
+    def __init__(self, tmp_path, boxes):
+        super().__init__(tmp_path, [("PARTY MENU", da.PARTY_BEGIN)] + [BOX] * boxes)
+        self.at = 0
+
+
+class FakeLoading(FakeBegin):
+    """`FakeBegin` with the bars `loading` names after `PARTY_BEGIN`, each
+    drawn for its number of frames before the boxes: by default
+    `LOADING...PLEASE`, `WAIT` and a blank bar, three frames each."""
+
+    def __init__(self, tmp_path, boxes, loading=(("LOADING...PLEASE", 3),
+                                                  ("     WAIT", 3), ("", 3))):
+        super().__init__(tmp_path, boxes)
+        self.script[1:1] = [(bar, None) for bar, _ in loading]
+        self.holds = [n for _, n in loading]
+        self.frames = 0
+
+    def frame(self):
+        if self.at is not None and self.script[self.at][1] is None:
+            self.frames += 1
+            if self.frames > self.holds[self.at - 1]:
+                self.frames = 0
+                self.at += 1
+        return super().frame()
+
+    def wait_for(self, pred, timeout=30.0):
+        return any(pred(self.frame()) for _ in range(20))
+
+
+def test_curse_begin_waits_out_the_loading_bar_before_the_boxes(
+        tmp_path, monkeypatch, font):
+    game = FakeLoading(tmp_path, 5)
+    monkeypatch.setattr(da, "CURSE_CONTINUE_BAR", game.frame_at(4).glyphs(dosbox.BAR))
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.where = "party"
+    d.begin()
+    assert game.keys == [da.PARTY_BEGIN] + ["Return"] * 5
+    assert game.at is None and d.where == "map"
+
+
+def test_curse_begin_does_not_take_one_passing_frame_for_the_loaded_screen(
+        tmp_path, monkeypatch, font):
+    # Boot 3 (`02f07922bb-pit-join-init3`): `LOADING...PLEASE`, then `WAIT`
+    # alone on a still frame; a frame caught mid-redraw (`...PLEASE` here)
+    # reads as neither and must not end the wait.
+    game = FakeLoading(tmp_path, 5, (("LOADING...PLEASE", 3), ("...PLEASE", 1),
+                                     ("     WAIT", 6), ("", 3)))
+    monkeypatch.setattr(da, "CURSE_CONTINUE_BAR", game.frame_at(5).glyphs(dosbox.BAR))
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.where = "party"
+    d.begin()
+    assert game.keys == [da.PARTY_BEGIN] + ["Return"] * 5
+    assert game.at is None and d.where == "map"
+
+
+def test_curse_begin_answers_the_pits_five_arrival_boxes(tmp_path, monkeypatch, font):
+    game = FakeBegin(tmp_path, 5)
+    monkeypatch.setattr(da, "CURSE_CONTINUE_BAR", game.frame_at(1).glyphs(dosbox.BAR))
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.where = "party"
+    d.begin()
+    assert game.keys == [da.PARTY_BEGIN] + ["Return"] * 5
+    assert game.at is None and d.where == "map"
 
 
 def test_a_walk_with_no_answer_after_it_still_stops_off_the_map(

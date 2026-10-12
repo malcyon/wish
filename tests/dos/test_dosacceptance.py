@@ -3929,11 +3929,11 @@ def test_curse_begin_stops_when_the_continue_screen_never_clears(tmp_path, monke
     real = game.shot
     game.shot = lambda name, allow_blank=False: (shots.append(name), real(name))[1]
     with pytest.raises(da.StepFailed,
-                       match=r"continue screen is still showing after 3 were "
+                       match=r"continue screen is still showing after 8 were "
                              r"answered; see \d+-lost-begin-continue\.png"):
         d.begin()
-    assert da.CONTINUE_ROUNDS == 3
-    assert game.keys.count("Return") == 3
+    assert da.CURSE_BEGIN_CONTINUE_ROUNDS == 8
+    assert game.keys.count("Return") == 8
     assert shots[-1].endswith("lost-begin-continue")
 
 
