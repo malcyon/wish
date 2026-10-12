@@ -556,7 +556,8 @@ def walk(screens: Screens, live: Live, switch: Any, steps: Sequence[WalkStep],
         time.sleep(max(0.0, MOVE_SETTLE - (time.monotonic() - pressed)))
 
 
-def _load(screens: Screens, manifest: dict) -> None:
+def load_slot(screens: Screens, manifest: dict) -> None:
+    """From the start of the emulator to the world screen of the manifest's loaded slot, each key on a guarded screen."""
     waits = route_pool.POOL.min_waits
     screens.see("title", TITLE_LIMIT, answer=("wheel", "RET"))
     for state, key, nxt in (("title", "RET", "party_menu"), ("party_menu", "L", "save_path"),
@@ -611,7 +612,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
         # The budget runs from the start of the emulator, not from the wait for a lane.
         deadline = time.monotonic() + args.budget
         screens = Screens(guest, args.holder, args.out / "screens", guards, deadline)
-        _load(screens, manifest)
+        load_slot(screens, manifest)
         live = live_factory(args.holder)
         start = live.place()
         receipt["loaded"] = {"place": start, "names": [n for n, _a, _r in live.members()]}
