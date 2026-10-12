@@ -207,6 +207,50 @@ def test_a_packed_library_unpacks_to_its_header_s_size():
         later.library(short)
 
 
+def test_a_stream_stops_as_soon_as_it_passes_its_limit():
+    """A corrupt stream that copies without end: with a limit it stops at
+    the limit, before reading on to where it is cut short."""
+    endless = b"\xD4ABCD" + b"\x03\x07" * 5000
+    with pytest.raises(later.LaterArtError, match="more than 20 bytes"):
+        later.unpack_method_5(endless, limit=20)
+    with pytest.raises(later.LaterArtError, match="cut short"):
+        later.unpack_method_5(endless)
+    stream, want = _stream()
+    assert later.unpack_method_5(stream, limit=len(want)) == want
+    with pytest.raises(later.LaterArtError, match="more than"):
+        later.unpack_method_5(stream, limit=len(want) - 1)
+
+
+def test_a_packed_library_whose_stream_outgrows_its_header_is_rejected():
+    blocks = [bytes(range(40))]
+    endless = b"\0\x01" + b"\xD4ABCD" + b"\x03\x07" * 5000 + b"\xE0"
+    data, _ = _glib(blocks, indexed=False, method=5, body=endless)
+    with pytest.raises(later.LaterArtError, match="more than"):
+        later.library(data, "ALWAYS.TLB")
+
+
+def test_a_file_that_is_not_a_glib_library_is_named_as_such():
+    """`.TLB` is not the `.dax` `goldbox/amiga_dax.py` reads, and a caller
+    handing one to the other gets a sentence rather than a struct error."""
+    with pytest.raises(later.LaterArtError) as raised:
+        later.library(b"DOS\0" + bytes(40), "ecl.dax")
+    assert "ecl.dax" in str(raised.value)
+    assert "not a GLIB" in str(raised.value)
+
+
+def test_an_indexed_library_whose_block_0_is_empty_is_named_too():
+    """Pools of Darkness' disk 3 carries its own `CHEAD.TLB` -- the portrait
+    art, in a container whose block 0 is empty -- so an unfiltered sweep
+    meets one, and it has to say which file rather than raise a struct
+    error."""
+    data, _ = _glib([b""], indexed=False)
+    data = data[:11] + b"\x01" + data[12:]
+    with pytest.raises(later.LaterArtError) as raised:
+        later.library(data, "Disk3_CHEAD.TLB")
+    assert "Disk3_CHEAD.TLB" in str(raised.value)
+    assert "no index block" in str(raised.value)
+
+
 # ---------------------------------------------------------------------------
 # Recolour and composite
 # ---------------------------------------------------------------------------
@@ -417,8 +461,30 @@ def test_disk_1_is_the_one_with_the_executable_beside_its_drawer():
                      later.BODY_FILE: b"body"}
     with pytest.raises(later.LaterArtError):
         later.disk_files("secret-of-the-silver-blades", [darkness, second])
-    with pytest.raises(later.LaterArtError):
+    with pytest.raises(later.LaterArtMissing):
         later.disk_files("curse-of-the-azure-bonds", [first, second])
+
+
+def test_the_tool_hides_only_a_missing_file(monkeypatch):
+    """A file that is there and unreadable is an error with its own text,
+    not "the disks are not all on this machine", and not a skip."""
+    from tools.icons import amigalatericons as tool
+
+    def missing(title, disks):
+        raise later.LaterArtMissing("no CHEAD.TLB on these disks")
+
+    def broken(title, disks):
+        raise later.LaterArtError("ALWAYS.TLB unpacks to more than 9 bytes")
+
+    monkeypatch.setattr(later, "disk_files", missing)
+    assert tool.title_art("curse-of-the-azure-bonds", []) is None
+    monkeypatch.setattr(later, "disk_files", broken)
+    with pytest.raises(later.LaterArtError, match="more than 9 bytes"):
+        tool.title_art("curse-of-the-azure-bonds", [])
+    printed = []
+    monkeypatch.setattr(tool, "disks", lambda: [])
+    assert tool.report_palette(printed.append) == len(later.TITLES)
+    assert all("unpacks to more than 9 bytes" in line for line in printed)
 
 
 # ---------------------------------------------------------------------------
@@ -486,10 +552,11 @@ def test_every_specimen_is_the_dos_figure_through_the_entry_table(title):
         pytest.skip("no DOS game folder; set $FR_ARCHIVES")
     heads = dos_icons.read_art((folder / "CHEAD.DAX").read_bytes())
     bodies = dos_icons.read_art((folder / "CBODY.DAX").read_bytes())
+    records = [c for c in _records() if c.deltas.dos.key == title]
+    if not records:
+        pytest.skip(f"no Amiga {title} characters on these disks")
     plume, checked = {}, 0
-    for char in _records():
-        if char.deltas.dos.key != title:
-            continue
+    for char in records:
         fields = (char.get("icon_head"), char.get("icon_body"),
                   char.get("size"), bytes(char.get("icon_colours")))
         amiga = art.poses(*fields)

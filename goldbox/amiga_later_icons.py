@@ -126,6 +126,10 @@ class LaterArtError(ValueError):
     """A file or executable this reader cannot draw a figure from."""
 
 
+class LaterArtMissing(LaterArtError):
+    """A file the figure needs is not on the disks given."""
+
+
 @dataclass(frozen=True)
 class Tile:
     """One decoded tile: `rows[y][x]` is a palette entry, `opaque[y][x]`
@@ -140,23 +144,26 @@ class Tile:
 # ---------------------------------------------------------------------------
 # The GLIB container
 # ---------------------------------------------------------------------------
-def unpack_method_5(data: bytes, start: int = 0) -> bytes:
+def unpack_method_5(data: bytes, start: int = 0,
+                    limit: int | None = None) -> bytes:
     """Every method-5 chunk from `data[start]` to the end, unpacked.
 
     The library loader (`/Secret` `0x417D6`) unpacks a packed library a
     chunk at a time into one buffer, so a copy may reach back into an
-    earlier chunk's output.
+    earlier chunk's output.  With `limit`, the unpacking stops with
+    :class:`LaterArtError` before the output would pass that many bytes.
     """
     out = bytearray()
     pos = start
     while pos < len(data):
-        pos = unpack_chunk(data, pos, out)
+        pos = unpack_chunk(data, pos, out, limit)
     return bytes(out)
 
 
-def unpack_chunk(data: bytes, start: int, out: bytearray) -> int:
+def unpack_chunk(data: bytes, start: int, out: bytearray,
+                 limit: int | None = None) -> int:
     """Unpack one method-5 chunk from `data[start]` onto `out`; return where
-    it ends.
+    it ends.  `limit` is :func:`unpack_method_5`'s.
 
     The decoder at `/Secret` `0x45524`, an LZ77 variant.  A control byte
     `0xxxxxxx` is followed by one byte `b`: `(b >> 3) & 3` literals, then a
@@ -167,6 +174,11 @@ def unpack_chunk(data: bytes, start: int, out: bytearray) -> int:
     `110xxxxx` copies literals: `n` (the low nibble) when bit 4 is set,
     else `(n + 1) * 4`.  `111xxxxx` ends the stream.
     """
+    def grow(by: int) -> None:
+        if limit is not None and len(out) + by > limit:
+            raise LaterArtError(f"a method-5 stream from byte {start} "
+                                f"unpacks to more than {limit} bytes")
+
     pos = start
     try:
         while True:
@@ -176,6 +188,7 @@ def unpack_chunk(data: bytes, start: int, out: bytearray) -> int:
                 second = data[pos]
                 pos += 1
                 literals = (second >> 3) & 3
+                grow(literals)
                 out += data[pos:pos + literals]
                 pos += literals
                 offset = (second << 2) & 0x380 | control
@@ -184,6 +197,7 @@ def unpack_chunk(data: bytes, start: int, out: bytearray) -> int:
                 second, third = data[pos], data[pos + 1]
                 pos += 2
                 literals = third & 3
+                grow(literals)
                 out += data[pos:pos + literals]
                 pos += literals
                 offset = ((second & 0xE0) << 1 | control & 0x3F
@@ -195,6 +209,7 @@ def unpack_chunk(data: bytes, start: int, out: bytearray) -> int:
                     count = (count + 1) * 4
                 if pos + count > len(data):
                     raise IndexError("a literal run passes the end")
+                grow(count)
                 out += data[pos:pos + count]
                 pos += count
                 continue
@@ -206,6 +221,7 @@ def unpack_chunk(data: bytes, start: int, out: bytearray) -> int:
             if source < 0:
                 raise LaterArtError(f"a copy at input byte {pos} reaches "
                                     f"{-source} bytes before the output")
+            grow(length)
             for i in range(length):
                 out.append(out[source + i])
     except IndexError as exc:
@@ -227,7 +243,7 @@ def library(data: bytes, name: str = "library") -> dict[int, bytes]:
     size, count = struct.unpack_from(">IH", data, 4)
     method, indexed = data[10], data[11]
     if method == 5:
-        data = data[:16] + unpack_method_5(data, 18)
+        data = data[:16] + unpack_method_5(data, 18, size - 16)
         if len(data) != size:
             raise LaterArtError(f"{name} unpacks to {len(data)} bytes, not "
                                 f"the {size} its header gives")
@@ -385,7 +401,7 @@ def recolour_table(colours: bytes, entry: bytes,
     It starts as the identity over palette entries; then for each colour
     byte in record order, `entry[part]` becomes `entry[low nibble]` and
     `entry[part + 8]` becomes `entry[high nibble]` (`/Curse` `0x24EDC`-
-    `0x24F82`).  That is DOS's own recolour, carried into palette entries.
+    `0x24F82`).  That is DOS's own recolour, translated into palette entries.
     """
     if len(colours) != len(parts):
         raise LaterArtError(f"icon_colours is {len(parts)} bytes, not "
@@ -504,7 +520,8 @@ def read_art(title: str, files: dict[str, bytes]) -> LaterArt:
     missing = [k for k in (HEAD_FILE, BODY_FILE, FRAME_FILE, PALETTE_FILE,
                            EXECUTABLE) if k not in files]
     if missing:
-        raise LaterArtError(f"no {', '.join(missing)} to draw a figure from")
+        raise LaterArtMissing(f"no {', '.join(missing)} to draw a figure "
+                              f"from")
     entry, parts = recolour_tables(files[EXECUTABLE])
     return LaterArt(title, read_tiles(files[HEAD_FILE], HEAD_FILE),
                     read_tiles(files[BODY_FILE], BODY_FILE),
@@ -519,7 +536,7 @@ def disk_files(title: str, disks) -> dict[str, bytes]:
     `COMSPR.TLB` and `ALWAYS.TLB` from its drawer; disk 2 is one with
     `CHEAD.TLB` and `CBODY.TLB` in the title's disk-2 drawer.  Pools of
     Darkness keeps an `ALWAYS.TLB` in a `DISK1` drawer too, but not beside
-    `/Secret`.  Raises :class:`LaterArtError` when a file is not found.
+    `/Secret`.  Raises :class:`LaterArtMissing` when a file is not found.
     """
     where = _title(title)
     first, second = (d.upper() for d in where.drawers)
@@ -541,7 +558,7 @@ def disk_files(title: str, disks) -> dict[str, bytes]:
     missing = [k for k in (EXECUTABLE, FRAME_FILE, PALETTE_FILE, HEAD_FILE,
                            BODY_FILE) if k not in found]
     if missing:
-        raise LaterArtError(f"no {', '.join(missing)} on these disks")
+        raise LaterArtMissing(f"no {', '.join(missing)} on these disks")
     return found
 
 

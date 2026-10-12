@@ -53,12 +53,29 @@ def disks() -> list[AmigaDisk]:
 
 def title_art(title: str, opened: list[AmigaDisk] | None = None
               ) -> later.LaterArt | None:
-    """The title's figure art off this machine's disks, or None."""
+    """The title's figure art off this machine's disks.
+
+    None when a file it needs is not on any disk here; any other
+    :class:`later.LaterArtError` -- a file that is there and cannot be
+    read -- is raised, not hidden.
+    """
     try:
         return later.read_art(title, later.disk_files(
             title, disks() if opened is None else opened))
-    except later.LaterArtError:
+    except later.LaterArtMissing:
         return None
+
+
+def _art_or_report(out, title: str, opened=None) -> later.LaterArt | None:
+    """:func:`title_art`, with what went wrong printed rather than raised."""
+    try:
+        art = title_art(title, opened)
+    except later.LaterArtError as exc:
+        out(f"{title}: {exc}")
+        return None
+    if art is None:
+        out(f"{title}: its disks are not all on this machine")
+    return art
 
 
 def records() -> list:
@@ -95,9 +112,8 @@ def report_palette(out) -> int:
     problems = 0
     opened = disks()
     for title in later.TITLES:
-        art = title_art(title, opened)
+        art = _art_or_report(out, title, opened)
         if art is None:
-            out(f"{title}: its disks are not all on this machine")
             problems += 1
             continue
         out(f"{title}")
@@ -115,11 +131,10 @@ def report_compose(out, name: str) -> int:
     if char is None:
         out(f"no Amiga Curse or Silver Blades character called {name}")
         return 1
-    title = char.deltas.dos.key
-    art = title_art(title)
+    art = _art_or_report(out, char.deltas.dos.key)
     if art is None:
-        out(f"{title}: its disks are not all on this machine")
         return 1
+    title = char.deltas.dos.key
     head, body, size, colours = _fields(char)
     out(f"{char.name}  {title}  head {head} body {body} size {size} "
         f"colours {colours.hex(' ')}")
@@ -148,7 +163,11 @@ def compare_capture(name: str, path) -> dict[str, tuple] | None:
 
 
 def report_capture(out, name: str, path) -> int:
-    found = compare_capture(name, path)
+    try:
+        found = compare_capture(name, path)
+    except later.LaterArtError as exc:
+        out(f"{name}: {exc}")
+        return 1
     if found is None:
         out(f"no {name}, or not all of that title's disks, on this machine")
         return 1

@@ -31,12 +31,8 @@ Three questions, three modes.
     tools/icons/amigaicons.py --art
     tools/icons/amigaicons.py --sweep
 
-The `.TLB` container is `GLIB`, not the `.dax` `goldbox/amiga_dax.py` reads:
-magic, a `u32` total size, a `u16` block count, a `u16`, a four-byte tag, then
-`count + 1` big-endian `u32` offsets.  Block 0 is an index of `(art id, block
-number)` pairs and the rest are tiles -- a `u16` height, two unused `u16`s, a
-byte of width in eights and a byte, then five bitplanes stored one after
-another, plane 0 being the transparency mask and planes 1-4 a four-bit colour.
+The `.TLB` libraries are read by `goldbox/amiga_later_icons.py`, which
+holds their layout.
 
 Every disk and every executable is opened **read-only**; nothing is written.
 """
@@ -45,17 +41,15 @@ from __future__ import annotations
 
 import argparse
 import pathlib
-import struct
 import sys
 from collections import Counter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap import gamedisks  # noqa: E402
+from goldbox import amiga_later_icons as later  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
-
-GLIB_MAGIC = b"GLIB"
 
 #: Where each title keeps what this tool reads.  `art` is the disk volume and
 #: the drawer the two `.TLB` libraries are in; `exe` is the executable on the
@@ -94,67 +88,18 @@ HEAD_OPTIONS, BODY_OPTIONS = 14, 32
 LARGE, POSE_TWO = 0x40, 0x80
 
 
-class GlibError(ValueError):
-    """This is not the `GLIB` container this reader knows how to read."""
-
-
-def glib_blocks(data: bytes, name: str = "library") -> list[bytes]:
-    """Every block of a `GLIB` container, in order."""
-    if data[:4] != GLIB_MAGIC:
-        raise GlibError(f"{name}: not a GLIB container, it opens {data[:4]!r}")
-    try:
-        count = struct.unpack_from(">H", data, 8)[0]
-        offsets = struct.unpack_from(f">{count + 1}I", data, 16)
-    except struct.error as e:
-        raise GlibError(f"{name}: not a GLIB container: {e}") from e
-    return [data[offsets[i]:offsets[i + 1]] for i in range(count)]
-
-
-def tile_index(block: bytes, name: str = "library") -> list[tuple[int, int]]:
-    """Block 0 of a `.TLB`, as `(art id, block number)` pairs.
-
-    Pools of Darkness' disk 3 carries a `CHEAD.TLB` too and its block 0 is
-    **empty**: that library is the later title's portrait art in a container
-    laid out differently, and a caller that finds one wants to be told so
-    rather than handed a `struct.error` out of a comprehension.
-    """
-    try:
-        count = struct.unpack_from(">H", block, 0)[0]
-        return [struct.unpack_from(">HH", block, 2 + 4 * i)
-                for i in range(count)]
-    except struct.error as e:
-        raise GlibError(f"{name}: block 0 is not a tile index: {e}") from e
-
-
-def tile_pixels(tile: bytes) -> tuple[int, int, list[list[int]]]:
-    """One tile, as `(height, width, rows of palette entries)`.
-
-    The five planes are stored one after another, not interleaved by row, and
-    plane 0 is the transparency mask: a pixel's number here is
-    `2 * colour + transparent`, which is what makes the identity in
-    :func:`predicted` come out as it does.
-    """
-    height, _, _, in_eights, _ = struct.unpack_from(">HHHBB", tile, 0)
-    body, width = tile[8:], in_eights * 8
-    planes = len(body) // (height * in_eights) if height and in_eights else 0
-    rows = []
-    for r in range(height):
-        row = []
-        for x in range(width):
-            value = 0
-            for p in range(planes):
-                byte = body[p * height * in_eights + r * in_eights + x // 8]
-                value |= ((byte >> (7 - (x % 8))) & 1) << p
-            row.append(value)
-        rows.append(row)
-    return height, width, rows
-
-
 def tiles(data: bytes, name: str = "library") -> dict[int, tuple]:
-    """`art id -> (height, width, rows)` for every tile of a `.TLB`."""
-    blocks = glib_blocks(data, name)
-    return {art: tile_pixels(blocks[block])
-            for art, block in tile_index(blocks[0], name)}
+    """`art id -> (height, width, rows)` for every tile of a `.TLB`.
+
+    Read by `goldbox.amiga_later_icons.read_tiles`.  A pixel's number here
+    is `2 * entry + see-through`, the five planes read as one value with the
+    mask as bit 0, which is what makes the identity in :func:`predicted`
+    come out as it does.
+    """
+    return {art: (tile.height, tile.width,
+                  [[2 * value + (not opaque) for value, opaque in zip(row, mask)]
+                   for row, mask in zip(tile.rows, tile.opaque)])
+            for art, tile in later.read_tiles(data, name).items()}
 
 
 def dos_tiles(path: pathlib.Path) -> dict[int, tuple]:

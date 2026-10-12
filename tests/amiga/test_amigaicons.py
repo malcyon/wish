@@ -244,28 +244,6 @@ def test_every_specimen_names_art_that_is_on_the_disks():
     assert int(lines[-1].split()[0]) == 21
 
 
-# ---------------------------------------------------------------------------
-# The reader itself
-# ---------------------------------------------------------------------------
-def test_a_file_that_is_not_a_glib_container_is_named_as_such():
-    """`.TLB` is not the `.dax` `goldbox/amiga_dax.py` reads, and a caller
-    handing one to the other gets a sentence rather than a struct error."""
-    with pytest.raises(amigaicons.GlibError) as raised:
-        amigaicons.glib_blocks(b"DOS\0" + bytes(40), "ecl.dax")
-    assert "ecl.dax" in str(raised.value)
-    assert "not a GLIB container" in str(raised.value)
-
-
-def test_a_glib_whose_first_block_is_not_a_tile_index_is_named_too():
-    """Pools of Darkness' disk 3 carries its own `CHEAD.TLB` -- the portrait
-    art, in a container whose block 0 is empty -- so an unfiltered sweep meets
-    one, and it has to say which file rather than raise a struct error."""
-    with pytest.raises(amigaicons.GlibError) as raised:
-        amigaicons.tile_index(b"", "Disk3_CHEAD.TLB")
-    assert "Disk3_CHEAD.TLB" in str(raised.value)
-    assert "not a tile index" in str(raised.value)
-
-
 def test_the_icon_menu_wraps_the_head_at_13_and_the_body_at_31():
     """Found with `tools/amiga/amigarecordrefs.py`, and the reason 14 and 32 are
     claims about the Amiga rather than borrowed from DOS.
