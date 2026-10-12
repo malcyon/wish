@@ -528,10 +528,24 @@ class Controller:
         if self.wish_closed:
             self.pipe_released = True
             return
-        winwish.ui(self.guest, self.args.holder, "click", ("View", "Character Editor"),
-                   kind="MenuItem")
+        winwish.show_tab(self.guest, self.args.holder, "Character Editor")
         self.pipe_released = True
         self.log("pipe_released")
+
+    def _free_pipe(self) -> str | None:
+        """Leave the pipe to the driver for cleanup: the editor tab, or Wish closed when that tab cannot be shown.
+
+        Returns why Wish was closed, or None when the tab was shown.
+        """
+        try:
+            self._game_section()
+            return None
+        except Exception as exc:  # noqa: BLE001
+            winwish.stop_wish(self.guest, self.args.holder)
+            self.wish_closed = True
+            self.pipe_released = True
+            self.log("pipe_released", closed_wish=str(exc))
+            return f"the editor tab could not be shown ({exc}), so Wish was closed to free the pipe"
 
     def _map_section(self) -> None:
         if not self.pipe_released:
@@ -540,8 +554,7 @@ class Controller:
             raise AcceptanceStop("Wish is closed; start it before changing tabs")
         # Close the temporary debugger connection before Wish reacquires the pipe.
         self.game._pipe = None
-        winwish.ui(self.guest, self.args.holder, "click", ("View", "Automapper"),
-                   kind="MenuItem")
+        winwish.show_tab(self.guest, self.args.holder, "Automapper")
         self.pipe_released = False
         self.log("map_tab")
 
@@ -1387,7 +1400,9 @@ class Controller:
         failures = []
         if self.encounters_on:
             try:
-                self._game_section()
+                closed = self._free_pipe()
+                if closed:
+                    failures.append(f"encounters: {closed}")
                 self._switch(False)
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"encounters: {exc}")
@@ -1451,7 +1466,9 @@ class Controller:
                 persistent = self.encounters.state.load()
                 cleanup["encounters_before"] = persistent
                 if persistent["on"] or persistent["rows"] or self.encounters_on:
-                    self._game_section()
+                    closed = self._free_pipe()
+                    if closed:
+                        failures.append(f"encounters: {closed}")
                     self._switch(False)
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"encounters: {exc}")
@@ -1460,7 +1477,8 @@ class Controller:
                 if self.encounters is not None:
                     state = self.encounters.state.load()
                     if state["on"] or state["rows"]:
-                        raise AcceptanceStop("cannot restore with encounter suppression outstanding")
+                        raise AcceptanceStop("cannot restore with encounter suppression outstanding "
+                                             f"(on: {bool(state['on'])}, rows: {state['rows']})")
                 self._game_section()
                 self.game.restore(DISCOVERY_SNAPSHOT, self.args.holder)
                 from automap import amiga  # noqa: PLC0415

@@ -518,6 +518,9 @@ UI_WAIT = 4
 CLICK_RETRY = 3
 
 
+#: Times one controls walk is started again after an element went away under it.
+WALK_TRIES = 3
+
 #: At most this many names in one `click`: each may wait `UI_WAIT` and `CLICK_RETRY` seconds, and the
 #: task is stopped after two minutes.
 UI_MAX_NAMES = 8
@@ -639,6 +642,12 @@ def _use_functions() -> list[str]:
         "  }",
         "  function Use-Control($e) {",
         "    $o = $null",
+        # A tab is selected and read back; one still unselected counts as not clicked, so it is tried again.
+        "    if ((Get-Kind $e) -eq 'TabItem' -and $e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$o)) {",
+        "      $o.Select()",
+        "      if ($o.Current.IsSelected) { return 'selected' }",
+        "      return $null",
+        "    }",
         # A menu opens by Expand; Invoke on a menu bar item does not show its popup.
         "    if ((Get-Kind $e) -eq 'MenuItem' -and $e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$o)) { $o.Expand(); return 'expanded' }",
         "    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$o)) { return (Start-Async $o) }",
@@ -668,7 +677,10 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     `prefix`, a prefix match is tried once the wait has run out.  The line reports the
     control's full name.  A found control that offers no pattern to use is looked up
     again for `CLICK_RETRY` seconds; if it still offers none, the failure names it as last
-    seen, which it may no longer be, with the patterns it reported and the names clicked before it.  A disabled control is never invoked, because `Invoke` on one
+    seen, which it may no longer be, with the patterns it reported and the names clicked before it.  A
+    `TabItem` is selected and read back, and one that does not read selected is tried again the same
+    way.  A walk of the controls that meets an element going away, as a closing menu's do, is
+    started again, at most `WALK_TRIES` times.  A disabled control is never invoked, because `Invoke` on one
     returns without an error; but a control under a modal dialog can still read enabled,
     so a click that the dialog swallows is not an error.  With `expand`, a `click` only
     uses `ExpandCollapsePattern`, so a split button opens its menu and is not invoked;
@@ -715,7 +727,23 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "  $procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | "
         "Where-Object { $_.Path -like \"$build\\*\" })",
         f"  if ($procs.Count -eq 0 -and {q(action)} -ne 'close') {{ throw 'no wish.exe of this holder is running' }}",
+        # Whether an error is UI Automation saying an element went away, as a menu closing does. A .NET
+        # exception from a method call reaches PowerShell wrapped in MethodInvocationException.
+        "  function Test-Gone($err) {",
+        "    $x = $err.Exception",
+        "    if ($x -is [System.Management.Automation.MethodInvocationException]) { $x = $x.InnerException }",
+        "    return ($x -is [System.Windows.Automation.ElementNotAvailableException])",
+        "  }",
+        # A walk that meets an element going away is walked again from the top, at most WALK_TRIES times.
         "  function Get-Controls {",
+        "    for ($try = 1; ; $try++) {",
+        "      try { $got = @(Read-Controls); return $got } catch {",
+        f"        if (-not (Test-Gone $_) -or $try -ge {WALK_TRIES}) {{ throw }}",
+        "        Start-Sleep -Milliseconds 100",
+        "      }",
+        "    }",
+        "  }",
+        "  function Read-Controls {",
         "    $found = New-Object System.Collections.ArrayList",
         # UI Automation can list one element many times (a Qt menu entry came back 51 times); one RuntimeId is one
         # control. An element whose RuntimeId cannot be read is kept.
@@ -789,12 +817,18 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "      $bare = $null",
         "      $retry = $null",
         "      while ($true) {",
-        *(["        $all = @(Get-Controls | Where-Object { $_.Current.AutomationId -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
-           "        $hit = @($all | Where-Object { $_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase) })"]
+        # An element that goes away while it is read ends this look, not the click; the next look is a fresh walk.
+        "        try {",
+        *(["          $all = @(Get-Controls | Where-Object { $_.Current.AutomationId -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
+           "          $hit = @($all | Where-Object { $_.Current.AutomationId -eq $name -or $_.Current.AutomationId.EndsWith('.' + $name, [StringComparison]::OrdinalIgnoreCase) })"]
           if by_id else
-          ["        $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
-           "        $hit = @($all | Where-Object { $_.Current.Name -eq $name })"]),
-        "        if ($hit.Count -eq 0 -and $expired -and $prefix) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
+          ["          $all = @(Get-Controls | Where-Object { $_.Current.Name -ne '' -and ($kind -eq '' -or (Get-Kind $_) -eq $kind) })",
+           "          $hit = @($all | Where-Object { $_.Current.Name -eq $name })"]),
+        "          if ($hit.Count -eq 0 -and $expired -and $prefix) { $hit = @($all | Where-Object { $_.Current.Name.StartsWith($name) }) }",
+        "        } catch {",
+        "          if (-not (Test-Gone $_)) { throw }",
+        "          $all = @(); $hit = @()",
+        "        }",
         "        if ($hit.Count -gt 1) { throw \"$($hit.Count) controls match ${name}: \" + (($hit | ForEach-Object { Get-Line $_ }) -join ' ; ') }",
         "        if ($hit.Count -eq 1) {",
         "          if (-not $hit[0].Current.IsEnabled) { throw \"$($hit[0].Current.Name) is disabled\" }",
@@ -1095,6 +1129,21 @@ def ui(guest: "Guest", holder: str, action: str, names: tuple[str, ...] = (),
     """List Wish's controls (`controls`), click `names` in turn or the one control with
     `automation_id` (`click`, or open its menu with `expand`), or close Wish's windows (`close`)."""
     return _ui(guest, holder, action, names, kind, prefix, automation_id, expand, False)[0]
+
+
+#: The main window's tabs, by the name UI Automation gives each.
+TABS = ("Automapper", "Character Editor")
+
+
+def show_tab(guest: "Guest", holder: str, name: str) -> list[str]:
+    """Bring one of Wish's main tabs to the front by selecting its tab, and read the selection back.
+
+    The tab is always in the window. A View menu entry is in UI Automation only while its popup
+    is open, and a Qt menu entry can be read with no pattern to click.
+    """
+    if name not in TABS:
+        raise WinwishError(f"not a tab of Wish's main window: {name!r}")
+    return ui(guest, holder, "click", (name,), "TabItem")
 
 
 def ui_shot(guest: "Guest", holder: str, names: tuple[str, ...] = (),

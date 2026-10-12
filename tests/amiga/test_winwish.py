@@ -1379,6 +1379,54 @@ def test_a_control_still_unclickable_is_named_with_its_patterns_and_what_was_cli
     assert "$lines -join" in after
 
 
+def test_a_tab_is_shown_by_selecting_its_tab_and_never_through_the_view_menu():
+    scripts = []
+
+    def put(argv):
+        if argv[1] != "put":
+            return False
+        scripts.append(pathlib.Path(argv[2]).read_bytes().decode("utf-8-sig"))
+        return True
+
+    run = FakeRun([(put, 0, "ok"),
+                   (lambda a: a[1] == "ps", 0, _ui_reply("ok", "Character Editor -> selected"))])
+    assert winwish.show_tab(winwish.Guest(run), "h", "Character Editor") == [
+        "Character Editor -> selected"]
+    assert len(scripts) == 1
+    assert "$names = @('Character Editor')" in scripts[0]
+    assert "$kind = 'TabItem'" in scripts[0]
+    with pytest.raises(winwish.WinwishError, match="not a tab"):
+        winwish.show_tab(winwish.Guest(FakeRun()), "h", "View")
+
+
+def test_a_tab_is_selected_and_read_back_before_anything_would_invoke_it():
+    inner = winwish.ui_inner(r"C:\b", "click", ("Automapper",), "TabItem", r"C:\o.txt")
+    use = inner[inner.index("function Use-Control"):]
+    use = use[:use.index("\n  }")]
+    tab = use.index("(Get-Kind $e) -eq 'TabItem'")
+    assert tab < use.index("InvokePattern")
+    branch = use[tab:use.index("\n    }", tab)]
+    assert "$o.Select()" in branch
+    # A tab that does not read selected is not reported clicked, so the loop looks it up again.
+    assert branch.index("$o.Select()") < branch.index("if ($o.Current.IsSelected) { return 'selected' }")
+    assert "return $null" in branch
+
+
+def test_a_walk_that_meets_an_element_going_away_is_walked_again_and_does_not_end_the_click():
+    inner = winwish.ui_inner(r"C:\b", "click", ("Automapper",), "TabItem", r"C:\o.txt")
+    gone = inner[inner.index("function Test-Gone"):inner.index("function Get-Controls")]
+    assert "MethodInvocationException" in gone and "InnerException" in gone
+    assert "ElementNotAvailableException" in gone
+    walk = inner[inner.index("function Get-Controls"):inner.index("function Read-Controls")]
+    assert "@(Read-Controls)" in walk
+    assert f"$try -ge {winwish.WALK_TRIES}) {{ throw }}" in walk
+    assert "if (-not (Test-Gone $_)" in walk
+    loop = "\n".join(_click_loop(inner))
+    look = loop[loop.index("try {"):loop.index("if ($hit.Count -gt 1)")]
+    assert "Get-Controls" in look and "if (-not (Test-Gone $_)) { throw }" in look
+    assert "$hit = @()" in look[look.index("} catch {"):]
+
+
 def test_the_click_wait_covers_the_search_and_the_retry_of_every_name():
     for count in (1, 2, winwish.UI_MAX_NAMES):
         assert winwish.ui_timeout(count) >= 20 + (winwish.UI_WAIT + winwish.CLICK_RETRY) * count

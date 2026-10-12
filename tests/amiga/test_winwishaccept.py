@@ -1285,6 +1285,51 @@ def test_discovery_failed_encounter_enable_checks_persistent_state_and_off(tmp_p
     assert ("down",) in calls
 
 
+def test_discovery_cleanup_closes_wish_when_the_editor_tab_cannot_be_shown_and_still_turns_encounters_off(
+        tmp_path, monkeypatch):
+    controller, game, _, snapshots, calls = _discovery_controller(tmp_path, monkeypatch)
+    # The controller's own tab switch, with the click that cannot be made.
+    monkeypatch.setattr(controller, "_game_section",
+                        winwishaccept.Controller._game_section.__get__(controller))
+
+    def show_tab(guest, holder, name):
+        calls.append(("tab", name))
+        raise winwishaccept.winwish.WinwishError(f"fail no control named {name}")
+
+    monkeypatch.setattr(winwishaccept.winwish, "show_tab", show_tab)
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish",
+                        lambda guest, holder: calls.append(("stop_wish",)) or "ok closed")
+    controller._switch(True)
+    controller.discovery_snapshot = True
+    controller.summary["failure"] = "WinwishError: fail no control named Character Editor"
+    controller.summary["discovery"] = winwishaccept.row()
+    controller._cleanup_discovery()
+    errors = controller.summary["cleanup"]["errors"]
+    assert calls.index(("stop_wish",)) < calls.index(("switch", False))
+    assert controller.encounters.state.load() == {"on": False, "rows": []}
+    assert controller.summary["cleanup"]["restored"] is True
+    assert "restore:ssb_new_verdigris" in snapshots
+    assert not any("outstanding" in error for error in errors)
+    assert any(error.startswith("encounters: the editor tab could not be shown")
+               and "Wish was closed" in error for error in errors)
+    # Wish is closed once; nothing later tries the tab again.
+    assert calls.count(("tab", "Character Editor")) == 1
+    assert calls.count(("stop_wish",)) == 1
+
+
+def test_restore_names_what_suppression_is_outstanding(tmp_path, monkeypatch):
+    controller, _, _, snapshots, calls = _discovery_controller(tmp_path, monkeypatch)
+    controller._switch(True)
+    monkeypatch.setattr(controller, "_switch", lambda enabled: calls.append(("switch", enabled)))
+    controller.discovery_snapshot = True
+    controller.summary["failure"] = "stopped"
+    controller.summary["discovery"] = winwishaccept.row()
+    controller._cleanup_discovery()
+    assert "restore: cannot restore with encounter suppression outstanding (on: True, rows: [1])" in (
+        controller.summary["cleanup"]["errors"])
+    assert not any(name.startswith("restore:") for name in snapshots)
+
+
 def test_discovery_cleanup_overrun_is_failure_and_still_downs(tmp_path, monkeypatch):
     from tools.amiga import route_silver_blades
 
