@@ -1902,3 +1902,24 @@ def test_a_pools_of_darkness_amiga_lowered_zombie_reads_back_living_on_dos(
     flags = podsheet.TABLE["field_10c_10f"].offset
     assert (record[flags], record[flags + 1]) == (0, 1)
     assert record[podsheet.TABLE["movement"].offset] == 12
+
+
+def test_an_animated_record_with_no_npc_flag_is_not_a_zombie_player():
+    char = neutral.NeutralCharacter("DOS", source="built here",
+                                    game=c64_port.POOL_OF_RADIANCE)
+    char.set("status", "animated", "built here")
+    assert char.get("npc") is None
+    assert not c64_codec.zombie_player(char)
+    assert c64_codec.living_player(char) is char
+
+
+def test_a_pool_c64_zombie_byte_on_a_player_character_converts_living():
+    char = c64_codec.read(_pool_c64(0x00, 0x03),
+                          game=c64_port.POOL_OF_RADIANCE)
+    assert (char.get("status"), char.get("npc")) == ("animated", False)
+    assert c64_codec.zombie_player(char)
+    living = c64_codec.living_player(char)
+    assert (living.get("status"), living.get("active"),
+            living.get("hp_current")) == ("okay", True, 1)
+    dos = dos_codec.write(living)[0]
+    assert (dos[0x10C], dos[0x10D]) == (0, 1)
