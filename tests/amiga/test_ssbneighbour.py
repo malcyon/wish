@@ -1021,3 +1021,67 @@ def test_a_winvm_transport_overrun_is_retryable_only_with_its_timeout_cause():
     except RouteError as error:
         assert neighbour.transport_timeout(error) is True
     assert neighbour.transport_timeout(RouteError("winvm ssh exceeded its 20.0s limit")) is False
+
+
+class _ScriptedGuest:
+    """Show one named screen per grab; record every key pressed."""
+
+    def __init__(self, screens):
+        self.screens = list(screens)
+        self.keys = []
+
+    def grab(self, state, raw, crop, timeout):
+        shown = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
+        crop.write_text(shown)
+        raw.write_text(shown)
+        return True
+
+    def press(self, holder, key, timeout):
+        self.keys.append(key)
+
+
+class _NamedGuards:
+    rules = {name: {} for name in ("title", "party_menu", "load_picker", "loaded_menu",
+                                   "journal", "world")}
+
+    def __contains__(self, name):
+        return name in self.rules
+
+    def __call__(self, state, crop):
+        return pathlib.Path(crop).read_text() == state
+
+
+def _guarded_run(tmp_path, monkeypatch, screens):
+    monkeypatch.setattr(neighbour.time, "sleep", lambda seconds: None)
+    guest = _ScriptedGuest(screens)
+    run = neighbour.GuardedRun(guest, "holder", tmp_path / "screens", _NamedGuards(),
+                               neighbour.time.monotonic() + 60)
+    return run, guest
+
+
+def test_load_key_taken_before_the_picker_draws_waits_for_the_picker(tmp_path, monkeypatch):
+    # The game highlights LOAD SAVED GAME and reads the disk before the picker appears;
+    # the party menu guard still matches those frames.
+    run, guest = _guarded_run(tmp_path, monkeypatch, [
+        "party_menu", "party_menu", "party_menu", "load_picker"])
+    run.press("party_menu", "L")
+    run.press("load_picker", "D")
+    assert guest.keys == ["L", "D"]
+    assert [e.get("screen") for e in run.events if "screen" in e] == [
+        "party_menu", "load_picker"]
+
+
+def test_load_key_the_game_never_took_stops_without_pressing_again(tmp_path, monkeypatch):
+    run, guest = _guarded_run(tmp_path, monkeypatch, ["party_menu"])
+    run.press("party_menu", "L")
+    with pytest.raises(RouteError, match=r"load_picker did not match within 0.05s \(still party_menu\)"):
+        run.see("load_picker", 0.05)
+    assert guest.keys == ["L"]
+
+
+def test_a_different_known_screen_after_a_key_still_stops_at_once(tmp_path, monkeypatch):
+    run, guest = _guarded_run(tmp_path, monkeypatch, ["party_menu", "title"])
+    run.press("party_menu", "L")
+    with pytest.raises(RouteError, match="expected load_picker, saw title"):
+        run.see("load_picker", 60)
+    assert guest.keys == ["L"]

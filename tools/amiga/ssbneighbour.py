@@ -141,6 +141,8 @@ class GuardedRun:
         self.guards, self.deadline = guards, deadline
         self.events: list[dict] = []
         self.count = 0
+        # The screen the last key went out on; it may still show while the game acts.
+        self.pressed_on: str | None = None
         out.mkdir()
 
     def left(self, cap: float) -> float:
@@ -158,17 +160,23 @@ class GuardedRun:
             if self.guest.grab(state, raw, crop, self.left(20)):
                 if self.guards(state, crop):
                     self.events.append({"screen": state, "raw": str(raw), "crop": str(crop)})
+                    self.pressed_on = None
                     return crop
+                # The screen the last key was pressed on is polled past, never answered
+                # again: the game may have taken the key and not yet drawn the next screen.
                 for other in ("title", "party_menu", "load_picker", "loaded_menu",
                               "journal", "world"):
-                    if other != state and other in self.guards and self.guards(other, crop):
+                    if (other not in (state, self.pressed_on) and other in self.guards
+                            and self.guards(other, crop)):
                         raise RouteError(f"expected {state}, saw {other}; shot {raw}")
             time.sleep(min(1, max(0, end - time.monotonic())))
-        raise RouteError(f"{state} did not match within {limit}s; last shot {raw}")
+        still = f" (still {self.pressed_on})" if self.pressed_on else ""
+        raise RouteError(f"{state} did not match within {limit}s{still}; last shot {raw}")
 
     def press(self, state: str, key: str, limit: float = 60) -> None:
         self.see(state, limit)
         self.guest.press(self.holder, key, timeout=self.left(20))
+        self.pressed_on = state
         self.events.append({"from": state, "key": key})
 
 
