@@ -73,6 +73,7 @@ from . import (
     activeeffects,
     amigafigure,
     amigalaterfigure,
+    amigapodfigure,
     changes,
     dosfigure,
     dospodfigure,
@@ -971,8 +972,8 @@ class EditorBinding(QObject):
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
         self.figure_art: (amigafigure.FigureArt | amigalaterfigure.FigureArt
-                          | dosfigure.FigureArt | dospodfigure.FigureArt
-                          | None) = None
+                          | amigapodfigure.FigureArt | dosfigure.FigureArt
+                          | dospodfigure.FigureArt | None) = None
         self._figure_serial = 0
         self._figure_carrier = amigafigure.Loaded(self)
         self._figure_carrier.done.connect(self._figure_loaded)
@@ -2695,9 +2696,10 @@ class EditorBinding(QObject):
 
     def _load_figure_art(self) -> None:
         """Start reading the party's combat-figure art off the player's disks
-        or game folder: Amiga Pool of Radiance, Curse or Silver Blades, or a
-        DOS Pool of Radiance, Curse, Silver Blades or Pools of Darkness. The
-        figure box stays empty until `_figure_loaded` has it, and when the art is not found."""
+        or game folder: Amiga Pool of Radiance, Curse, Silver Blades or Pools
+        of Darkness, or a DOS Pool of Radiance, Curse, Silver Blades or Pools
+        of Darkness. The figure box stays empty until `_figure_loaded` has it,
+        and when the art is not found."""
         self._figure_serial += 1
         self.figure_art = None
         party = self.party
@@ -2714,6 +2716,11 @@ class EditorBinding(QObject):
             amigalaterfigure.start(self._figure_serial,
                                    self._port_folders(party.game),
                                    party.game.key, self._figure_carrier)
+        elif (party.port == "amiga"
+                and party.game is titles.POOLS_OF_DARKNESS):
+            amigapodfigure.start(self._figure_serial,
+                                 self._port_folders(party.game),
+                                 self._figure_carrier)
         elif party.port == "dos" and (party.game.key in dos_icons.ICON_SCREENS
                                       or party.game is titles.POOLS_OF_DARKNESS):
             found = (self._title_folder(f, party.game)
@@ -2743,7 +2750,8 @@ class EditorBinding(QObject):
         if (self.figure_art is None
                 or not isinstance(member.native, (amiga_por.AmigaPorCharacter,
                                                   amiga_later.AmigaCharacter,
-                                                  dos_codec.DosCharacter))):
+                                                  dos_codec.DosCharacter,
+                                                  bytes))):
             return None
         return self.figure_art.figure(member.native)
 

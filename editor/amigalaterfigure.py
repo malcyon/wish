@@ -32,11 +32,14 @@ class FigureArt:
 
     def figure(self, native) -> Figure | None:
         """`native`'s figure, or None when its blocks are not on the disks."""
-        head, body = native.get("icon_head"), native.get("icon_body")
-        size = native.get("size")
+        return self.drawn(native.get("icon_head"), native.get("icon_body"),
+                          native.get("size"), bytes(native.get("icon_colours")))
+
+    def drawn(self, head, body, size, colours: bytes) -> Figure | None:
+        """The figure of a record's head, body, size and six colour bytes, or
+        None when its blocks are not on the disks."""
         try:
-            shown = self.art.drawn(head, body, size,
-                                   bytes(native.get("icon_colours")))
+            shown = self.art.drawn(head, body, size, colours)
         except Exception as exc:
             _log.debug("no figure for head %s body %s size %s: %s",
                        head, body, size, exc)
@@ -62,14 +65,14 @@ def load(folders, title: str) -> FigureArt | None:
     or None."""
     for folder in folders:
         try:
-            disks = _disks(pathlib.Path(folder))
-            return FigureArt(art.read_art(title, art.disk_files(title, disks)))
+            opened = disks(pathlib.Path(folder))
+            return FigureArt(art.read_art(title, art.disk_files(title, opened)))
         except Exception as exc:
             _log.debug("%s holds no figure art: %s", folder, exc)
     return None
 
 
-def _disks(folder: pathlib.Path) -> list[AmigaDisk]:
+def disks(folder: pathlib.Path) -> list[AmigaDisk]:
     """Every readable `.adf` image in `folder`."""
     out = []
     for image in sorted(folder.iterdir()):

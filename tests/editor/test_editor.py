@@ -7138,6 +7138,7 @@ def test_no_other_amiga_party_gets_a_figure_even_when_the_art_is_there(
         app, tmp_path, monkeypatch):
     monkeypatch.setattr("editor.amigafigure.load", lambda folders:
                         _generated_figure_art())
+    monkeypatch.setattr("editor.amigapodfigure.load", lambda folders: None)
     w = _amiga_pod_editor(tmp_path)
     _settle(w)
     assert w.figure_art is None
@@ -7458,6 +7459,7 @@ def test_dos_art_does_not_reach_an_amiga_party(
     monkeypatch.setattr("editor.amigafigure.load", lambda folders: None)
     monkeypatch.setattr("editor.amigalaterfigure.load",
                         lambda folders, title: None)
+    monkeypatch.setattr("editor.amigapodfigure.load", lambda folders: None)
     w = globals()[make](tmp_path)
     w = w[0] if isinstance(w, tuple) else w
     _settle(w)
@@ -7778,17 +7780,340 @@ def test_the_amiga_later_reader_takes_the_first_folder_that_holds_the_art(
     assert amigalaterfigure.load([], "curse-of-the-azure-bonds") is None
 
 
-def test_an_amiga_pools_of_darkness_party_still_shows_an_empty_box(
+# ---------------------------------------------------------------------------
+# An Amiga Pools of Darkness character's combat figure
+# ---------------------------------------------------------------------------
+
+#: Heads 1 and 2, bodies 3 and 4 of the two members `_amiga_pod_synthetic`
+#: writes, each at the record's own offsets.
+_AMIGA_POD_FIGURES = {1: (1, 3), 2: (2, 4)}
+
+
+def _generated_amiga_pod_art():
+    """Art for the two members `_amiga_pod_synthetic` writes: size 2, so heads
+    are blocks 65 and 66 and bodies 67 and 68, the body's second pose 128
+    higher and one head for both poses, on a 32-colour palette. Pixel values
+    6, 14 and 15 are ones the recolour leaves alone, and 21 lies past the
+    sixteenth palette entry."""
+    from editor.amigapodfigure import FigureArt
+    from goldbox import amiga_later_icons as later
+
+    def tile(height, y, x, value):
+        rows = [[0] * 24 for _ in range(height)]
+        opaque = [[False] * 24 for _ in range(height)]
+        rows[y][x], opaque[y][x] = value, True
+        return later.Tile(height, 24, tuple(map(tuple, rows)),
+                          tuple(map(tuple, opaque)))
+
+    heads, bodies = {}, {}
+    for option, x in ((1, 5), (2, 9)):
+        heads[64 + option] = tile(8, 0, x, 21)
+    for option, x in ((3, 3), (4, 7)):
+        bodies[64 + option] = tile(24, 10, x, 14)
+        bodies[192 + option] = tile(24, 10, x + 1, 15)
+    frame = later.Tile(24, 24, ((7,) * 24,) * 24, ((True,) * 24,) * 24)
+    palette = tuple((8 * i, 255 - 8 * i, 5 * i) for i in range(32))
+    return FigureArt(later.LaterArt(
+        "pools-of-darkness", heads, bodies, (frame, frame), palette,
+        bytes(range(32)), bytes(6), bytes(range(32)), 32, 0))
+
+
+def _amiga_pod_synthetic(tmp_path, settle=True):
+    """A disk 3 with a saved game of two characters who differ only in the
+    fields the figure is made from, opened in the editor."""
+    from editor import convert
+    from editor.window import EditorBinding
+    from goldbox import amiga_pod
+    from goldbox import amiga_savegame as saves
+    from goldbox.amiga_adf import AmigaDisk
+    disk = AmigaDisk.blank("POD 3")
+    disk.make_dir(f"/{saves.SAVE_DRAWER}")
+    disk.write_file(f"/{saves.SAVE_DRAWER}/spindisk", b"x")
+    disk.write_file(f"/{saves.SAVE_DRAWER}/write.me", b"x")
+    disk.make_dir("/DISK3")
+    data = bytearray(saves.POD_SAVEGAME_SIZE)
+    data[saves.POD_COUNT_AT:saves.POD_COUNT_AT + 2] = (2).to_bytes(2, "big")
+    for n, (name, (head, body)) in enumerate(zip(
+            (b"ALPHA", b"BETA"), _AMIGA_POD_FIGURES.values())):
+        at = saves.POD_PARTY_AT + n * saves.POD_RECORD_BYTES
+        data[at + saves.POD_NAME_AT:at + saves.POD_NAME_AT + len(name)] = name
+        data[at + amiga_pod.ICON_HEAD] = head
+        data[at + amiga_pod.ICON_BODY] = body
+        data[at + amiga_pod.SIZE] = 2
+    disk.write_file(saves.pod_slot_path("A"), bytes(data))
+    path = tmp_path / "pod3.adf"
+    disk.save(str(path))
+    window = EditorBinding(make_root())
+    window._adopt(Party(convert.Source.detect(path, slot="A")), str(path))
+    if settle:
+        _settle(window)
+    return window, path
+
+
+def test_an_amiga_pod_member_shows_his_two_poses_in_the_figure_box(
         app, tmp_path, monkeypatch):
-    _patch_dos_art(monkeypatch)
-    for name in ("editor.amigafigure.load", "editor.amigalaterfigure.load"):
-        monkeypatch.setattr(name, lambda *args: pytest.fail(
-            "a Pools of Darkness party asked for figure art"))
-    w = _amiga_pod_editor(tmp_path)
-    _settle(w)
+    from PyQt6.QtGui import QColor
+    monkeypatch.setattr("editor.amigapodfigure.load", lambda folders:
+                        _generated_amiga_pod_art())
+    w, _path = _amiga_pod_synthetic(tmp_path)
+    palette = w.figure_art.art.palette
+    preview = w._widgets["icon"].preview
+    seen, shots = [], []
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        figure = preview.figure
+        assert figure is not None
+        seen.append(figure)
+        preview.grab()              # the first grab settles the size
+        shots.append(preview.grab().toImage())
+    first, second = seen
+    ready, action = first.poses
+    assert ready[0][5] == palette[21] and ready[10][3] == palette[14]
+    assert action[0][5] == palette[21] and action[10][4] == palette[15]
+    assert second.poses[0][0][9] == palette[21]
+    assert second.poses[0][10][7] == palette[14]
+    assert first.poses != second.poses
+    assert first.background == second.background == palette[0]
+    scale, x0, y0 = preview._geometry()
+    assert shots[0].pixelColor(x0 + 5 * scale + scale // 2,
+                               y0 + scale // 2) == QColor(*palette[21])
+    assert shots[0] != shots[1]
+
+
+def test_the_amiga_pod_figure_changes_no_byte_and_leaves_the_controls_greyed(
+        app, tmp_path, monkeypatch):
+    import hashlib
+    monkeypatch.setattr("editor.amigapodfigure.load", lambda folders:
+                        _generated_amiga_pod_art())
+    w, path = _amiga_pod_synthetic(tmp_path)
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    icon = w._widgets["icon"]
+    for row in (0, 1, 0):
+        w.roster.selectRow(row)
+        assert icon.preview.figure is not None
+        assert not icon.isEnabled()
+        assert not icon.btn_change.isEnabled()
+        assert not icon.group_box.isEnabled()
+        assert icon.icon is None
+        assert w.party.member(row).icon is None
+        assert icon.toolTip() == icon.btn_change.toolTip() == ""
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    assert not w.dirty
+
+
+def test_missing_amiga_pod_art_leaves_the_figure_box_empty_without_a_dialog(
+        app, tmp_path, monkeypatch):
+    from PyQt6.QtGui import QColor
+
+    from editor.window import EditorBinding
+    for name in ("warning", "critical", "information", "question"):
+        monkeypatch.setattr(QMessageBox, name, lambda *a, **k: pytest.fail(
+            "a missing figure art opened a dialog"))
+    # Only the save's own folder, with no other disk in it, whatever
+    # Preferences or the Game directory name on the machine running this.
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [tmp_path])
+    w, _path = _amiga_pod_synthetic(tmp_path)
+    assert w.figure_art is None
+    preview = w._widgets["icon"].preview
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        assert preview.figure is None
+    shot = preview.grab().toImage()
+    assert shot.pixelColor(shot.width() // 2, shot.height() // 2) == QColor(
+        "#ffffff")
+
+
+def test_an_amiga_pod_art_load_that_fails_leaves_the_figure_box_empty(
+        app, tmp_path, monkeypatch):
+    def broken(folders):
+        raise OSError("the disk went away")
+    monkeypatch.setattr("editor.amigapodfigure.load", broken)
+    w, _path = _amiga_pod_synthetic(tmp_path)
     assert w.figure_art is None
     w.roster.selectRow(0)
     assert w._widgets["icon"].preview.figure is None
+
+
+def test_art_that_does_not_hold_the_amiga_pod_members_blocks_leaves_the_box_empty(
+        app, tmp_path, monkeypatch):
+    art = _generated_amiga_pod_art()
+    del art.art.heads[66]
+    monkeypatch.setattr("editor.amigapodfigure.load", lambda folders: art)
+    w, _path = _amiga_pod_synthetic(tmp_path)
+    preview = w._widgets["icon"].preview
+    w.roster.selectRow(0)
+    assert preview.figure is not None
+    w.roster.selectRow(1)
+    assert preview.figure is None
+
+
+def test_opening_an_amiga_pod_save_does_not_wait_for_the_art(
+        app, tmp_path, monkeypatch):
+    import threading
+    release, started = threading.Event(), threading.Event()
+
+    def slow(folders):
+        started.set()
+        release.wait(5)
+        return _generated_amiga_pod_art()
+    monkeypatch.setattr("editor.amigapodfigure.load", slow)
+    try:
+        w, _path = _amiga_pod_synthetic(tmp_path, settle=False)
+        assert not release.is_set()
+        assert len(w.party) == 2 and w.roster.currentIndex().row() == 0
+        assert w.figure_art is None
+        assert w._widgets["icon"].preview.figure is None
+        assert started.wait(5)
+    finally:
+        release.set()
+    _settle(w)
+    assert w._widgets["icon"].preview.figure is not None
+
+
+def test_the_amiga_pod_art_is_looked_for_where_the_amiga_pool_art_is(
+        app, tmp_path, monkeypatch):
+    from editor.window import EditorBinding
+    asked = []
+
+    def record(folders):
+        asked.append(list(folders))
+        return None
+    monkeypatch.setattr("editor.amigapodfigure.load", record)
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [tmp_path / "a",
+                                                         tmp_path / "b"])
+    _amiga_pod_synthetic(tmp_path)
+    assert asked == [[tmp_path / "a", tmp_path / "b"]]
+
+
+def test_no_other_amiga_title_asks_for_amiga_pod_art(
+        app, tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.amigalaterfigure.load", lambda folders, title:
+                        None)
+    monkeypatch.setattr("editor.amigapodfigure.load", lambda *args: pytest.fail(
+        "a Curse party asked for Pools of Darkness art"))
+    w, _path = _amiga_later_editor(tmp_path, "CURSE")
+    assert w.figure_art is None
+
+
+def test_the_amiga_pod_reader_takes_the_first_folder_that_holds_the_art(
+        app, tmp_path, monkeypatch):
+    from editor import amigapodfigure
+    from goldbox import amiga_later_icons as later
+    from goldbox.amiga_adf import AmigaDisk
+    for name in ("first", "second", "third"):
+        (tmp_path / name).mkdir()
+    AmigaDisk.blank("TWO").save(str(tmp_path / "second" / "Disk-2.ADF"))
+    AmigaDisk.blank("THREE").save(str(tmp_path / "second" / "Disk-3.adf"))
+    (tmp_path / "second" / "notes.txt").write_text("not a disk")
+    (tmp_path / "second" / "broken.adf").write_bytes(b"not a disk")
+    AmigaDisk.blank("ONE").save(str(tmp_path / "third" / "Disk-1.adf"))
+    seen = []
+
+    def disk_files(disks):
+        seen.append(len(disks))
+        if len(disks) < 2:
+            raise later.LaterArtMissing("no disk 3")
+        return {"files": 1}
+    monkeypatch.setattr("editor.amigapodfigure.art.disk_files", disk_files)
+    monkeypatch.setattr("editor.amigapodfigure.art.read_art",
+                        lambda files: ("art", files))
+    found = amigapodfigure.load(
+        [tmp_path / "absent", tmp_path / "first", tmp_path / "third",
+         tmp_path / "second", tmp_path / "third"])
+    assert found.art == ("art", {"files": 1})
+    assert seen == [0, 1, 2]
+    assert amigapodfigure.load([tmp_path / "first"]) is None
+    assert amigapodfigure.load([]) is None
+
+
+def test_an_amiga_pod_record_that_is_not_a_character_gets_no_figure():
+    art = _generated_amiga_pod_art()
+    assert art.figure(b"short") is None
+    assert art.figure(None) is None
+
+
+def _registered_amiga_pod_disks(tmp_path):
+    """A folder with every registered Amiga Pools of Darkness disk image, and
+    the first registered disk 3 holding all six capture members in slot B,
+    or a skip."""
+    from automap import gamedisks
+    from goldbox import amiga_savegame as saves
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import amigasaves
+    from tools.icons import amigapodicons as tool
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("needs the amiga registry entry")
+    folder = tmp_path / "disks"
+    folder.mkdir()
+    chosen = None
+    wanted = {name.upper() for name in _AMIGA_POD_CAPTURES}
+    for n, (_label, data) in enumerate(amigasaves.images()):
+        try:
+            disk = AmigaDisk(data)
+            volume = disk.volume_name.lower()
+            if not volume.startswith(("pod", "pools of darkness")):
+                continue
+            (folder / f"disk{n}.adf").write_bytes(data)
+            if chosen is None and "B" in saves.pod_slots_present(disk):
+                names = {r.name.upper()
+                         for r in tool.disk_records(disk, "", "B")}
+                if wanted <= names:
+                    chosen = data
+        except Exception:
+            continue
+    if chosen is None:
+        pytest.skip("no registered Pools of Darkness disk 3 holds the "
+                    "capture party in slot B")
+    return folder, chosen
+
+
+#: The six members of the pinned disk 3's slot B that were captured.
+_AMIGA_POD_CAPTURES = ("saint eric", "WALLY LEWIS", "jimmi hendrixs",
+                       "DONALD DUCK", "goofey", "rev emery")
+
+
+def test_a_registered_amiga_pod_party_shows_the_figures_the_composer_makes(
+        app, tmp_path, monkeypatch):
+    from editor import convert
+    from editor.window import EditorBinding
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.icons import amigapodicons as tool
+    expected = tool.art()
+    if expected is None:
+        pytest.skip("not all of Pools of Darkness's Amiga disks are here")
+    folder, data = _registered_amiga_pod_disks(tmp_path)
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    path = saves / "party.adf"
+    path.write_bytes(data)
+    records = {r.name.upper(): r
+               for r in tool.disk_records(AmigaDisk(data), "", "B")}
+    before = _folder_hashes(saves)
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [folder])
+    w = EditorBinding(make_root())
+    w._adopt(Party(convert.Source.detect(path, slot="B")), str(path))
+    _settle(w)
+    assert w.figure_art is not None
+    seen = 0
+    for row in range(len(w.party)):
+        member = w.party.member(row)
+        record = records.get(member.record.get("name").strip().upper())
+        if record is None:
+            continue
+        w.roster.selectRow(row)
+        figure = w._widgets["icon"].preview.figure
+        assert figure is not None, record.name
+        assert figure.poses == expected.drawn(*record.fields), record.name
+        assert figure.background == expected.palette[0]
+        assert member.icon is None
+        assert not w._widgets["icon"].isEnabled()
+        assert not w.dirty
+        seen += 1
+    assert seen == len(_AMIGA_POD_CAPTURES)
+    assert _folder_hashes(saves) == before
 
 
 def _amiga_later_disk_folder(tmp_path, key):

@@ -496,7 +496,14 @@ size and six colour bytes. A DOS Pools of Darkness party does the same from
 the ICON screen's box in that screen's palette, and the poses are the game's
 own, pixel for pixel (`tools/icons/dospodicons.py`). The controls stay greyed
 and `Member.icon` stays `None`, since nothing edits a native figure and no
-record byte changes. Amiga Pools of Darkness keeps the empty box.
+record byte changes. An Amiga Pools of Darkness party does the same from its
+own disks (`editor/amigapodfigure.py`, `goldbox/amiga_pod_icons.py`): the
+folders are the ones the other Amiga titles use, the first folder whose `.adf`
+images hold the executable, `COMSPR.TLB` and `ALWAYS.TLB` of disk 1 and
+`CHEAD.TLB` and `CBODY.TLB` of disk 3 supplies the art, each pose is drawn over
+its own box in the ICON screen's 32 colours, and a member is composed from the
+head, body, size and six colour bytes of his record. The figures are the
+game's own, pixel for pixel (`tools/icons/amigapodicons.py`).
 
 ### What is known
 
