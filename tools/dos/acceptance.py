@@ -86,7 +86,8 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot`, `read`, `snapshot` and `restore` (and in darkness `map`, `continue` and `exit`) may come after it, and none of the last two after a `prayer-watch` |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  On the Pools of Darkness overland, which draws no roster and no status line, the step is judged by the cell of the party's white ring (`pod_overland_cell`) and the arrows `Up`, `Right`, `Down`, `Left` are tried in turn until one moves it a neighbouring cell; `turn` is not driven there.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `walk KKIIJI` | Pool: a run of `I` (step forward), `J` (turn left) and `K` (turn right), each move judged by the place the DOSBox-X debugger reads at `POOL_PLACE` and the area byte `POOL_AREA`, both logged as `place`: a step must change the square or the area and a turn must leave both alone, so the area changes only on the step that crosses into the next one (`crossings` lists them).  A story box a step lands on gets `Return`.  The last step may end on a screen that is not the map, whose text is kept as `arrival` (the temple's `DO YOU SEEK HEALING?` for `temple raise`); on any earlier move such a screen stops the run |
-| `answer PARLAY p`, `answer CONTINUE Return map` | Curse, straight after a `walk` (which then may end on the bar of the script its step ran, `walk-script` in `run.jsonl`) or after another `answer`: the bar read as text with the title's font, waited for until it shows WORD (`ANSWER_WAIT`), then KEY (one X keysym) pressed and believed when the text window or the bar changes; a bar without WORD stops the run with nothing pressed.  With a third word `map` the map bar must come back (`ANSWER_MAP_WAIT`), the map's roster is counted again so a joined member's line can be picked, and `camp`, `save X`, `sheet N` and `read` may follow; without it only another `answer`, `shot` and `read` may |
+| `answer PARLAY p`, `answer CONTINUE Return map` | Curse, straight after a `walk` (which then may end on the bar of the script its step ran, `walk-script` in `run.jsonl`) or after another `answer`: the bar read as text with the title's font, waited for until it shows WORD (`ANSWER_WAIT`), then KEY (one X keysym) pressed and believed when the text window or the bar changes; a bar without WORD stops the run with nothing pressed.  With a third word `map` the map bar must come back (`ANSWER_MAP_WAIT`), the map's roster is counted again so a joined member's line can be picked, and `camp`, `save X`, `sheet N` and `read` may follow; without it only another `answer`, a `pick`, `shot` and `read` may.  The map bar is taken by its `bar_signature`, blind to the word the bar's highlight sits on |
+| `pick TELL HER YOUR STORY` | Curse, where `answer` may come: a script's list menu, whose rows the text window draws (`LIST_MENU_ROWS`) with the highlighted one white and no word on the bar.  The rows are read as text with the title's font; a menu without the named row, or without exactly one highlighted row, stops the run with nothing pressed.  The highlight is moved with `End` or `Home`, each press believed only when it lands on the next row, then `Return`, believed when the text window changes; the party stays on the script's next screen |
 | `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight first-bar` | Pool, Curse and Silver Blades, from the map: walk into a fight as `fight` does, log `placement` (judged from each square, as a dead member reads off the map but its fallen figure is drawn) and who acts at the first command bar, shoot it (`first_bar_shot`), and stop there with nothing pressed at it; no fight is fought out, so only `shot` and `read` may come after it |
@@ -2552,6 +2553,18 @@ TURNS = frozenset(WALKS)
 #: The titles whose `answer WORD KEY` reads a script's menu bar with the
 #: title's font: Curse, whose scripted joins it was written for.
 ANSWER_TITLES = frozenset({"curse"})
+#: The steps that answer a script's screen: a bar word (`answer`) or a row
+#: of a list menu (`pick`).
+SCRIPT_STEPS = ("answer", "pick")
+#: A script's list menu (`VERTMENU`, `ECL11 $8C0B`), as DOS Curse draws it:
+#: the question and its rows in the text window's rows 17-22, inside the
+#: frame's columns 1-38, the highlighted row white and the rest green, and no
+#: word on the bar (run `45cc7b60f6-pit-join-modes`, shot 014).  `pick` moves
+#: the highlight with the list keys and chooses with `Return`.
+LIST_MENU_ROWS = range(17, 23)
+LIST_MENU_COLUMNS = range(1, 39)
+LIST_MENU_LIT = b"\xff\xff\xff"
+_PICK_ROW = re.compile(r"[A-Z0-9' ,.!?-]+")
 #: `answer WORD KEY map`: the answer must bring the map bar back.
 ANSWER_MAP = "map"
 #: Seconds `answer` waits for its word to be drawn on the bar, for the screen
@@ -2814,7 +2827,8 @@ STEP_HELP = ("load, begin, vault, move-on, 'walk MI', 'walk I', 'walk 1', 'turn 
              "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
              "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
              "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, continue, exit, "
-             "'answer PARLAY p', 'answer CONTINUE Return map', read; "
+             "'answer PARLAY p', 'answer CONTINUE Return map', "
+             "'pick TELL HER YOUR STORY', read; "
              "'press e' and 'press Escape' are blocked everywhere: after a press nobody "
              "knows the screen, and E is exit to DOS at a party menu")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
@@ -2836,6 +2850,8 @@ def parse_step(text: str) -> Step:
         return deposit
     if kind == "answer":
         return parse_answer(words, text)
+    if kind == "pick":
+        return parse_pick(words, text)
     if kind == "rest" and len(words) == 2:
         minutes = parse_duration(words[1])
         rest_presses(minutes)
@@ -2961,10 +2977,10 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         if where == "first-bar":
             raise ValueError(f"only shot and read may come after fight "
                              f"{FIRST_BAR}: {step.text!r}")
-        if where == "script" and k != "answer":
-            raise ValueError(f"only answer, shot and read may come after an answer "
-                             f"that leaves a script's bar showing; end the last "
-                             f"answer with {ANSWER_MAP}: {step.text!r}")
+        if where == "script" and k not in SCRIPT_STEPS:
+            raise ValueError(f"only answer, pick, shot and read may come after an "
+                             f"answer that leaves a script's bar showing; end the "
+                             f"last answer with {ANSWER_MAP}: {step.text!r}")
         if (where == "pressed" and k not in ("press", "snapshot", "restore")
                 and not (k in ("map", "continue", "exit") and title == "darkness")):
             raise ValueError(f"only press, shot and read, a snapshot or restore, or "
@@ -3057,7 +3073,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"{title}'s walk is {routes}, not {step.text!r}{more}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
-        elif k == "answer":
+        elif k in SCRIPT_STEPS:
             why = answer_rejection(title, where, previous, step)
             if why:
                 raise ValueError(why)
@@ -3237,11 +3253,11 @@ def answer_rejection(title: str, where: str, previous: str | None,
     `ANSWER_TITLES`, straight after a `walk` (which then may end on the
     script's first bar) or after another answer that left a bar showing."""
     if title not in ANSWER_TITLES:
-        return (f"answer is driven in {', '.join(sorted(ANSWER_TITLES))} only, "
+        return (f"{step.kind} is driven in {', '.join(sorted(ANSWER_TITLES))} only, "
                 f"not {title}")
     if where != "script" and previous != "walk":
-        return (f"answer follows a walk onto a scripted square, or another "
-                f"answer that left the script's bar showing: {step.text!r}")
+        return (f"{step.kind} follows a walk onto a scripted square, or another "
+                f"answer or pick that left the script's screen showing: {step.text!r}")
     return None
 
 
@@ -3460,12 +3476,44 @@ def parse_answer(words: list[str], text: str) -> Step:
 
 
 def answer_follows(steps: list[Step], index: int) -> bool:
-    """Whether the next step after `index` that is not a `shot` is an `answer`,
-    so the walk at `index` may end on a script's bar rather than the map."""
+    """Whether the next step after `index` that is not a `shot` is an `answer`
+    or a `pick`, so the walk at `index` may end on a script's screen rather
+    than the map."""
     for step in steps[index + 1:]:
         if step.kind != "shot":
-            return step.kind == "answer"
+            return step.kind in SCRIPT_STEPS
     return False
+
+
+def parse_pick(words: list[str], text: str) -> Step:
+    """`pick ROW TEXT`: the words of the list-menu row to choose, as the
+    text window draws them."""
+    row = " ".join(words[1:]).upper()
+    if not row or not _PICK_ROW.fullmatch(row):
+        raise ValueError(f"{text!r}: a pick is 'pick ROW TEXT', the words of one "
+                         "row of a script's list menu")
+    return Step("pick", text, name=row)
+
+
+def list_menu_rows(screen: dosbox.Screen, font: dict[bytes, str]) -> list[dict]:
+    """The text window's drawn rows inside its frame (`LIST_MENU_ROWS`,
+    `LIST_MENU_COLUMNS`), top down, each with its text and whether it is
+    drawn in the highlight's colour (`LIST_MENU_LIT`) rather than another."""
+    out = []
+    first, last = LIST_MENU_COLUMNS[0], LIST_MENU_COLUMNS[-1]
+    for row in LIST_MENU_ROWS:
+        text = " ".join(text_row(screen, row, font, LIST_MENU_COLUMNS).split())
+        if not text:
+            continue
+        px = screen.rows((first * CELL, row * CELL, (last - first + 1) * CELL, CELL))
+        counts: dict[bytes, int] = {}
+        for i in range(0, len(px), 3):
+            counts[px[i:i + 3]] = counts.get(px[i:i + 3], 0) + 1
+        paper = max(counts, key=lambda c: counts[c])
+        inks = {c: n for c, n in counts.items() if c != paper}
+        ink = max(inks, key=lambda c: inks[c]) if inks else paper
+        out.append({"row": row, "text": text, "lit": ink == LIST_MENU_LIT})
+    return out
 
 
 def parse_area(text: str) -> int:
@@ -5592,7 +5640,7 @@ class Driver:
             raise self.fail(label, f"{key} changed nothing: {self.bar_named(screen)}")
         result = {"word": word, "key": key, "bar": bar, "shot": f"{shot}.png"}
         if then == ANSWER_MAP:
-            if not self.s.wait_for(self.on_world, self.bounded(ANSWER_MAP_WAIT, label)):
+            if not self.s.wait_for(self.on_map_bar, self.bounded(ANSWER_MAP_WAIT, label)):
                 raise self.fail(f"{label}-map", "the map bar did not come back "
                                 f"after {key}: {self.bar_named(self.s.capture())}")
             screen = self.s.settle(quiet=1.0, timeout=self.bounded(30.0, label))
@@ -5606,6 +5654,65 @@ class Driver:
             screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, label))
             result["next_bar"] = self.bar_text(screen)
         self.note(event="answer", **result)
+        return result
+
+    def on_map_bar(self, screen=None) -> bool:
+        """The map's bar by `bar_signature`, which is blind to the word the
+        bar's highlight sits on, as `camp` judges it; `on_world`'s outline
+        changes with that highlight."""
+        screen = screen if screen is not None else self.s.capture()
+        return self.on_world(screen) or (
+            self.world_sig is not None and bar_signature(screen) == self.world_sig)
+
+    def pick(self, row: str) -> dict:
+        """Choose row `row` of a script's list menu: its rows read as text
+        (`list_menu_rows`), the highlight moved onto `row` with
+        `dosbox.LIST_DOWN` or `LIST_UP`, each press believed only when the
+        highlight lands on the next row, then `Return`, believed when the text
+        window changes.  A menu without `row`, or with no row or several rows
+        highlighted, stops the run with nothing pressed."""
+        label = "pick"
+        if self.title.key not in ANSWER_TITLES or self.where != "script":
+            raise StepFailed(f"pick needs a script's list menu in "
+                             f"{', '.join(sorted(ANSWER_TITLES))}, after a walk "
+                             f"onto a scripted square (the party is at {self.where})")
+        font = self.display_font()
+        self.s.wait_for(lambda sc: any(r["text"] == row for r in list_menu_rows(sc, font)),
+                        self.bounded(ANSWER_WAIT, label))
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, label))
+        rows = list_menu_rows(screen, font)
+        shot = self.shot(label)
+        texts = [r["text"] for r in rows]
+        if row not in texts:
+            raise self.fail(label, f"{row!r} is not a row of the list: {texts}")
+        lit = [i for i, r in enumerate(rows) if r["lit"]]
+        if len(lit) != 1:
+            raise self.fail(label, f"{len(lit)} rows are highlighted, not one: {texts}")
+        here, want, presses = lit[0], texts.index(row), []
+        while here != want:
+            key, step = (dosbox.LIST_DOWN, 1) if want > here else (dosbox.LIST_UP, -1)
+            self.s.key(key)
+            presses.append(key)
+
+            def moved(sc, to=here + step) -> bool:
+                now = list_menu_rows(sc, font)
+                return ([r["text"] for r in now] == texts
+                        and [i for i, r in enumerate(now) if r["lit"]] == [to])
+
+            if not self.s.wait_for(moved, self.bounded(ANSWER_WAIT, label)):
+                raise self.fail(label, f"{key} did not move the highlight from "
+                                f"{texts[here]!r} to {texts[here + step]!r}")
+            here += step
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, label))
+        text = screen.digest(TEXT_WINDOW)
+        self.s.key("Return")
+        if not self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != text,
+                               self.bounded(ANSWER_WAIT, label)):
+            raise self.fail(label, f"Return changed nothing on the list at {row!r}")
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, label))
+        result = {"row": row, "rows": texts, "presses": presses + ["Return"],
+                  "shot": f"{shot}.png", "next_bar": self.bar_text(screen)}
+        self.note(event="pick", **result)
         return result
 
     def map_roster(self, screen) -> list[str]:
@@ -9276,6 +9383,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                          if answer_follows(steps, index) else d.walk(step.key))
                 elif step.kind == "answer":
                     r = d.answer(step.name, step.key, step.then)
+                elif step.kind == "pick":
+                    r = d.pick(step.name)
                 elif step.kind == "turn":
                     r = d.turn(step.line)
                 elif step.kind == "rest":

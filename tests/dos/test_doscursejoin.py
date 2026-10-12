@@ -199,9 +199,9 @@ def test_the_join_route_validates_in_curse():
     (["load", "begin", "walk MI", "camp", "answer YES y map"], "curse",
      "follows a walk"),
     (["load", "begin", "walk MI", "answer YES y", "camp"], "curse",
-     "only answer, shot and read"),
+     "only answer, pick, shot and read"),
     (["load", "begin", "walk MI", "answer YES y", "press Return"], "curse",
-     "only answer, shot and read"),
+     "only answer, pick, shot and read"),
     (["load", "begin", "walk MI", "answer YES y map", "answer NO n map"], "curse",
      "follows a walk"),
 ])
@@ -708,3 +708,168 @@ def test_stage_area_on_a_specimen_copy_names_the_pit(tmp_path):
     assert (dos_savegame.current_area(data), dos_savegame.geo_block(data)) == (0x11, 17)
     assert dos_savegame.wall_block(data, container)[0] == (3, 6, 7)
     assert source.read_bytes() == was
+
+
+# -- pick, and the map bar after an answer, on captured frames -----------------
+
+def test_a_pick_parses_its_row_words():
+    step = da.parse_step("pick Tell her your story")
+    assert (step.kind, step.name) == ("pick", "TELL HER YOUR STORY")
+    with pytest.raises(ValueError):
+        da.parse_step("pick")
+
+
+def test_the_join_route_with_a_pick_validates_in_curse():
+    route = ["load", "begin", "walk MI", "answer PARLAY p", "answer NICE n",
+             "answer CONTINUE Return", "pick TELL HER YOUR STORY",
+             "answer CONTINUE Return", "answer YES y", "answer CONTINUE Return map",
+             "camp", "save D", "read"]
+    steps = [da.parse_step(s) for s in route]
+    da.validate_steps(steps, "curse")
+    assert da.answer_follows([da.parse_step("walk MI"), da.parse_step("pick A B")], 0)
+    with pytest.raises(ValueError, match="pick follows a walk"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ["load", "begin", "pick TELL HER YOUR STORY"]], "curse")
+    with pytest.raises(ValueError, match="pick is driven in curse only"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ["load", "walk MI", "pick TELL HER YOUR STORY"]], "pool")
+
+
+def _curse_font():
+    try:
+        return da.load_font(_curse_game())
+    except da.StepFailed as e:
+        pytest.skip(str(e))
+
+
+def _shot(run: str, name: str, issue: str) -> dosbox.Screen:
+    from tests.dos.test_dosacceptance import _capture
+    return _capture(run, name, issue)
+
+
+class Shots:
+    """Captured frames shown in turn: `moves[(at, key)]` is the frame a key
+    leads to; any other key changes nothing."""
+
+    def __init__(self, tmp_path, frames, moves, at=0):
+        self.frames, self.moves, self.at = frames, moves, at
+        self.keys: list[str] = []
+        self.dir = tmp_path / "session"
+        (self.dir / "shots").mkdir(parents=True)
+
+    def capture(self):
+        return self.frames[self.at]
+
+    grab = capture
+
+    def settle(self, quiet=0.6, timeout=30.0):
+        return self.capture()
+
+    def wait_for(self, pred, timeout=30.0):
+        return pred(self.capture())
+
+    def shot(self, name, allow_blank=False):
+        path = self.dir / "shots" / f"{name}.png"
+        path.write_bytes(b"x")
+        return path
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            self.keys.append(k)
+            self.at = self.moves.get((self.at, k), self.at)
+
+
+def _shots_driver(game, monkeypatch, font, map_frame=None):
+    monkeypatch.setattr(da.Driver, "display_font", lambda self: font, raising=False)
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=6)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    if map_frame is not None:
+        d.record_world(map_frame)
+    d.where = "script"
+    return d
+
+
+def test_an_answer_takes_the_map_bar_back_whatever_word_its_highlight_is_on(
+        tmp_path, monkeypatch):
+    # Yulash: MOVE at ATTEMPT TO SNEAK PAST / MOVE NORMALLY puts the party
+    # back on the map, whose bar outline differs from the one taken at the
+    # map before the walk while its words are the same.
+    font = _curse_font()
+    run = "fixed-run2"
+    world, script, after = (_shot(run, n, "WISH-389") for n in
+                            ("010-walk-turn-2", "012-answer-MOVE",
+                             "013-lost-answer-MOVE-map"))
+    assert da.bar_signature(after) == da.bar_signature(world)
+    assert after.ink(dosbox.BAR) != world.ink(dosbox.BAR)
+    game = Shots(tmp_path, [script, after], {(0, "m"): 1})
+    d = _shots_driver(game, monkeypatch, font, world)
+    got = d.answer("MOVE", "m", da.ANSWER_MAP)
+    assert game.keys == ["m"] and d.where == "map" and got["roster"]
+
+
+def _pit_list():
+    return _shot("45cc7b60f6-pit-join-modes", "014-lost-answer-SELECT", "387")
+
+
+def _relit(screen: dosbox.Screen, lit_row: int) -> dosbox.Screen:
+    """`screen` with the list's white row drawn green and `lit_row` white,
+    inside the frame's columns."""
+    px = bytearray(screen.px)
+    white, green = da.LIST_MENU_LIT, b"\x55\xff\x55"
+    first, last = da.LIST_MENU_COLUMNS[0], da.LIST_MENU_COLUMNS[-1]
+    for row in da.LIST_MENU_ROWS:
+        for y in range(row * 8, row * 8 + 8):
+            for x in range(first * 8, (last + 1) * 8):
+                at = (y * screen.width + x) * 3
+                c = bytes(px[at:at + 3])
+                if c == white and row != lit_row:
+                    px[at:at + 3] = green
+                elif c == green and row == lit_row:
+                    px[at:at + 3] = white
+    return dosbox.Screen(screen.width, screen.height, bytes(px))
+
+
+def test_the_pits_list_menu_reads_its_rows_and_the_highlighted_one():
+    font = _curse_font()
+    rows = da.list_menu_rows(_pit_list(), font)
+    assert [r["text"] for r in rows] == [
+        "WHAT DO YOU DO?", "TELL HER YOUR STORY",
+        "TELL HER YOU'RE HUNTING CULTISTS", "TELL HER IT'S NONE OF HER AFFAIR"]
+    assert [r["lit"] for r in rows] == [False, True, False, False]
+
+
+def test_a_pick_of_the_highlighted_row_presses_return_only(tmp_path, monkeypatch):
+    font = _curse_font()
+    after = _shot("45cc7b60f6-pit-join-modes", "012-answer-CONTINUE", "387")
+    game = Shots(tmp_path, [_pit_list(), after], {(0, "Return"): 1})
+    d = _shots_driver(game, monkeypatch, font)
+    got = d.pick("TELL HER YOUR STORY")
+    assert game.keys == ["Return"] and got["presses"] == ["Return"]
+    assert d.where == "script"
+
+
+def test_a_pick_moves_the_highlight_one_guarded_row_at_a_time(tmp_path, monkeypatch):
+    font = _curse_font()
+    shown = _pit_list()
+    after = _shot("45cc7b60f6-pit-join-modes", "012-answer-CONTINUE", "387")
+    frames = [shown, _relit(shown, 19), _relit(shown, 20), after]
+    game = Shots(tmp_path, frames, {(0, dosbox.LIST_DOWN): 1, (1, dosbox.LIST_DOWN): 2,
+                                    (2, "Return"): 3})
+    d = _shots_driver(game, monkeypatch, font)
+    d.pick("TELL HER IT'S NONE OF HER AFFAIR")
+    assert game.keys == [dosbox.LIST_DOWN, dosbox.LIST_DOWN, "Return"]
+
+
+@pytest.mark.parametrize("row, moves, keys, why", [
+    ("TELL HER NOTHING", {}, [], "is not a row of the list"),
+    ("TELL HER IT'S NONE OF HER AFFAIR", {}, [dosbox.LIST_DOWN],
+     "did not move the highlight"),
+])
+def test_a_pick_stops_with_no_further_key(tmp_path, monkeypatch, row, moves, keys, why):
+    font = _curse_font()
+    game = Shots(tmp_path, [_pit_list()], moves)
+    d = _shots_driver(game, monkeypatch, font)
+    with pytest.raises(da.StepFailed, match=why):
+        d.pick(row)
+    assert game.keys == keys
