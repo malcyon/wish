@@ -20,8 +20,7 @@ else writes the disk, so the bytes are what a player's Save produces.
 `--who` is a zero-based roster row, `--gold`, `--strength` and `--set FIELD=VALUE`
 (repeatable) are each optional but at least one edit must be given; a field the
 title's record does not store, such as gold on Pools of Darkness, exits before
-anything is written. Pools of Darkness needs `WISH_EXPERIMENTAL_POD_CONVERT=1`
-in the environment. `--item POSITION=QUANTITY` is repeatable and
+anything is written. `--item POSITION=QUANTITY` is repeatable and
 names an occupied inventory position of that member (an empty position exits
 before anything is written). `--readied POSITION=0|1` sets the Readied box of an
 occupied position and `--delete-item POSITION` deletes it, both repeatable;
@@ -116,7 +115,7 @@ def drive(base: pathlib.Path, out: pathlib.Path, who: int,
     """Copy `base` to `out`, edit and save through the editor, and report.
 
     `fields` maps a record field name to its new value, set through the
-    sheet's own widget. Pools of Darkness needs `WISH_EXPERIMENTAL_POD_CONVERT`.
+    sheet's own widget.
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.pop("WAYLAND_DISPLAY", None)

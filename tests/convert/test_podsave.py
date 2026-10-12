@@ -2,7 +2,7 @@
 
 Commit 1 of `#194 (Import and export a Pools of Darkness save between DOS
 and the Amiga)`: `goldbox.dos_codec.pod_savgam`/`new_pod_save_from`, and
-`editor.convert.PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`.
+`editor.convert.PodAmigaToDos`.
 
 `write_dos_save_from` cannot host this title (`_c64_game_of` blocks one
 with no C64 port), so `pod_savgam` builds the 1364-byte `SAVGAM<slot>.PTY`
@@ -55,18 +55,7 @@ def _c64_por_source():
                           path=pathlib.Path("."))
 
 
-@pytest.mark.parametrize("value", [None, "0", "off", ""])
-def test_pod_directions_are_not_offered_unless_the_flag_is_set(
-        monkeypatch, value):
-    if value is None:
-        monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
-    else:
-        monkeypatch.setenv(convert.POD_CONVERT_ENV, value)
-    assert convert.destinations_for(_amiga_pod_source()) == []
-
-
-def test_pod_directions_are_offered_once_the_flag_is_set(monkeypatch):
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
+def test_pod_directions_are_offered_with_no_environment_set():
     directions = convert.destinations_for(_amiga_pod_source())
     assert [type(d) for d in directions] == [convert.PodAmigaToDos]
     # The C64-shared rows are untouched: a Pool of Radiance C64 source still
@@ -278,7 +267,6 @@ def test_amiga_to_dos_converts_a_full_pool_vault_to_every_dos_record(
         tmp_path, monkeypatch):
     """The DOS loader has no count and no cap, so all 448 nodes the Amiga
     pool can hold arrive as 448 DOS records."""
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
     state = _synthetic_state(1)
     char = amiga_pod.pod_to_neutral(_synthetic_fighter("ONE"))
     built, _ = amiga_savegame.pod_new_savegame(state, [char])
@@ -637,7 +625,6 @@ def test_a_curse_save_disk_has_no_pod_slot():
 # ---------------------------------------------------------------------------
 
 def test_the_pod_amiga_to_dos_row_end_to_end(tmp_path, monkeypatch):
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
     from tools.amiga import amigasaves
 
     for label, data in amigasaves.images():
@@ -1311,14 +1298,10 @@ def _amiga_source(disk_bytes, letter):
                           image=disk_bytes)
 
 
-def test_pod_dos_to_amiga_is_registered_only_with_the_flag_set(monkeypatch):
-    assert convert.PodDosToAmiga in {type(d) for d in convert.POD_DIRECTIONS}
-    assert convert.PodDosToAmiga not in {type(d) for d in convert.DIRECTIONS}
+def test_pod_dos_to_amiga_is_registered_with_no_environment_set():
+    assert convert.PodDosToAmiga in {type(d) for d in convert.DIRECTIONS}
     dos = convert.Source(port="dos", title=dos_port.POOLS_OF_DARKNESS,
                          path=__import__("pathlib").Path("."))
-    monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
-    assert convert.destinations_for(dos) == []
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
     assert [type(d) for d in convert.destinations_for(dos)] == [
         convert.PodDosToAmiga]
 

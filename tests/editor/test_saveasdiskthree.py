@@ -1,5 +1,4 @@
-"""The Pools of Darkness disk 3 row in the Save As Amiga destination section,
-behind `WISH_EXPERIMENTAL_POD_CONVERT`.
+"""The Pools of Darkness disk 3 row in the Save As Amiga destination section.
 
 The row appears only when Preferences cannot supply the disk, stays once
 shown, and holds Save As off while the file named at it is not a disk 3. Its
@@ -12,7 +11,6 @@ import pathlib
 
 import pytest
 from support.editorwindow import make_root
-from test_podparty import _flag
 from test_podwindow import _no_box, _window
 from test_saveplan_pod import _disk_file, _disk_one, _disk_three, _dos_folder
 
@@ -33,7 +31,6 @@ def app():
 def _save_as_amiga(monkeypatch, tmp_path, preferences=None):
     """A DOS Pools of Darkness save open, Save As Amiga chosen, with
     `preferences` as the Pools of Darkness folder in Preferences."""
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     window = _window(preferences)
     window.load(str(_dos_folder(tmp_path)))
@@ -176,7 +173,7 @@ def test_the_browse_button_opens_the_disk_three_picker_and_fills_the_row(
     monkeypatch.setattr(ew.QFileDialog, "getOpenFileName", picked)
     boxes = _recorded_boxes(monkeypatch)
     window._child("button_amiga_disk_three_browse").click()
-    assert asked == [(convert.DISK_THREE_TITLE, convert.DISK_FILTER)]
+    assert asked == [(ew.DISK_THREE_TITLE, ew.AMIGA_DISK_FILTER)]
     assert window._child(FIELD).text() == str(disk)
     assert window._child(SAVE_AS).isEnabled()
     assert boxes == []
@@ -215,7 +212,7 @@ def test_the_four_approved_strings_are_exactly_these(
     window = _save_as_amiga(monkeypatch, tmp_path)
     assert (window._child("label_amiga_disk_three_caption").text()
             == "Amiga game disk 3")
-    assert convert.DISK_THREE_TITLE == "Select location of Amiga game disk 3"
+    assert ew.DISK_THREE_TITLE == "Select location of Amiga game disk 3"
     assert ew.WRONG_DISK_THREE == (
         "This is not a Pools of Darkness Amiga game disk 3.")
     assert ew.DISK_FULL == "Disk is out of space."
@@ -251,29 +248,7 @@ def _amiga_offered(window) -> bool:
                for d in convert.destinations_for(window._save_as_source))
 
 
-@pytest.mark.parametrize("value", [None, "0", "off"])
-def test_flag_off_at_open_the_save_never_loads_and_no_row_shows(
-        app, monkeypatch, tmp_path, value):
-    _flag(monkeypatch, value)
-    monkeypatch.setattr(ew.QMessageBox, "critical", lambda *a, **k: None)
-    window = _window()
-    window.load(str(_dos_folder(tmp_path)))
-    window.begin_save_as("amiga")
-    assert window.party is None
-    assert window._save_as_source is None
-    assert window._child("destination_section").isHidden()
-
-
-@pytest.mark.parametrize("value", [None, "0", "off"])
-def test_flag_off_offers_no_amiga_destination_for_a_dos_save(
-        app, monkeypatch, tmp_path, value):
-    window = _save_as_amiga(monkeypatch, tmp_path)
-    assert _amiga_offered(window)
-    _flag(monkeypatch, value)
-    assert not _amiga_offered(window)
-
-
-def test_flag_on_offers_amiga_and_shows_the_row(app, monkeypatch, tmp_path):
+def test_the_amiga_destination_is_offered_and_shows_the_row(app, monkeypatch, tmp_path):
     window = _save_as_amiga(monkeypatch, tmp_path)
     assert _amiga_offered(window)
     assert not window._child(ROW).isHidden()

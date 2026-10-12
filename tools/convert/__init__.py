@@ -1,1 +1,1 @@
-"""Scripts for File > Convert: running every conversion direction, hashing what each one writes, and drawing the dialog."""
+"""Scripts for the conversion directions: running every one, and hashing what each one writes."""

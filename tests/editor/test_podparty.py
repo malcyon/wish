@@ -1,5 +1,4 @@
-"""A Pools of Darkness save opened in the editor, behind
-`WISH_EXPERIMENTAL_POD_CONVERT`: `editor.podsheet.PodSheetRecord` and the
+"""A Pools of Darkness save opened in the editor: `editor.podsheet.PodSheetRecord` and the
 `editor.roster.Party` path that builds one per character.
 
 **The specimens are the player's own saves**: every Pools of Darkness DOS
@@ -13,7 +12,6 @@ from __future__ import annotations
 import pathlib
 
 import pytest
-from support.editorwindow import make_root
 
 from editor import binding, convert, podsheet
 from editor.roster import Party
@@ -22,18 +20,9 @@ from goldbox.amiga_adf import AmigaDisk, AmigaDiskError
 from goldbox.encoding import combat_value
 
 POD = titles.POOLS_OF_DARKNESS
-FLAG = convert.POD_CONVERT_ENV
-OFF = [None, "0", "off", ""]
 
 #: The sheet's bound fields, as `editor.binding` lists them for every title.
 SHOWN = [f.name for f in binding.shown_fields(binding.editable_fields())]
-
-
-def _flag(monkeypatch, value):
-    if value is None:
-        monkeypatch.delenv(FLAG, raising=False)
-    else:
-        monkeypatch.setenv(FLAG, value)
 
 
 # ---------------------------------------------------------------------------
@@ -122,28 +111,8 @@ def _loose_amiga_slots() -> list[tuple[str, bytes]]:
 
 
 # ---------------------------------------------------------------------------
-# The flag
+# Opening
 # ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("value", OFF)
-def test_a_pools_of_darkness_save_stays_closed_without_the_flag(
-        monkeypatch, tmp_path, value):
-    _flag(monkeypatch, value)
-    sources = _dos_sources() + [s for _l, s in _amiga_sources(tmp_path)]
-    for source in sources:
-        with pytest.raises(dos_codec.WrongTitleError) as blocked:
-            Party(source)
-        assert blocked.value.title == POD.title, source.path
-
-
-@pytest.mark.parametrize("value", OFF)
-def test_a_synthetic_folder_stays_closed_without_the_flag(
-        monkeypatch, tmp_path, value):
-    _flag(monkeypatch, value)
-    (tmp_path / "CHRDATA1.SAV").write_bytes(bytes(podsheet.SIZE))
-    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
-    with pytest.raises(dos_codec.WrongTitleError):
-        Party(str(tmp_path))
 
 
 @pytest.fixture
@@ -152,23 +121,7 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-@pytest.mark.parametrize("value", OFF)
-def test_open_shows_the_cannot_open_box_without_the_flag(
-        app, monkeypatch, tmp_path, value):
-    import editor.window as ew
-    _flag(monkeypatch, value)
-    (tmp_path / "CHRDATA1.SAV").write_bytes(bytes(podsheet.SIZE))
-    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
-    said = []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append((a[1], a[2])))
-    ew.EditorBinding(make_root()).load(str(tmp_path))
-    assert said == [("Cannot open", convert.POOLS_OF_DARKNESS_UNSUPPORTED)]
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_a_pools_of_darkness_save_opens_with_the_flag(monkeypatch, value):
-    _flag(monkeypatch, value)
+def test_a_pools_of_darkness_save_opens_with_nothing_set():
     source = _dos_sources()[0]
     party = Party(source)
     assert party.game is POD
@@ -268,7 +221,6 @@ def _check_member(label: str, member, expected_name: str, ac: int,
 
 
 def test_every_dos_character_opens_and_round_trips(monkeypatch):
-    monkeypatch.setenv(FLAG, "1")
     seen = 0
     for source in _dos_sources():
         party = Party(source)
@@ -293,7 +245,6 @@ def test_every_dos_character_opens_and_round_trips(monkeypatch):
 
 
 def test_every_amiga_character_opens_and_round_trips(monkeypatch, tmp_path):
-    monkeypatch.setenv(FLAG, "1")
     seen = 0
     for label, source in _amiga_sources(tmp_path):
         party = Party(source)
@@ -334,7 +285,6 @@ def test_every_loose_amiga_slot_renders_and_round_trips():
 # ---------------------------------------------------------------------------
 
 def _opened(monkeypatch):
-    monkeypatch.setenv(FLAG, "1")
     return [(s, Party(s)) for s in _dos_sources()]
 
 
@@ -469,7 +419,6 @@ def _assembled(tmp_path, count: int) -> pathlib.Path:
 
 @pytest.mark.parametrize("count", [1, 8])
 def test_a_party_of_one_and_of_eight_opens(monkeypatch, tmp_path, count):
-    monkeypatch.setenv(FLAG, "1")
     party = Party(str(_assembled(tmp_path, count)))
     assert party.game is POD
     assert [m.index for m in party.members] == list(range(1, count + 1))
@@ -594,9 +543,7 @@ def _synthetic_folder(tmp_path) -> pathlib.Path:
     return tmp_path
 
 
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_a_synthetic_folder_opens_with_the_flag(monkeypatch, tmp_path, value):
-    _flag(monkeypatch, value)
+def test_a_synthetic_folder_opens_with_nothing_set(tmp_path):
     party = Party(str(_synthetic_folder(tmp_path)))
     assert party.game is POD
     assert party.unwritable == podsheet.UNWRITABLE
@@ -608,7 +555,6 @@ def test_a_synthetic_folder_opens_with_the_flag(monkeypatch, tmp_path, value):
 
 
 def test_a_synthetic_folder_rewrites_and_edits_age_only(monkeypatch, tmp_path):
-    monkeypatch.setenv(FLAG, "1")
     [member] = Party(str(_synthetic_folder(tmp_path))).members
     _round_trip("synthetic", member.record)
     original = member.record.to_bytes()
@@ -628,7 +574,6 @@ def test_a_synthetic_folder_runs_without_the_specimen_variables(
     empty.mkdir()
     for var in ("WISH_SPECIMENS", "FR_ARCHIVES", "AMIGA_DISKS", "POR_DISKS"):
         monkeypatch.setenv(var, str(empty))
-    monkeypatch.setenv(FLAG, "1")
     folder = tmp_path / "save"
     folder.mkdir()
     assert Party(str(_synthetic_folder(folder))).game is POD

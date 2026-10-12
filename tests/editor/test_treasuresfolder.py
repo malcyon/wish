@@ -47,11 +47,9 @@ def _open(save, monkeypatch):
     return said
 
 
-@pytest.mark.parametrize("flag", ["", "1"])
 @pytest.mark.parametrize("pick", ["folder", "file"])
 def test_a_treasures_save_folder_opens_to_the_treasures_sentence(
-        app, tmp_path, monkeypatch, pick, flag):
-    monkeypatch.setenv("WISH_EXPERIMENTAL_POD_CONVERT", flag)
+        app, tmp_path, monkeypatch, pick):
     save = _treasures(tmp_path)
     before = _snapshot(save)
     target = save if pick == "folder" else save / "SAVGAMA.PTY"

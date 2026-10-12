@@ -4226,21 +4226,15 @@ def test_an_amiga_vault_reaches_the_dos_folder_with_each_case_split(tmp_path):
 
 @pytest.fixture
 def pod_source(tmp_path, monkeypatch):
-    """The synthetic disk converted by `build_amiga_source`, with the flag
-    unset beforehand so the test sees the driver set it and put it back."""
-    import os
-
-    from editor import convert
-    monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
+    """The synthetic disk converted by `build_amiga_source`."""
     out = tmp_path / "out"
     out.mkdir()
     built = da.build_amiga_source(str(_pod_disk(tmp_path)), "SavGamC.pty", out)
-    assert convert.POD_CONVERT_ENV not in os.environ
     return out, built
 
 
 def test_an_amiga_slot_converts_by_the_convert_route_and_reads_back(pod_source):
-    """The product route with the flag set for the conversion only: nothing
+    """The product route: nothing
     dropped or lost, INA's pick pockets 135 and TRIPEL's 120, and the case
     replaced by its two scrolls with their spell ids, all as `read` reports
     them."""

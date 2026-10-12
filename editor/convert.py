@@ -1,11 +1,7 @@
-"""The registry of save conversions the library can build from nothing, and
-the `File ▸ Convert…` dialog over it.
+"""The registry of save conversions the library can build from nothing, which
+Save As offers as destinations.
 
-`#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)` replaces the two flagged submenus -- `editor/dosimport.py`'s
-`File ▸ Import` and `editor/exports.py`'s `File ▸ Export` -- with one
-`File ▸ Convert…` dialog carrying a source row and a destination row. A
-**direction** is registered here only when the destination can be written
+A **direction** is registered here only when the destination can be written
 whole, owing nothing to another save -- `.claude/rules/conversions.md`'s
 rule against a template. Today that is:
 
@@ -48,18 +44,12 @@ rule against a template. Today that is:
   writes carries the party; the area's own script comes off the player's own
   Amiga disk 2 (`ecl.dax`, the `POOLDATA` volume), read and never written
   to;
-* Amiga `.adf` → DOS save folder, Pools of Darkness only, one row --
-  `PodAmigaToDos`, in `POD_DIRECTIONS` rather than `DIRECTIONS` because this
-  title has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES`
-  (`goldbox.amiga_savegame.pod_from_amiga`/`pod_parse`,
+* Pools of Darkness, one row each way -- `PodAmigaToDos` (Amiga `.adf` →
+  DOS save folder; `goldbox.amiga_savegame.pod_from_amiga`/`pod_parse`,
   `goldbox.amiga_pod.pod_to_neutral`, then `goldbox.dos_codec.
-  new_pod_save_from`). Offered only with `WISH_EXPERIMENTAL_POD_CONVERT`
-  set, until its own proof in the running game and #650 (A played Amiga
-  Pools of Darkness party converted to DOS loses a master thief's pick
-  pockets over 127 and a scroll case's extra spells) and #651 (Convert a
-  Pools of Darkness party's item vault between DOS and the Amiga along with
-  its saved game) close (`#194 (Import and export a Pools of Darkness save
-  between DOS and the Amiga)`).
+  new_pod_save_from`) and `PodDosToAmiga` (DOS save folder → the Amiga disk 3).
+  This title has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES`,
+  so both are listed in `DIRECTIONS` by hand.
 
 **This registry derives every row from a library tuple rather than listing
 them, which is the point:** DOS → C64 from `goldbox.dos_codec.CONVERTS`, C64 → DOS
@@ -86,28 +76,6 @@ them, on every port, so unsaved edits cross -- the same rule
 `exports.Source` retired into this one at step 5. A DOS or an Amiga
 snapshot rides on the `Source` as `files` or `image`, and `folder()` and
 `amiga_disk()` are what a direction reads it through.
-
-**`ConvertDialog`, below, is step B of `#52 (File ▸ Import and File ▸ Export for every direction the library supports)`'s plan comment** (also
-`#52`'s comment of 2026-09-05 13:58:53): the source and destination rows, a
-game-files row and a write-to-folder row carrying its own `Destination:`
-line -- `editor/dosimport.py`'s rehearse-then-enable pattern, one dialog for
-every registered direction rather than one dialog per port. The report pane
-this paragraph used to name is gone (2026-09-10): what it showed is now a
-modal `QMessageBox`, a silently disabled Convert button, or the debug log,
-`_rehearse_and_report`'s own docstring has which goes where. **A modal fires
-only for a real rejection** -- a source that cannot be read, a conversion that
-cannot run -- **never for a row the player has simply not filled in yet**;
-that used to pop on the very next field after `From`, before the player had
-done anything wrong, and `ConvertDialog._SILENT_BLOCKS` is what stops it
-(`#52`'s comment of 2026-09-10). **Four rows, in the
-same places, in all six directions** since `#413 (The Convert window changes
-shape depending on which platforms you are converting between)`: the
-game-files row used to appear only for a DOS or an Amiga destination and
-vanish for a Commodore 64 one, which moved the buttons under the pointer
-every time the destination changed; it is always shown now, and only its
-label, its displayed value and what `Choose…` opens follow the
-destination. Every string not already approved elsewhere ends in the
-literal ` (NOT APPROVED)`; see the block below it.
 """
 
 from __future__ import annotations
@@ -116,20 +84,11 @@ import contextlib
 import dataclasses
 import datetime
 import logging
-import os
 import pathlib
 import re
 import tempfile
 from collections.abc import Collection, Iterator, Mapping
 from typing import Any
-
-from PyQt6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
-    QFileDialog,
-    QMessageBox,
-    QWidget,
-)
 
 from goldbox import (
     amiga_later,
@@ -347,7 +306,7 @@ class Source:
         screen cross into the conversion instead of whatever is on disk. It
         is the save asked for when its own path is `path`, or when `path` is
         the `SAVGAM<slot>.DAT`/`.PTY` file of the party's own folder and
-        slot, which is what the Convert window's picker hands over for a DOS
+        slot, which is what a file picker hands over for a DOS
         save (`Party.path` is the folder). Every port takes this branch:
         `editor.saveplan.prepare` assembles the port's own bytes with the
         pending edits in them (`#511 (Open a DOS save folder and an Amiga
@@ -543,18 +502,6 @@ _SAVGAM_FILE_RE = re.compile(r"^SAVGAM([A-Za-z])\.(DAT|PTY)$", re.IGNORECASE)
 #: lower-cases what it compares, so a `.ADF` off a case-preserving volume is
 #: the same disk.
 AMIGA_SUFFIX = ".adf"
-
-
-def _player_message_of(exc: Exception) -> str:
-    """What the dialog shows for a source or rehearsal that raised `exc`:
-    the two clashing file names when a folder holds two DOS names differing
-    only in case, the full-disk line when an Amiga image has no room left,
-    otherwise the generic sentence."""
-    if isinstance(exc, dos_savegame.DosNameClashError):
-        return exc.player_message or CANNOT_CONVERT
-    if isinstance(exc, AmigaDiskFull):
-        return saveplan.DISK_FULL
-    return CANNOT_CONVERT
 
 
 def _dos_slots(folder: pathlib.Path) -> list[str]:
@@ -802,7 +749,7 @@ class C64ToDos(Direction):
     title's own `SPELLE64`/`SPELLN64`, read into a `goldbox.iconparts.
     IconParts` -- which turns each character's own combat icon into a DOS
     figure (`#320 (A C64 party converted to DOS arrives with no combat
-    figure at all, because the table only runs one way)`). `ConvertDialog`
+    figure at all, because the table only runs one way)`). Save As
     supplies it, off the *source*'s own title rather than the destination's
     (`#383 (The live Convert dialog never wires a C64 party's own combat
     icon into DOS, so region_220 stays on the drop list)`); left out, every
@@ -1005,8 +952,7 @@ class PodAmigaToDos(Direction):
     pod_to_neutral`) instead of the shared `WorldState`/`new_dos_save_from`
     path the other three DOS destinations share.
 
-    Registered only in `POD_DIRECTIONS`, behind `WISH_EXPERIMENTAL_
-    POD_CONVERT` -- see the flag below for when that changes.
+    Registered in `DIRECTIONS` by hand.
     """
 
     source_port = "amiga"
@@ -1079,10 +1025,9 @@ class PodDosToAmiga(Direction):
     """A DOS Pools of Darkness save slot becomes the player's Amiga disk 3 with
     that slot written into its `SAVE` drawer.
 
-    Registered in `POD_DIRECTIONS`.  The Convert dialog has no row for disk 3,
-    so it leaves this direction out (`amiga_needs_disk_three`); Save As asks
-    for the disk through `saveplan.AMIGA_DISK_THREE`.  The slot keeps the
-    source's letter, as `DosToAmiga` does.
+    Registered in `DIRECTIONS` by hand.  Save As asks for the disk through
+    `saveplan.AMIGA_DISK_THREE`.  The slot keeps the source's letter, as
+    `DosToAmiga` does.
     """
 
     source_port = "dos"
@@ -1400,7 +1345,7 @@ class C64ToAmiga(Direction):
     Amiga figure, mirroring `C64ToDos`'s own parameter (#422 (A C64 party
     converted to an Amiga save disk arrives with no combat figure at all,
     because C64ToAmiga never recognises it), the same form #383 gave the
-    DOS destination). `ConvertDialog` supplies it, off the *source*'s own
+    DOS destination). Save As supplies it, off the *source*'s own
     title; left out, every figure is the game's own default, as before that
     ticket.
     """
@@ -1583,42 +1528,19 @@ DIRECTIONS: tuple[Direction, ...] = tuple(
     C64ToAmiga(deltas) for deltas in amiga_shared.WRITES
 ) + tuple(
     DosToAmiga(deltas) for deltas in amiga_shared.WRITES
+) + (
+    PodAmigaToDos(),
+    PodDosToAmiga(),
 )
-
-#: Pools of Darkness directions, kept out of `DIRECTIONS` because the title
-#: has no C64 port and cannot join `amiga_shared.CONVERTS`/`WRITES`. Offered
-#: only with `WISH_EXPERIMENTAL_POD_CONVERT` set. Comes off when WISH-2 and
-#: WISH-6 are Completed: the rows, the flag, this tuple, File > Convert... and
-#: `ConvertDialog` are then deleted, Pools of Darkness having its route in
-#: Save As.
-POD_DIRECTIONS: tuple[Direction, ...] = (PodAmigaToDos(), PodDosToAmiga())
-
-#: The environment variable that gates `POD_DIRECTIONS`. `WISH_EXPERIMENTAL_`
-#: rather than `WISH_DEBUG`/`WISH_NATIVE_LOG`'s prefix, because this one is
-#: meant to be deleted and those two are permanent (`.claude/rules/
-#: feature-flags.md`).
-POD_CONVERT_ENV = "WISH_EXPERIMENTAL_POD_CONVERT"
-
-
-def pod_convert_enabled() -> bool:
-    """Whether `POD_DIRECTIONS` is offered.
-
-    The same truthy set `wish.debugmode.TRUE` uses, copied rather than
-    imported: `editor/` does not import `wish/`.
-    """
-    return os.environ.get(POD_CONVERT_ENV, "").strip().lower() in (
-        "1", "true", "yes", "on")
 
 
 def destinations_for(source: Source) -> list[Direction]:
     """Every registered direction this source can be converted to.
 
-    Empty for anything not in `DIRECTIONS` and, unless
-    `WISH_EXPERIMENTAL_POD_CONVERT` is set, `POD_DIRECTIONS`.  An unready
-    direction is never offered and never blocked.
+    Empty for anything not in `DIRECTIONS`.  An unready direction is never
+    offered and never blocked.
     """
-    directions = DIRECTIONS + (POD_DIRECTIONS if pod_convert_enabled() else ())
-    return [d for d in directions
+    return [d for d in DIRECTIONS
            if d.source_port == source.port and d.source_key == source.key]
 
 
@@ -1648,185 +1570,14 @@ def fresh_folder(destination: str | pathlib.Path,
 
 
 # ---------------------------------------------------------------------------
-# The flag, lifted
+# Strings used outside this module.
 # ---------------------------------------------------------------------------
 
-#: **`WISH_EXPERIMENTAL_CONVERT` no longer exists.** `File ▸ Convert…` is
-#: built for everyone, unconditionally, since 2026-09-14. Donald lifted it
-#: directly: *"Lift WISH_EXPERIMENTAL_CONVERT, remove File ▸ Import, close
-#: #52."* All nine conditions the flag once named were met -- the evidence
-#: is `#52 (File ▸ Import and File ▸ Export for every direction the library
-#: supports)`'s own comment history and the byte-level manifest at
-#: `2ae11ba` -- and `File ▸ Import ▸ DOS Save Folder…` was removed in the
-#: same commit that lifted this flag, because condition 7 required exactly
-#: that: this dialog was the only import route a player had, so the two
-#: could not land apart. `editor.dosimport.ENV`
-#: (`WISH_EXPERIMENTAL_DOS_IMPORT`) went the same way earlier, `#131 (Lift
-#: WISH_EXPERIMENTAL_DOS_IMPORT, which needs the import working for all
-#: three C64 titles)`, 2026-09-06.
-
-# ---------------------------------------------------------------------------
-# Strings.
-#
-# Reused ones carry the approval they already have, verbatim, and keep the
-# name they were approved under so a reviewer can find the ruling. Every
-# other one ends in the literal ` (NOT APPROVED)` until Donald rules
-# (`.claude/rules/gui-text.md`) -- never invent a sentence beyond this block.
-# ---------------------------------------------------------------------------
-
-#: The File menu entry. Approved by Donald 2026-09-05, with every other
-#: string in this block: *"I think these are all fine."*  The two submenus
-#: it replaced, `&Import` and `&Export`, are both gone now -- this dialog
-#: was neither.
-MENU_CONVERT = "&Convert…"
-
-#: The dialog's title bar. Approved 2026-09-05.
-DIALOG_TITLE = "Convert a save"
-
-#: Row labels. `LABEL_GAME` is `editor/exports.py`'s, approved 2026-08-25;
-#: `LABEL_FOLDER` is its `LABEL_DESTINATION`, approved the same day -- the
-#: row where the player says which folder the write goes inside, renamed
-#: here so it is not confused with `convert_destination`'s new combo.
-#: **`From`, not `Save`, since 2026-09-07.** It read `Save` from the
-#: dialog's first day and Donald changed it on seeing the form drawn:
-#: `To` below it had no partner, so the row above read as a noun where
-#: a person expected the other half of a pair, and `Save` competes with
-#: `File > Save` for the same word. Approved by him on 2026-09-05 in its
-#: old form and re-ruled here, so it carries no marker.
-LABEL_SOURCE = "From"
-LABEL_TO = "To"
-LABEL_GAME = "DOS game folder"
-#: The game-files row's label for an Amiga destination. Ruled on
-#: `#316 (Write the Amiga Pool of Radiance saved game from the source save,
-#: so a converted party arrives where it was standing)` on 2026-09-07, over
-#: `Amiga disk 2` and `Amiga data disk`, because it is unambiguous the
-#: player is being asked for one of his own original game disks rather than
-#: anything Wish produced. Not `#36 (Write an Amiga disk image, not just the
-#: character files)`'s own -- `#316` settled it first and this one follows.
-#: Re-confirmed rather than reopened on `#413`'s comment of 2026-09-09.
-LABEL_DISK = "Amiga game disk 2"
-#: The game-files row's label for a Commodore 64 destination. Approved
-#: 2026-09-09 on `#413 (The Convert window changes shape depending on which
-#: platforms you are converting between)`, alongside a real, editable
-#: picker replacing the three drawn alternatives (a blank row, a line of
-#: read-only text, and a `Preferences…` button) that a C64 destination used
-#: to need nothing shown at all -- Donald: *"How about you include a file
-#: input, but autofill it with whatever is in the preferences."* It borrows
-#: Preferences' own noun (`Game disks not found`) rather than inventing a
-#: fourth word for the same thing, matching `LABEL_GAME` and `LABEL_DISK`'s
-#: own pattern of naming the platform and what it keeps: a folder, one
-#: particular disk, a set of disks. A single shared label (`Your game
-#: files`) was also put to him and rejected, because it would stop telling
-#: an Amiga player they need disk 2 specifically.
-LABEL_C64 = "C64 game disks"
-LABEL_FOLDER = "Write to"
-
-#: **Removed 2026-09-10.** The heading was Donald's own words, 2026-09-07,
-#: from reviewing the Amiga-row mock-up for `#316 (Write the Amiga Pool of
-#: Radiance saved game from the source save, so a converted party arrives
-#: where it was standing)`: *"It gains a label above it reading `Convert
-#: Log`."* He then found it still on screen and asked for it gone: *"In the
-#: Convert Window, I still see the Convert Log. I specifically asked for
-#: that to be removed."* The pane it headed carries no label any more --
-#: `dosimport.pane_text`'s own messages and capacity losses (`#416`) and
-#: this dialog's own error text still show inside it, unlabeled; the
-#: destination path that used to live under a `This writes:` line inside it
-#: is `DESTINATION_PREFIX` below, on its own line under `Write to`.
-
-#: One combo item per slot `Source.available_slots` lists, `{slot}` the
-#: letter `read_por_slot` takes. **No separate label any more** -- the combo
-#: sits on the `From` row now (`#413`'s comment of 2026-09-09, "the `Slot`
-#: combo rides on the `From` row, not in the third-row position"), after
-#: `Choose…`, and each item already names itself. The row it used to have of
-#: its own is what this dropped: `LABEL_SLOT`, unused since.
-SLOT_ITEM = "Slot {slot}"
-
-#: Buttons. `BUTTON_CHOOSE` is `editor/exports.py`'s word, approved
-#: 2026-08-25; `BUTTON_CONVERT` is `editor/dosimport.py`'s, approved
-#: 2026-08-24.
-BUTTON_CHOOSE = "Choose…"
-BUTTON_CONVERT = "Convert"
-
-#: Picker titles. `GAME_TITLE` and `FOLDER_TITLE` are `editor/exports.py`'s
-#: `GAME_TITLE` and `DESTINATION_TITLE`, approved 2026-08-25.
-SOURCE_TITLE = "Choose a save"
-GAME_TITLE = "Choose the DOS game folder"
-#: The Amiga disk row's own picker title, ruled the same night as
-#: `LABEL_DISK` and following its own wording.
-DISK_TITLE = "Choose Amiga game disk 2"
-
-#: The picker title for the player's disk 1, beside `DISK_TITLE` and worded
-#: like it.
-DISK_ONE_TITLE = "Choose Amiga game disk 1"
-
-#: The picker title for the Save As Amiga disk 3 row.
-DISK_THREE_TITLE = "Select location of Amiga game disk 3"
-FOLDER_TITLE = "Choose where to write"
-
-#: The save picker's filter: a `.d64` or the DOS save container itself, so
-#: picking `SAVGAMB.DAT` picks slot B with no separate slot row. PROPOSED --
-#: only the descriptive label is new; `;;All files (*)` is
-#: `editor/window.py`'s `DISK_FILTER` boilerplate, reused rather than
-#: reworded.  Approved 2026-09-05.
-#:
-#: **`*.adf` is in it**, approved by Donald on 2026-09-07 -- *"Yes, the file
-#: picker should allow .adf files."*  Before that an Amiga disk was reachable
-#: only through the `All files (*)` entry, which works and gives a player no
-#: reason to think an Amiga save is something Wish takes.  It was left out
-#: rather than shipped unapproved because marking a glob ` (NOT APPROVED)`
-#: the way an unshipped sentence is marked would have put those two words in
-#: the picker's own dropdown (`.claude/rules/gui-text.md`, and `#353 (Convert
-#: an Amiga Pool of Radiance save to the C64, so a party standing in the
-#: Slums on the Amiga arrives there in VICE)`).
-SOURCE_FILTER = ("Saved games "
-                 "(*.d64 *.D64 *.adf *.ADF SAVGAM?.DAT SAVGAM?.PTY);;"
-                 "All files (*)")
-
-#: The Amiga disk row's own picker filter. Approved 2026-09-07, unchanged
-#: from the proposal on `#36 (Write an Amiga disk image, not just the
-#: character files)`'s comment.
-DISK_FILTER = "Amiga disks (*.adf *.ADF);;All files (*)"
-
-#: The destination combo's items, by port -- never by title, since
-#: `destinations_for` never offers two directions of the same port for one
-#: source (`.claude/rules/conversions.md`: a conversion never crosses a
-#: title). Approved 2026-09-05; `"amiga"` approved 2026-09-07 on `#316`'s
-#: mock-up, once `goldbox.amiga_shared.WRITES` gave it something to build
-#: (`#36`'s comment of 2026-09-07).
-DESTINATION_LABELS: dict[str, str] = {
-    "c64": "Commodore 64",
-    "dos": "DOS",
-    "amiga": "Amiga",
-}
-
-#: **Never shown to the player** -- `_settle_button` already leaves Convert
-#: disabled for as long as this row is empty, and popping a modal on top of
-#: a form a player has not finished filling in told them they had made a
-#: mistake that was actually inevitable (`#52`'s comment of 2026-09-10:
-#: Donald hit this the first time he opened the dialog, on the very next
-#: field, before he had done anything wrong). Kept as a string and recorded
-#: on `self._blocked` -- `_maybe_warn` reads that set to decide what still
-#: needs a modal -- so the reason is still there to test and to log, it is
-#: only the popup that is gone.
-NO_GAME_FOLDER = "Choose the DOS game folder."
-#: The Amiga disk row's own empty-state line, ruled the same night as
-#: `LABEL_DISK` and following its own wording. Silent for the same reason
-#: as `NO_GAME_FOLDER` above.
-NO_DISK = "Choose Amiga game disk 2."
-#: `editor/exports.py`'s `NO_DESTINATION`, approved 2026-08-25. The first of
-#: these a player would actually reach -- `Write to` is the very next field
-#: after `From` -- and so the one Donald caught: a modal here fired before
-#: he had touched anything past the source row. Silent since `#52`'s fix of
-#: 2026-09-10, for the same reason as `NO_GAME_FOLDER` above.
-NO_FOLDER = "Choose where to write."
 #: `goldbox.dos_codec.CANNOT_CONVERT`, approved under `#195 (The import pane shows
 #: a player a memory address when the conversion blocks for any reason but
 #: the wrong title)` on 2026-09-02. It names a source Wish cannot read, or a
 #: rehearsal failure that has no `dos_codec.DosRecordError.player_message`.
 CANNOT_CONVERT = dos_codec.CANNOT_CONVERT
-#: The sentence for a readable Pools of Darkness save: it has no
-#: C64 port, so `destinations_for` correctly answers no direction.
-POOLS_OF_DARKNESS_UNSUPPORTED = "Pools of Darkness saves are not yet supported."
 
 
 #: The sentence for a Treasures of the Savage Frontier folder, which no
@@ -1840,808 +1591,14 @@ def unsupported_save_sentence(title: str) -> str | None:
     cannot read, or None for one it can; Treasures of the Savage Frontier,
     which will not be read, gets `TREASURES_UNSUPPORTED`.
 
-    "Cannot read" is a title with no row in `goldbox.c64_codec.DELTAS_BY_KEY`:
-    Pools of Darkness, Gateway, Champions and Death Knights. The sentence is
-    built from the title table's own names.
+    "Cannot read" is a title with no row in `goldbox.c64_codec.DELTAS_BY_KEY`
+    and no reader of its own; Pools of Darkness has one. The sentence is built from the title table's own names.
     """
     if title == titles.TREASURES_OF_THE_SAVAGE_FRONTIER_TITLE:
         return TREASURES_UNSUPPORTED
     for known in titles.TITLES:
+        if known.key == titles.POOLS_OF_DARKNESS.key:
+            continue
         if known.title == title and known.key not in c64_codec.DELTAS_BY_KEY:
             return f"{title} saves are not yet supported."
     return None
-#: `editor/dosimport.py`'s `NO_DISKS`/`NO_DISKS_TITLE`. The title is Donald's
-#: of 2026-08-27; the line is his of 2026-09-05, rewritten when
-#: `#342 (A Curse or Silver Blades save cannot be converted unless its C64
-#: sides sit in the Pool of Radiance disk folder)` gave each title its own
-#: folder and the old wording named `File ▸ Import` and one shared folder.
-#: **Reused for a missing source's disks too, since the work on converting a C64 party to DOS or the Amiga when the source title has no game disks**:
-#: it names no direction, so the same sentence fits
-#: whichever side of the conversion could not be read.
-#:
-#: **Silent inside `ConvertDialog`, since `#52`'s fix of 2026-09-10** -- a
-#: missing set of game disks is a field the dialog itself cannot fill in for
-#: the player, the same form as `NO_FOLDER` and the other rows above, so a
-#: modal added nothing a disabled Convert button did not already say.
-#: `editor/window.py`'s own direct use of it, blocking `File ▸ Import`
-#: outright before its dialog even opened, is gone along with that menu
-#: entry, `#52 (File ▸ Import and File ▸ Export for every direction the
-#: library supports)`, 2026-09-14.
-NO_DISKS = dosimport.NO_DISKS
-NO_DISKS_TITLE = dosimport.NO_DISKS_TITLE
-
-#: Which of the rejections above each requirement of
-#: `editor.saveplan.requirements` is, so the service names what is missing
-#: and this module keeps the wording a player reads.
-MISSING_ASSET_BLOCKS: dict[str, tuple[str, str]] = {
-    saveplan.DESTINATION_DISKS: (NO_DISKS_TITLE, NO_DISKS),
-    saveplan.SOURCE_DISKS: (NO_DISKS_TITLE, NO_DISKS),
-    saveplan.DOS_GAME_FOLDER: (DIALOG_TITLE, NO_GAME_FOLDER),
-    saveplan.AMIGA_GAME_DISK: (DIALOG_TITLE, NO_DISK),
-}
-#: The destination line under `Write to`, replacing the `This writes:`
-#: heading that used to sit inside the report pane
-#: (`editor/exports.py`'s own `WRITES_HEADING`, approved 2026-08-25, was the
-#: form it copied). Donald's own wording, 2026-09-10, asking for the report
-#: pane's heading gone and the path moved: *"Make it say `Destination:
-#: /tmp/wish-2026-09-10/wish-2026-09-10/PORSAVEA.D64`."* Names the folder
-#: alone as of the same day's second ruling -- a C64 → DOS write can name a
-#: dozen files, and joining them onto this one line was what forced the
-#: dialog to 6688px wide; the pane itself is gone too, so there is nothing
-#: left of it for this line to sit "inside" any more.
-DESTINATION_PREFIX = "Destination: "
-
-#: The status line after a DOS write, which nothing else in the window
-#: reports (a C64 write is opened in the editor and gets its own status the
-#: way `File ▸ Open` does). Approved 2026-09-05.
-CONVERTED_DOS = "Converted to DOS slot {slot} in {folder}"
-
-#: The status line after an Amiga write. Ruled on `#316 (Write the Amiga
-#: Pool of Radiance saved game from the source save, so a converted party
-#: arrives where it was standing)` on 2026-09-07, over the `CONVERTED_DOS`
-#: form, because it names the two facts needed to actually play the
-#: result: the file to mount and the letter to type at the Amiga's own
-#: `LOAD WHICH GAME:` prompt. `{slot}` is a substitution -- a DOS-sourced
-#: conversion keeps its own source letter (`DosToAmiga`), and a C64-sourced
-#: one is always `A` (`C64ToAmiga`), the same rule `CONVERTED_DOS` follows.
-#: Not wired into `EditorBinding.convert` yet -- that is `editor/window.py`,
-#: which is another agent's file tonight; see `#36`'s comment.
-CONVERTED_AMIGA = "Wrote POOLSAVE.ADF to {folder}. Load game {slot}."
-
-#: The modal `QMessageBox.information` shown after any write that succeeds
-#: -- C64, Amiga or DOS alike, over `EditorBinding.convert`'s own already-
-#: closed dialog. Donald's own wording, verbatim, `#52 (File ▸ Import and
-#: File ▸ Export for every direction the library supports)`, 2026-09-10:
-#: *"Instead of closing the window, could we get a success pop-up that
-#: says, 'Conversion successful!'. Then, on the next line, say, 'Your new
-#: save is located at: '"* -- `{folder}` is the same path named on the
-#: `Destination:` line above (`_destination_text`), never a second path
-#: composed some other way. `CONVERTED_DOS` and `CONVERTED_AMIGA` still
-#: carry the slot this sentence does not -- both fire alongside this one
-#: rather than being replaced by it.
-CONVERT_SUCCESS = "Conversion successful!\nYour new save is located at: {folder}"
-
-
-def _destination_text(folder: pathlib.Path) -> str:
-    """`DESTINATION_PREFIX` followed by the folder Convert would write
-    into -- the folder alone, not the files inside it (2026-09-10: a C64 ->
-    DOS write can name a dozen of those, and joining them onto one line
-    was what forced the dialog to 6688px wide).
-
-    `folder` is `fresh_folder`'s own preview of where Convert would write --
-    named, not reserved, so a second Convert before this one commits can
-    still land in the same place (the review of `a60e829`; the actual
-    `mkdir()` happens once, in `EditorBinding.convert`, right before the
-    write it guards).
-    """
-    return DESTINATION_PREFIX + str(folder)
-
-
-def _game_files_from_folder(folder: pathlib.Path,
-                            game: Any) -> "dosimport.GameFiles | None":
-    """The icon, `ANIMATE00` and the creation menu read straight off
-    `folder`, for a Commodore 64 destination whose game-files row a player
-    has pointed at a specific folder by hand (`#413 (The Convert window
-    changes shape depending on which platforms you are converting
-    between)`, 2026-09-09's ruling: *"Just this conversion. Preferences is
-    untouched."*).
-
-    Mirrors `editor.window.EditorBinding.game_files_for`'s own read, cut to
-    the one folder the row names -- this module must not import
-    `wish.preferences`, so it cannot walk that method's full precedence of a
-    title's own folder, the shared one, an environment variable and a path
-    beside the open save. A player who edits the row is naming this one
-    folder outright, not adding another candidate to that chain; with
-    nothing edited, `ConvertDialog` still calls the injected `game_files`
-    callable instead of this, which is that full precedence in the running
-    program.
-    """
-    from goldbox.d64 import load_payload
-    from goldbox.iconparts import IconParts
-    from goldbox.items import load_item_types
-    from goldbox.portraits import PortraitError, tables_from_disks
-
-    def read_animate(disk):
-        return load_payload(disk, dos_codec.ANIMATE_FILE)
-
-    candidates = sorted(pathlib.Path(folder).glob(game.disk_glob))
-
-    def find(read):
-        for candidate in candidates:
-            try:
-                read(str(candidate))
-            except Exception:
-                continue
-            return str(candidate)
-        return None
-
-    icon_disk = find(IconParts.load)
-    animate_disk = find(read_animate)
-    if icon_disk is None or animate_disk is None:
-        return None
-    portraits = None
-    item_types = None
-    if game.key == c64_port.POOL_OF_RADIANCE.key:
-        try:
-            portraits = tables_from_disks(folder)
-        except (PortraitError, OSError) as exc:
-            _log.debug("no creation menu off %s: %s", folder, exc)
-        # `ITEMS` is on side 1, not on the disk that carries the icons.
-        items_disk = find(load_item_types)
-        if items_disk is not None:
-            item_types = load_item_types(items_disk)
-    try:
-        return dosimport.GameFiles(icon=IconParts.load(icon_disk),
-                                   animate=read_animate(animate_disk),
-                                   portraits=portraits,
-                                   item_types=item_types)
-    except Exception:
-        _log.exception("could not read the conversion's game files off %s",
-                       folder)
-        return None
-
-
-# ---------------------------------------------------------------------------
-# The dialog
-# ---------------------------------------------------------------------------
-
-class ConvertDialog(QDialog):
-    """The source, the destination, and where it goes.
-
-    One dialog for every registered direction (`#52`'s comment of
-    2026-09-02: one Convert dialog with a source and a destination, not one
-    per port). Every row change calls `replan()`, which detects the source,
-    lists its registered destinations, rehearses the chosen one in memory,
-    and either names the destination or says why it cannot -- a modal
-    `QMessageBox` for a real rejection, and nothing at all for a row still
-    empty, since the disabled Convert button already says that
-    (`_maybe_warn`, `_SILENT_BLOCKS`) -- now that the pane this used to draw
-    on is gone (2026-09-10) -- `editor/dosimport.py`'s rehearse-then-enable
-    pattern otherwise unchanged. Convert is enabled
-    only once a rehearsal exists and a folder to write it into has been
-    named; nothing is written until the caller commits it
-    (`editor.window.EditorBinding.convert`), which is what keeps
-    `fresh_folder`'s naming and the actual `mkdir()` together rather than
-    racing between two calls.
-
-    `game_files` is a callable, `title -> GameFiles | None` --
-    `EditorBinding.game_files_for` in the running program -- so this class
-    never has to know how the player's C64 disks are found. `game_folder` is
-    its sibling for the third row's own prefill (`#413 (The Convert window
-    changes shape depending on which platforms you are converting between)`,
-    2026-09-09: *"How about you include a file input, but autofill it with
-    whatever is in the preferences."*): `title -> str | None`, read on every
-    `replan()` until the player edits the row by hand, and never written
-    back to -- this module must not import `wish.preferences`, so the
-    injected callable is what stands in for it, the same way `game_files`
-    already does.
-    """
-
-    def __init__(self, source: str, party: Any,
-                game_files: "Any",
-                destination: str | None = None,
-                game: str | None = None,
-                disk: str | None = None,
-                folder: str | None = None,
-                parent: QWidget | None = None,
-                start_dir: str = "",
-                game_folder: "Any | None" = None):
-        super().__init__(parent)
-        from .ui_convert import Ui_ConvertDialog
-
-        self.ui = Ui_ConvertDialog()
-        self.ui.setupUi(self)
-        self.setWindowTitle(DIALOG_TITLE)
-
-        self.party = party
-        self._game_files = game_files
-        #: `title -> str | None`, the game-files row's own prefill for a
-        #: Commodore 64 destination -- `None` with nothing injected, which
-        #: leaves the row exactly as blank as it was before this existed.
-        self._game_folder = game_folder or (lambda _game: None)
-        self.start_dir = start_dir or str(pathlib.Path.home())
-
-        self._source_path = str(source)
-        self._wanted_port = destination
-        self._wanted_slot: str | None = None
-        self._game_path = game
-        #: The player's own Amiga disk 2, for an Amiga destination -- `disk=`
-        #: here is what lets a test drive the whole path with no picker, the
-        #: way `game=` already does for the DOS game folder.
-        self._disk_path = disk
-        #: The Commodore 64 game-files row's own value -- prefilled from
-        #: `game_folder` on each `replan()` until `_c64_folder_edited` is
-        #: set, which happens the first time the player picks one by hand
-        #: (`_choose_files`) and then holds for the rest of this dialog's
-        #: life, per 2026-09-09's ruling: *"Just this conversion. Preferences
-        #: is untouched."*
-        self._c64_folder_path: str | None = None
-        self._c64_folder_edited = False
-        self._folder_path = folder
-        self._rebuilding_combo = False
-        self._rebuilding_slot_combo = False
-
-        #: Set by `replan()`. `source`/`direction` are `None` whenever this
-        #: dialog does not currently hold a ready-to-write conversion;
-        #: `rehearsal` is the one thing `EditorBinding.convert` needs to
-        #: commit a write.
-        #: `slot` is the DOS slot the rehearsal used -- the source's own for
-        #: a DOS → C64 direction, the fixed `"A"` a fresh DOS folder always
-        #: gets for a C64 → DOS one -- so a status line can name it without
-        #: guessing which side of the conversion DOS was on.
-        self.source: Source | None = None
-        self.direction: Direction | None = None
-        self.rehearsal: Rehearsal | None = None
-        self.slot: str | None = None
-        #: Set when the destination cannot hold a pack as it stands
-        #: (`JoinedScrollsDoNotFit.overflow`): no rehearsal exists yet, and
-        #: `EditorBinding.convert` asks the player what to leave behind once
-        #: Convert is pressed. `_assets` is what that second rehearsal reads.
-        self.pack_overflow: tuple = ()
-        #: Set when the party's running effects need more rows than the C64's
-        #: shared effect table holds (`EffectsDoNotFit.overflow`): the same
-        #: flow as `pack_overflow`, asked for once Convert is pressed.
-        self.effect_overflow: "dos_codec.EffectOverflow | None" = None
-        #: Every choice the player has made so far, which each later
-        #: rehearsal is given whole: `names`, `leave` and `leave_effects`,
-        #: each present only once chosen.
-        self._chosen: dict = {}
-        #: Set when a name is too long for the destination
-        #: (`saveplan.NamesDoNotFit`): no rehearsal exists yet, and
-        #: `EditorBinding.convert` asks the player to shorten the names once
-        #: Convert is pressed.
-        self.unfit_names: "saveplan.NamesDoNotFit | None" = None
-        self._assets = None
-
-        #: What stops Convert right now, `(title, text)` or `None`. Four of
-        #: the reasons below (`_SILENT_BLOCKS`) mean only "a row is still
-        #: empty" and never reach a modal; the rest are a real rejection --
-        #: `CANNOT_CONVERT`, a `DosRecordError`'s own message -- and are
-        #: shown verbatim as `QMessageBox.critical`, in place of a line in a
-        #: pane that no longer exists (2026-09-10).
-        self._blocked: tuple[str, str] | None = None
-        #: What `_maybe_warn` last actually showed, so replanning after an
-        #: unrelated change -- cancelling a picker, say -- does not repeat
-        #: an identical modal the player has already read.
-        self._last_blocked_shown: tuple[str, str] | None = None
-        #: `False` through the constructor's own first `replan()` below, so
-        #: building a `ConvertDialog` with a state already prefilled --
-        #: every test in `tests/convert/test_convert.py` that does that -- never
-        #: has to expect a modal of its own. `True` from here on: a real
-        #: player only reaches this dialog after construction has already
-        #: run once.
-        self._interactive = False
-
-        self.ui.label_source.setText(LABEL_SOURCE)
-        self.ui.label_to.setText(LABEL_TO)
-        self.ui.label_folder.setText(LABEL_FOLDER)
-
-        self.ui.convert_source.setText(self._source_path)
-        self.ui.convert_choose_source.setText(BUTTON_CHOOSE)
-        self.ui.convert_choose_source.clicked.connect(self._choose_source)
-
-        self.ui.convert_slot.currentIndexChanged.connect(self._slot_changed)
-
-        self.ui.convert_destination.currentIndexChanged.connect(
-            self._destination_changed)
-
-        self.ui.convert_choose_files.setText(BUTTON_CHOOSE)
-        self.ui.convert_choose_files.clicked.connect(self._choose_files)
-
-        self.ui.convert_folder.setText(self._folder_path or "")
-        self.ui.convert_choose_folder.setText(BUTTON_CHOOSE)
-        self.ui.convert_choose_folder.clicked.connect(self._choose_folder)
-
-        self.buttons = self.ui.buttons
-        self.buttons.button(
-            QDialogButtonBox.StandardButton.Ok).setText(BUTTON_CONVERT)
-
-        self.replan()
-        self._interactive = True
-
-    # -- where it writes ---------------------------------------------------
-
-    @property
-    def folder(self) -> str:
-        """The folder Convert would write inside, as the user has left it."""
-        return self._folder_path or ""
-
-    def report_failure(self, text: str) -> None:
-        """Report a failed write the way the rest of the app reports one --
-        `EditorBinding.save`'s own `QMessageBox.critical(self.root, "Cannot
-        save", ...)` -- now that this dialog carries no pane of its own to
-        put it on (2026-09-10). `editor/window.py`'s two callers
-        (`dialog.report_failure(str(exc))`, `dialog.report_failure(convert_mod.
-        CANNOT_CONVERT)`) are unchanged; only what this does with the text
-        they hand it changed."""
-        QMessageBox.critical(self, DIALOG_TITLE, text)
-
-    # -- choosing -----------------------------------------------------------
-
-    def _choose_source(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, SOURCE_TITLE, self._source_path or self.start_dir,
-            SOURCE_FILTER)
-        if path:
-            self._source_path = path
-            self.ui.convert_source.setText(path)
-            self._wanted_port = None
-            self._wanted_slot = None
-            self.replan()
-
-    def _choose_files(self) -> None:
-        """`Choose…` on the one row for the destination's own game files --
-        `_settle_files_row` already says, by its label and its displayed
-        value, which of the three this destination needs, so this only has
-        to pick the right kind of picker.
-
-        A Commodore 64 destination marks itself edited on a real choice --
-        never on a cancelled picker, which leaves whatever `game_folder`
-        prefilled in place rather than clearing it -- so a later `replan()`
-        stops overwriting it with Preferences' own answer
-        (2026-09-09's ruling: *"Just this conversion. Preferences is
-        untouched."*).
-        """
-        if self.direction is None:
-            return
-        port = self.direction.destination_port
-        if port == "amiga":
-            path, _ = QFileDialog.getOpenFileName(
-                self, DISK_TITLE, self._disk_path or self.start_dir,
-                DISK_FILTER)
-            if path:
-                self._disk_path = path
-        elif port == "c64":
-            # No title of its own yet -- `LABEL_C64` is the row's own label
-            # and is approved; a picker caption saying the same thing is a
-            # second string nobody has ruled on, so this leaves Qt's own
-            # platform default in place rather than inventing one
-            # (`.claude/rules/gui-text.md`).
-            path = QFileDialog.getExistingDirectory(
-                self, "", self._c64_folder_path or self.start_dir)
-            if path:
-                self._c64_folder_path = path
-                self._c64_folder_edited = True
-        else:
-            path = QFileDialog.getExistingDirectory(
-                self, GAME_TITLE, self._game_path or self.start_dir)
-            if path:
-                self._game_path = path
-        self.replan()
-
-    def _choose_folder(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self, FOLDER_TITLE, self._folder_path or self.start_dir)
-        if path:
-            self._folder_path = path
-            self.ui.convert_folder.setText(path)
-            self.replan()
-
-    def _destination_changed(self, _index: int) -> None:
-        if self._rebuilding_combo:
-            return
-        self._wanted_port = self.ui.convert_destination.currentData()
-        self.replan()
-
-    def _slot_changed(self, _index: int) -> None:
-        if self._rebuilding_slot_combo:
-            return
-        self._wanted_slot = self.ui.convert_slot.currentData()
-        self.replan()
-
-    # -- the rehearsal --------------------------------------------------
-
-    def replan(self) -> None:
-        """Detect the source, rehearse the chosen destination, and either
-        name where it would write or say why it cannot -- a modal for a real
-        rejection, nothing at all for a row still empty (`_maybe_warn` below,
-        `_SILENT_BLOCKS`), in place of a line in a pane that no longer
-        exists (2026-09-10). Failures are shown, not raised -- the same
-        rule `editor/dosimport.py`'s `_rehearse` follows. Called on every
-        row change, so an empty row is the normal state this runs against
-        far more often than a finished one."""
-        self.source = None
-        self.direction = None
-        self.rehearsal = None
-        self.slot = None
-        self.pack_overflow = ()
-        self.effect_overflow = None
-        self._chosen = {}
-        self.unfit_names = None
-        self._assets = None
-        #: Cleared on every plan and set only by `_rehearse_and_report`'s
-        #: own success tail below, so every early return here -- no source,
-        #: an unreadable one, no registered destination -- leaves both
-        #: blank rather than naming a file Convert will not write.
-        self.ui.convert_destination_line.setText("")
-        self._blocked = None
-
-        if not self._source_path:
-            self._populate_destinations([])
-            self._populate_slots(None)
-            self._settle_files_row()
-            self._settle_button()
-            self._maybe_warn()
-            return
-
-        try:
-            self.source = Source.detect(self._source_path, party=self.party,
-                                        slot=self._wanted_slot)
-            # This dialog has no row for the player's disk 1 or disk 3, which
-            # such a destination is a copy of; Save As is the route for those.
-            options = [d for d in destinations_for(self.source)
-                       if not (d.destination_port == "amiga"
-                               and (amiga_needs_disk_one(d.deltas)
-                                    or amiga_needs_disk_three(d.deltas)))]
-        except Exception as exc:
-            _log.exception("could not read %s", self._source_path)
-            self._populate_destinations([])
-            self._populate_slots(None)
-            self._blocked = (DIALOG_TITLE, _player_message_of(exc))
-            self._settle_files_row()
-            self._settle_button()
-            self._maybe_warn()
-            return
-
-        self._populate_destinations(options)
-        self._populate_slots(self.source)
-        if not options:
-            rejection = (POOLS_OF_DARKNESS_UNSUPPORTED
-                       if self.source.key == dos_port.POOLS_OF_DARKNESS.key
-                       else CANNOT_CONVERT)
-            self._blocked = (DIALOG_TITLE, rejection)
-            self._settle_files_row()
-            self._settle_button()
-            self._maybe_warn()
-            return
-
-        self.direction = self._chosen_direction(options)
-        self._rehearse_and_report()
-        self._settle_files_row()
-        self._settle_button()
-        self._maybe_warn()
-
-    #: The `self._blocked` reasons that mean nothing more than "a field the
-    #: player has not filled in yet" -- `NO_FOLDER`, `NO_GAME_FOLDER`,
-    #: `NO_DISK` and `NO_DISKS`. `_settle_button` already leaves Convert
-    #: disabled while any of these hold, so popping a modal on top of that
-    #: told a player they had made a mistake that was actually inevitable
-    #: (`#52`'s comment of 2026-09-10: it fired the moment `From` was filled
-    #: in, before `Write to` had been touched at all). `self._blocked` is
-    #: still set for these -- tests read it, and it is what `_settle_button`
-    #: would explain if it had a line to draw -- only the popup is gone.
-    _SILENT_BLOCKS = frozenset((NO_FOLDER, NO_GAME_FOLDER, NO_DISK, NO_DISKS))
-
-    def _maybe_warn(self) -> None:
-        """Tell the player the one thing left to tell them, now that
-        `replan()` has nowhere to draw a running status: why Convert will
-        not go (`self._blocked`).
-
-        A loss `report.losses` names -- a name cut to fit, a value clamped
-        to a narrower field -- is never shown here. That consent path
-        (`dosimport.name_warnings`) is retired (#619,
-        `docs/227-editor-open-save-as.md`); every loss goes to the debug
-        log only (`dosimport.log_unshown_losses`).
-
-        **Only a real rejection pops a modal.** `self._blocked` also carries
-        the four `_SILENT_BLOCKS` reasons -- a row the player has simply not
-        filled in yet -- and those never reach `QMessageBox`: the Convert
-        button is already disabled for exactly as long as one of them holds,
-        so the modal said nothing the greyed-out button did not already say,
-        and firing on every field change made it appear before the player
-        had done anything wrong (`#52`'s comment of 2026-09-10). `CANNOT_
-        CONVERT` and a `DosRecordError`'s own message are not in that set --
-        the player asked for a file that could not be read, or a conversion
-        that could not run, which is a real rejection of something they
-        actually did.
-
-        Gated on `self._interactive`, so a `ConvertDialog` built with a
-        state already prefilled -- every test in `tests/convert/test_convert.py`
-        that does that -- never has to expect a modal of its own; a real
-        player only reaches this after `__init__` has already run once.
-        Deduplicated against what was last actually shown, so replanning
-        after an unrelated change -- cancelling a picker, say -- does not
-        repeat an identical modal the player has already read.
-        """
-        if not self._interactive:
-            return
-        if self._blocked != self._last_blocked_shown:
-            self._last_blocked_shown = self._blocked
-            if self._blocked is not None and self._blocked[1] not in self._SILENT_BLOCKS:
-                title, text = self._blocked
-                QMessageBox.critical(self, title, text)
-
-    def _chosen_direction(self, options: list["Direction"]) -> "Direction":
-        for d in options:
-            if d.destination_port == self._wanted_port:
-                return d
-        return options[0]
-
-    def _rehearse_and_report(self) -> None:
-        """Rehearse `self.direction`, and set `self._blocked` or the
-        destination line -- never both -- for `_maybe_warn` and the dialog
-        itself to read.  Returned a string for `convert_report` to show
-        until 2026-09-10, when that pane was removed outright (Donald: "the
-        box under it has to be removed, too. That was the entire point.");
-        every `return NO_X` below became `self._blocked = (title, NO_X);
-        return` instead.
-        """
-        direction = self.direction
-        if direction.destination_port == "c64" and not self.source.slot:
-            # Unreachable through the dialog's own save picker, which
-            # always names a slot (`Source.detect`'s `SAVGAM<slot>.*`
-            # branch); only a caller handing `Source.detect` a bare
-            # folder directly -- a test or `tools/` script -- can reach
-            # this, and there is no slot to guess at for it.
-            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
-            return
-        try:
-            # A folder the player picked or edited by hand off the game-files
-            # row names exactly that folder (2026-09-09's ruling: "just this
-            # conversion"); anything else goes through the injected
-            # `game_files` lookup, which is Preferences' full precedence in
-            # the running program.
-            assets = saveplan.resolve_assets(
-                self.source, direction.destination_port,
-                game_files=self._game_files,
-                c64_folder=(self._c64_folder_path
-                            if self._c64_folder_edited else None),
-                dos_folder=self._game_path, amiga_disk=self._disk_path)
-        except saveplan.MissingAssets as exc:
-            self._blocked = MISSING_ASSET_BLOCKS[exc.missing[0]]
-            return
-        self._assets = assets
-
-        try:
-            self.rehearsal, self.slot = saveplan.rehearse(
-                direction, self.source, assets)
-        except (dos_codec.JoinedScrollsDoNotFit,
-                amiga_savegame.AmigaJoinedScrollsDoNotFit) as exc:
-            # Not a rejection: the player chooses what to leave behind once
-            # Convert is pressed (`EditorBinding.convert`), so nothing is
-            # shown now and Convert stays pressable.
-            _log.info("The pack does not fit the %s destination: %s",
-                      direction.destination_port, exc)
-            self.pack_overflow = overflow_of(exc)
-            self._name_destination()
-            return
-        except dos_codec.EffectsDoNotFit as exc:
-            # Not a rejection either: the player chooses which effects to leave
-            # out once Convert is pressed. Before `DosRecordError`, which it
-            # is a kind of.
-            _log.info("The running effects do not fit the %s destination: %s",
-                      direction.destination_port, exc)
-            self.effect_overflow = exc.overflow
-            self._name_destination()
-            return
-        except saveplan.NamesDoNotFit as exc:
-            # Not a rejection: the player shortens the names once Convert is
-            # pressed (`EditorBinding.convert`), so nothing is shown now and
-            # Convert stays pressable.
-            _log.info("names do not fit the %s destination: %s",
-                      direction.destination_port, exc)
-            self.unfit_names = exc
-            self._name_destination()
-            return
-        except dos_codec.DosRecordError as exc:
-            _log.exception("could not rehearse %s", self._source_path)
-            self._blocked = (DIALOG_TITLE, exc.player_message)
-            return
-        except Exception as exc:
-            _log.exception("could not rehearse %s", self._source_path)
-            self._blocked = (DIALOG_TITLE, _player_message_of(exc))
-            return
-
-        if not self._name_destination():
-            return
-        self._finish_rehearsal()
-
-    def _name_destination(self) -> bool:
-        """Name where Convert would write, or set `NO_FOLDER` and say so."""
-        if not self._folder_path:
-            self._blocked = (DIALOG_TITLE, NO_FOLDER)
-            return False
-        preview = fresh_folder(pathlib.Path(self._folder_path))
-        self.ui.convert_destination_line.setText(_destination_text(preview))
-        return True
-
-    def rehearse_leaving(self, leave: "Mapping[int, Collection[int]]",
-                         names: "Mapping[int, str] | None" = None) -> None:
-        """Rehearse again with what the player chose to leave behind, and the
-        names already chosen when there are any.
-
-        Raises what the writer raises, so a caller can block the write; a
-        rehearsal that comes out with a loss is left `None`, as `replan` does.
-        """
-        self._chosen["leave"] = leave
-        if names:
-            self._chosen["names"] = names
-        try:
-            self._rehearse_chosen()
-        except dos_codec.EffectsDoNotFit as exc:
-            # The pack is settled and the effects are next, so a party whose
-            # pack and effects both overflow is asked twice rather than
-            # blocked.
-            self.effect_overflow = exc.overflow
-
-    def rehearse_naming(self, names: "Mapping[int, str]") -> None:
-        """Rehearse again with the names the player chose, keyed by position.
-
-        Raises what the writer raises, so a caller can block the write; a
-        rehearsal that comes out with a loss is left `None`, as `replan` does.
-        """
-        self._chosen["names"] = names
-        self._rehearse_chosen()
-
-    def rehearse_leaving_effects(
-            self, leave_effects: "Mapping[int, Collection[int]]") -> None:
-        """Rehearse again with the running effects the player chose to leave
-        out, keyed by member, and every earlier choice kept.
-
-        Raises what the writer raises, so a caller can block the write; a
-        rehearsal that comes out with a loss is left `None`, as `replan` does.
-        """
-        self._chosen["leave_effects"] = leave_effects
-        self._rehearse_chosen()
-
-    def _rehearse_chosen(self) -> None:
-        self.rehearsal, self.slot = saveplan.rehearse(
-            self.direction, self.source, self._assets, **self._chosen)
-        self._finish_rehearsal()
-
-    def _finish_rehearsal(self) -> None:
-        """What follows a rehearsal that succeeded, on the first try or once
-        the player has chosen what to leave behind."""
-        #: Still called for its own side effect -- `report.dropped`, to the
-        #: debug log -- even though nothing shows its returned text any
-        #: more. `DosImportDialog` stopped calling this too, 2026-09-14,
-        #: when its own pane went the same way this dialog's did, and was
-        #: itself deleted later that same day along with `File ▸ Import`,
-        #: `#52 (File ▸ Import and File ▸ Export for every direction the
-        #: library supports)`.
-        dosimport.pane_text(self.rehearsal.report)
-
-        #: Every `report.losses` line goes to the debug log and nowhere a
-        #: player reads (#619): the name-truncation consent modal this
-        #: comment once described is retired
-        #: (`docs/227-editor-open-save-as.md` -- "a loss does not become
-        #: acceptable by being classified outside the drop list"), so a
-        #: loss is evidence for a bug (#508, #509 among them) rather than a
-        #: sentence a player is asked to accept.
-        dosimport.log_unshown_losses(self.rehearsal.report)
-
-        #: The same no-loss rule Save As applies (`saveplan.losses`): a
-        #: conversion whose own accounting names a lost field is not
-        #: published by any normal route, and the reason a player reads is
-        #: the existing `CANNOT_CONVERT`. The Pools of Darkness direction is
-        #: the one exception, because its known losses belong to #650 and
-        #: #651, which fix them behind its flag.
-        if (not isinstance(self.direction, PodAmigaToDos)
-                and saveplan.losses(self.rehearsal.report)):
-            self.rehearsal = None
-            self.ui.convert_destination_line.setText("")
-            self._blocked = (DIALOG_TITLE, CANNOT_CONVERT)
-
-    # -- what is shown, and when Convert is pressable -----------------
-
-    def _populate_destinations(self, options: list["Direction"]) -> None:
-        combo = self.ui.convert_destination
-        self._rebuilding_combo = True
-        combo.blockSignals(True)
-        combo.clear()
-        for d in options:
-            combo.addItem(
-                DESTINATION_LABELS.get(d.destination_port, d.destination_port),
-                d.destination_port)
-        if options:
-            chosen = self._chosen_direction(options)
-            combo.setCurrentIndex(options.index(chosen))
-            self._wanted_port = chosen.destination_port
-        combo.blockSignals(False)
-        self._rebuilding_combo = False
-
-    def _populate_slots(self, source: "Source | None") -> None:
-        """The slot combo on the `From` row: shown only when the source
-        names more than one saved game (`#372 (An Amiga disk with more than
-        one saved game converts its first slot, whichever one the player
-        meant)`) -- an Amiga `.adf` or a DOS save folder, while a DOS save
-        file already names its own slot through the save picker.
-
-        **A widget's own visibility, not a form row's**, since 2026-09-09
-        (`#413 (The Convert window changes shape depending on which
-        platforms you are converting between)`): the combo sits inside
-        `source_row` next to `Choose…` now rather than owning a row of its
-        own, so hiding it hides only itself and never moves the `From` row
-        the way `setRowVisible` would have.
-
-        Rebuilt from `source.available_slots` every `replan()`, the way
-        `_populate_destinations` rebuilds the destination combo from
-        `destinations_for` -- so a source with one slot never shows a combo
-        of one, and switching to a source with several grows it back."""
-        combo = self.ui.convert_slot
-        slots = source.available_slots if source is not None else None
-        show = bool(slots) and len(slots) > 1
-        combo.setVisible(show)
-        if not show:
-            return
-        self._rebuilding_slot_combo = True
-        combo.blockSignals(True)
-        combo.clear()
-        for letter in slots:
-            combo.addItem(SLOT_ITEM.format(slot=letter), letter)
-        chosen = source.slot if source.slot in slots else slots[0]
-        combo.setCurrentIndex(slots.index(chosen))
-        self._wanted_slot = chosen
-        combo.blockSignals(False)
-        self._rebuilding_slot_combo = False
-
-    def _settle_files_row(self) -> None:
-        """The one row for the destination's own game files -- always
-        shown, in all six directions, replacing `_settle_game_row` and
-        `_settle_disk_row`, which used to show and hide two different rows
-        and left the window a different height for a DOS, a C64 and an
-        Amiga destination alike (`#413 (The Convert window changes shape
-        depending on which platforms you are converting between)`).  Only
-        the label, the displayed value and what `Choose…` opens change.
-
-        A Commodore 64 destination is prefilled from `_game_folder` on
-        every call here, unless the player has already edited this row by
-        hand (`_c64_folder_edited`) -- 2026-09-09's ruling: *"How about you
-        include a file input, but autofill it with whatever is in the
-        preferences,"* and, on what an edit does to that setting, *"Just
-        this conversion. Preferences is untouched."*
-
-        With no direction chosen yet -- the dialog holds no source, or the
-        source could not be read -- the row stays visible with nothing in
-        it and its `Choose…` disabled, rather than guessing which of the
-        three destinations it does not yet know about.
-        """
-        self.ui.form.setRowVisible(self.ui.files_row, True)
-        port = self.direction.destination_port if self.direction is not None else None
-        self.ui.convert_choose_files.setEnabled(port is not None)
-        if port == "amiga":
-            self.ui.label_files.setText(LABEL_DISK)
-            self.ui.convert_files.setText(self._disk_path or "")
-        elif port == "c64":
-            if not self._c64_folder_edited:
-                self._c64_folder_path = self._game_folder(
-                    self.direction.destination_game) or ""
-            self.ui.label_files.setText(LABEL_C64)
-            self.ui.convert_files.setText(self._c64_folder_path or "")
-        elif port == "dos":
-            self.ui.label_files.setText(LABEL_GAME)
-            self.ui.convert_files.setText(self._game_path or "")
-        else:
-            self.ui.label_files.setText("")
-            self.ui.convert_files.setText("")
-
-    def _settle_button(self) -> None:
-        """Convert is pressable only once there is a rehearsal to write and
-        somewhere named to write it -- `editor/dosimport.py`'s rule, and the
-        reason a ready rehearsal with no folder still shows `NO_FOLDER`
-        rather than the writes list (`_rehearse_and_report` above)."""
-        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-            (self.rehearsal is not None or bool(self.pack_overflow)
-             or self.effect_overflow is not None
-             or self.unfit_names is not None)
-            and bool(self._folder_path))

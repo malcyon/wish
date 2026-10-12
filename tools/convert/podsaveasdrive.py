@@ -19,7 +19,6 @@ Runs offscreen and needs no emulator.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import hashlib
 import json
 import os
@@ -100,20 +99,6 @@ def _edits(sets: tuple[str, ...], items: tuple[str, ...]):
     return apply
 
 
-@contextlib.contextmanager
-def _pod_flag():
-    """`WISH_EXPERIMENTAL_POD_CONVERT` on for the run, as the editor needs it to open this title."""
-    before = os.environ.get(convert.POD_CONVERT_ENV)
-    os.environ[convert.POD_CONVERT_ENV] = "1"
-    try:
-        yield
-    finally:
-        if before is None:
-            os.environ.pop(convert.POD_CONVERT_ENV, None)
-        else:
-            os.environ[convert.POD_CONVERT_ENV] = before
-
-
 def _save_as(specimen: pathlib.Path, disk3: pathlib.Path | None, folder: pathlib.Path, to: str,
              slot: str | None, edits) -> dict:
     """`saveasdrive.save_as` through an `EditorBinding`, which finds the game data as the editor does."""
@@ -159,7 +144,7 @@ def run(specimen: pathlib.Path, disk3: pathlib.Path | None, out: pathlib.Path,
         if to == "amiga" and disk3 is None:
             raise convert.ConvertError("an Amiga destination needs --disk3")
         edits = _edits(tuple(sets), tuple(items)) if sets or items else None
-        with _pod_flag(), tempfile.TemporaryDirectory(prefix="podsaveas-") as scratch:
+        with tempfile.TemporaryDirectory(prefix="podsaveas-") as scratch:
             # An image is published under the temp folder and copied to `out` by the tool's
             # own rules; a DOS folder is published in `out` and stays there.
             folder = pathlib.Path(scratch) if to == "amiga" else out

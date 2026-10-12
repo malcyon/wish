@@ -1,5 +1,4 @@
-"""A Pools of Darkness save shown in the Character Editor window, behind
-`WISH_EXPERIMENTAL_POD_CONVERT`.
+"""A Pools of Darkness save shown in the Character Editor window.
 
 `test_podparty.py` covers the party and its sheet record. This file covers
 what the window does with them: Open reaches the sheet without an error, each
@@ -22,9 +21,9 @@ import pathlib
 import pytest
 from PyQt6.QtWidgets import QMessageBox
 from support.editorwindow import make_root
-from test_podparty import FLAG, OFF, POD, _amiga_sources, _dos_sources, _flag
+from test_podparty import POD, _amiga_sources, _dos_sources
 
-from editor import convert, enums, podsheet
+from editor import enums, podsheet
 from goldbox import c64_port, dos_codec, item_names, spell_names, titles
 from goldbox.encoding import combat_value
 from goldbox.items import Item
@@ -173,7 +172,6 @@ def fake_names(monkeypatch):
 
 
 def _open_synthetic(monkeypatch, tmp_path, *, names: bool):
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     folder = _synthetic_folder(tmp_path)
     window = _window(_synthetic_game_folder(tmp_path) if names else None)
@@ -201,7 +199,6 @@ def test_shared_matching_native_game_folder_supplies_names_without_warning(
         capture_missing_game_disk_warning):
     import editor.window as ew
 
-    _flag(monkeypatch, "1")
     folder = _synthetic_folder(tmp_path)
     game_folder = _synthetic_game_folder(tmp_path)
     window = ew.EditorBinding(make_root(), disks=str(game_folder))
@@ -234,7 +231,6 @@ def test_another_titles_dos_folder_does_not_supply_native_names(
         app, monkeypatch, tmp_path, capture_missing_game_disk_warning):
     from goldbox.c64_port import POOL_OF_RADIANCE
 
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     folder = _synthetic_folder(tmp_path)
     launcher, config, stem = titles.DOS_FOLDER_FILES[POOL_OF_RADIANCE.key]
@@ -412,32 +408,10 @@ def test_the_backstab_row_reads_this_title_s_rule(
     assert value.text() == "×5"      # Pools of Darkness clamps at 5
 
 
-# ---------------------------------------------------------------------------
-# The flag off: Open is as it was
-# ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("value", OFF)
-def test_without_the_flag_open_still_shows_the_cannot_open_box(
-        app, monkeypatch, tmp_path, value):
-    import editor.window as ew
-    _flag(monkeypatch, value)
-    said = []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append((a[1], a[2])))
-    window = _window()
-    window.load(str(_synthetic_folder(tmp_path)))
-    assert said == [("Cannot open", convert.POOLS_OF_DARKNESS_UNSUPPORTED)]
-    assert window.party is None
-
-
 def test_no_other_title_names_the_former_ranger_mask():
     """The mask is named for this title alone."""
     for game in c64_port.GAMES:
         assert FORMER_RANGER not in enums.class_bit_names(game), game.key
-
-
-def test_the_flag_is_the_one_the_open_tests_set():
-    assert FLAG == convert.POD_CONVERT_ENV
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +511,6 @@ def _check_known_items(window):
 def test_a_dos_slot_shows_the_games_own_type_for_a_known_item(
         app, monkeypatch):
     import editor.window as ew
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     window = _window(_dos_game_folder())
     source = _dos_sources()[0]
@@ -548,7 +521,6 @@ def test_a_dos_slot_shows_the_games_own_type_for_a_known_item(
 def test_an_amiga_slot_shows_the_games_own_type_for_a_known_item(
         app, monkeypatch, tmp_path):
     import editor.window as ew
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     window = _window(_amiga_disk_one(tmp_path))
     source = _amiga_sources(tmp_path)[0][1]
@@ -559,7 +531,6 @@ def test_an_amiga_slot_shows_the_games_own_type_for_a_known_item(
 def test_every_dos_slot_opens_with_named_items_and_flushes_clean(
         app, monkeypatch):
     import editor.window as ew
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     folder = _dos_game_folder()
     expected = item_names.load_dos_item_names(folder)
@@ -579,7 +550,6 @@ def test_every_dos_slot_opens_with_named_items_and_flushes_clean(
 def test_every_amiga_slot_opens_with_named_items_and_flushes_clean(
         app, monkeypatch, tmp_path):
     import editor.window as ew
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     disk_one = _amiga_disk_one(tmp_path)
     expected = item_names.load_amiga_item_names(disk_one, POD)
@@ -600,7 +570,6 @@ def test_the_open_saves_port_comes_first_when_both_kinds_of_files_are_set(
     """An Amiga disk 3 is named from the Amiga disks and a DOS folder from
     the DOS game, whichever of them Preferences names first."""
     import editor.window as ew
-    _flag(monkeypatch, "1")
     dos = _dos_game_folder()
     amiga = _amiga_disk_one(tmp_path)
     dos_expected = item_names.load_dos_item_names(dos)
@@ -618,7 +587,6 @@ def test_the_open_saves_port_comes_first_when_both_kinds_of_files_are_set(
 def test_a_member_s_first_item_is_the_name_the_reader_gives(
         app, monkeypatch):
     import editor.window as ew
-    _flag(monkeypatch, "1")
     folder = _dos_game_folder()
     names = item_names.load_dos_item_names(folder)
     source = _dos_sources()[0]

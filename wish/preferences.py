@@ -175,20 +175,12 @@ def _pretty(glob: str) -> str:
 #: title works, and this project does not support those yet.
 #:
 #: **Pools of Darkness is not here.** It never shipped on the Commodore 64, so
-#: it has no `disk_glob`; its row is `game_folder_titles()`'s, and exists only
-#: while an Amiga backend flag or `WISH_EXPERIMENTAL_POD_CONVERT` is on.
+#: it has no `disk_glob`; its row is `game_folder_titles()`'s.
 GAME_FOLDER_TITLES: tuple[c64_port.C64Container, ...] = (
     c64_port.POOL_OF_RADIANCE,
     c64_port.CURSE_OF_THE_AZURE_BONDS,
     c64_port.SECRET_OF_THE_SILVER_BLADES,
 )
-
-
-def pod_folder_row_wanted() -> bool:
-    """Whether the titles with no C64 container keep their folder row: an
-    Amiga backend is on, or the Pools of Darkness conversion is."""
-    from editor import convert
-    return backends.amiga_enabled() or convert.pod_convert_enabled()
 
 
 #: The Pools of Darkness folder row, and the Titles line, when the folder is
@@ -221,17 +213,15 @@ def _dos_installed_titles(where: pathlib.Path,
     """The title whose DOS install `where` is, whichever title the window is
     on: `game`, the Commodore 64 titles and the Amiga-only titles are tried."""
     wanted = [game] if game is not None else []
-    wanted += [t for t in c64_port.GAMES + tuple(backends.amiga_only_titles())
+    wanted += [t for t in c64_port.GAMES + tuple(maps.AMIGA_ONLY_TITLES)
                if t not in wanted]
     return [t for t in wanted if _is_dos_install(where, t)]
 
 
 def game_folder_titles() -> tuple[c64_port.C64Container | titles.Title, ...]:
     """The titles that have a folder row in this run: the three above, then
-    the titles with no C64 container while `pod_folder_row_wanted`."""
-    if pod_folder_row_wanted():
-        return GAME_FOLDER_TITLES + maps.AMIGA_ONLY_TITLES
-    return GAME_FOLDER_TITLES
+    the titles with no C64 container."""
+    return GAME_FOLDER_TITLES + maps.AMIGA_ONLY_TITLES
 
 #: The Commodore 64 titles the Fast travel tab has a page for, in
 #: `c64_port.GAMES` order. `travel_titles()` adds the title with no C64
@@ -410,7 +400,7 @@ def report(settings, flag=None, beside=None,
     """
     where, _source = paths.resolve_disks(flag=flag, beside=beside, game=game,
                                          settings=settings,
-                                         also=backends.amiga_only_titles())
+                                         also=maps.AMIGA_ONLY_TITLES)
     rows = [("In use", str(where) if where is not None else "nothing found")]
     if isinstance(game, titles.Title):
         patterns = ".adf disk images"
@@ -632,7 +622,6 @@ class PreferencesDialog(QDialog):
         self.game_folder_edits: dict[str, QLineEdit] = {}
         self.game_folder_reports: dict[str, QLabel] = {}
         stored = dict(getattr(self.win.settings, "game_folders", None) or {})
-        self._build_amiga_rows()
         for game in game_folder_titles():
             suffix = _row_suffix(game)
             edit = getattr(self.ui, f"game_folder_edit_{suffix}")
@@ -652,23 +641,6 @@ class PreferencesDialog(QDialog):
                 Qt.TextInteractionFlag.TextSelectableByMouse)
             self.game_folder_edits[game.key] = edit
             self.game_folder_reports[game.key] = note
-
-    def _build_amiga_rows(self) -> None:
-        """Keep the row of each title with no C64 container while
-        `pod_folder_row_wanted`, and take it out of the form otherwise.
-
-        `preferences.ui` holds the row so that it can be rearranged in
-        Designer; a run without the flag never shows it, and nothing in the
-        dialog refers to it.
-        """
-        if pod_folder_row_wanted():
-            return
-        for game in maps.AMIGA_ONLY_TITLES:
-            group = getattr(self.ui,
-                            f"game_folder_group_{_row_suffix(game)}")
-            self.ui.disks_group_layout.removeWidget(group)
-            group.setParent(None)
-            group.deleteLater()
 
     def game_folder_text(self, game: c64_port.C64Container) -> str:
         return self.game_folder_edits[game.key].text().strip()

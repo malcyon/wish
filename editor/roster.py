@@ -65,7 +65,7 @@ from goldbox.savegame import (
 )
 
 from . import podsheet
-from .convert import Source, pod_convert_enabled
+from .convert import Source
 from .inventory import Inventory
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
@@ -319,11 +319,10 @@ class Party:
         rather than off the template still on disk under `path`. Everything
         else leaves it None and the file is opened as always.
 
-        Raises `dos_codec.WrongTitleError` for a title with no C64 port
-        (Pools of Darkness), which the editor cannot hold -- unless
-        `WISH_EXPERIMENTAL_POD_CONVERT` is set, when a Pools of Darkness save
-        opens with `game` = `titles.POOLS_OF_DARKNESS` and each character's
-        record is a `podsheet.PodSheetRecord` over its own DOS record.
+        A Pools of Darkness save opens with `game` = `titles.POOLS_OF_DARKNESS`
+        and each character's record is a `podsheet.PodSheetRecord` over its
+        own DOS record. Raises `dos_codec.WrongTitleError` for any other title
+        with no C64 port.
         """
         given = source
         if not isinstance(source, Source):
@@ -392,13 +391,11 @@ class Party:
     def _game_of(cls, source: "Source") -> "C64Container | titles.Title":
         """The title a DOS or Amiga save is edited as.
 
-        `titles.POOLS_OF_DARKNESS` for that title while
-        `WISH_EXPERIMENTAL_POD_CONVERT` is set, so the per-title tables
+        `titles.POOLS_OF_DARKNESS` for that title, so the per-title tables
         that duck-type on `.key` answer for it; otherwise the C64
-        container, which for that title raises as it always has.
+        container, which raises for a title with none.
         """
-        if (source.title.key == titles.POOLS_OF_DARKNESS.key
-                and pod_convert_enabled()):
+        if source.title.key == titles.POOLS_OF_DARKNESS.key:
             return titles.POOLS_OF_DARKNESS
         return cls._c64_game(source)
 

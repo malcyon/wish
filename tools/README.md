@@ -9,7 +9,7 @@ Scripts that may drive a live emulator, an X server or the player's own disks, o
 | [amiga](amiga/README.md) | Scripts for the Amiga ports: reading their disk images and executables, disassembling them, and driving them under FS-UAE and WinUAE. |
 | [areas](areas/README.md) | Scripts for a game's areas: the area tables, the scripts that run in them, their maps, and the exits and fast-travel routes between them. |
 | [c64](c64/README.md) | Scripts for the Commodore 64 titles: the VICE session and the drivers built on it, save and record checks, and the C64 Ultimate tools. |
-| [convert](convert/README.md) | Scripts for File > Convert: running every conversion direction, hashing what each one writes, and drawing the dialog. |
+| [convert](convert/README.md) | Scripts for the conversion directions: running every one, and hashing what each one writes. |
 | [curse_of_the_azure_bonds](curse_of_the_azure_bonds/README.md) | Scripts for Curse of the Azure Bonds: loading, driving and checking its saves. |
 | [dos](dos/README.md) | Scripts for the DOS ports: DOSBox and the drivers built on it, overlay and record readers, and the save and party tools. |
 | [generate](generate/README.md) | Scripts that generate files from the code and the game's data: the compiled Qt forms, the generated docs, tables and licence file, the icon set, the Codex agent profiles, the fast-travel exit table and the class diagrams. |

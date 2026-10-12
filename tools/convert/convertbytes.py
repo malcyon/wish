@@ -23,7 +23,7 @@ and the *measured* code is each tree's own.
 The conversions are `tools/convert/convertdrops.py`'s: every specimen under
 `$WISH_SPECIMENS` that `editor.convert.Source.detect` accepts, crossed
 against `editor.convert.destinations_for`, rehearsed exactly as
-`ConvertDialog._rehearse_and_report` rehearses -- the source title's own
+Save As rehearses -- the source title's own
 combat-icon tables included.  Only `rehearse` is called; nothing is written
 outside a temporary directory and no specimen is opened for writing.
 

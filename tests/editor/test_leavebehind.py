@@ -714,11 +714,11 @@ def test_the_party_count_falls_when_an_ordinary_item_frees_the_row_for_an_unjoin
     assert dialog.chosen() == {}
 
 
-# --- names for the Convert window and the readers' failures ------------------
+# --- names for Save As and the readers' failures ------------------
 
 def test_convert_asks_with_the_dialogs_own_dos_folder_and_amiga_disk(
         app, tmp_path, monkeypatch):
-    """No C64 disk and nothing in Preferences: the Convert dialog's own
+    """No C64 disk and nothing in Preferences: Save As's own
     rows name the items."""
     from types import SimpleNamespace
     binding = _binding(app, tmp_path)

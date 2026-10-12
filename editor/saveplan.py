@@ -40,7 +40,7 @@ import re
 import shutil
 import tempfile
 from collections.abc import Collection, Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from goldbox import (
     amiga_later,
@@ -67,6 +67,9 @@ from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
 
 from . import files as editor_files
 from .podsheet import PodSheetRecord
+
+if TYPE_CHECKING:
+    from .dosimport import GameFiles
 
 _log = logging.getLogger("wish.editor.saveplan")
 
@@ -898,6 +901,65 @@ def find_disk_three(folder: "str | pathlib.Path | None"
     return None
 
 
+def _game_files_from_folder(folder: pathlib.Path,
+                            game: Any) -> "GameFiles | None":
+    """The icon, `ANIMATE00` and the creation menu read straight off
+    `folder`, for a Commodore 64 destination whose game-files row names that
+    folder by hand.
+
+    Mirrors `editor.window.EditorBinding.game_files_for`'s own read, cut to
+    the one folder named: a player who edits the row names this one folder
+    outright, not another candidate in that method's precedence of a title's
+    own folder, an environment variable and a path beside the open save.
+    """
+    from goldbox import c64_port
+    from goldbox.d64 import load_payload
+    from goldbox.iconparts import IconParts
+    from goldbox.items import load_item_types
+    from goldbox.portraits import PortraitError, tables_from_disks
+
+    from .dosimport import GameFiles
+
+    def read_animate(disk):
+        return load_payload(disk, dos_codec.ANIMATE_FILE)
+
+    candidates = sorted(pathlib.Path(folder).glob(game.disk_glob))
+
+    def find(read):
+        for candidate in candidates:
+            try:
+                read(str(candidate))
+            except Exception:
+                continue
+            return str(candidate)
+        return None
+
+    icon_disk = find(IconParts.load)
+    animate_disk = find(read_animate)
+    if icon_disk is None or animate_disk is None:
+        return None
+    portraits = None
+    item_types = None
+    if game.key == c64_port.POOL_OF_RADIANCE.key:
+        try:
+            portraits = tables_from_disks(folder)
+        except (PortraitError, OSError) as exc:
+            _log.debug("no creation menu off %s: %s", folder, exc)
+        # `ITEMS` is on side 1, not on the disk that carries the icons.
+        items_disk = find(load_item_types)
+        if items_disk is not None:
+            item_types = load_item_types(items_disk)
+    try:
+        return GameFiles(icon=IconParts.load(icon_disk),
+                                   animate=read_animate(animate_disk),
+                                   portraits=portraits,
+                                   item_types=item_types)
+    except Exception:
+        _log.exception("could not read the conversion's game files off %s",
+                       folder)
+        return None
+
+
 def resolve_assets(source: Any, port: str, *, game_files: Any = None,
                    c64_folder: "str | pathlib.Path | None" = None,
                    dos_folder: "str | pathlib.Path | None" = None,
@@ -924,8 +986,6 @@ def resolve_assets(source: Any, port: str, *, game_files: Any = None,
 
     Raises `MissingAssets` naming every requirement nothing answered for.
     """
-    from .convert import _game_files_from_folder
-
     direction = route(source, port)
     needs = requirements(source, port)
     resolved = Assets(

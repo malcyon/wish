@@ -1837,16 +1837,16 @@ def open_wish(out: pathlib.Path):
     from PyQt6.QtWidgets import QApplication
 
     from automap.config import Settings
-    from automap.maps import load_maps_titled
+    from automap.maps import AMIGA_ONLY_TITLES, load_maps_titled
     from automap.paths import resolve_disks
-    from wish.backends import amiga_enabled, amiga_only_titles
+    from wish.backends import amiga_enabled
     from wish.session import Session
     from wish.window import MAP_TAB, WishWindow
 
     app = QApplication.instance() or QApplication([])
     settings = Settings.load()
     where, _source = resolve_disks(flag=None, beside=None, game=None,
-                                   also=amiga_only_titles())
+                                   also=AMIGA_ONLY_TITLES)
     maps, game = load_maps_titled(str(where) if where else None, None,
                                   amiga_only=amiga_enabled())
     session = Session(preferred=getattr(settings, "backend", "") or None,

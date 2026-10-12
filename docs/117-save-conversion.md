@@ -3,17 +3,11 @@
 **Status: the converter is written.** `goldbox/dos_port.py` is the DOS field
 table and `goldbox/dos_codec.py` reads a DOS save, exports it as the editor's own YAML,
 and builds a C64 `SAVEDGAME0`/`SAVEDGAME1` pair from it. **Steps 1 to 6 of the
-order of work below are closed**, and so is step 7: `File > Import` was built
-for everyone from 2026-09-06 (`#131 (Lift WISH_EXPERIMENTAL_DOS_IMPORT, which
-needs the import working for all three C64 titles)`) and removed outright on
-2026-09-14, when Donald lifted `WISH_EXPERIMENTAL_CONVERT` and closed
-`#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)` in the same commit. `File > Export` went the same way earlier --
-Donald ruled on 2026-09-09 that it was deleted rather than finished. `File >
-Convert…` (`editor/convert.py`) is built only behind
-`WISH_EXPERIMENTAL_POD_CONVERT`, for the Amiga-to-DOS Pools of Darkness
-direction; every other direction is converted through Save As in the Character
-Editor (`editor/saveplan.py`), which blocks a party with a reported loss.
+order of work below are closed**, and so is step 7: there is no `File > Import`,
+`File > Export` or `File > Convert…`, and every direction is converted through
+Save As in the
+Character Editor (`editor/saveplan.py`), which blocks a party with a reported
+loss.
 Everything the plan said had to be found out first has been found out —
 the spell tables agree exactly, nothing DOS stores is lost that matters, and
 the clock is the one loose end.
@@ -2936,13 +2930,13 @@ And for the reverse direction, `tests/convert/test_doswriter.py`:
   DOSBox — the four driven runs above, and the two area-moved parties of
   #60 (Put a converted party where it actually stood, not where the template stood).
 
-## The Convert dialog's own path, in both emulators (2026-09-05)
+## The Convert dialog's own path, in both emulators (2026-09-05; the dialog is gone)
 
 Everything above is `goldbox.dos_codec` proven through `tools/dos/dosdisk.py` and
 `tools/dos/dosnewsave.py`, which call `new_save` and `new_dos_save` directly. A
-player does not: they press Convert, and the bytes come out of
-`editor.window.EditorBinding.convert` → `editor.convert.ConvertDialog` →
-`Direction.rehearse` → `Direction.write`.
+player does not: they press Convert, and the bytes came out of the dialog
+(since removed), which called `Direction.rehearse` → `Direction.write`, the
+calls Save As makes through `editor.saveplan.rehearse`.
 `tests/convert/test_convert.py`'s three transfer tests assert those two routes are
 byte-identical, and a byte-identity test is not a loaded game
 (`.claude/rules/conversions.md`). So both Pool of Radiance directions were

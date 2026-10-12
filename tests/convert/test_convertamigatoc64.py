@@ -44,7 +44,7 @@ def _c64_disks():
 
 def _game_files(game):
     where = gamedisks.find(game.key)
-    return convert._game_files_from_folder(where, game) if where else None
+    return saveplan._game_files_from_folder(where, game) if where else None
 
 
 def test_the_amiga_slot_reports_its_type_zero_item_as_left_out_and_nothing_else(

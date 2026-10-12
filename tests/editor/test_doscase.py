@@ -11,7 +11,7 @@ import struct
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-from editor import convert, dosimport
+from editor import convert
 from goldbox import (
     amiga_pod,
     amiga_savegame,
@@ -156,7 +156,6 @@ def test_a_lower_case_slot_opens_in_the_editor_with_its_items(
         tmp_path, monkeypatch, rename):
     from editor.roster import Party
 
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
     _slot(tmp_path)
     _with_one_item(tmp_path)
     for path in sorted(tmp_path.iterdir()):
@@ -176,12 +175,6 @@ def test_a_lower_case_curse_slot_is_read_for_the_not_set_out_check(tmp_path):
     assert convert.amiga_needs_game_disk(curse, source) is False
 
 
-CLASH_TEXT = (
-    "This folder contains both CHRDATD1.SAV and chrdatd1.sav. DOS treats "
-    "these names as the same save file.\n\nMove the copy you do not want to "
-    "another folder, then try again. No files have been changed.")
-
-
 def _clash_folder(folder: pathlib.Path, *names: str) -> None:
     """Just real enough for Source.detect to find a slot D record."""
     folder.mkdir(exist_ok=True)
@@ -191,87 +184,26 @@ def _clash_folder(folder: pathlib.Path, *names: str) -> None:
             b"\x00" * dos_port.POOL_OF_RADIANCE.record_size)
 
 
-def _convert_modals(monkeypatch):
-    critical = []
-    monkeypatch.setattr(convert.QMessageBox, "critical",
-                        lambda self_, t, x: critical.append((t, x)))
-    return critical
+@pytest.mark.parametrize("names", [
+    ("CHRDATD1.SAV", "chrdatd1.sav"),
+    ("CHRDATD1.SAV", "chrdatd1.sav", "Chrdatd1.sav"),
+], ids=["two", "three"])
+def test_opening_a_folder_with_a_case_clash_stops_and_changes_nothing(
+        two_case_names_possible, tmp_path, monkeypatch, names):
+    from support.editorwindow import make_root
 
+    import editor.window as ew
 
-def test_the_convert_dialog_names_both_files_of_a_case_clash(
-        two_case_names_possible, tmp_path, monkeypatch):
     _ = QApplication.instance() or QApplication([])
-    _clash_folder(tmp_path / "slot", "CHRDATD1.SAV", "chrdatd1.sav")
+    _clash_folder(tmp_path / "slot", *names)
     before = sorted((p.name, p.read_bytes()) for p in (tmp_path / "slot").iterdir())
-    critical = _convert_modals(monkeypatch)
-    dialog = convert.ConvertDialog(
-        str(tmp_path / "slot" / "SAVGAMD.DAT"), None, lambda game: None)
-    try:
-        dialog.replan()
-        assert dialog._blocked == (convert.DIALOG_TITLE, CLASH_TEXT)
-    finally:
-        dialog.close()
-    assert critical == [(convert.DIALOG_TITLE, CLASH_TEXT)]
+    shown = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda _parent, title, text, *a, **k: shown.append(title))
+    window = ew.EditorBinding(make_root())
+
+    window.load(str(tmp_path / "slot" / "SAVGAMD.DAT"))
+
+    assert shown == ["Cannot open"]
+    assert window.party is None
     assert sorted((p.name, p.read_bytes()) for p in (tmp_path / "slot").iterdir()) == before
-
-
-def test_a_clash_among_three_names_shows_the_generic_sentence(
-        two_case_names_possible, tmp_path, monkeypatch):
-    _ = QApplication.instance() or QApplication([])
-    _clash_folder(tmp_path / "slot", "CHRDATD1.SAV", "chrdatd1.sav", "Chrdatd1.sav")
-    critical = _convert_modals(monkeypatch)
-    dialog = convert.ConvertDialog(
-        str(tmp_path / "slot" / "SAVGAMD.DAT"), None, lambda game: None)
-    try:
-        dialog.replan()
-    finally:
-        dialog.close()
-    assert critical == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)]
-
-
-def test_a_single_lower_case_character_file_converts_in_the_dialog(
-        tmp_path, monkeypatch):
-    _ = QApplication.instance() or QApplication([])
-    _clash_folder(tmp_path / "slot", "chrdatd1.sav")
-    critical = _convert_modals(monkeypatch)
-    dialog = convert.ConvertDialog(
-        str(tmp_path / "slot" / "SAVGAMD.DAT"), None, lambda game: None)
-    try:
-        dialog.replan()
-        assert dialog.source is not None and dialog.source.slot == "D"
-    finally:
-        dialog.close()
-    assert critical == []
-
-
-def test_a_clash_found_only_in_the_rehearsal_names_both_item_files(
-        two_case_names_possible, tmp_path, monkeypatch):
-    """The slot detects and its character file is unique; the item file beside
-    it is read only when the conversion is rehearsed."""
-    _ = QApplication.instance() or QApplication([])
-    slot = tmp_path / "slot"
-    _clash_folder(slot, "CHRDATD1.SAV")
-    for name in ("CHRDATD1.ITM", "chrdatd1.itm"):
-        (slot / name).write_bytes(b"\x00" * dos_codec.ITEM_SIZE)
-    out = tmp_path / "out"
-    out.mkdir()
-    before = sorted((p.name, p.read_bytes()) for p in slot.iterdir())
-    critical = _convert_modals(monkeypatch)
-    game_files = dosimport.GameFiles(icon=b"", animate=b"")
-    dialog = convert.ConvertDialog(
-        str(slot / "SAVGAMD.DAT"), None, lambda game: game_files,
-        destination="c64", folder=str(out))
-    text = (
-        "This folder contains both CHRDATD1.ITM and chrdatd1.itm. DOS treats "
-        "these names as the same save file.\n\nMove the copy you do not want "
-        "to another folder, then try again. No files have been changed.")
-    try:
-        dialog.replan()
-        assert dialog.source is not None and dialog.source.slot == "D"
-        assert dialog.rehearsal is None
-        assert dialog._blocked == (convert.DIALOG_TITLE, text)
-    finally:
-        dialog.close()
-    assert critical == [(convert.DIALOG_TITLE, text)]
-    assert sorted((p.name, p.read_bytes()) for p in slot.iterdir()) == before
-    assert list(out.iterdir()) == []

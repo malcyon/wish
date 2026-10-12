@@ -127,7 +127,7 @@ class WishWindow(QMainWindow):
         self._title = title
         self.disks, self.disks_source = paths.resolve_disks(
             flag=disks, beside=save, game=folder_title_named(title),
-            settings=self.settings, also=backends.amiga_only_titles())
+            settings=self.settings, also=AMIGA_ONLY_TITLES)
         # Behind the flag, like everything else the Ultimate touches. A stored
         # host in a settings file predating the flag -- or hand-edited -- used
         # to reach `$POR_ULTIMATE` on every window build regardless, which is
@@ -248,19 +248,6 @@ class WishWindow(QMainWindow):
         if self.save_as_action is not None:
             self.save_as_action.setEnabled(
                 self.editor.party is not None and self.editor.path is not None)
-
-        # File > Convert... exists only for the flagged Pools of Darkness
-        # route: every other conversion goes through Save As. The entry, the
-        # flag and `ConvertDialog` go when Pools of Darkness has a Save As
-        # route (`editor.convert.POD_DIRECTIONS`).
-        from editor import convert
-        self.convert_action = None
-        if convert.pod_convert_enabled():
-            convert_action = QAction(convert.MENU_CONVERT, self)
-            convert_action.triggered.connect(
-                lambda _checked=False: self.editor.convert())
-            menu.addAction(convert_action)
-            self.convert_action = convert_action
 
         menu.addSeparator()
         prefs = QAction("&Preferences…", self)
@@ -420,7 +407,7 @@ class WishWindow(QMainWindow):
         self.disks, self.disks_source = paths.resolve_disks(
             flag=self.disks_flag, beside=self.editor.path,
             game=self.disk_game(), settings=self.settings,
-            also=backends.amiga_only_titles())
+            also=AMIGA_ONLY_TITLES)
         where = self.disks_text()
         debuglog.note("game disks: %s (%s)", where or "nothing found",
                       self.disks_source)

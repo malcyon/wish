@@ -35,9 +35,8 @@ byte for byte, every file the Save As DOS report at `PATH` names, and the report
 
 `--amiga-slot` (with `--amiga-disk`, a path to an `.adf` or the end of a
 `tools/amiga/amigasaves.py` label) replaces `--save` for Pools of Darkness:
-the Amiga saved game is converted by the Convert window's own route,
-`editor.convert.PodAmigaToDos` with `WISH_EXPERIMENTAL_POD_CONVERT` set for
-this process, into `<out>/source/` as DOS slot A, with the disk's label and
+the Amiga saved game is converted by the Save As route,
+`editor.convert.PodAmigaToDos`, into `<out>/source/` as DOS slot A, with the disk's label and
 SHA-256, the report's `dropped` and `losses` and every warning the
 conversion logged.
 
@@ -3530,7 +3529,7 @@ def build_saveas_source(path: str | pathlib.Path, slot: str, out: pathlib.Path,
     `path` is a C64 disk image or an Amiga `.adf` holding any save
     `editor.convert.Source.detect` reads -- a Curse or Silver Blades save from
     either port, or an Amiga Pool of Radiance one.  A Pools of Darkness source
-    is blocked: `--amiga-slot` converts it through the Convert window's own
+    is blocked: `--amiga-slot` converts it through Save As's own
     route.  `names` maps a party position to the name chosen for that member,
     as the Shorten window hands them to `prepare_save_as`; without one, a name
     too long for DOS raises `saveplan.NamesDoNotFit`.
@@ -3587,20 +3586,6 @@ def amiga_image(disk: str) -> tuple[str, bytes]:
     return hits[0]
 
 
-@contextlib.contextmanager
-def flag_on(name: str):
-    """`name` set to `1` for the block, and put back as it was afterwards."""
-    was = os.environ.get(name)
-    os.environ[name] = "1"
-    try:
-        yield
-    finally:
-        if was is None:
-            os.environ.pop(name, None)
-        else:
-            os.environ[name] = was
-
-
 class _Collect(logging.Handler):
     def __init__(self) -> None:
         super().__init__(logging.WARNING)
@@ -3613,9 +3598,8 @@ class _Collect(logging.Handler):
 def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
     """Convert Amiga slot `slot` of `disk` to a DOS save folder in `out/source`.
 
-    The route is the Convert window's: `Source.detect` on the disk, the one
-    DOS direction `destinations_for` offers with `WISH_EXPERIMENTAL_POD_CONVERT`
-    set, `saveplan.rehearse`, then the direction's `write` into the folder.
+    The route is Save As's: `Source.detect` on the disk, the one DOS direction
+    `destinations_for` offers, `saveplan.rehearse`, then the direction's `write` into the folder.
     The disk is copied to `out/source.adf` and never written.  A warning the
     conversion logs (a spell id the DOS book does not hold, say) is listed in
     `warnings`, since it reaches neither `dropped` nor `losses`.  A conversion
@@ -3629,8 +3613,7 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
     adf = out / "source.adf"
     adf.write_bytes(data)
     report: dict = {"disk": label, "adf_sha256": hashlib.sha256(data).hexdigest(),
-                    "amiga_slot": f"SavGam{letter}.pty",
-                    "flag": f"{convert.POD_CONVERT_ENV}=1"}
+                    "amiga_slot": f"SavGam{letter}.pty"}
     collect = _Collect()
     wish_log = logging.getLogger("wish")
     # The GUI's debug log parks this logger above CRITICAL while it is off,
@@ -3640,22 +3623,21 @@ def build_amiga_source(disk: str, slot: str, out: pathlib.Path) -> dict:
         wish_log.setLevel(logging.WARNING)
     wish_log.addHandler(collect)
     try:
-        with flag_on(convert.POD_CONVERT_ENV):
-            source = convert.Source.detect(adf, slot=letter)
-            if source.key != "pools-of-darkness" or letter not in (
-                    source.available_slots or [source.slot]):
-                return {**report, "stopped": f"{label} holds no Pools of Darkness "
-                        f"slot {letter} (it holds {source.available_slots})"}
-            directions = [d for d in convert.destinations_for(source)
-                          if d.destination_port == "dos"]
-            if len(directions) != 1:
-                return {**report, "stopped": f"{len(directions)} DOS directions "
-                        "are offered for this disk; one is wanted"}
-            rehearsal, wrote = saveplan.rehearse(directions[0], source,
-                                                 saveplan.Assets())
-            dest = out / "source"
-            dest.mkdir(parents=True, exist_ok=True)
-            directions[0].write(rehearsal, dest)
+        source = convert.Source.detect(adf, slot=letter)
+        if source.key != "pools-of-darkness" or letter not in (
+                source.available_slots or [source.slot]):
+            return {**report, "stopped": f"{label} holds no Pools of Darkness "
+                    f"slot {letter} (it holds {source.available_slots})"}
+        directions = [d for d in convert.destinations_for(source)
+                      if d.destination_port == "dos"]
+        if len(directions) != 1:
+            return {**report, "stopped": f"{len(directions)} DOS directions "
+                    "are offered for this disk; one is wanted"}
+        rehearsal, wrote = saveplan.rehearse(directions[0], source,
+                                             saveplan.Assets())
+        dest = out / "source"
+        dest.mkdir(parents=True, exist_ok=True)
+        directions[0].write(rehearsal, dest)
     except Exception as e:  # noqa: BLE001 -- recorded, and the run stops before a boot
         return {**report, "stopped": f"{type(e).__name__}: {e}",
                 "warnings": collect.lines}
@@ -9124,7 +9106,7 @@ def main(argv: list[str] | None = None) -> int:
                           "convert it with Save As DOS first (repeatable)")
     src.add_argument("--amiga-slot", default=None, metavar="SavGamA.pty",
                      help="darkness: convert this slot of --amiga-disk to DOS "
-                          "through the Convert window's route first")
+                          "through the Save As route first")
     src.add_argument("--convert", default=None, metavar="PATH",
                      help="a C64 .D64 or Amiga .adf holding a pool, curse or "
                           "ssb save; convert it with Save As DOS first "

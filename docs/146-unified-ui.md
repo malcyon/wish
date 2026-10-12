@@ -400,7 +400,7 @@ class MemorisedEditor:
 Update `UI_DIRS`:
 ```python
 UI_DIRS = [
-    ROOT / "editor",     # convert.ui, inventory.ui, partspicker.ui
+    ROOT / "editor",     # inventory.ui, partspicker.ui
     ROOT / "automap",    # noteeditor.ui only
     ROOT / "wish",       # window.ui (the unified file), preferences.ui
 ]

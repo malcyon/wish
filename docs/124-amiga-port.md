@@ -25,7 +25,7 @@ Silver Blades on the C64, then **Pools of Darkness on the Amiga**, which is
 where 1992 actually was. The plan covered one direction, a C64 party into
 Amiga Pools of Darkness. The editor now converts a party in all six directions
 between C64, DOS and Amiga for Pool of Radiance, Curse and Silver Blades, and
-an Amiga Pools of Darkness party to DOS behind `WISH_EXPERIMENTAL_POD_CONVERT`
+a Pools of Darkness party between DOS and the Amiga
 (`editor/convert.py`); Pools of Darkness has no C64 port, so no other
 direction reaches or leaves it.
 

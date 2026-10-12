@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import pathlib
-import shutil
 from fractions import Fraction
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, pyqtSignal
@@ -101,6 +100,14 @@ DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
 #: The Save As picker's title.
 SAVE_AS_TITLE = "Save the disk as"
 
+#: The Amiga disk pickers' titles and filter, and the picker title for the
+#: DOS game folder. Approved text, moved here unchanged from `editor.convert`.
+DISK_TITLE = "Choose Amiga game disk 2"
+DISK_ONE_TITLE = "Choose Amiga game disk 1"
+DISK_THREE_TITLE = "Select location of Amiga game disk 3"
+DOS_GAME_TITLE = "Choose the DOS game folder"
+AMIGA_DISK_FILTER = "Amiga disks (*.adf *.ADF);;All files (*)"
+
 #: The menu path in the Missing Game Disk box. It reads "File->Preferences->Game
 #: Disks" and draws the same, but each "-" is followed by a word joiner and the
 #: space is a no-break space, because Qt otherwise wraps after the hyphen.
@@ -162,9 +169,8 @@ DESTINATION_PATH_LABEL = {
 DESTINATION_BROWSE = "Browse…"
 SAVE_AS_BUTTON_TEXT = "Save As"
 
-#: B1: the DOS folder picker's own title -- not the Convert window's
-#: `Choose where to write`, because the chosen folder *is* the save here,
-#: where Convert's is a folder a fresh save folder is created inside.
+#: B1: the DOS folder picker's own title; the chosen folder *is* the save
+#: here.
 DOS_FOLDER_TITLE = "Choose a new folder for the DOS save"
 
 #: C1: reused for Open replacing a document with pending edits, and for
@@ -2022,13 +2028,8 @@ class EditorBinding(QObject):
         """The icon, `ANIMATE00` and the creation menu a conversion into
         `game` needs, or `None` for the first two.
 
-        This is `#52 (File ▸ Import and File ▸ Export for every direction
-        the library supports)`'s `ConvertDialog`'s own reader, which asks
-        for the **destination**'s disks -- the only reader left since
-        `game_files_for_import`, which asked the same question for the
-        *open* party's title, was deleted with `File ▸ Import` on
-        2026-09-14. Three C64 titles convert now (`editor.convert.DIRECTIONS`),
-        so a Curse DOS save converted with a Pool of Radiance party open --
+        It asks for the **destination**'s disks. Three C64 titles convert
+        (`editor.convert.DIRECTIONS`), so a Curse DOS save converted with a Pool of Radiance party open --
         or none open at all -- has to read `ANIMATE00` off a `CURSE*` disk,
         not a `POOL*` one; `_disk_candidates`'s `pattern` argument is what
         makes that possible without it caring what, if anything, is open.
@@ -2086,189 +2087,6 @@ class EditorBinding(QObject):
             _log.exception("could not read the conversion's game files off "
                            "%s and %s", icon_disk, animate_disk)
             return None
-
-    # -- converting ---------------------------------------------------------
-
-    def convert(self, source: str | None = None, destination: str | None = None,
-               folder: str | None = None, game: str | None = None,
-               disk: str | None = None) -> str:
-        """File ▸ Convert… Returns what happened, for a test.
-
-        `source`, `destination`, `folder`, `game` and `disk` pre-fill the
-        dialog's rows -- given every argument, no picker ever opens, which is
-        how a test drives the whole path (`#52 (File ▸ Import and File ▸
-        Export for every direction the library supports)`'s plan comment
-        step C). `disk` is the player's own Amiga disk 2, the twin of `game`
-        for an Amiga destination (`#36 (Write an Amiga disk image, not just
-        the character files)`). With no `source`, the dialog opens with an
-        empty `From` row rather than a picker in front of it (`#412 (File ▸
-        Convert demands a save in a file picker before it will show you the
-        Convert window)`) -- the row's own `Choose` button is the picker
-        now. The write itself happens here rather than inside
-        `ConvertDialog`, rehearsing (the dialog) kept apart from committing
-        (this method): `fresh_folder`
-        names a folder and `mkdir()`s it immediately afterwards (the review
-        of `a60e829`: it names a folder, it does not reserve one), then
-        `Direction.write` puts the files in it. A C64 destination is opened
-        afterwards the same way `File ▸ Open` opens anything; a DOS or
-        Amiga destination is not something the editor can show, so it only
-        gets a status line. **Flushes the open party first**, which puts the
-        sheet's widgets into the records the conversion reads
-        (`#478 (File ▸ Convert converts the save as it was opened, not as it
-        is on screen, because it never flushes the editor's own edits)`).
-        The records reach the conversion through `editor.saveplan`'s snapshot,
-        which `Source.detect` builds from the open party without writing
-        anything into its payload, image or files, so a conversion leaves the
-        open document exactly as it was. Guarded on `self.party`, since
-        Convert opens with nothing open too, to let the picker choose a
-        source.
-        """
-        from editor import convert as convert_mod
-
-        if self.party is not None:
-            self._report_flush_failures(self._flush())
-
-        dialog = convert_mod.ConvertDialog(
-            source or "", self.party, self.game_files_for,
-            destination=destination, game=game, disk=disk, folder=folder,
-            # `#413 (The Convert window changes shape depending on which
-            # platforms you are converting between)` built the prefilled C64
-            # row and nothing passed this, so the row was blank however the
-            # player had set Preferences. `_own_disk_folder` is the function
-            # it wants, and reads only `Settings.game_folders` -- not
-            # `resolve_disks`' full precedence, which would start a search
-            # of the machine when no folder is set for either title.
-            game_folder=self._own_disk_folder,
-            parent=self.root,
-            start_dir=files.open_start_dir(self.last_save_folder, self.path,
-                                           self.saves_folder))
-        while True:
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return "cancelled"
-            #: The names chosen so far, which the rehearsal after the
-            #: left-behind choice has to be given again.
-            names = None
-            if dialog.rehearsal is None and dialog.unfit_names is not None:
-                # A name is too long for the destination: ask for shorter
-                # ones, now that Convert has been pressed.
-                choice = self._choose_names(
-                    dialog.unfit_names.unfit, dialog.unfit_names.width,
-                    convert_mod.BUTTON_CONVERT,
-                    shown=dialog.unfit_names.shown)
-                if choice is None:
-                    # Back to the Convert window with its rows as they were,
-                    # the way Save As stays open.
-                    continue
-                names = choice
-                try:
-                    dialog.rehearse_naming(choice)
-                except (dos_codec.JoinedScrollsDoNotFit,
-                        amiga_savegame.AmigaJoinedScrollsDoNotFit) as exc:
-                    # The names were the first thing in the way; the pack is
-                    # next, asked for below with these names kept.
-                    _log.info("The pack does not fit the %s destination: %s",
-                              dialog.direction.destination_port, exc)
-                    dialog.pack_overflow = convert_mod.overflow_of(exc)
-                except dos_codec.EffectsDoNotFit as exc:
-                    # Same again for the running effects, asked for below.
-                    _log.info("The running effects do not fit the %s "
-                              "destination: %s",
-                              dialog.direction.destination_port, exc)
-                    dialog.effect_overflow = exc.overflow
-                except Exception:
-                    _log.exception("could not convert with the names %s",
-                                   choice)
-                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
-                    continue
-                if (dialog.rehearsal is None and not dialog.pack_overflow
-                        and dialog.effect_overflow is None):
-                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
-                    continue
-            if dialog.rehearsal is None and dialog.pack_overflow:
-                # The destination cannot hold a pack as it stands: ask what
-                # stays behind, now that Convert has been pressed.
-                choice = self._choose_left_behind(
-                    dialog.pack_overflow, dialog.direction.destination_game,
-                    convert_mod.BUTTON_CONVERT, source=dialog.source,
-                    assets=dialog._assets)
-                if choice is None:
-                    # Back to the Convert window with its rows as they were,
-                    # the way Save As stays open.
-                    continue
-                try:
-                    dialog.rehearse_leaving(choice, names=names)
-                except Exception:
-                    _log.exception("could not convert with %s left behind",
-                                   choice)
-                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
-                    continue
-                if (dialog.rehearsal is None
-                        and dialog.effect_overflow is None):
-                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
-                    continue
-            if dialog.rehearsal is None and dialog.effect_overflow is not None:
-                # The C64's shared effect table cannot hold the party's
-                # running effects: ask which are left out, with every choice
-                # made so far kept.
-                choice = self._choose_effects_left(
-                    dialog.effect_overflow, dialog.direction.destination_game,
-                    convert_mod.BUTTON_CONVERT)
-                if choice is None:
-                    continue
-                try:
-                    dialog.rehearse_leaving_effects(choice)
-                except Exception:
-                    _log.exception("could not convert with the running "
-                                   "effects %s left out", choice)
-                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
-                    continue
-                if dialog.rehearsal is None:
-                    dialog.report_failure(convert_mod.CANNOT_CONVERT)
-                    continue
-            if dialog.rehearsal is None:
-                return "cancelled"
-            destination_root = pathlib.Path(dialog.folder)
-            fresh = convert_mod.fresh_folder(destination_root)
-            fresh.mkdir(parents=True)
-            try:
-                written = dialog.direction.write(dialog.rehearsal, fresh)
-            except Exception as exc:
-                _log.exception("could not write a conversion into %s", fresh)
-                #: `rmtree`, not `rmdir`: a direction's `write` puts several
-                #: files in the folder, so a writer that fails partway leaves
-                #: it non-empty, where `rmdir` raises and the old handler
-                #: swallowed it.  What survived would sit in the player's own
-                #: destination under a `wish-YYYY-MM-DD` name, indis-
-                #: tinguishable from a conversion that worked.
-                shutil.rmtree(fresh, ignore_errors=True)
-                dialog.report_failure(
-                    DISK_FULL if files.out_of_space(exc)
-                    else convert_mod.CANNOT_CONVERT)
-                continue
-            if dialog.direction.destination_port == "c64":
-                self.load(str(written[0]))
-                result = f"converted into {fresh}"
-            elif dialog.direction.destination_port == "amiga":
-                note = convert_mod.CONVERTED_AMIGA.format(
-                    slot=dialog.slot or "", folder=fresh)
-                self.status(note)
-                result = note
-            else:
-                note = convert_mod.CONVERTED_DOS.format(
-                    slot=dialog.slot or "", folder=fresh)
-                self.status(note)
-                result = note
-            #: `dialog` is already closed by this point -- `buttons.accepted`
-            #: is wired straight to `QDialog.accept` and fires the instant
-            #: Convert is clicked, before this method ever runs. So this
-            #: pop-up replaces silence after that close, not the close
-            #: itself: the destination's own slot, where one exists, is
-            #: still `self.status(note)` above -- Donald's own wording names
-            #: only the folder.
-            QMessageBox.information(
-                self.root, convert_mod.DIALOG_TITLE,
-                convert_mod.CONVERT_SUCCESS.format(folder=fresh))
-            return result
 
     def _choose_names(self, unfit, width: int, accept_label: str,
                       shown: "frozenset[str] | None" = None
@@ -2552,7 +2370,7 @@ class EditorBinding(QObject):
 
         `pattern` overrides the title the glob searches for -- Pool of
         Radiance's `disk_glob` by default, or the open party's own when one
-        is open. `editor.convert.ConvertDialog` passes the *destination*
+        is open. Save As passes the *destination*
         title's pattern instead, because a Curse DOS save converted with a
         Pool of Radiance party open needs Curse's own disks, not the open
         party's (`#52`'s plan, "three C64 titles means the disks are chosen
@@ -3128,7 +2946,7 @@ class EditorBinding(QObject):
         `saveplan.resolve_assets` takes a manual override for
         `DESTINATION_DISKS` only (`c64_folder=`) -- a C64 party converting
         *away* (`SOURCE_DISKS`) is read through the injected `game_files`
-        callable alone, the same as the Convert window it replaces, so there
+        callable alone, so there
         is nothing a Browse row here could feed into for that one.
         """
         manual: dict[str, str] = {}
@@ -3310,9 +3128,8 @@ class EditorBinding(QObject):
             path = QFileDialog.getExistingDirectory(
                 self.root, DOS_FOLDER_TITLE, current)
         elif port == "amiga":
-            from . import convert as convert_mod
             path, _ = QFileDialog.getSaveFileName(
-                self.root, SAVE_AS_TITLE, current, convert_mod.DISK_FILTER,
+                self.root, SAVE_AS_TITLE, current, AMIGA_DISK_FILTER,
                 "", no_confirm)
         else:
             path, _ = QFileDialog.getSaveFileName(
@@ -3321,8 +3138,8 @@ class EditorBinding(QObject):
             field.setText(path)
 
     def _destination_asset_browse(self, requirement: str) -> None:
-        """A5's own three Browse buttons, reusing the Convert window's own
-        titles and filter -- `#511` comment 5769421923, "already approved"."""
+        """A5's own three Browse buttons, with the approved picker titles
+        and filter above."""
         field_name = {saveplan.DESTINATION_DISKS: "destination_c64_disks",
                       saveplan.DOS_GAME_FOLDER: "destination_dos_folder",
                       saveplan.AMIGA_GAME_DISK: "destination_amiga_disk",
@@ -3333,28 +3150,25 @@ class EditorBinding(QObject):
         if field is None:
             return
         current = field.text() or str(self.path or "")
-        from . import convert as convert_mod
 
         if requirement == saveplan.AMIGA_GAME_DISK:
             path, _ = QFileDialog.getOpenFileName(
-                self.root, convert_mod.DISK_TITLE, current,
-                convert_mod.DISK_FILTER)
+                self.root, DISK_TITLE, current,
+                AMIGA_DISK_FILTER)
         elif requirement == saveplan.AMIGA_DISK_ONE:
             path, _ = QFileDialog.getOpenFileName(
-                self.root, convert_mod.DISK_ONE_TITLE, current,
-                convert_mod.DISK_FILTER)
+                self.root, DISK_ONE_TITLE, current,
+                AMIGA_DISK_FILTER)
         elif requirement == saveplan.AMIGA_DISK_THREE:
             path, _ = QFileDialog.getOpenFileName(
-                self.root, convert_mod.DISK_THREE_TITLE, current,
-                convert_mod.DISK_FILTER)
+                self.root, DISK_THREE_TITLE, current,
+                AMIGA_DISK_FILTER)
         elif requirement == saveplan.DOS_GAME_FOLDER:
             path = QFileDialog.getExistingDirectory(
-                self.root, convert_mod.GAME_TITLE, current)
+                self.root, DOS_GAME_TITLE, current)
         else:
-            # No title of its own, same as the Convert window's own C64 row
-            # (`editor/convert.py::_choose_files`) -- `LABEL_C64` already
-            # says what it is and a second sentence in the picker's own
-            # caption would be a second string nobody has approved.
+            # No caption: the row's own label already says what it is, and a
+            # second sentence would be a string nobody has approved.
             path = QFileDialog.getExistingDirectory(self.root, "", current)
         if path:
             field.setText(path)

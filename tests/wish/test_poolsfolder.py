@@ -52,7 +52,6 @@ def _clean_environment(monkeypatch):
     monkeypatch.delenv("POR_DISKS", raising=False)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
-    monkeypatch.delenv("WISH_EXPERIMENTAL_POD_CONVERT", raising=False)
     monkeypatch.delenv(amigafasttravel.FAST_TRAVEL_ENV, raising=False)
     preferences._scan.cache_clear()
 
@@ -147,36 +146,7 @@ def pool_folder(tmp_path, geo: Geo):
     return folder
 
 
-# --- the row exists only behind the flag -------------------------------------
-
-def test_the_row_is_absent_by_default(app, tmp_path, monkeypatch):
-    nowhere(tmp_path, monkeypatch)
-    win = window(app)
-    try:
-        dialog = PreferencesDialog(win)
-        assert POD.key not in dialog.game_folder_edits
-        assert set(dialog.game_folder_edits) == {
-            g.key for g in preferences.GAME_FOLDER_TITLES}
-        assert dialog.findChild(preferences.QLineEdit,
-                                "game_folder_edit_pools_of_darkness") is None
-        assert preferences.game_folder_titles() == preferences.GAME_FOLDER_TITLES
-    finally:
-        win.close()
-
-
-@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
-def test_a_forgotten_setting_does_not_add_the_row(app, tmp_path, monkeypatch,
-                                                  value):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
-    win = window(app)
-    try:
-        dialog = PreferencesDialog(win)
-        assert POD.key not in dialog.game_folder_edits
-        assert dialog.findChild(preferences.QLineEdit,
-                                "game_folder_edit_pools_of_darkness") is None
-    finally:
-        win.close()
+# --- the Amiga backend and the row ---------------------------------------------
 
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
@@ -233,20 +203,6 @@ def test_a_forgotten_setting_does_not_add_the_travel_page(
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
-        assert POD.title not in travel_tab_texts(dialog)
-        assert POD.key not in dialog.travel_tables
-    finally:
-        win.close()
-
-
-def test_the_conversion_flag_alone_does_not_add_the_travel_page(
-        app, tmp_path, monkeypatch):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv("WISH_EXPERIMENTAL_POD_CONVERT", "1")
-    win = window(app)
-    try:
-        dialog = PreferencesDialog(win)
-        assert POD.key in dialog.game_folder_edits
         assert POD.title not in travel_tab_texts(dialog)
         assert POD.key not in dialog.travel_tables
     finally:
@@ -534,21 +490,11 @@ def test_a_pool_of_radiance_row_still_answers_first(tmp_path, monkeypatch):
         por, paths.GAME_PREFERENCE)
 
 
-def test_the_titles_to_try_come_from_the_flag(monkeypatch):
-    assert bk.amiga_only_titles() == ()
-    for off in ("", "0", "off"):
-        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, off)
-        assert bk.amiga_only_titles() == ()
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
-    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
-
-
 def test_a_winuae_only_player_gets_the_pod_folder_and_its_maps(
         app, tmp_path, monkeypatch):
     settings, pod = _only_pod(tmp_path, monkeypatch)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
-    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
     win = window(app, maps=None, settings=settings)
     try:
         assert win.map.state.title == POD.title
@@ -590,14 +536,14 @@ def test_a_window_with_only_the_pod_folder_names_its_title(
 
 
 @pytest.mark.parametrize("value", [None, "", "0", "off"])
-def test_without_the_flag_the_pod_folder_is_not_taken(
+def test_without_a_backend_the_pod_folder_is_in_use_but_maps_nothing(
         app, tmp_path, monkeypatch, value):
-    settings, _pod = _only_pod(tmp_path, monkeypatch)
+    settings, pod = _only_pod(tmp_path, monkeypatch)
     if value is not None:
         monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
     win = window(app, maps=None, settings=settings)
     try:
-        assert win.disks is None
+        assert win.disks == pod
         assert win.mapper._maps == {}
         assert win.map.state.title != POD.title
     finally:
@@ -669,9 +615,7 @@ def test_the_dialog_capitalises_the_composed_titles_line(
         win.close()
 
 
-# --- the conversion flag keeps the row too ------------------------------------
-
-POD_CONVERT_ENV = "WISH_EXPERIMENTAL_POD_CONVERT"
+# --- the row needs no backend --------------------------------------------------
 
 
 def dos_install(folder, launcher="START.BAT", config="POOL4.CFG"):
@@ -681,39 +625,19 @@ def dos_install(folder, launcher="START.BAT", config="POOL4.CFG"):
     return folder
 
 
-def test_the_row_is_absent_with_neither_flag(app, tmp_path, monkeypatch):
+def test_the_row_is_present_with_the_amiga_backend_off_and_no_setting_made(
+        app, tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
-    win = window(app)
-    try:
-        assert POD.key not in PreferencesDialog(win).game_folder_edits
-    finally:
-        win.close()
-
-
-@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
-def test_a_forgotten_conversion_setting_does_not_add_the_row(
-        app, tmp_path, monkeypatch, value):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(POD_CONVERT_ENV, value)
-    win = window(app)
-    try:
-        assert POD.key not in PreferencesDialog(win).game_folder_edits
-        assert preferences.game_folder_titles() == preferences.GAME_FOLDER_TITLES
-    finally:
-        win.close()
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_the_conversion_flag_alone_adds_the_row(app, tmp_path, monkeypatch,
-                                                value):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(POD_CONVERT_ENV, value)
+    assert not bk.amiga_enabled()
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
         assert POD.key in dialog.game_folder_edits
         assert dialog.findChild(preferences.QLineEdit,
                                 "game_folder_edit_pools_of_darkness")
+        assert preferences.game_folder_titles() == (
+            preferences.GAME_FOLDER_TITLES + AMIGA_ONLY_TITLES)
+        assert POD.title not in travel_tab_texts(dialog)
     finally:
         win.close()
 
@@ -807,39 +731,6 @@ def test_another_titles_dos_install_is_not_named_with_no_title(tmp_path,
     assert POD.title not in rows["Titles"]
 
 
-@pytest.mark.parametrize("value", ["0", "off", "", "junk"])
-def test_a_forgotten_conversion_setting_adds_no_title_to_try(monkeypatch, value):
-    monkeypatch.setenv(POD_CONVERT_ENV, value)
-    assert bk.amiga_only_titles() == ()
-
-
-def test_the_conversion_flag_alone_makes_the_pools_folder_the_one_in_use(
-        app, tmp_path, monkeypatch):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(POD_CONVERT_ENV, "1")
-    folder = dos_install(tmp_path / "DARKNESS")
-    settings = Settings(game_folders={POD.key: str(folder)})
-    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
-    rows = dict(preferences.report(settings))
-    assert rows["In use"] == str(folder)
-    assert rows["Titles"] == POD.title
-    win = window(app, maps=None, settings=settings)
-    try:
-        assert str(win.disks) == str(folder)
-        assert str(win.editor.disks) == str(folder)
-    finally:
-        win.close()
-
-
-def test_the_conversion_flag_alone_shows_no_amiga_titles_in_the_scan(
-        tmp_path, monkeypatch):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(POD_CONVERT_ENV, "1")
-    folder = tmp_path / "pod"
-    adf(folder, "a.adf", "POD 1")
-    assert preferences._scan(str(folder), bk.amiga_enabled())["titles"] == []
-
-
 CURSE = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 
@@ -887,26 +778,32 @@ def test_a_pools_of_darkness_dos_install_is_still_named_alone(tmp_path,
     assert title_folder_report(str(folder), POD) == preferences.DOS_INSTALL_NOTE
 
 
+@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
 @pytest.mark.parametrize("game", [None, POOL])
-def test_with_both_flags_off_a_pools_dos_install_is_not_named(tmp_path,
-                                                              monkeypatch,
-                                                              game):
-    nowhere(tmp_path, monkeypatch)
-    folder = dos_install(tmp_path / "dos")
-    rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
-    assert POD.title not in rows["Titles"]
-
-
-@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV,
-                                 POD_CONVERT_ENV])
-@pytest.mark.parametrize("game", [None, POOL])
-def test_with_either_flag_on_a_pools_dos_install_is_named(tmp_path, monkeypatch,
+def test_with_either_backend_on_a_pools_dos_install_is_named(tmp_path, monkeypatch,
                                                           env, game):
     nowhere(tmp_path, monkeypatch)
     monkeypatch.setenv(env, "1")
     folder = dos_install(tmp_path / "dos")
     rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
     assert rows["Titles"] == POD.title
+
+
+def test_a_pools_dos_install_set_in_its_row_is_in_use_and_named_with_no_backend(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    assert not bk.amiga_enabled()
+    folder = dos_install(tmp_path / "DARKNESS")
+    settings = Settings(game_folders={POD.key: str(folder)})
+    rows = dict(preferences.report(settings))
+    assert rows["In use"] == str(folder)
+    assert rows["Titles"] == POD.title
+    win = window(app, maps=None, settings=settings)
+    try:
+        assert str(win.disks) == str(folder)
+        assert str(win.editor.disks) == str(folder)
+    finally:
+        win.close()
 
 
 def test_another_title_with_no_disks_keeps_its_old_text(tmp_path, monkeypatch):

@@ -1,5 +1,4 @@
-"""Save in place for a Pools of Darkness party, behind
-`WISH_EXPERIMENTAL_POD_CONVERT`: an edit goes back into the DOS save folder
+"""Save in place for a Pools of Darkness party: an edit goes back into the DOS save folder
 or the Amiga disk 3 slot it was opened from, and nothing else moves.
 
 `goldbox.pod_rewrite` does the writing; `editor.saveplan.dos_files` and
@@ -19,11 +18,8 @@ import shutil
 
 import pytest
 from test_podparty import (
-    FLAG,
-    OFF,
     _amiga_images,
     _dos_sources,
-    _flag,
 )
 from test_podwindow import _no_box, _synthetic_folder, _window
 
@@ -127,7 +123,6 @@ def _edit_age(window, row: int) -> int:
 
 def test_an_age_edit_and_a_save_move_only_the_age_bytes(
         app, monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     folder = _synthetic_folder(tmp_path)
     before = _files(folder)
@@ -152,7 +147,6 @@ def test_an_ability_edit_and_a_save_move_both_bytes_of_the_pair(
         app, monkeypatch, tmp_path):
     """The DOS engine rebuilds the score in force from the permanent one, so
     the save holds the edit in both bytes of each pair."""
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     folder = _synthetic_folder(tmp_path)
     data = bytearray((folder / "CHRDATA1.SAV").read_bytes())
@@ -203,7 +197,6 @@ def test_an_amiga_ability_edit_moves_both_bytes_of_the_pair():
 
 
 def test_a_save_with_no_edit_writes_nothing(app, monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     folder = _synthetic_folder(tmp_path)
     before = _files(folder)
@@ -214,28 +207,8 @@ def test_a_save_with_no_edit_writes_nothing(app, monkeypatch, tmp_path):
     assert not (tmp_path / "b").exists()
 
 
-@pytest.mark.parametrize("value", OFF)
-def test_without_the_flag_nothing_opens_and_save_writes_nothing(
-        app, monkeypatch, tmp_path, value):
-    import editor.window as ew
-    _flag(monkeypatch, value)
-    said = []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append(a[1]))
-    folder = _synthetic_folder(tmp_path)
-    before = _files(folder)
-    window = _window()
-    window.backups = str(tmp_path / "b")
-    window.load(str(folder))
-    assert said == ["Cannot open"]
-    assert window.party is None
-    assert window.save(interactive=False) == "nothing open"
-    assert _files(folder) == before
-
-
 def test_an_item_edit_patches_its_node_and_keeps_the_rest(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     folder = _synthetic_folder(tmp_path)
     party = Party(convert.Source.detect(folder, slot="A"))
     [member] = party.members
@@ -252,7 +225,6 @@ def test_an_item_edit_patches_its_node_and_keeps_the_rest(
 
 def test_deleting_the_only_item_empties_the_file_and_the_count(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     folder = _synthetic_folder(tmp_path)
     party = Party(convert.Source.detect(folder, slot="A"))
     [member] = party.members
@@ -307,7 +279,6 @@ def test_every_dos_field_edit_lands_on_its_own_bytes(monkeypatch):
     """Each sheet field, edited on every DOS character: the record written
     is the edited record, except that a money edit moves the load by the
     same amount, and the item and effect files are as read."""
-    _flag(monkeypatch, "1")
     seen = 0
     for source in _dos_sources():
         label = f"{source.path}:{source.slot}"
@@ -339,7 +310,6 @@ def test_every_dos_item_delete_drops_one_node_and_its_load(monkeypatch):
     item file loses exactly that node, every later node keeps its bytes --
     the ones past the sixteenth, which the sheet never shows, among them --
     the count drops by one and the load by that item's weight."""
-    _flag(monkeypatch, "1")
     count = podsheet.TABLE["item_count"]
     seen = past_sixteen = 0
     for source in _dos_sources():
@@ -381,7 +351,6 @@ def test_every_amiga_field_edit_reads_back_as_the_edit(monkeypatch):
     block: only the 404-byte record moves, and reading the block back gives
     the edited sheet record -- save the load, which the DOS rendering
     recomputes from the money and the Amiga game recomputes on load."""
-    _flag(monkeypatch, "1")
     blocks: dict[bytes, int] = {}
     for _label, data, slots in _amiga_images():
         disk = AmigaDisk(bytearray(data))
@@ -427,7 +396,6 @@ def test_the_amiga_greys_what_dos_greys():
 
 def test_a_turn_class_edit_lands_on_the_turning_row_and_reads_back(
         monkeypatch):
-    _flag(monkeypatch, "1")
     blocks = _amiga_blocks()
     for block, position in blocks.items():
         before = podsheet.amiga_member(block, position).record
@@ -447,7 +415,6 @@ def test_a_class_code_and_a_level_in_an_unheld_class_read_back_as_typed(
     """A class code typed into the box and a level typed into a class a
     dual-classed human left (ABAGAIL, given cleric 1) are the block's own
     bytes, so reopening shows them."""
-    _flag(monkeypatch, "1")
     dual = 0
     for block, position in _amiga_blocks().items():
         before = podsheet.amiga_member(block, position).record
@@ -482,7 +449,6 @@ def test_every_dos_slot_saves_an_age_edit_and_nothing_else(
     edited and saved: that character's record moves at the age bytes and
     nowhere else, and every other file in the folder, the vault among them,
     is as it was. Then a Save with no edit writes nothing."""
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     slots = 0
     for n, (label, source) in enumerate(_dos_copies(tmp_path)):
@@ -518,7 +484,6 @@ def test_every_amiga_slot_saves_an_age_edit_and_nothing_else(
     age bytes and nowhere else, and every other file on the disk, the vault
     among them, is as it was. A Save with no edit leaves the image as it
     was, byte for byte."""
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     slots = 0
     for n, (label, source) in enumerate(_amiga_copies(tmp_path)):
@@ -613,7 +578,6 @@ def _head_item_zero(block: bytes) -> bool:
 
 
 def test_an_unedited_amiga_save_round_trips_byte_for_byte(monkeypatch):
-    _flag(monkeypatch, "1")
     for label, blob, save in _slots():
         assert pod_rewrite.rebuild_party(blob, save.blocks) == blob, label
     for block, position in _amiga_blocks().items():
@@ -624,7 +588,6 @@ def test_an_unedited_amiga_save_round_trips_byte_for_byte(monkeypatch):
 
 def test_an_amiga_quantity_edit_moves_only_that_nodes_quantity_byte(
         monkeypatch):
-    _flag(monkeypatch, "1")
     seen = 0
     for block, position in _amiga_blocks().items():
         if not _head_item_zero(block):
@@ -647,7 +610,6 @@ def test_an_amiga_item_delete_drops_one_node_and_every_other_block_stays(
     """Deleting item 0 of a block: it is 20 bytes shorter and its count one
     lower, the file keeps its size and parses, every other block is as it
     was, and reopening shows the slots without that item."""
-    _flag(monkeypatch, "1")
     seen = 0
     for label, blob, save in _slots():
         for n, block in enumerate(save.blocks):
@@ -685,7 +647,6 @@ def test_an_item_delete_saved_through_the_editor_reaches_the_disk(
     """The whole path, `saveplan.amiga_image` over a party: a deleted item is
     gone from the slot's saved game, the other slots and files are as they
     were, and a party with no edit gives the image back."""
-    _flag(monkeypatch, "1")
     label, source = _amiga_copies(tmp_path)[0]
     image = pathlib.Path(source.path).read_bytes()
     party = Party(source)
@@ -712,7 +673,6 @@ def test_an_item_delete_saved_through_the_editor_reaches_the_disk(
 
 def test_deleting_a_case_scroll_lowers_the_case_and_keeps_the_others(
         monkeypatch):
-    _flag(monkeypatch, "1")
     cases = _case_blocks()
     if not cases:
         pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
@@ -740,7 +700,6 @@ def test_deleting_a_case_scroll_lowers_the_case_and_keeps_the_others(
 
 
 def test_deleting_every_scroll_of_a_case_removes_the_case(monkeypatch):
-    _flag(monkeypatch, "1")
     cases = _case_blocks()
     if not cases:
         pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
@@ -769,7 +728,6 @@ def test_a_readied_edit_on_a_case_scroll_lands_on_the_case_and_shows_on_all(
     goes to the case's head node and every scroll of the case shows it on
     reopening."""
     from editor.inventory import READIED
-    _flag(monkeypatch, "1")
     cases = _case_blocks()
     if not cases:
         pytest.skip("needs an Amiga disk 3 whose saved game holds a case")
@@ -804,7 +762,6 @@ def test_the_other_scrolls_of_a_case_show_the_new_readied_at_once(
     of the case when one is edited, and a Save writes the same value that a
     reopened party shows on all of them."""
     from editor.inventory import READIED
-    _flag(monkeypatch, "1")
     for label, source in _amiga_copies(tmp_path):
         party = Party(source)
         member = next((m for m in party.members if any(
@@ -849,7 +806,6 @@ def test_the_item_picker_never_offers_an_item_to_an_amiga_save(
     button is off and `add_item` copies nothing; a DOS item of type 105, which
     would become an Amiga scroll case with no chained scrolls, cannot be
     added."""
-    _flag(monkeypatch, "1")
     window = _open(convert.Source.detect(_synthetic_folder(tmp_path),
                                          slot="A"), tmp_path / "b")
     window.party.port = "amiga"
@@ -864,7 +820,6 @@ def test_the_item_picker_never_offers_an_item_to_an_amiga_save(
 
 
 def test_an_added_amiga_item_becomes_a_new_head_node(monkeypatch):
-    _flag(monkeypatch, "1")
     seen = 0
     for block, position in _amiga_blocks().items():
         was = _shown(block, position)
@@ -898,7 +853,6 @@ def test_the_bytes_no_field_owns_survive_an_edit_to_another_field(
         monkeypatch):
     """Item node bytes 1 and 13 and the `hidden` bits above 7 belong to no
     DOS field; an edit to the quantity of the same node keeps them."""
-    _flag(monkeypatch, "1")
     seen = 0
     for block, position in _amiga_blocks().items():
         if not _head_item_zero(block):
@@ -924,7 +878,6 @@ def test_the_bytes_no_field_owns_survive_an_edit_to_another_field(
 
 
 def test_rebuild_party_stops_when_the_party_no_longer_fits(monkeypatch):
-    _flag(monkeypatch, "1")
     label, blob, save = _slots()[0]
     with pytest.raises(RewriteError, match="past the"):
         pod_rewrite.rebuild_party(
@@ -958,7 +911,6 @@ def test_an_added_item_moves_encumbrance_by_its_weight_on_dos(
     """An item added from a template reaches the DOS save, and the stored
     load is then the DOS writer's sum (`DosCharacter.expected_encumbrance`)
     of the files written."""
-    _flag(monkeypatch, "1")
     folder = _synthetic_folder(tmp_path)
     # The synthetic record stores no load; give it the one its money and its
     # one weightless item add up to, as the engine would.
@@ -984,14 +936,9 @@ def test_an_added_item_moves_encumbrance_by_its_weight_on_dos(
     assert record[podsheet.TABLE["item_count"].offset] == 2
 
 
-def test_the_flag_is_the_one_the_open_tests_set():
-    assert FLAG == convert.POD_CONVERT_ENV
-
-
 def _block_with_empty_case(monkeypatch, tmp_path) -> bytes:
     """A synthetic Amiga block of three head nodes: a mace, a scroll case
     that holds no scroll, and the mace again with a different bonus."""
-    _flag(monkeypatch, "1")
     [member] = Party(convert.Source.detect(
         _synthetic_folder(tmp_path), slot="A")).members
     mace = bytearray(amiga_pod.PodItem.from_dos_bytes(
@@ -1063,7 +1010,6 @@ _SCROLLS = (_scroll_node((11, 22, 33)), _scroll_node((44, 0, 55)),
 def _block_with_case(monkeypatch, tmp_path, scrolls=_SCROLLS) -> bytes:
     """A synthetic Amiga block: a mace, a readied case of `scrolls` that
     weighs 4, and a second mace."""
-    _flag(monkeypatch, "1")
     [member] = Party(convert.Source.detect(
         _synthetic_folder(tmp_path), slot="A")).members
     mace = bytearray(amiga_pod.PodItem.from_dos_bytes(
@@ -1180,7 +1126,6 @@ def test_dos_scrolls_left_two_one_and_none_stay_items_of_their_own(
         monkeypatch, tmp_path):
     """DOS keeps no case: each scroll is an item, and a delete drops only
     its own node, whatever is left."""
-    _flag(monkeypatch, "1")
     for kept in (2, 1, 0):
         (tmp_path / str(kept)).mkdir()
         folder = _synthetic_folder(tmp_path / str(kept))
@@ -1300,7 +1245,6 @@ def test_a_level_edit_saves_the_recomputed_thac0_saves_and_attacks(
     and attacks the game's recompute gives, and the current THAC0 moves by the
     base's change, because the Amiga load copies one into the other and
     never runs the recompute itself."""
-    _flag(monkeypatch, "1")
     from goldbox import amiga_pod_recompute as pr
     for _label, source in _amiga_copies(tmp_path):
         for member in _fighter_candidates(source):
@@ -1333,7 +1277,6 @@ def test_an_edit_that_moves_no_class_level_leaves_hand_set_values_alone(
     """An age edit writes no recompute: the THAC0, saves, attacks, class mask
     and spell slots stay as they were read, which keeps a hand-set record's
     values."""
-    _flag(monkeypatch, "1")
     from goldbox import amiga_pod_recompute as pr
     for _label, source in _amiga_copies(tmp_path):
         for member in Party(source).members:

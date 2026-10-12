@@ -2271,7 +2271,7 @@ def test_a_curse_or_silver_blades_dos_save_offers_c64_and_amiga(
     assert saveplan.destination_ports(source) == ["dos", "c64", "amiga"]
 
 
-def test_a_pools_of_darkness_dos_save_offers_only_a_copy_of_itself(tmp_path):
+def test_a_pools_of_darkness_dos_save_offers_the_amiga_with_nothing_set(tmp_path):
     deltas = dos_port.POOLS_OF_DARKNESS
     (tmp_path / "SAVGAMA.PTY").write_bytes(b"\x00")
     (tmp_path / "CHRDATA1.SAV").write_bytes(b"\x00" * deltas.record_size)
@@ -2279,22 +2279,14 @@ def test_a_pools_of_darkness_dos_save_offers_only_a_copy_of_itself(tmp_path):
     source = convert.Source.detect(tmp_path / "SAVGAMA.PTY")
 
     assert source.key == dos_port.POOLS_OF_DARKNESS.key
-    assert saveplan.destination_ports(source) == ["dos"]
+    assert saveplan.destination_ports(source) == ["dos", "amiga"]
 
 
-@pytest.mark.parametrize("value", [None, "", "0", "off"])
-def test_an_amiga_pools_of_darkness_disk_offers_only_a_copy_with_the_flag_off(
-        tmp_path, monkeypatch, value):
-    """Detecting a Pools of Darkness saved game is not behind
-    `WISH_EXPERIMENTAL_POD_CONVERT`; only offering a conversion is."""
-    if value is None:
-        monkeypatch.delenv(convert.POD_CONVERT_ENV, raising=False)
-    else:
-        monkeypatch.setenv(convert.POD_CONVERT_ENV, value)
+def test_an_amiga_pools_of_darkness_disk_offers_dos_with_nothing_set(tmp_path):
     source = convert.Source.detect(_amiga_pod_disk(tmp_path))
 
     assert source.key == dos_port.POOLS_OF_DARKNESS.key
-    assert saveplan.destination_ports(source) == ["amiga"]
+    assert saveplan.destination_ports(source) == ["amiga", "dos"]
 
 
 def test_the_c64_disks_are_asked_for_by_the_destination_title(tmp_path):

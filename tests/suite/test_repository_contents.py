@@ -184,9 +184,6 @@ _NOT_A_LOOKUP = {
         "a fake path the sweep classifies by its name",
     # A `[Version]` config file inside a string, which contains `/mnt/`.
     ("tests/registry/test_instance.py", "    [Version]"): "VICE config text",
-    # The text of a dialog a screenshot shows, not a path it opens.
-    ("tools/convert/convertshots.py", "~/dos_por_play/wish-2026-09-10"):
-        "a dialog's folder text",
 }
 
 

@@ -90,7 +90,7 @@ def _game_files(game):
     where = gamedisks.find(game.key)
     if where is None:
         return None
-    return convert._game_files_from_folder(where, game)
+    return saveplan._game_files_from_folder(where, game)
 
 
 def _assets(party):

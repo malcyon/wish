@@ -36,9 +36,8 @@ acceptance evidence.
    `tools/convert/saveasdrive.py` calls for the developer tools:
    `tools/convert/convertrun.py` (`--no-play` writes the conversion and stops
    before the emulator) and `acceptance.py --fixture-row` both go through
-   it. File > Convert exists only behind `WISH_EXPERIMENTAL_POD_CONVERT` and is
-   the route of the Pools of Darkness Amiga-to-DOS conversion alone
-   (`acceptance.py --amiga-slot`). The output bytes, the SHA, and the
+   it, and so does `acceptance.py --amiga-slot` for the Pools of Darkness
+   Amiga-to-DOS conversion. The output bytes, the SHA, and the
    conversion's `dropped` and `losses` lists (both empty) go in the log. A run
    made from output that was not produced this way tests the writer, not the
    program.
@@ -402,8 +401,8 @@ folders are under `~/.cache/wish/acceptance/`; routes 19 and 20 belong to WISH-2
 | 16 | Silver Blades, DOS to Amiga | `DosToAmiga`; Save As Amiga | Amiga Silver Blades | `WISH-SPEC-ssb-joined-arrow-dos-672` slot D | Proven | WISH-22 comment af09d403; `22/wish22-r16-par2/accept1` | `2066273d` |
 | 17 | Silver Blades, Amiga to C64 | `AmigaToC64`; Save As C64 | C64 Silver Blades | `WISH-SPEC-ssb-amiga-moved` | Proven | WISH-22 comment 7492f23f; `22/c64-r17-ssb-amiga-c64/boot1` | `c704a864` |
 | 18 | Silver Blades, Amiga to DOS | `AmigaToDos`; Save As DOS | DOS Silver Blades | `WISH-SPEC-ssb-amiga-moved` | Proven | WISH-22 comment 4ba3d116; `22/dos-18/boot1` | `c704a864` |
-| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos` behind `WISH_EXPERIMENTAL_POD_CONVERT`: File > Convert, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement | Not in the 18 | WISH-2 | |
-| 20 | Pools of Darkness, DOS to Amiga | None: the `.pc` writer (`amiga_pod.write_pod`) exists, and the saved-game writer, its detection and the direction do not | Amiga Pools of Darkness, foundation proven (section 5) | `WISH-SPEC-p175-diff1` once a route exists | Not built | WISH-2 | |
+| 19 | Pools of Darkness, Amiga to DOS | `PodAmigaToDos`; Save As DOS, or `acceptance.py --amiga-slot` | DOS Pools of Darkness | `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`, a played save found on a disk image, so an input and not a measurement | Not in the 18 | WISH-2 | |
+| 20 | Pools of Darkness, DOS to Amiga | `PodDosToAmiga`; Save As Amiga | Amiga Pools of Darkness, foundation proven (section 5) | `WISH-SPEC-p175-diff1` | Built; not in the 18 | WISH-2 comments b1c1c1d4 and 125b3731 | |
 
 Routes 8, 10, 14 and 16 (Curse and Silver Blades to the Amiga) needed
 #677 (Save As to the Amiga puts a Curse or Silver Blades party on a separate
@@ -478,7 +477,7 @@ The sources: DOS Pool boots the committed C64 fixture party converted by Save
 As DOS with one staged Bless row. DOS Curse and Silver Blades boot the
 registered engine-written and converted DOS saves named above, and DOS Pools
 of Darkness boots `SavGamB.pty` on the registry's `(SSI)(Disk 3 of 3)[a].adf`
-converted through the Convert window's route, a played save found on a disk
+converted through Save As's route, a played save found on a disk
 image, so an input and not a measurement. The C64 titles boot registered C64
 saves. The Amiga runs boot the registered specimen (Pool
 `WISH-SPEC-por-52-c64toamiga-walk-resave`, Curse

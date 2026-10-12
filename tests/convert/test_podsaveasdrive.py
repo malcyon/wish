@@ -211,7 +211,6 @@ def test_an_edited_item_quantity_converts_to_the_registered_disk_three(tmp_path,
     report = podsaveasdrive.run(specimen, disk3, tmp_path / "out", items=("0:0=3",))
     assert not report["save_as"].get("stopped"), report
     image = pathlib.Path(report["written"][0])
-    monkeypatch.setenv("WISH_EXPERIMENTAL_POD_CONVERT", "1")
     party = Party(convert.Source.detect(image, slot="C"))
     assert party.members[0].inventory.item(0).quantity == 3
 
@@ -396,8 +395,7 @@ def _slot_c(tmp_path):
 
 def _open_slot(path, slot):
     from editor.roster import Party
-    with podsaveasdrive._pod_flag():
-        return Party(convert.Source.detect(path, slot=slot))
+    return Party(convert.Source.detect(path, slot=slot))
 
 
 def test_the_run_goes_through_the_editors_prepare_save_as(tmp_path, monkeypatch):

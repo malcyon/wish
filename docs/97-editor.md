@@ -232,11 +232,7 @@ those numbers.
 The design is [Open and Save As in the Character Editor](227-editor-open-save-as.md):
 split Open and Save controls in the toolbar (`wish/window.ui`'s `buttons` row,
 inside `tab_editor`), with native copies and platform conversion through Save
-As. `File ▸ Convert…` is built only when `WISH_EXPERIMENTAL_POD_CONVERT` is set,
-for the Amiga-to-DOS Pools of Darkness direction the editor cannot open for
-Save As; every other conversion goes through Save As. Its dialog blocks a
-conversion whose own accounting reports a loss with "The save could not be
-converted.", as Save As does, except in that Pools of Darkness direction.
+As. Every conversion, Pools of Darkness included, goes through Save As.
 
 **Open** (`button_open`, a `QToolButton`) opens the file picker directly for a
 C64 `.d64`, an Amiga `.adf` or a DOS `SAVGAM<slot>.DAT`/`.PTY`. Its arrow

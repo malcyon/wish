@@ -13,7 +13,6 @@ import errno
 import os
 import pathlib
 import shutil
-import struct
 
 import pytest
 from support.editorwindow import make_root
@@ -21,9 +20,8 @@ from test_saveasui import _silver_blades_dos_binding
 from test_saveplan import SILVER_BLADES, amiga_por_disk
 
 import editor.window as ew
-from editor import convert, saveplan
+from editor import saveplan
 from editor.roster import Party
-from goldbox import amiga_savegame, dos_savegame
 from goldbox.amiga_adf import AmigaDisk
 
 TEXT = "Disk is out of space."
@@ -131,31 +129,6 @@ def test_a_save_as_pressed_after_the_disk_filled_says_so_and_writes_nothing(
     assert path.read_bytes() == before
 
 
-def test_the_convert_window_on_a_full_disk_says_so_under_its_own_title(
-        app, monkeypatch, tmp_path):
-    path = _full_party_disk(tmp_path)
-    before = path.read_bytes()
-    party = Party(str(path))
-    _carry_sixteen_items(party)
-    critical: list = []
-    monkeypatch.setattr(convert.QMessageBox, "critical",
-                        lambda self_, t, x: critical.append((t, x)))
-    out = tmp_path / "out"
-    out.mkdir()
-    dialog = convert.ConvertDialog(
-        str(path), party, lambda game: None, destination="dos",
-        folder=str(out))
-    try:
-        dialog.replan()
-        assert dialog.rehearsal is None
-        assert dialog._blocked == (convert.DIALOG_TITLE, TEXT)
-    finally:
-        dialog.close()
-    assert critical == [(convert.DIALOG_TITLE, TEXT)]
-    assert list(out.iterdir()) == []
-    assert path.read_bytes() == before
-
-
 def test_a_save_as_onto_a_full_disk_one_says_so_and_writes_nothing(
         app, monkeypatch, tmp_path):
     from support.amigasavegame import synthetic_disk_one
@@ -259,63 +232,6 @@ def test_a_save_as_that_fails_for_another_reason_keeps_its_own_text(
     assert boxes == [("Cannot save", ew.SAVE_AS_FAILED)]
 
 
-def _pod_disk(tmp_path: pathlib.Path) -> pathlib.Path:
-    """A made-up Pools of Darkness disk 3 holding one slot with one character
-    whose record is blank but for the name."""
-    out = bytearray(amiga_savegame.POD_VAR_BYTES)
-    out[dos_savegame.POD_PARTY_COUNT - 1] = 1
-    out += bytes((3, 4, 2, 5, 137, 0))
-    out += bytes((dos_savegame.POD_MODE_DUNGEON, dos_savegame.POD_MODE_DUNGEON))
-    out += struct.pack(">HHH", 6, 0, 1)
-    record = bytearray(amiga_savegame.POD_RECORD_BYTES)
-    record[amiga_savegame.POD_NAME_AT:amiga_savegame.POD_NAME_AT + 5] = \
-        b"WHO0\x00"
-    out += record
-    out += b"\xA5" * (amiga_savegame.POD_SAVEGAME_SIZE - len(out))
-    disk = AmigaDisk.blank("PDARKSAVE")
-    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
-    disk.write_file(amiga_savegame.pod_slot_path("A"), bytes(out))
-    path = tmp_path / "pod.adf"
-    disk.save(str(path))
-    return path
-
-
-def _convert_pod(window, monkeypatch, tmp_path, code: int):
-    """File > Convert of a made-up Pools of Darkness disk to a DOS folder,
-    whose write fails with `code`. Returns the folder and the line shown."""
-    from PyQt6.QtWidgets import QDialog
-
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
-    monkeypatch.setattr(convert.PodAmigaToDos, "write", _raise(code))
-    answers = iter([QDialog.DialogCode.Accepted])
-    monkeypatch.setattr(
-        convert.ConvertDialog, "exec",
-        lambda self: next(answers, QDialog.DialogCode.Rejected))
-    out = tmp_path / "out"
-    out.mkdir()
-    disk = _pod_disk(tmp_path)
-    boxes = _recorded(monkeypatch)
-    window.convert(source=str(disk), destination="dos", folder=str(out))
-    return out, boxes, disk
-
-
-@pytest.mark.parametrize("code", _DRIVE_FULL)
-def test_a_conversion_on_a_full_drive_says_so_and_leaves_no_folder(
-        app, monkeypatch, tmp_path, code):
-    window = ew.EditorBinding(make_root())
-    out, boxes, disk = _convert_pod(window, monkeypatch, tmp_path, code)
-    assert boxes == [(convert.DIALOG_TITLE, TEXT)]
-    assert list(out.iterdir()) == []
-
-
-def test_a_conversion_that_fails_for_another_reason_keeps_its_own_text(
-        app, monkeypatch, tmp_path):
-    window = ew.EditorBinding(make_root())
-    out, boxes, disk = _convert_pod(window, monkeypatch, tmp_path,
-                                    errno.EACCES)
-    assert boxes == [(convert.DIALOG_TITLE, convert.CANNOT_CONVERT)]
-
-
 def test_an_error_with_no_errno_is_not_out_of_space_even_without_edquot(
         monkeypatch):
     from editor import files
@@ -324,3 +240,58 @@ def test_an_error_with_no_errno_is_not_out_of_space_even_without_edquot(
     assert not files.out_of_space(OSError("copy failed"))
     assert not files.out_of_space(shutil.Error("copy failed"))
     assert files.out_of_space(OSError(errno.ENOSPC, "full"))
+
+
+# ---------------------------------------------------------------------------
+# A Pools of Darkness Amiga disk saved as a DOS folder
+# ---------------------------------------------------------------------------
+
+def _pod_disk_binding(tmp_path: pathlib.Path, monkeypatch):
+    """The made-up Pools of Darkness disk 3 of `test_doscase`, opened."""
+    from test_doscase import _amiga_save
+
+    from goldbox import amiga_savegame
+
+    disk = AmigaDisk.blank("PDARKSAVE")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.write_file(amiga_savegame.pod_slot_path("A"), _amiga_save())
+    path = tmp_path / "pod.adf"
+    disk.save(str(path))
+    # No game disk is set, so opening shows the Missing Game Disk warning.
+    monkeypatch.setattr(ew.QMessageBox, "warning", lambda *a, **k: None)
+    _recorded(monkeypatch)
+    window = ew.EditorBinding(make_root())
+    window.load(str(path))
+    assert window.party is not None
+    return window
+
+
+def _save_as_dos(window, target: pathlib.Path) -> None:
+    window.begin_save_as("dos")
+    window._child("destination_path").setText(str(target))
+    window._child("button_destination_save_as").click()
+
+
+@pytest.mark.parametrize("code", _DRIVE_FULL)
+def test_a_pools_of_darkness_save_as_dos_on_a_full_drive_says_so_and_leaves_no_folder(
+        app, monkeypatch, tmp_path, code):
+    window = _pod_disk_binding(tmp_path, monkeypatch)
+    boxes = _recorded(monkeypatch)
+    monkeypatch.setattr(ew.files, "publish_folder", _raise(code))
+    out = tmp_path / "out"
+
+    _save_as_dos(window, out)
+
+    assert boxes == [("Cannot save", TEXT)]
+    assert not out.exists() or list(out.iterdir()) == []
+
+
+def test_a_pools_of_darkness_save_as_dos_that_fails_for_another_reason_keeps_its_own_text(
+        app, monkeypatch, tmp_path):
+    window = _pod_disk_binding(tmp_path, monkeypatch)
+    boxes = _recorded(monkeypatch)
+    monkeypatch.setattr(ew.files, "publish_folder", _raise(errno.EACCES))
+
+    _save_as_dos(window, tmp_path / "out")
+
+    assert boxes == [("Cannot save", ew.SAVE_AS_FAILED)]

@@ -209,7 +209,7 @@ def _amiga_disks() -> tuple[pathlib.Path, pathlib.Path]:
 
 def _save_as(source: pathlib.Path, slot, port: str, out: pathlib.Path) -> dict:
     from automap import gamedisks
-    from editor import convert
+    from editor import saveplan
     from tools.convert import saveasdrive
     from tools.dos import dosbox
     try:
@@ -219,7 +219,7 @@ def _save_as(source: pathlib.Path, slot, port: str, out: pathlib.Path) -> dict:
         pytest.skip("needs the player's C64 Curse disks and DOS Curse")
     one, two = _amiga_disks()
     window = types.SimpleNamespace(
-        game_files_for=lambda title: convert._game_files_from_folder(c64, title))
+        game_files_for=lambda title: saveplan._game_files_from_folder(c64, title))
     report = saveasdrive.save_as(
         window, source, port, out, source_slot=slot, dos_folder=dos,
         amiga_disk=two if port == "amiga" else None,

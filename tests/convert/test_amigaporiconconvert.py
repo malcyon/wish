@@ -29,7 +29,7 @@ from support.amigarecords import sample
 from support.convertparty import _six_icon_party
 from support.toamigapor import _por_disk_2
 
-from editor import convert, dosimport
+from editor import convert
 from goldbox import c64_port, dos_codec, dos_port
 from goldbox.amiga_por import AmigaPorCharacter, write_por
 from goldbox.iconparts import DosIcon
@@ -199,62 +199,3 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     party, _savgam = read_por_slot(out_disk, "D")
     pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
     assert pairs == expected, pairs
-
-
-# ---------------------------------------------------------------------------
-# The dialog: `ConvertDialog._rehearse_and_report`'s branch reaches "amiga"
-# ---------------------------------------------------------------------------
-
-@needs_dos_saves
-def test_the_dialog_wires_the_sources_own_combat_icon_into_an_amiga_convert(
-        tmp_path):
-    """`#422`'s own item 3: the `source_port == "c64"` branch that fetches
-    `icon_parts` off the player's disks used to fire only for a DOS
-    destination. The fake `game_files` lookup stands in for
-    `editor.window.EditorBinding.game_files_for`, asked here for the
-    *source*'s own title (Pool of Radiance) exactly as `#383`'s own dialog
-    test asks it for the DOS direction.
-    """
-    from goldbox.amiga_adf import AmigaDisk
-    from goldbox.amiga_savegame import read_por_slot
-    from goldbox.iconparts import IconParts
-
-    where = gamedata.disk_dir()
-
-    def game_files_for(game):
-        if game.key != c64_port.POOL_OF_RADIANCE.key:
-            return None
-        icon = None
-        for disk in sorted(where.glob("POOL*.[dD]64")):
-            try:
-                icon = IconParts.load(str(disk))
-                break
-            except Exception:
-                continue
-        if icon is None:
-            return None
-        return dosimport.GameFiles(icon=icon, animate=b"")
-
-    save0, save1, _parts = _six_icon_party()
-    disk_path = tmp_path / "SIX.D64"
-    disk_path.write_bytes(dos_codec.save_disk(save0, save1).to_bytes())
-    disk2 = _por_disk_2(tmp_path)
-
-    destination = tmp_path / "out"
-    destination.mkdir()
-    dialog = convert.ConvertDialog(str(disk_path), None, game_files_for,
-                                   destination="amiga", disk=str(disk2),
-                                   folder=str(destination))
-    try:
-        assert dialog.rehearsal is not None
-        text = dialog.ui.convert_destination_line.text()
-        assert FIGURE_NOT_SET not in text, text
-        final = tmp_path / "final"
-        dialog.direction.write(dialog.rehearsal, final)
-    finally:
-        dialog.close()
-
-    out_disk = AmigaDisk.open(str(final / convert.POOLSAVE_FILENAME))
-    party, _savgam = read_por_slot(out_disk, "A")
-    pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
-    assert len(set(pairs)) == 6, pairs

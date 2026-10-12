@@ -1,14 +1,13 @@
 # Open and Save As in the Character Editor
 
-**Implementation built (stages 1 to 4); File > Convert remains behind
-`WISH_EXPERIMENTAL_POD_CONVERT`; Windows validation is pending.** The emulator
+**Implementation built (stages 1 to 4); File > Convert and its flag are
+removed; Windows validation is pending.** The emulator
 foundation runs of `docs/235` have booted some converted saves in their
 destination games (Save As output among them) to prove the harness; the
 per-route runs of its Save As matrix, each with its identity control, are not
 recorded, so no route is proven. Still open: Windows validation; the
 verification matrix of the cases where Save As stops is unrecorded; slot-picker and
-multi-save Amiga disk behaviour through Save As are unconfirmed; retiring
-Convert waits on a Pools of Darkness Save As route. The Character Editor opens
+multi-save Amiga disk behaviour through Save As are unconfirmed. The Character Editor opens
 C64, DOS and Amiga saves and saves to any supported platform through two split
 buttons. Each button has a main action and a separate menu arrow: Open opens a
 save file, while its arrow also offers a DOS folder picker; Save updates the
@@ -169,9 +168,9 @@ the actual title's supported directions plus its native-copy operation.
 | Stage | Owner and files | Required result |
 |---|---|---|
 | 1. Capture current edits | Reverse-engineering agent: new `editor/saveplan.py`, native assembly in `editor/window.py::_write_back`, source/rehearsal interfaces in `editor/convert.py`, focused new `tests/editor/test_saveplan.py` | An isolated snapshot combines original native data with all pending edits, including inventory and supported traits/effects. Preparing it writes neither source files nor live editor baselines. C64, DOS and Amiga conversions consume it. |
-| 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Extract asset resolution, rehearsal and output preparation from `ConvertDialog`. Add native copies, validation, a stop on loss, explicit output paths, backups and publication with recovery on failure. Return a destination descriptor and a validated party for adoption. |
+| 2. Prepare and publish | Reverse-engineering agent: `editor/saveplan.py`, `editor/convert.py`, `editor/files.py`, relevant conversion/editor tests | Asset resolution, rehearsal and output preparation live in `editor/saveplan.py`, with native copies, validation, a stop on loss, explicit output paths, backups and publication with recovery on failure; it returns a destination descriptor and a validated party for adoption. |
 | 3. Wire split Open and Save buttons | Qt UI specialist: `wish/window.ui`, generated `wish/ui_window.py`, `wish/window.py`, `editor/window.py`, editor/preferences/layout tests | Implement split buttons and the conditional destination section in Designer; connect toolbar, menus and shortcuts to one controller. Adopt the prepared destination only after successful publication. |
-| 4. Establish parity and retire Convert (done except for Pools of Darkness: File > Convert survives only behind `WISH_EXPERIMENTAL_POD_CONVERT`, its dialog blocks a reported loss, and it is removed with the flag) | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Partly done: native copies and every direction except Pools of Darkness work from Save As. Remove File > Convert and its dialog code when a Pools of Darkness Save As route exists. Retain the direction registry, codecs and conversion tests. |
+| 4. Establish parity and retire Convert (done) | Qt UI specialist after backend verification: obsolete conversion-dialog wiring/form, affected tests, `docs/97-editor.md`, `docs/117-save-conversion.md`, package inventory rows | Done: native copies and every direction, Pools of Darkness included, work from Save As; File > Convert and its dialog code are removed. The direction registry, codecs and conversion tests stay. |
 
 Stages are sequential; ownership transfers explicitly because they share files.
 Each implementation agent receives the approved scope and its own test files;

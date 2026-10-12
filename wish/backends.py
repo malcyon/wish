@@ -166,17 +166,6 @@ def amiga_fsuae_enabled() -> bool:
     return os.environ.get(AMIGA_FSUAE_ENV, "").strip().lower() in TRUE
 
 
-def amiga_only_titles() -> tuple:
-    """The titles that have Amiga disks and no C64 container, while the Amiga
-    backend or the Pools of Darkness conversion is on; nothing otherwise, so
-    both flags off change no lookup."""
-    from editor.convert import pod_convert_enabled
-    if not (amiga_enabled() or pod_convert_enabled()):
-        return ()
-    from automap.maps import AMIGA_ONLY_TITLES
-    return AMIGA_ONLY_TITLES
-
-
 def _amiga_fsuae() -> list[Backend]:
     """The patched FS-UAE, if `WISH_EXPERIMENTAL_AMIGA_FSUAE` says so and its
     module imports.

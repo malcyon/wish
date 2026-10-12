@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import pathlib
 import shutil
+import struct
 
 import pytest
 from gamedata import specimen_root, synthetic_save
 
 from editor import convert, saveplan
 from editor.roster import Party
-from goldbox import c64_port, titles
+from goldbox import amiga_savegame, c64_port, dos_savegame, titles
+from goldbox.amiga_adf import AmigaDisk
 
 LAUNCHERS = {"pool-of-radiance": ("START.EXE", "POOL.CFG"),
              "curse-of-the-azure-bonds": ("START.EXE", "CURSE.CFG"),
@@ -21,6 +23,32 @@ LAUNCHERS = {"pool-of-radiance": ("START.EXE", "POOL.CFG"),
 
 SPECIMEN = ("ssb-c64/WISH-SPEC-ssb-wish8-strength-twice-dos-to-c64-"
             "engine-save.D64")
+
+
+def _pod_savegame() -> bytes:
+    out = bytearray(amiga_savegame.POD_VAR_BYTES)
+    out[dos_savegame.POD_PARTY_COUNT - 1] = 1
+    out += bytes((3, 4, 2, 5, 137, 0))
+    out += bytes((dos_savegame.POD_MODE_DUNGEON,
+                  dos_savegame.POD_MODE_DUNGEON))
+    out += struct.pack(">HHH", 6, 0, 1)
+    record = bytearray(b"\x5A" * amiga_savegame.POD_RECORD_BYTES)
+    struct.pack_into(">I", record, amiga_savegame.POD_ITEM_COUNT_AT, 0)
+    struct.pack_into(">I", record, amiga_savegame.POD_EFFECT_HEAD_AT, 0)
+    record[amiga_savegame.POD_NAME_AT:amiga_savegame.POD_NAME_AT + 5] = \
+        b"WHO0\x00"
+    out += record
+    out += b"\xA5" * (amiga_savegame.POD_SAVEGAME_SIZE - len(out))
+    return bytes(out)
+
+
+def _pod_disk(tmp_path):
+    disk = AmigaDisk.blank("PDARKSAVE")
+    disk.make_dir(f"/{amiga_savegame.SAVE_DRAWER}")
+    disk.write_file(amiga_savegame.pod_slot_path("A"), _pod_savegame())
+    path = tmp_path / "pod.adf"
+    disk.save(path)
+    return path
 
 
 def folder_of(where, key, name=None):
@@ -156,9 +184,6 @@ def test_an_amiga_save_stops_on_another_titles_folder(tmp_path):
 def test_a_pools_of_darkness_destination_is_not_stopped_on_its_folder(
         tmp_path, monkeypatch):
     """Its writer reads no game folder, so which one was named is moot."""
-    from test_convertrejection import _pod_disk
-
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
     path = _pod_disk(tmp_path)
     source = convert.Source.detect(path)
     assert source.key == titles.POOLS_OF_DARKNESS.key

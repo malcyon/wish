@@ -22,7 +22,7 @@ count needs no code change here to read honestly.
 Two modes:
 
 * the default **sweep** runs `Direction.rehearse` -- the same call
-  `editor.convert.ConvertDialog._rehearse_and_report` makes, including the
+  Save As makes, including the
   source title's own combat-icon tables (`#383`, `#422`) -- for every
   specimen `Source.detect` accepts, and tallies `report.dropped` per
   direction, naming which specimens reached each line;
@@ -225,7 +225,7 @@ def sweep() -> int:
                 continue
             for direction in convert.destinations_for(source):
                 label = f"{type(direction).__name__} {direction.source_key}"
-                # `ConvertDialog._rehearse_and_report`'s own choice of slot
+                # Save As's own choice of slot
                 # and options for each destination port, copied rather than
                 # guessed at.
                 if direction.destination_port == "c64":

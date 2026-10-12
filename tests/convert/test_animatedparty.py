@@ -1593,14 +1593,13 @@ def _pod_zombie_folder(root, control, cast=True, marked=True, down=False):
 
 def _pod_save_as_amiga(monkeypatch, tmp_path, control, cast=True, down=False):
     _editor_tests()
-    from test_saveplan_pod import _disk_file, _disk_three, _flag, _to_amiga
+    from test_saveplan_pod import _disk_file, _disk_three, _to_amiga
 
     from editor import convert
     from editor.roster import Party
     from goldbox import amiga_savegame
     from goldbox.amiga_adf import AmigaDisk
 
-    _flag(monkeypatch, "1")
     folder = _pod_zombie_folder(tmp_path, control, cast, down=down)
     party = Party(convert.Source.detect(folder, slot="A"))
     plan = _to_amiga(party, tmp_path,
@@ -1652,7 +1651,6 @@ def test_a_pools_of_darkness_amiga_zombie_player_reads_back_living_on_dos(
         patch.setattr(c64_codec, "living_player", lambda char: char)
         kept = convert.PodDosToAmiga().rehearse(
             _dos_source(stage, "A"), "A", None, disk_three=disk, replace=True)
-    monkeypatch.setenv(convert.POD_CONVERT_ENV, "1")
     image = tmp_path / "kept.adf"
     image.write_bytes(kept.disk)
     party = Party(convert.Source.detect(image, slot="A"))

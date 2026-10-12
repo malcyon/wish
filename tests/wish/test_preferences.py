@@ -56,8 +56,7 @@ def _no_disks_env(monkeypatch):
     """$POR_DISKS and $POR_ULTIMATE are the player's, not this file's."""
     for name in ("POR_DISKS", "POR_GAME_DISK", "POR_ULTIMATE",
                  "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE", bk.AMIGA_FSUAE_ENV,
-                 bk.AMIGA_WINUAE_ENV, "WISH_EXPERIMENTAL_POD_CONVERT",
-                 "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"):
+                 bk.AMIGA_WINUAE_ENV, "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"):
         monkeypatch.delenv(name, raising=False)
     preferences._scan.cache_clear()
 
@@ -270,7 +269,7 @@ def test_the_dialog_has_a_row_per_title_that_writes_its_own_folder(
     try:
         dialog = PreferencesDialog(win)
         assert set(dialog.game_folder_edits) == {
-            g.key for g in preferences.GAME_FOLDER_TITLES}
+            g.key for g in preferences.game_folder_titles()}
         assert dialog.game_folder_edits[CURSE.key].text() == ""
 
         mine = tmp_path / "my curse disks"
@@ -1351,7 +1350,8 @@ def test_there_is_a_tab_for_every_title_with_an_area_table(
     for game in preferences.game_folder_titles():
         label = getattr(dialog.ui,
                         f"game_folder_label_{preferences._row_suffix(game)}")
-        assert game.title in [tabs.tabText(i) for i in range(tabs.count())]
+        if game in preferences.travel_titles():
+            assert game.title in [tabs.tabText(i) for i in range(tabs.count())]
         assert label.text() == game.title
 
 

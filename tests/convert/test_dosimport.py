@@ -14,14 +14,9 @@ def make_root():
 
 The conversion itself is `tests/convert/test_dosconvert.py`'s. What is tested here is
 `rehearse`, `pane_text` and `log_unshown_losses` -- the
-functions `editor/convert.py`'s `ConvertDialog` calls in for -- plus the two
+functions `editor/convert.py`'s directions call in for -- plus the two
 `#176 (A player importing a Curse of the Azure Bonds save is shown an issue
-number)` rejection tests that build no dialog at all. This module carried a
-window in its own right, `DosImportDialog`, from 2026-08-24 until it was
-deleted along with `File ▸ Import` on 2026-09-14 (`#52 (File ▸ Import and
-File ▸ Export for every direction the library supports)`); what tested that
-window is ported to `tests/convert/test_convert.py` against `ConvertDialog`, noted
-in place here rather than silently gone.
+number)` rejection tests.
 
 Both halves need somebody's files. The DOS save is Donald's unpacked copy of
 *Forgotten Realms: The Archives* (`$FR_ARCHIVES`) and the game disks are his
@@ -160,15 +155,6 @@ def test_nothing_in_the_converted_save_is_left_to_a_previous_owner(
     assert report.unwritten == []
     assert report.unaccounted == []
     assert len(report.sources) == report.total == 9216
-
-
-#: `test_a_conversion_with_messages_a_drop_and_a_platform_loss_shows_
-#: nothing`, which drove this against `DosImportDialog` itself, is ported
-#: to `tests/convert/test_convert.py` against `ConvertDialog` -- deleted with the
-#: dialog on 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every
-#: direction the library supports)`), missed by that ticket's own plan as
-#: one of the four to port because it sat in this section, which the plan
-#: otherwise kept whole.
 
 
 def test_pane_text_is_the_messages_and_never_the_drops():
@@ -347,25 +333,6 @@ def test_a_real_conversion_that_truncates_nothing_shows_no_loss_line():
     assert "emptied" not in text
 
 
-#: `DosImportDialog`'s own window tests and its rejection-when-disks-missing
-#: tests -- `test_the_rehearsal_is_complete_before_the_button_is_
-#: pressable`, `test_a_pool_of_radiance_import_with_no_creation_tables_
-#: converts_with_its_own_faces`, `test_the_save_points_at_the_area_the_
-#: dos_party_is_in`, `test_changing_the_slot_re_rehearses`, `test_the_
-#: slots_offered_are_the_ones_the_folder_holds`, `test_no_game_disks_is_a_
-#: pop_up_and_no_folder_picker`, `test_with_the_game_disks_there_the_
-#: import_gets_as_far_as_the_picker`, `test_a_disk_that_loads_once_but_
-#: fails_on_the_second_read_blocks`, `test_the_game_files_an_import_
-#: needs_are_the_icon_and_animate`, `test_the_game_files_an_import_needs_
-#: include_the_creation_menu`, `test_an_import_started_from_the_window_
-#: carries_its_own_faces` -- are deleted along with the dialog, its menu
-#: entry and `EditorBinding.import_dos_save`/`game_files_for_import`
-#: (`#52 (File ▸ Import and File ▸ Export for every direction the library
-#: supports)`, 2026-09-14). `editor.convert.ConvertDialog` and
-#: `EditorBinding.game_files_for` are the survivors these tested against;
-#: `tests/convert/test_convert.py` covers them.
-
-
 # --- what reaches the editor -------------------------------------------------
 
 @needs_dos_saves
@@ -504,21 +471,6 @@ def test_closing_a_converted_party_and_naming_it_in_the_chooser_saves_and_closes
     assert out.exists() and out.stat().st_size == 174848
 
 
-#: `DosImportDialog`'s own destination-row tests and Convert-writing tests
-#: -- `test_the_destination_starts_filled_in_from_the_slot`, `test_the_
-#: suggested_name_changes_with_the_slot`, `test_a_path_the_user_typed_
-#: survives_a_change_of_slot`, `test_an_empty_destination_is_not_
-#: convertible`, `test_convert_writes_the_file_the_window_names`, `test_a_
-#: write_that_cannot_happen_pops_a_modal_naming_the_rejection`, `test_
-#: import_dos_save_is_cancellable_without_touching_anything`, `test_a_
-#: folder_with_no_dos_save_says_so` -- are deleted along with the dialog
-#: and `EditorBinding.import_dos_save` (`#52 (File ▸ Import and File ▸
-#: Export for every direction the library supports)`, 2026-09-14).
-#: `editor.convert.ConvertDialog`'s own destination row and
-#: `EditorBinding.convert` are the survivors; `tests/convert/test_convert.py`
-#: covers them.
-
-
 #: `test_the_file_menu_carries_the_import_with_nothing_set` was added
 #: 2026-09-10 for one purpose -- to catch a repeat of `File ▸ Import` being
 #: removed before `File ▸ Convert…` could replace it. The removal it
@@ -563,11 +515,6 @@ def test_a_blocked_title_tells_the_player_which_game_and_no_issue_number():
 
 @needs_dos_saves
 @needs_disks
-#: `test_the_dialog_is_blocked_by_the_players_sentence_and_not_the_
-#: exception` drove this against `DosImportDialog`; ported to
-#: `tests/convert/test_convert.py` against `ConvertDialog`, deleted with the
-#: dialog on 2026-09-14 (`#52 (File ▸ Import and File ▸ Export for every
-#: direction the library supports)`).
 
 
 def test_a_rejection_cannot_be_raised_without_naming_the_title():
@@ -581,15 +528,3 @@ def test_a_rejection_cannot_be_raised_without_naming_the_title():
     """
     with pytest.raises(TypeError):
         dos_codec.WrongTitleError("the developer's reason")
-
-
-
-#: `test_the_dialog_is_blocked_by_the_fallback_and_not_the_developers_
-#: sentence`, `test_the_dialog_is_blocked_by_the_fallback_for_a_rejection_
-#: dos_record_error_never_names` and `test_a_rejection_on_construction_is_
-#: shown_not_swallowed`, which drove `#195`'s guarantee against
-#: `DosImportDialog`, are ported to `tests/convert/test_convert.py` against
-#: `ConvertDialog`, deleted with the dialog on 2026-09-14 (`#52 (File ▸
-#: Import and File ▸ Export for every direction the library supports)`).
-#: `_UNWRITTEN_BYTES_MESSAGE` and `_OUTDOOR_DISAGREEMENT_MESSAGE` moved
-#: with them, quoted verbatim.

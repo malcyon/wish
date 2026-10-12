@@ -83,7 +83,7 @@ applicable.
 
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
-| B1 | read a DOS save | V | V | V | `test_dossave.py`, `test_dosconvert.py`. `editor/convert.py`'s `DIRECTIONS` registers all three titles in each of the six directions between C64, DOS and Amiga (Pools of Darkness, Amiga to DOS only, sits behind `WISH_EXPERIMENTAL_POD_CONVERT`) |
+| B1 | read a DOS save | V | V | V | `test_dossave.py`, `test_dosconvert.py`. `editor/convert.py`'s `DIRECTIONS` registers all three titles in each of the six directions between C64, DOS and Amiga (Pools of Darkness registers its two directions, Amiga to DOS and DOS to Amiga, by hand) |
 | B2 | convert a DOS save into a C64 one | V | V | V | #6 (Convert a DOS save into a C64 save), and the Curse and Silver Blades versions of it, closed: each converted disk loads in VICE and the party walks |
 
 ### C. The automapper — needs a live machine

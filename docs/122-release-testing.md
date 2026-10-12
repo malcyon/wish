@@ -826,12 +826,7 @@ both ends of the party panel it is drawn in. Legible enough to act on, ugly.
 ## 6b. A DOS import, played (#119 (Play a converted DOS save in VICE, off a disk Wish built from nothing))
 
 **Only where the player's DOS *Forgotten Realms: The Archives* is
-unpacked.** (`File ▸ Import` needed `WISH_EXPERIMENTAL_DOS_IMPORT=1` until
-2026-09-06, when it was built for everyone; `File ▸ Convert…` needed
-`WISH_EXPERIMENTAL_CONVERT=1` until 2026-09-14, when Donald lifted it and
-`File ▸ Import` was removed in the same commit. Convert is now
-behind `WISH_EXPERIMENTAL_POD_CONVERT` and applies only to Pools of Darkness;
-Save As is the route.) This is not a per-platform row
+unpacked.** (There is no `File ▸ Import` or `File ▸ Convert…`; Save As is the route.) This is not a per-platform row
 in the table below: it needs the archives, the C64 game disks and a working
 VICE, so it is a check somebody does once on the machine that has all three
 rather than once per package.

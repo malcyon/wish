@@ -203,13 +203,14 @@ def window(app, save=None, maps={}, **kw):
 
 def test_the_game_disks_tab_has_one_row_per_supported_title_and_no_shared_row(
         app, tmp_path, monkeypatch):
-    from wish.preferences import GAME_FOLDER_TITLES, PreferencesDialog
+    from wish.preferences import PreferencesDialog, game_folder_titles
 
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
-        assert set(dialog.game_folder_edits) == {g.key for g in GAME_FOLDER_TITLES}
+        assert set(dialog.game_folder_edits) == {
+            g.key for g in game_folder_titles()}
         assert not hasattr(dialog, "folder")
         assert not hasattr(dialog, "browse")
         assert not hasattr(dialog, "set_folder")

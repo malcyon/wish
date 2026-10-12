@@ -243,10 +243,8 @@ def _editor_tests(monkeypatch):
 
 def _pod_folder(tmp_path, monkeypatch):
     _editor_tests(monkeypatch)
-    from test_podparty import FLAG
     from test_podwindow import _synthetic_folder
 
-    monkeypatch.setenv(FLAG, "1")
     return _synthetic_folder(tmp_path)
 
 
@@ -314,12 +312,11 @@ def test_a_run_with_no_edit_option_is_a_usage_error(tmp_path):
 def test_set_and_delete_item_on_a_played_amiga_disk_change_only_its_slot_file(
         tmp_path, monkeypatch):
     _editor_tests(monkeypatch)
-    from test_podparty import FLAG, _amiga_images
+    from test_podparty import _amiga_images
 
     from editor.convert import Source
     from editor.roster import Party
 
-    monkeypatch.setenv(FLAG, "1")
     for _label, data, slots in _amiga_images():
         base = tmp_path / "disk.adf"
         base.write_bytes(data)

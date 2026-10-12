@@ -1,5 +1,4 @@
-"""Save As for a Pools of Darkness save, behind
-`WISH_EXPERIMENTAL_POD_CONVERT`: the library half of the Amiga destination,
+"""Save As for a Pools of Darkness save: the library half of the Amiga destination,
 which is a copy of the player's disk 3 holding the slot and its vault, and of
 the DOS destination, which is a folder.
 
@@ -15,11 +14,9 @@ import struct
 
 import pytest
 from test_podparty import (
-    OFF,
     _amiga_images,
     _amiga_sources,
     _dos_sources,
-    _flag,
 )
 from test_podwindow import _no_box, _synthetic_folder, _window
 
@@ -134,7 +131,6 @@ def _folder_files(folder: pathlib.Path) -> dict[str, bytes]:
 
 
 def _dos_party(monkeypatch, tmp_path, vault: bytes | None = None):
-    _flag(monkeypatch, "1")
     folder = _dos_folder(tmp_path, vault)
     return folder, Party(convert.Source.detect(folder, slot="A"))
 
@@ -162,21 +158,12 @@ def _source(port: str):
                           slot="A")
 
 
-@pytest.mark.parametrize("value", OFF)
-def test_a_forgotten_flag_offers_no_conversion(monkeypatch, value):
-    _flag(monkeypatch, value)
-    assert saveplan.destination_ports(_source("dos")) == ["dos"]
-    assert saveplan.destination_ports(_source("amiga")) == ["amiga"]
-
-
 def test_the_ports_are_the_two_the_title_shipped_on(monkeypatch):
-    _flag(monkeypatch, "1")
     assert saveplan.destination_ports(_source("dos")) == ["dos", "amiga"]
     assert saveplan.destination_ports(_source("amiga")) == ["amiga", "dos"]
 
 
 def test_the_save_menu_has_no_c64_entry(app, monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     _no_box(monkeypatch)
     window = _window()
     window.load(str(_dos_folder(tmp_path)))
@@ -185,7 +172,6 @@ def test_the_save_menu_has_no_c64_entry(app, monkeypatch, tmp_path):
 
 
 def test_the_amiga_destination_needs_disk_three_and_nothing_else(monkeypatch):
-    _flag(monkeypatch, "1")
     assert saveplan.requirements(_source("dos"), "amiga") == (
         saveplan.AMIGA_DISK_THREE,)
     assert saveplan.requirements(_source("amiga"), "dos") == ()
@@ -194,7 +180,6 @@ def test_the_amiga_destination_needs_disk_three_and_nothing_else(monkeypatch):
 
 def test_the_convert_dialog_does_not_offer_the_disk_three_route(
         monkeypatch):
-    _flag(monkeypatch, "1")
     assert convert.amiga_needs_disk_three(POD)
     assert not convert.amiga_needs_disk_three(
         dos_port.CURSE_OF_THE_AZURE_BONDS)
@@ -207,7 +192,6 @@ def test_the_convert_dialog_does_not_offer_the_disk_three_route(
 
 def test_a_disk_three_in_the_folder_is_found_and_other_disks_are_not(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     folder = tmp_path / "disks"
     folder.mkdir()
     (folder / "a-disk-one.adf").write_bytes(_disk_one().to_bytes())
@@ -221,7 +205,6 @@ def test_a_disk_three_in_the_folder_is_found_and_other_disks_are_not(
 
 def test_resolving_with_no_disk_three_says_it_is_missing(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     with pytest.raises(saveplan.MissingAssets) as caught:
         saveplan.resolve_assets(_source("dos"), "amiga", game_folder=tmp_path)
     assert caught.value.missing == (saveplan.AMIGA_DISK_THREE,)
@@ -229,7 +212,6 @@ def test_resolving_with_no_disk_three_says_it_is_missing(
 
 def test_resolving_takes_the_disk_three_from_the_folder(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     path = _disk_file(tmp_path, _disk_three())
     assets = saveplan.resolve_assets(_source("dos"), "amiga",
                                      game_folder=tmp_path)
@@ -319,7 +301,6 @@ def test_an_edited_stat_and_item_cross_before_any_save(monkeypatch, tmp_path):
 def _weighted_party(monkeypatch, tmp_path, weight: int = 80):
     """`_dos_party` whose one item weighs `weight` and whose stored load
     balances, so the load the writers store is the one a Save As expects."""
-    _flag(monkeypatch, "1")
     folder = _dos_folder(tmp_path)
     data = bytearray((folder / "CHRDATA1.THG").read_bytes())
     data[dos_codec.DosItem._TABLE["weight"].span] = struct.pack("<H", weight)
@@ -438,7 +419,6 @@ def _registered_disk_three(tmp_path) -> pathlib.Path:
 
 def test_every_dos_slot_crosses_to_the_amiga_with_nothing_lost(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     disk = _registered_disk_three(tmp_path)
     checked = held_bonus = 0
     for source in _dos_sources():
@@ -458,7 +438,6 @@ def test_every_dos_slot_crosses_to_the_amiga_with_nothing_lost(
 
 def test_every_amiga_slot_crosses_to_dos_with_nothing_lost(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     checked = 0
     for n, (label, source) in enumerate(_amiga_sources(tmp_path)):
         plan = saveplan.prepare_save_as(Party(source), "dos",
@@ -643,7 +622,6 @@ def test_a_readied_ring_is_expected_to_double_level_five_on_the_amiga(
 
 def test_a_dos_mage_whose_stored_slots_differ_crosses_the_rebuilt_value_whole(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     folder = _dos_folder(tmp_path)
     path = folder / "CHRDATA1.SAV"
     record = podsheet.PodSheetRecord(path.read_bytes())
@@ -727,7 +705,6 @@ def _amiga_first_block(plan) -> bytes:
 
 def test_a_dos_level_edit_reaches_the_amiga_with_the_thac0_dos_shows(
         monkeypatch, tmp_path):
-    _flag(monkeypatch, "1")
     folder = _dos_folder(tmp_path)
     _fighter_14(folder)
     party = Party(convert.Source.detect(folder, slot="A"))
@@ -778,7 +755,6 @@ def test_every_dos_record_we_have_is_what_the_dos_load_rebuilds(
         monkeypatch, tmp_path):
     from goldbox import amiga_pod_recompute, pod_rewrite
 
-    _flag(monkeypatch, "1")
     # Wish's own Save As output, not a game save.
     written_by_wish = ("pod-678-amiga-converted-walked-dos",
                        "wish2-l2r8-saveas-dos-strength-edit-vault40")

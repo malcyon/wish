@@ -9,7 +9,7 @@ never a write the player cannot see coming.
 from 2026-08-24 until 2026-09-14, when Donald authorised lifting
 `WISH_EXPERIMENTAL_CONVERT` and removing that menu entry in the same commit**
 (`#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)`): `editor/convert.py`'s `ConvertDialog` was the only route once
+supports)`): Save As was the only route once
 the flag came off, and two menu items reaching the same conversion was
 always the state the flag's own removal was meant to end, condition 7. The
 module **keeps its name**: `editor/convert.py` imports `GameFiles`,
@@ -73,16 +73,15 @@ runs: the combat icon is composed out of `SPELLE64`/`SPELLN64` and `$8400`
 is `ANIMATE00`, and neither may be stored here. Donald's ruling, 2026-08-27
 -- *"We should never attempt to write a save file if we don't have the game
 disks and we need them. That would mean making up data, which we will not
-do."* -- so `editor/convert.py`'s `ConvertDialog` checks for both and leaves
-Convert disabled rather than making up either (`NO_DISKS` above). The third
+do."* -- so Save As checks for both and does not convert
+rather than making up either (`NO_DISKS` above). The third
 thing a Pool of Radiance conversion once read off the disks, the creation
 menu in `GEN`, is twenty-six integers and is stored
 (`goldbox.portraits.POOL_OF_RADIANCE_MENU`, 2026-09-06), so a sheet portrait
 needs no disk and nothing here blocks for its lack.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`;
-`rehearse` below takes the folder directly, as `ConvertDialog`'s own source
-row resolves it.
+`rehearse` below takes the folder directly, as Save As resolves it.
 """
 
 from __future__ import annotations

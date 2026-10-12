@@ -1,8 +1,7 @@
 """Step 4 of `#358 (Finish the C64 ↔ DOS conversion matrix: six directions
 registered, two defects and a question left)`: for every one of the six DOS
-↔ C64 directions, the bytes `File ▸ Convert…`'s own code path writes --
-`editor.convert.ConvertDialog` ▸ `Direction.rehearse` ▸ `Direction.write` --
-are compared against the bytes the library's own entry point writes for the
+↔ C64 directions, the bytes Save As's own code path writes --
+`editor.saveplan.rehearse` ▸ `Direction.write` -- are compared against the bytes the library's own entry point writes for the
 same input, called directly (`goldbox.dos_codec.new_save`/`save_disk` for a DOS
 source, `goldbox.dos_codec.new_dos_save` for a C64 one).
 
@@ -12,8 +11,8 @@ supports)`'s own `tests/convert/test_convert.py` already proves this for
 the Azure Bonds (`test_dos_to_c64_direction_is_the_transfer_test`,
 `test_curse_dos_to_c64_direction_is_the_transfer_test`,
 `test_c64_to_dos_direction_is_the_transfer_test`) -- but never for Secret of
-the Silver Blades in either direction, and never through the `ConvertDialog`
-widget itself rather than the bare `Direction`. `tools/convert/convertrun.py`, which
+the Silver Blades in either direction, and never through
+`editor.saveplan.rehearse` rather than the bare `Direction`. `tools/convert/convertrun.py`, which
 built the six `*-52-dialog-converted-resave` specimens this module reads,
 already drives the real dialog and an emulator; this is the byte-level half
 that tool's own docstring says the transfer tests stand in for -- generalised
@@ -98,10 +97,8 @@ def _c64_game_files(game: "c64_save.C64Container") -> "dosimport.GameFiles | Non
     """The icon, `ANIMATE00` and the creation menu off `game`'s own C64
     disks, found through `automap/gamedisks.py` -- the project's own registry
     for a test or tool that needs the player's disks, never a path typed into
-    this file. `None` when this machine has neither -- the same rejection
-    `editor.window.EditorBinding.game_files_for` gives the running dialog,
-    which is what makes the dialog's own pane say `NO_DISKS` rather than
-    silently rehearsing with nothing.
+    this file. `None` when this machine has neither, as
+    `editor.window.EditorBinding.game_files_for` answers in the running editor.
     """
     where = gamedisks.find(game.key)
     if where is None:
@@ -161,7 +158,7 @@ DOS_TO_C64_CASES = [
 @pytest.mark.parametrize("specimen_name, file_name, game", DOS_TO_C64_CASES)
 def test_dos_to_c64_matches_the_library_for_every_title(
         app, tmp_path, specimen_name, file_name, game):
-    """`ConvertDialog` ▸ `DosToC64.rehearse`/`write` writes the same `.d64`
+    """`saveplan.rehearse` ▸ `DosToC64.write` writes the same `.d64`
     bytes `goldbox.dos_codec.new_save` + `goldbox.dos_codec.save_disk` write directly for
     the same DOS source, the same icon/animate/portraits and the same slot --
     and reports the same drops. Proves requirements 1-4 of `#358`'s step 4 in
@@ -180,29 +177,23 @@ def test_dos_to_c64_matches_the_library_for_every_title(
                     f"automap/gamedisks.py")
 
     source_path = (folder / file_name) if file_name else folder
-    out = tmp_path / "out"
-    dialog = convert.ConvertDialog(str(source_path), None,
-                                   lambda g: game_files,
-                                   destination="c64", folder=str(out))
-    try:
-        assert type(dialog.direction) is convert.DosToC64
-        assert dialog.direction in convert.DIRECTIONS
-        assert dialog.source.key == game.key
-        assert dialog.direction.destination_game.key == game.key
-        # First, not only: `#36 (Write an Amiga disk image, not just the
-        # character files)` registered the two Amiga rows on 2026-09-07, so a
-        # Pool of Radiance source now offers Amiga as well. What this line
-        # guards is the order -- a player who presses Convert without looking
-        # gets the destination `#26 (Write a DOS save, not just read one)`
-        # proved, not whichever row was registered last.
-        offered = [type(d) for d in convert.destinations_for(dialog.source)]
-        assert offered[0] is convert.DosToC64, offered
-        assert dialog.rehearsal is not None, dialog._blocked
-        slot = dialog.source.slot
-        written = dialog.direction.write(dialog.rehearsal,
-                                         tmp_path / "dialog-write")
-    finally:
-        dialog.close()
+    source = convert.Source.detect(source_path)
+    direction = convert.destinations_for(source)[0]
+    assert type(direction) is convert.DosToC64
+    assert direction in convert.DIRECTIONS
+    assert source.key == game.key
+    assert direction.destination_game.key == game.key
+    # First, not only: `#36 (Write an Amiga disk image, not just the
+    # character files)` registered the two Amiga rows on 2026-09-07, so a
+    # Pool of Radiance source now offers Amiga as well. What this line
+    # guards is the order -- a player who presses Convert without looking
+    # gets the destination `#26 (Write a DOS save, not just read one)`
+    # proved, not whichever row was registered last.
+    offered = [type(d) for d in convert.destinations_for(source)]
+    assert offered[0] is convert.DosToC64, offered
+    rehearsal, slot = saveplan.rehearse(
+        direction, source, saveplan.Assets(game_files=game_files))
+    written = direction.write(rehearsal, tmp_path / "dialog-write")
 
     ref_save0, ref_save1, ref_report = dos_codec.new_save(
         folder, slot, game_files.icon, game_files.animate,
@@ -220,7 +211,7 @@ def test_dos_to_c64_matches_the_library_for_every_title(
     # real lines in it and this assertion does real work there.  Found by the
     # review of `686fd61`.  It stops being vacuous the day a DOS -> C64
     # conversion drops anything, which is what it is here to catch.
-    assert dialog.rehearsal.report.dropped == list(ref_report.dropped)
+    assert rehearsal.report.dropped == list(ref_report.dropped)
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +233,7 @@ C64_TO_DOS_CASES = [
 @pytest.mark.parametrize("specimen_name, game, stem", C64_TO_DOS_CASES)
 def test_c64_to_dos_matches_the_library_for_every_title(
         app, tmp_path, specimen_name, game, stem):
-    """`ConvertDialog` ▸ `C64ToDos.rehearse`/`write` writes the same DOS
+    """`saveplan.rehearse` ▸ `C64ToDos.write` writes the same DOS
     files `goldbox.dos_codec.new_dos_save` writes directly for the same C64 source,
     the same DOS game directory and slot `"A"` -- and reports the same drops.
     Same four requirements as the DOS -> C64 case above, mirrored: the
@@ -267,35 +258,31 @@ def test_c64_to_dos_matches_the_library_for_every_title(
         save0, save1 = source.save0, source.save1
 
     deltas = dos_port.DELTAS_BY_KEY[game.key]
-    out = tmp_path / "out"
     # The source title's own combat icon table, off its C64 disks: without
-    # one the conversion reports a loss and the dialog blocks it, as Save As
-    # does (#511).  Both sides of this comparison take the same table.
+    # one the conversion reports a loss and Save As blocks it (#511).  Both sides of this comparison take the same table.
     files = _c64_game_files(game)
     if files is None:
         pytest.skip(f"needs the C64 {game.title} disks in the registry")
-    dialog = convert.ConvertDialog(
-        str(disk_path), None, lambda g: files,
-        destination="dos", game=str(game_dir), folder=str(out))
-    try:
-        assert type(dialog.direction) is convert.C64ToDos
-        assert dialog.direction in convert.DIRECTIONS
-        assert dialog.source.key == deltas.key
-        assert dialog.direction.destination_game.key == deltas.key
-        # First, not only: `#36 (Write an Amiga disk image, not just the
-        # character files)` registered the two Amiga rows on 2026-09-07, so a
-        # Pool of Radiance source now offers Amiga as well. What this line
-        # guards is the order -- a player who presses Convert without looking
-        # gets the destination `#26 (Write a DOS save, not just read one)`
-        # proved, not whichever row was registered last.
-        offered = [type(d) for d in convert.destinations_for(dialog.source)]
-        assert offered[0] is convert.C64ToDos, offered
-        assert dialog.rehearsal is not None, dialog._blocked
-        assert dialog.slot == "A"
-        written = dialog.direction.write(dialog.rehearsal,
-                                         tmp_path / "dialog-write")
-    finally:
-        dialog.close()
+    source = convert.Source.detect(disk_path)
+    direction = [d for d in convert.destinations_for(source)
+                 if d.destination_port == "dos"][0]
+    assert type(direction) is convert.C64ToDos
+    assert direction in convert.DIRECTIONS
+    assert source.key == deltas.key
+    assert direction.destination_game.key == deltas.key
+    # First, not only: `#36 (Write an Amiga disk image, not just the
+    # character files)` registered the two Amiga rows on 2026-09-07, so a
+    # Pool of Radiance source now offers Amiga as well. What this line
+    # guards is the order -- a player who presses Convert without looking
+    # gets the destination `#26 (Write a DOS save, not just read one)`
+    # proved, not whichever row was registered last.
+    offered = [type(d) for d in convert.destinations_for(source)]
+    assert offered[0] is convert.C64ToDos, offered
+    rehearsal, slot = saveplan.rehearse(
+        direction, source,
+        saveplan.Assets(source_files=files, dos_folder=game_dir))
+    assert slot == "A"
+    written = direction.write(rehearsal, tmp_path / "dialog-write")
 
     reference_dir = tmp_path / "reference"
     ref_report = dos_codec.new_dos_save(save0, save1, reference_dir, "A", game_dir,
@@ -307,7 +294,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
     for name in written_names:
         assert (tmp_path / "dialog-write" / name).read_bytes() == \
             (reference_dir / name).read_bytes()
-    assert dialog.rehearsal.report.dropped == list(ref_report.dropped)
+    assert rehearsal.report.dropped == list(ref_report.dropped)
 
 
 # ---------------------------------------------------------------------------

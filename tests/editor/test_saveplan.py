@@ -352,7 +352,7 @@ def converted_gold(source, tmp_path):
 def test_picking_the_save_file_of_the_open_dos_save_converts_its_edits(
         tmp_path):
     """You open a DOS save, change gold without saving, and convert by picking
-    `SAVGAMA.DAT` in the Convert window's picker. `Party.path` is the folder
+    `SAVGAMA.DAT` in the file picker. `Party.path` is the folder
     and the picker hands over the file, so the two have to be recognised as
     one save or the conversion reads the old gold off disk."""
     folder = dos_folder(tmp_path)
@@ -393,7 +393,7 @@ def test_a_save_file_in_another_folder_is_not_the_open_save(tmp_path):
 
 
 def test_the_slot_a_dos_conversion_asks_for_is_the_slot_it_reads(tmp_path):
-    """The Convert window's slot combo re-detects the folder with the letter
+    """A slot picker re-detects the folder with the letter
     the player chose. On a folder holding two saved games the open slot's
     snapshot must not answer for the other one."""
     folder = dos_folder(tmp_path)
@@ -546,7 +546,7 @@ def test_an_amiga_pool_name_with_an_alt_or_ctrl_byte_opens_and_saves_back(
 def test_an_edit_that_reaches_no_byte_of_the_save_is_blocked(tmp_path):
     """`turn_power` is a C64 field no DOS record holds, so the rewrite raises
     rather than returning a snapshot that quietly lost the edit -- through
-    `prepare` and through `Source.detect`, which is what the Convert window
+    `prepare` and through `Source.detect`, which is what Save As
     calls."""
     folder = dos_folder(tmp_path)
     party = Party(str(folder))

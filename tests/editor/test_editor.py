@@ -6002,37 +6002,6 @@ def test_a_path_is_taken_for_a_save_by_its_name_or_for_being_a_folder(tmp_path):
         assert not Source.looks_like_a_save(tmp_path / named), named
 
 
-def test_pools_of_darkness_cannot_be_opened_and_the_rejection_is_catchable(
-        tmp_path, monkeypatch):
-    """No C64 port, so no sheet layout to edit its characters through."""
-    from editor.convert import POD_CONVERT_ENV
-    from goldbox import dos_codec, dos_port
-    monkeypatch.delenv(POD_CONVERT_ENV, raising=False)
-    (tmp_path / "CHRDATA1.SAV").write_bytes(
-        bytes(dos_port.POOLS_OF_DARKNESS.record_size))
-    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
-    with pytest.raises(dos_codec.WrongTitleError) as blocked:
-        Party(str(tmp_path))
-    assert blocked.value.title == dos_port.POOLS_OF_DARKNESS.title
-
-
-def test_opening_a_pools_of_darkness_folder_shows_the_convert_sentence(
-        app, tmp_path, monkeypatch):
-    import editor.window as ew
-    from editor.convert import POD_CONVERT_ENV, POOLS_OF_DARKNESS_UNSUPPORTED
-    from goldbox import dos_port
-    monkeypatch.delenv(POD_CONVERT_ENV, raising=False)
-    (tmp_path / "CHRDATA1.SAV").write_bytes(
-        bytes(dos_port.POOLS_OF_DARKNESS.record_size))
-    (tmp_path / "SAVGAMA.PTY").write_bytes(b"")
-    said = []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda *a, **k: said.append((a[1], a[2])))
-    ew.EditorBinding(make_root()).load(str(tmp_path))
-    assert said == [("Cannot open", POOLS_OF_DARKNESS_UNSUPPORTED)]
-    assert "goldbox/" not in said[0][1] and "c64_port" not in said[0][1]
-
-
 @pytest.mark.parametrize("game_attr, sentence", [
     ("GATEWAY_TO_THE_SAVAGE_FRONTIER",
      "Gateway to the Savage Frontier saves are not yet supported."),
@@ -6054,6 +6023,14 @@ def test_opening_an_unmeasured_c64_title_shows_its_own_sentence(
     assert said == [("Cannot open", sentence)]
 
 
+def test_the_general_sentence_names_only_a_title_the_editor_cannot_read():
+    from editor.convert import unsupported_save_sentence
+    assert unsupported_save_sentence("Pools of Darkness") is None
+    assert unsupported_save_sentence("Curse of the Azure Bonds") is None
+    assert unsupported_save_sentence("Champions of Krynn") == \
+        "Champions of Krynn saves are not yet supported."
+
+
 def test_an_unmeasured_c64_title_on_a_roster_disk_is_blocked_by_title():
     """A roster disk with no save, read as Gateway, lacks the same measured
     deltas as a Gateway save: `WrongTitleError`, not the bare `KeyError`."""
@@ -6071,18 +6048,9 @@ def test_an_unmeasured_c64_title_on_a_roster_disk_is_blocked_by_title():
     assert blocked.value.title == game.title
 
 
-def test_the_pools_of_darkness_sentence_is_the_general_one():
-    from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED, unsupported_save_sentence
-    assert unsupported_save_sentence("Pools of Darkness") == \
-        POOLS_OF_DARKNESS_UNSUPPORTED == \
-        "Pools of Darkness saves are not yet supported."
-    assert unsupported_save_sentence("Curse of the Azure Bonds") is None
-
-
 def test_another_title_blocked_on_open_shows_the_general_message(
         app, tmp_path, monkeypatch):
     import editor.window as ew
-    from editor.convert import POOLS_OF_DARKNESS_UNSUPPORTED
     from goldbox import dos_codec, dos_port
 
     def block(*a, **k):
@@ -6097,7 +6065,6 @@ def test_another_title_blocked_on_open_shows_the_general_message(
                         lambda *a, **k: said.append((a[1], a[2])))
     ew.EditorBinding(make_root()).load(str(tmp_path))
     assert said == [("Cannot open", "developer reason")]
-    assert said[0][1] != POOLS_OF_DARKNESS_UNSUPPORTED
 
 
 def test_an_amiga_curse_party_opens_from_its_adf(tmp_path):
