@@ -99,8 +99,8 @@ def records() -> list:
 def find_record(name: str):
     """The first character called `name`, any case, or None."""
     return next((c for c in records()
-                 if (getattr(c, "name", "") or "").upper() == name.upper()),
-                None)
+                 if (getattr(c, "name", "") or "").strip().upper()
+                 == name.strip().upper()), None)
 
 
 def _fields(char) -> tuple[int, int, int, bytes]:
@@ -119,6 +119,7 @@ def report_palette(out) -> int:
         out(f"{title}")
         out(f"  DOS value -> palette entry: {art.entry.hex(' ')}")
         out(f"  recoloured parts:           {art.parts.hex(' ')}")
+        out(f"  load table:                 {art.load.hex(' ')}")
         out(f"  ICON palette (ALWAYS.TLB block "
             f"{later.TITLES[title].palette_block}): "
             + " ".join(f"{r // 17:x}{g // 17:x}{b // 17:x}"

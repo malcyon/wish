@@ -47,6 +47,15 @@ GLIB_MAGIC, TILE_TAG = b"GLIB", b"TILE"
 HEAD_FILE, BODY_FILE = "CHEAD.TLB", "CBODY.TLB"
 FRAME_FILE, PALETTE_FILE = "COMSPR.TLB", "ALWAYS.TLB"
 
+#: Silver Blades' pictures, on disk 2: a `GLIB` whose blocks are each a
+#: picture's own packed tile library, palette block first.
+PICTURE_FILE = "PIC.TLB"
+
+#: The palette entries a picture installs over the screen's own (`/Secret`
+#: `0x1C9D4`-`0x1CA2C`: 3, then 10 to 12, then 14); every other entry keeps
+#: `ALWAYS.TLB` block 0's colour.
+PICTURE_ENTRIES = (3, 10, 11, 12, 14)
+
 #: What the block loader adds to an option for `size` 2 (the file name ends
 #: `T`) and for the second pose, to heads and bodies alike (`/Curse`
 #: `0x34EA8`, `0x34F1E`).
@@ -72,6 +81,14 @@ PALETTE_TYPE, PALETTE_COLOURS = 8, 16
 #: `lea` displacements name the entry table and the part table.
 _BUILDER = (bytes.fromhex("0241000f41ec"), bytes.fromhex("70001002" "43ec"))
 
+#: Silver Blades' block loader, after the two loads (`0x38642`):
+#: `cmpi.b #$19, d3; beq.b; move.l g(a4), -(a7); moveq #0, d0;
+#: move.b d2, d0; move.w d0, -(a7); pea g<table>(a4)` -- every block but
+#: `COMSPR` 25 is then passed through that table with the same routine
+#: that recolours (`0x1CB28`).  Curse's loader has no such step.
+_LOAD_TABLE = (bytes.fromhex("0c03001967"), bytes.fromhex("2f2c"),
+               bytes.fromhex("700010023f00486c"))
+
 #: SAS/C small data: `a4` is the data hunk's start plus this.
 _SMALL_DATA_BIAS = 0x7FFE
 
@@ -82,9 +99,11 @@ class LaterTitle:
 
     `palette_block`: the `ALWAYS.TLB` block the ICON screen shows.  Curse's
     ICON routine (`0x15F04`) installs block 87 through `0x3549E` and the
-    Alter menu reinstalls block 0 when it returns (`0x13F8`); Silver Blades'
-    (`0xC62C`) installs none, so the screen keeps block 0, which `0x1D756`
-    installs at start-up and the fades at `0x1CA5A` and `0x1CA94` reinstall.
+    Alter menu reinstalls block 0 when it returns (`0x13F8`).  Silver
+    Blades' (`0xC62C`) installs none, so the screen keeps block 0 with the
+    :data:`PICTURE_ENTRIES` of the last picture drawn, and the ICON screen
+    is reached only through camp, whose picture is `camp_picture`
+    (`PIC.TLB` art 59, drawn on entering camp at `0x1B26C`).
     `places`: the top-left pixel, on the 320x200 screen, of each drawn
     pose, `(row, pose)`; Curse draws the figure as it was (`current`) and
     as it is being edited (`trial`), Silver Blades one row.
@@ -96,6 +115,7 @@ class LaterTitle:
     #: The drawers `COMSPR.TLB` and `ALWAYS.TLB` (disk 1, beside the
     #: executable) and `CHEAD.TLB` and `CBODY.TLB` (disk 2) are in.
     drawers: tuple[str, str]
+    camp_picture: int | None = None
 
 
 #: The ICON screen places a pose at pixel `2 * (word - 0x1F40)` on each
@@ -112,7 +132,7 @@ TITLES = {
     "secret-of-the-silver-blades": LaterTitle(
         "Secret", 0,
         {("current", 0): (32, 56), ("current", 1): (104, 56)},
-        ("DISK1", "DISK2")),
+        ("DISK1", "DISK2"), 59),
 }
 
 #: The key :func:`disk_files` gives the executable under.
@@ -150,12 +170,14 @@ def unpack_method_5(data: bytes, start: int = 0,
 
     The library loader (`/Secret` `0x417D6`) unpacks a packed library a
     chunk at a time into one buffer, so a copy may reach back into an
-    earlier chunk's output.  With `limit`, the unpacking stops with
-    :class:`LaterArtError` before the output would pass that many bytes.
+    earlier chunk's output.  With `limit`, the unpacking ends once the
+    output holds that many bytes -- a packed block stored at an even length
+    carries a pad byte after its last chunk -- and stops with
+    :class:`LaterArtError` before the output would pass it.
     """
     out = bytearray()
     pos = start
-    while pos < len(data):
+    while pos < len(data) and (limit is None or len(out) < limit):
         pos = unpack_chunk(data, pos, out, limit)
     return bytes(out)
 
@@ -229,17 +251,20 @@ def unpack_chunk(data: bytes, start: int, out: bytearray,
                             f"short at byte {pos}") from exc
 
 
-def library(data: bytes, name: str = "library") -> dict[int, bytes]:
-    """Every block of a `GLIB` tile library, by art id.
+def library(data: bytes, name: str = "library",
+            tag: bytes = TILE_TAG) -> dict[int, bytes]:
+    """Every block of a `GLIB` library tagged `tag`, by art id.
 
     The header is the magic, a `u32` size, a `u16` block count, a byte
     naming how the rest is packed (0 stored, 5 :func:`unpack_method_5`), a
     byte that is 1 when block 0 indexes the others by art id and 0 when the
-    block number is the id, and the tag `TILE`.  A packed library is one
+    block number is the id, and the tag: `TILE` for a tile library, `GLIB`
+    for `PIC.TLB`, whose blocks are libraries.  A packed library is one
     stream after a `u16`, and must unpack to the size the header gives.
     """
-    if len(data) < 16 or data[:4] != GLIB_MAGIC or data[12:16] != TILE_TAG:
-        raise LaterArtError(f"{name} is not a GLIB tile library")
+    if len(data) < 16 or data[:4] != GLIB_MAGIC or data[12:16] != tag:
+        raise LaterArtError(f"{name} is not a GLIB "
+                            f"{tag.decode('latin-1')} library")
     size, count = struct.unpack_from(">IH", data, 4)
     method, indexed = data[10], data[11]
     if method == 5:
@@ -340,13 +365,41 @@ def palette_block(raw: bytes, name: str = "palette") -> tuple[tuple[int, int, in
                  for i in range(0, len(body), 3))
 
 
-def icon_palette(always: bytes, title: str) -> tuple[tuple[int, int, int], ...]:
-    """The sixteen colours the title's ICON screen shows, from `ALWAYS.TLB`."""
-    block = _title(title).palette_block
+def picture_palette(pictures: bytes, art: int) -> tuple[tuple[int, int, int], ...]:
+    """A `PIC.TLB` picture's sixteen colours, from its own palette block."""
+    outer = library(pictures, PICTURE_FILE, GLIB_MAGIC)
+    if art not in outer:
+        raise LaterArtError(f"{PICTURE_FILE} holds no picture {art}")
+    inner = library(outer[art], f"{PICTURE_FILE} picture {art}")
+    for raw in inner.values():
+        if len(raw) > 7 and raw[7] & 0x0F == PALETTE_TYPE:
+            return palette_block(raw, f"{PICTURE_FILE} picture {art}")
+    raise LaterArtError(f"{PICTURE_FILE} picture {art} holds no palette")
+
+
+def icon_palette(always: bytes, title: str, pictures: bytes | None = None
+                 ) -> tuple[tuple[int, int, int], ...]:
+    """The sixteen colours the title's ICON screen shows.
+
+    `ALWAYS.TLB`'s block for the title, and for Silver Blades the camp
+    picture's :data:`PICTURE_ENTRIES` over it, from `pictures` (`PIC.TLB`).
+    """
+    where = _title(title)
     blocks = library(always, PALETTE_FILE)
-    if block not in blocks:
-        raise LaterArtError(f"{PALETTE_FILE} holds no block {block}")
-    return palette_block(blocks[block], f"{PALETTE_FILE} block {block}")
+    if where.palette_block not in blocks:
+        raise LaterArtError(f"{PALETTE_FILE} holds no block "
+                            f"{where.palette_block}")
+    palette = list(palette_block(blocks[where.palette_block],
+                                 f"{PALETTE_FILE} block "
+                                 f"{where.palette_block}"))
+    if where.camp_picture is not None:
+        if pictures is None:
+            raise LaterArtMissing(f"no {PICTURE_FILE} for the camp "
+                                  f"picture's colours")
+        camp = picture_palette(pictures, where.camp_picture)
+        for i in PICTURE_ENTRIES:
+            palette[i] = camp[i]
+    return tuple(palette)
 
 
 def recolour_tables(executable: bytes) -> tuple[bytes, bytes]:
@@ -394,6 +447,49 @@ def recolour_tables(executable: bytes) -> tuple[bytes, bytes]:
     return entry, parts
 
 
+def load_table(executable: bytes) -> bytes:
+    """The table every figure tile passes through when it is loaded.
+
+    Silver Blades' (`g2FF8`) is the identity but for entry 8, the outline,
+    which becomes 0: its outline is drawn black, as DOS Silver Blades'
+    loader also makes it.  Curse has no such step, and an executable whose
+    block loader holds none gets the identity.
+    """
+    try:
+        hunks, _relocs = amiga_hunks.parse(executable)
+    except (ValueError, IndexError, struct.error) as exc:
+        raise LaterArtError(f"the executable is not a Hunk file, or is cut "
+                            f"short: {exc}") from exc
+    code = next((h for h in hunks if h.kind == "CODE"), None)
+    data = next((h for h in hunks if h.kind == "DATA"), None)
+    if code is None or data is None or data.file_offset is None:
+        raise LaterArtError("the executable has no code and data hunk")
+    first, second, third = _LOAD_TABLE
+    found = set()
+    end = code.file_offset + code.size
+    at = executable.find(first, code.file_offset, end)
+    while at >= 0:
+        rest = at + len(first) + 1
+        if (executable[rest:rest + 2] == second
+                and executable[rest + 4:rest + 4 + len(third)] == third):
+            found.add(struct.unpack_from(">h", executable,
+                                         rest + 4 + len(third))[0])
+        at = executable.find(first, at + 2, end)
+    if not found:
+        return bytes(range(16))
+    if len(found) > 1:
+        raise LaterArtError(f"the executable holds {len(found)} load "
+                            f"tables, not one")
+    start = data.file_offset + _SMALL_DATA_BIAS + found.pop()
+    if not data.file_offset <= start <= data.file_offset + data.size - 16:
+        raise LaterArtError("the load table lies outside the data hunk")
+    table = executable[start:start + 16]
+    if any(v > 15 for v in table):
+        raise LaterArtError(f"the load table {table.hex(' ')} holds a value "
+                            f"past 15")
+    return table
+
+
 def recolour_table(colours: bytes, entry: bytes,
                    parts: bytes) -> tuple[int, ...]:
     """The sixteen-entry table the loader builds from a record's colours.
@@ -429,14 +525,18 @@ def block_ids(option: int, size: int) -> tuple[int, int]:
 
 def compose(heads: dict[int, Tile], bodies: dict[int, Tile], icon_head: int,
             icon_body: int, size: int, colours: bytes, entry: bytes,
-            parts: bytes) -> tuple[Pose, Pose]:
+            parts: bytes, load: bytes | None = None) -> tuple[Pose, Pose]:
     """The `(ready, action)` poses the ICON screen draws for a record.
 
     Each pose is the body tile with the head tile of the same pose drawn
-    over it from row 0, both recoloured through :func:`recolour_table`; a
-    head pixel replaces the body pixel wherever the head is opaque.
+    over it from row 0, both passed through `load` (:func:`load_table`,
+    the identity when None) and then recoloured through
+    :func:`recolour_table`; a head pixel replaces the body pixel wherever
+    the head is opaque.
     """
-    table = recolour_table(colours, entry, parts)
+    recolour = recolour_table(colours, entry, parts)
+    load = bytes(range(16)) if load is None else load
+    table = tuple(recolour[load[v]] for v in range(16))
     poses = []
     for head_id, body_id in zip(block_ids(icon_head, size),
                                 block_ids(icon_body, size)):
@@ -498,12 +598,13 @@ class LaterArt:
     palette: tuple[tuple[int, int, int], ...]
     entry: bytes
     parts: bytes
+    load: bytes = bytes(range(16))
 
     def poses(self, icon_head: int, icon_body: int, size: int,
               colours: bytes) -> tuple[Pose, Pose]:
         """The record's ready and action poses, see :func:`compose`."""
         return compose(self.heads, self.bodies, icon_head, icon_body, size,
-                       bytes(colours), self.entry, self.parts)
+                       bytes(colours), self.entry, self.parts, self.load)
 
     def drawn(self, icon_head: int, icon_body: int, size: int,
               colours: bytes) -> tuple[tuple[tuple[tuple[int, int, int], ...], ...], ...]:
@@ -526,15 +627,18 @@ def read_art(title: str, files: dict[str, bytes]) -> LaterArt:
     return LaterArt(title, read_tiles(files[HEAD_FILE], HEAD_FILE),
                     read_tiles(files[BODY_FILE], BODY_FILE),
                     frames(read_tiles(files[FRAME_FILE], FRAME_FILE)),
-                    icon_palette(files[PALETTE_FILE], title), entry, parts)
+                    icon_palette(files[PALETTE_FILE], title,
+                                 files.get(PICTURE_FILE)), entry, parts,
+                    load_table(files[EXECUTABLE]))
 
 
 def disk_files(title: str, disks) -> dict[str, bytes]:
-    """The five files the title's figure needs, off opened `AmigaDisk`s.
+    """The files the title's figure needs, off opened `AmigaDisk`s.
 
     Disk 1 is the one with the executable in its root, and gives
     `COMSPR.TLB` and `ALWAYS.TLB` from its drawer; disk 2 is one with
-    `CHEAD.TLB` and `CBODY.TLB` in the title's disk-2 drawer.  Pools of
+    `CHEAD.TLB` and `CBODY.TLB` (and for Silver Blades `PIC.TLB`) in the
+    title's disk-2 drawer.  Pools of
     Darkness keeps an `ALWAYS.TLB` in a `DISK1` drawer too, but not beside
     `/Secret`.  Raises :class:`LaterArtMissing` when a file is not found.
     """
@@ -551,15 +655,20 @@ def disk_files(title: str, disks) -> dict[str, bytes]:
                 found.update({k: disk.read_file(names[v])
                               for k, v in wanted.items()})
         if HEAD_FILE not in found:
-            wanted = {k: f"{second}/{k}" for k in (HEAD_FILE, BODY_FILE)}
+            wanted = {k: f"{second}/{k}" for k in _disk_2(where)}
             if all(v in names for v in wanted.values()):
                 found.update({k: disk.read_file(names[v])
                               for k, v in wanted.items()})
-    missing = [k for k in (EXECUTABLE, FRAME_FILE, PALETTE_FILE, HEAD_FILE,
-                           BODY_FILE) if k not in found]
+    missing = [k for k in (EXECUTABLE, FRAME_FILE, PALETTE_FILE,
+                           *_disk_2(where)) if k not in found]
     if missing:
         raise LaterArtMissing(f"no {', '.join(missing)} on these disks")
     return found
+
+
+def _disk_2(where: LaterTitle) -> tuple[str, ...]:
+    return ((HEAD_FILE, BODY_FILE) if where.camp_picture is None
+            else (HEAD_FILE, BODY_FILE, PICTURE_FILE))
 
 
 def _title(title: str) -> LaterTitle:

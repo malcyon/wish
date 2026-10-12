@@ -163,18 +163,24 @@ What a player sees after Camp, Alter, Icon, read from the code and drawn by
 | Overwriting differs from DOS's OR in 34 Curse and 30 Silver Blades `(head, body, size, pose)` figures, 40 and 36 pixels, all at size 1 | CONFIRMED, measured | `test_some_small_figures_have_head_pixels_over_body_pixels`; no specimen uses one |
 | Every one of the 21 specimens composes to the DOS figure through the entry table, but for the plume highlight (ARIEL 10 pixels, STORMBRINGER 16) | CONFIRMED, measured | `test_every_specimen_is_the_dos_figure_through_the_entry_table` |
 | The box behind the ready pose is `COMSPR.TLB` art 25 and behind the action pose art 153, in both titles (DOS Silver Blades uses 25 for both) | CONFIRMED by code | loaded into slot 25 at `0x1D86C`; ICON row drawn by `0x157AA` / `0xB832`; both boxes are opaque |
-| Curse's ICON screen shows `ALWAYS.TLB` block 87: block 0's colours with entries 0 and 8 exchanged (and entry 11 changed), so the outline is black and entry 0 dark grey, as on DOS | CONFIRMED by code, colours PROBABLE until captured | ICON routine `0x15F04` calls `0x3549E`, which installs block `0x57`; the Alter menu reinstalls block 0 on return (`0x13F8`) |
-| Silver Blades' ICON screen installs no palette, so it shows `ALWAYS.TLB` block 0: the outline (entry 8) is dark grey, where DOS Silver Blades draws it black | PROBABLE | the only palette calls are start-up `0x1D756` and the fades `0x1CA5A`, `0x1CA94`, all block 0 |
+| Curse's ICON screen shows `ALWAYS.TLB` block 87: block 0's colours with entries 0 and 8 exchanged (and entry 11 changed), so the outline is black and entry 0 dark grey, as on DOS | CONFIRMED by code and by capture: GALAIN, HOLLAND, IILANDA and SUNDRA are pixel-equal in both rows | ICON routine `0x15F04` calls `0x3549E`, which installs block `0x57`; the Alter menu reinstalls block 0 on return (`0x13F8`) |
+| Silver Blades loads every figure tile through a table that turns entry 8, the outline, into 0, so the outline is black, as on DOS Silver Blades. The box (`COMSPR` 25) is not translated and keeps entry 8 dark grey. This replaces an earlier reading here that the outline is dark grey: that reading missed the load step | CONFIRMED by code and by capture | block loader `0x38642` passes both loaded slots through `g2FF8` with the recolour routine `0x1CB28`; in all four captures every figure outline pixel is black and every box entry-8 pixel dark grey |
+| Silver Blades' ICON screen installs no palette of its own, so it shows `ALWAYS.TLB` block 0 with the camp picture's colours in entries 3, 10, 11, 12 and 14. Camp draws `PIC.TLB` picture 59, and a picture installs exactly those five entries from its own palette block over the screen's. The ICON screen is reached only through camp, so it always shows picture 59's five. The editor reads them from `PIC.TLB` on disk 2. This replaces an earlier row here that left entries 3 and 12 UNKNOWN | CONFIRMED by code, by a memory read and by capture | camp entry `0x1B21E` draws picture `0x3B` at `0x1B26C`; picture install `0x1C9D4`-`0x1CA2C` copies entries 3, 10-12 and 14. Live table `g352E`, read over WinUAE's pipe: block 0 at the title, menu and load; picture colours during the opening scene; block 0 again in the world; block 0 with picture 59's five on entering camp; unchanged at ICON. All eight crops are pixel-equal |
 | Silver Blades' `ALWAYS.TLB` is packed (header byte 10 = 5): an LZ77 variant decoded at `0x45524`, which unpacks the file to exactly its header's size | CONFIRMED | `goldbox.amiga_later_icons.unpack_method_5`; `test_silver_blades_packed_library_holds_one_palette_block_0` |
-| Poses sit at (32, 56) ready and (104, 56) action on the 320x200 screen; Curse repeats the figure at (32, 104) and (104, 104) as the trial row, Silver Blades draws one row | PROBABLE | place is `2 * (word - 0x1F40)` (`0x3E548`), word `0x1F44 + 12 * cell` (`0x34F44`), cells from `0x15F3A` / `0xC68E`; labels "ready    action" drawn under each row |
+| Poses sit at (32, 56) ready and (104, 56) action on the 320x200 screen; Curse repeats the figure at (32, 104) and (104, 104) as the trial row, Silver Blades draws one row | spacing CONFIRMED by capture (72 pixels across, 48 down); the screen origin PROBABLE | place is `2 * (word - 0x1F40)` (`0x3E548`), word `0x1F44 + 12 * cell` (`0x34F44`), cells from `0x15F3A` / `0xC68E`; labels "ready    action" drawn under each row |
 
 A palette byte becomes the nibble `(byte + 8) // 17` (`0x3F2FE`) and the
 screen shows nibble `n` as `17 * n`. The ICON screen's keys: `E` is Exit in
 both titles (gadget key `$45`), and Alter is left with its own Exit.
 
-What only a capture settles: the two palettes as shown, the places on the
-canonical crop, and a plume-highlight figure (no captured party member has
-head 2, 4 or 6 at size 2, or 6 at size 1).
+The captures put the poses at Amiga pixel (61, 72) and (133, 72) of the
+canonical crop, with Curse's trial row at y 120: the screen's (32, 56)
+places, 29 and 16 pixels into the crop. Still open: a plume-highlight figure
+(no captured party member has head 2, 4 or 6 at size 2, or 6 at size 1).
+
+Silver Blades' packed libraries inside `PIC.TLB` are stored at even lengths,
+so a pad byte follows the last chunk; the unpacker stops at the header's
+size rather than at the end of the block.
 
 ## What this means for a conversion
 

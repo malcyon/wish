@@ -386,20 +386,64 @@ def test_the_icon_palette_is_the_title_s_own_block():
     data, _ = _glib(blocks, indexed=False)
     assert later.icon_palette(data, "curse-of-the-azure-bonds")[0] == (
         17 * (87 % 16),) * 3
-    assert later.icon_palette(data, "secret-of-the-silver-blades")[0] == (
-        0, 0, 0)
     with pytest.raises(later.LaterArtError):
         later.icon_palette(data, "pool-of-radiance")
 
 
-def _executable(targets=((0x20, 0x40),), entry=ENTRY):
+def _pictures(art=59, channel=7, packed=True):
+    """A `PIC.TLB`: an indexed `GLIB` of `GLIB`s, picture `art` holding a
+    palette block whose entry `i` is grey `17 * ((channel + i) % 16)`, then a
+    tile, its library packed by method 5 as the game's are."""
+    palette = (struct.pack(">HHHBB", 0, 0, 0, 0, later.PALETTE_TYPE)
+               + b"".join(bytes([17 * ((channel + i) % 16)]) * 3
+                          for i in range(16)))
+    inner, unpacked = _glib([palette, _tile(((1,) * 8,))], indexed=False)
+    if packed:
+        stream = bytearray(b"\0\x01")
+        for at in range(0, len(unpacked), 15):
+            piece = unpacked[at:at + 15]
+            stream += bytes([0xD0 | len(piece)]) + piece
+        stream += b"\xE0"
+        inner, _ = _glib([palette, _tile(((1,) * 8,))], indexed=False,
+                         method=5, body=bytes(stream))
+        inner += b"\0" * (len(inner) % 2)
+    outer, _ = _glib([inner], indexed=True, ids=[art])
+    return outer[:12] + b"GLIB" + outer[16:]
+
+
+def test_silver_blades_shows_the_camp_picture_s_colours_over_block_0():
+    blocks = [struct.pack(">HHHBB", 0, 0, 0, 0, later.PALETTE_TYPE)
+              + bytes([17 * 1]) * 48]
+    always, _ = _glib(blocks, indexed=False)
+    shown = later.icon_palette(always, "secret-of-the-silver-blades",
+                               _pictures())
+    for i in range(16):
+        want = (17 * ((7 + i) % 16),) * 3 if i in (3, 10, 11, 12, 14) \
+            else (17, 17, 17)
+        assert shown[i] == want, i
+    with pytest.raises(later.LaterArtMissing):
+        later.icon_palette(always, "secret-of-the-silver-blades")
+    with pytest.raises(later.LaterArtError, match="no picture 59"):
+        later.icon_palette(always, "secret-of-the-silver-blades",
+                           _pictures(art=60))
+    assert later.picture_palette(_pictures(packed=False), 59)[3] == (
+        170, 170, 170)
+
+
+#: A generated load table: the identity but for entry 8, which becomes 0.
+LOAD = bytes([0, 1, 2, 3, 4, 5, 6, 7, 0, 9, 10, 11, 12, 13, 14, 15])
+
+
+def _executable(targets=((0x20, 0x40),), entry=ENTRY, loads=()):
     """A code and a data hunk; the code holds one copy of the recolour
     builder's instructions per `(entry, parts)` data offset pair, its `lea`
-    displacements naming them."""
+    displacements naming them, and one copy of the block loader's load-table
+    step per data offset in `loads`."""
     data = bytearray(0x80)
     data[0x20:0x30] = entry
     data[0x40:0x46] = PARTS
     data[0x50:0x60] = entry
+    data[0x60:0x70] = LOAD
 
     def displacement(at):
         return struct.pack(">h", at - 0x7FFE)
@@ -409,9 +453,47 @@ def _executable(targets=((0x20, 0x40),), entry=ENTRY):
         code += (bytes.fromhex("0241000f41ec") + displacement(entry_at)
                  + bytes.fromhex("7000100243ec") + displacement(parts_at)
                  + b"\x4e\x71" * 2)
+    for load_at in loads:
+        code += (bytes.fromhex("0c0300196700") + bytes.fromhex("2f2c0000")
+                 + bytes.fromhex("700010023f00486c") + displacement(load_at)
+                 + bytes.fromhex("4eac0000"))
     code += b"\x4e\x75\x4e\x75"
     return hunk_file([(amiga_hunks.HUNK_CODE, bytes(code), []),
                       (amiga_hunks.HUNK_DATA, bytes(data), [])])
+
+
+def test_the_load_table_is_read_through_the_block_loader_s_own_pea():
+    assert later.load_table(_executable(loads=(0x60,))) == LOAD
+    assert later.load_table(_executable(loads=(0x60, 0x60))) == LOAD
+    assert later.load_table(_executable()) == bytes(range(16))
+    with pytest.raises(later.LaterArtError):
+        later.load_table(_executable(loads=(0x60, 0x50)))
+    with pytest.raises(later.LaterArtError):
+        later.load_table(_executable(loads=(0x7F0,)))
+
+
+def test_the_load_table_comes_before_the_recolour():
+    """Silver Blades' outline, entry 8, is drawn as entry 0, recoloured as 0
+    is: a record cannot give the outline a colour."""
+    heads, bodies = _art(head_ready=8, body_ready=8)
+    colours = bytes([0x91, 0xA2, 0xB3, 0xC4, 0xE6, 0xF7])
+    ready, _ = later.compose(heads, bodies, 2, 7, 1, colours, ENTRY, PARTS,
+                             LOAD)
+    assert ready[0][5] == ready[20][5] == 0
+    plain, _ = later.compose(heads, bodies, 2, 7, 1, colours, ENTRY, PARTS)
+    assert plain[0][5] == plain[20][5] == 8
+
+
+def test_a_name_is_found_whatever_its_trailing_spaces(monkeypatch):
+    """Silver Blades' saved game holds `Guy de Valois ` with a space."""
+    from tools.icons import amigalatericons as tool
+
+    class Char:
+        name = "Guy de Valois "
+
+    monkeypatch.setattr(tool, "records", lambda: [Char()])
+    assert tool.find_record("GUY DE VALOIS") is not None
+    assert tool.find_record("GUY") is None
 
 
 def test_the_recolour_tables_are_read_through_the_builder_s_own_leas():
@@ -453,14 +535,19 @@ def test_disk_1_is_the_one_with_the_executable_beside_its_drawer():
                       "DISK1/COMSPR.TLB": b"x"})
     first = _Disk({"Secret": b"exe", "DISK1/ALWAYS.TLB": b"always",
                    "DISK1/COMSPR.TLB": b"comspr"})
-    second = _Disk({"DISK2/CHEAD.TLB": b"head", "DISK2/CBODY.TLB": b"body"})
+    second = _Disk({"DISK2/CHEAD.TLB": b"head", "DISK2/CBODY.TLB": b"body",
+                    "DISK2/PIC.TLB": b"pic"})
     found = later.disk_files("secret-of-the-silver-blades",
                              [darkness, second, first])
     assert found == {later.EXECUTABLE: b"exe", later.PALETTE_FILE: b"always",
                      later.FRAME_FILE: b"comspr", later.HEAD_FILE: b"head",
-                     later.BODY_FILE: b"body"}
+                     later.BODY_FILE: b"body", later.PICTURE_FILE: b"pic"}
     with pytest.raises(later.LaterArtError):
         later.disk_files("secret-of-the-silver-blades", [darkness, second])
+    no_pictures = _Disk({"DISK2/CHEAD.TLB": b"head",
+                         "DISK2/CBODY.TLB": b"body"})
+    with pytest.raises(later.LaterArtMissing, match="PIC.TLB"):
+        later.disk_files("secret-of-the-silver-blades", [first, no_pictures])
     with pytest.raises(later.LaterArtMissing):
         later.disk_files("curse-of-the-azure-bonds", [first, second])
 
@@ -560,9 +647,9 @@ def test_every_specimen_is_the_dos_figure_through_the_entry_table(title):
         fields = (char.get("icon_head"), char.get("icon_body"),
                   char.get("size"), bytes(char.get("icon_colours")))
         amiga = art.poses(*fields)
-        # Curse's rule: Silver Blades' DOS outline-to-black is DOS's own.
-        expected = dos_icons.compose(heads, bodies, *fields,
-                                     title="curse-of-the-azure-bonds")
+        # Each title's own DOS rule: both Silver Blades ports draw the
+        # outline as colour 0.
+        expected = dos_icons.compose(heads, bodies, *fields, title=title)
         for a_pose, d_pose in zip(amiga, expected):
             for a_row, d_row in zip(a_pose, d_pose):
                 for a, d in zip(a_row, d_row):
@@ -576,6 +663,13 @@ def test_every_specimen_is_the_dos_figure_through_the_entry_table(title):
                      if title == "curse-of-the-azure-bonds" else {})
 
 
+def test_only_silver_blades_loads_its_figures_through_an_8_to_0_table():
+    for title, want in (("curse-of-the-azure-bonds", bytes(range(16))),
+                        ("secret-of-the-silver-blades", LOAD)):
+        _tool_, _opened, art = _measured(title)
+        assert art.load == want
+
+
 def test_curse_s_icon_palette_is_block_0_with_black_and_grey_exchanged():
     _tool_, opened, art = _measured("curse-of-the-azure-bonds")
     files = later.disk_files("curse-of-the-azure-bonds", opened)
@@ -585,6 +679,21 @@ def test_curse_s_icon_palette_is_block_0_with_black_and_grey_exchanged():
     # The ICON routine's palette call names block 87 (0x57).
     assert files[later.EXECUTABLE][0x354AC:0x354B0] == bytes.fromhex(
         "3f3c0057")
+
+
+def test_silver_blades_icon_palette_is_block_0_under_the_camp_picture():
+    _tool_, opened, art = _measured("secret-of-the-silver-blades")
+    files = later.disk_files("secret-of-the-silver-blades", opened)
+    default = later.palette_block(later.library(files[later.PALETTE_FILE])[0])
+    camp = later.picture_palette(files[later.PICTURE_FILE], 59)
+    for i in range(16):
+        assert art.palette[i] == (camp[i] if i in later.PICTURE_ENTRIES
+                                  else default[i]), i
+    assert any(camp[i] != default[i] for i in later.PICTURE_ENTRIES)
+    executable = files[later.EXECUTABLE]
+    # Camp draws picture 59 (0x3B), and pictures install from entry 3.
+    assert executable[0x1B276:0x1B27A] == bytes.fromhex("3f3c003b")
+    assert executable[0x1C9D4:0x1C9D6] == bytes.fromhex("7403")
 
 
 def test_silver_blades_packed_library_holds_one_palette_block_0():
