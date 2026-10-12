@@ -318,6 +318,11 @@ def guard_rules() -> dict:
 class Screens:
     """Grab, recognise and press only on a matched screen; an unknown screen times out."""
 
+    #: The states told apart, and the keys each may receive; a driver for another route
+    #: replaces both.
+    known: tuple[str, ...] = KNOWN
+    allowed: dict[str, frozenset[str]] = ALLOWED_KEYS
+
     def __init__(self, guest: Any, holder: str, out: pathlib.Path, guards: Any,
                  deadline: float, clock: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep):
@@ -339,7 +344,7 @@ class Screens:
         crop = self.out / f"{self.count:03d}-{label}.png"
         if not self.guest.grab(label, raw, crop, self.left(20)):
             return [], raw
-        return [s for s in KNOWN if s in self.guards and self.guards(s, crop)], crop
+        return [s for s in self.known if s in self.guards and self.guards(s, crop)], crop
 
     def wait(self, states: tuple[str, ...], limit: float, *, past: tuple[str, ...] = ()) -> str:
         """Grab until one of `states` shows; another known screen stops the run.
@@ -361,7 +366,7 @@ class Screens:
         raise RouteError(f"{'/'.join(states)} did not show within {limit:.0f}s; last shot {shot}")
 
     def press(self, key: str, on: str) -> None:
-        require(key in ALLOWED_KEYS.get(on, ()), f"{key} is not a key this driver sends on {on}")
+        require(key in self.allowed.get(on, ()), f"{key} is not a key this driver sends on {on}")
         self.guest.press(self.holder, key, timeout=self.left(30))
         self.events.append({"from": on, "key": key})
 
