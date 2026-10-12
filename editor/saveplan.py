@@ -1331,6 +1331,12 @@ KEPT_FIELDS = (
 #: * `identity_pair` -- the two GEN bytes a DOS destination redraws:
 #:   `b'D\x0d'` arrives as `b'D\x00'` on all six real Pool of Radiance C64
 #:   saves converted to DOS here;
+#: * `story_picture` -- the byte a C64 companion's own monster file holds, which
+#:   DOS and Amiga records have no field for: a destination that is not the
+#:   C64 cannot return it, and a C64 destination writes it from the
+#:   companion's name through the companion table, so the source's byte and
+#:   the destination's differ for a companion who came from another port
+#:   without that being a wrong write;
 #: * `party_order` -- the marching order a DOS destination renumbers 0 to 5
 #:   where a C64 save leaves it zero;
 #: * `item_effects` -- the ten trait slots, which an Amiga destination stores
@@ -1396,7 +1402,7 @@ KEPT_FIELDS = (
 #: of the fields above that ever differed is here; the one that differed and
 #: is **not** here is `flags_0b8`, whose bit 0 the DOS and Amiga records keep
 #: in the byte after their control byte and now comes back equal.
-_NOT_COMPARED = ("identity_pair", "party_order", "item_effects", "thac0",
+_NOT_COMPARED = ("identity_pair", "story_picture", "party_order", "item_effects", "thac0",
                  "armour_class", "hp_current", "combat_side", "roster_in_use",
                  "roster_tail", "roster_movement", "inventory",
                  "thac0_base", "attack_level", "strength_index",

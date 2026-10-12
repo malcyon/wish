@@ -138,8 +138,14 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                         portraits = mod["portraits"].tables_from_disks(where)
                     except Exception:
                         portraits = None
+                # A `--tree` older than the companion table has neither the
+                # loader nor the field.
+                load = getattr(dosimport, "load_companions", None)
+                extra = ({"companions": load(game.key, sorted(
+                    pathlib.Path(where).glob("*.[dD]64")))}
+                    if load else {})
                 out = dosimport.GameFiles(icon=icon, animate=animate,
-                                          portraits=portraits)
+                                          portraits=portraits, **extra)
         cache[game.key] = out
         return out
 
@@ -278,13 +284,16 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                             rehearsal = direction.rehearse(
                                 source, slot, options,
                                 icon_parts=files.icon if files else None,
+                                **({"companions": files.companions}
+                                   if hasattr(files, "companions") else {}),
                                 **chosen)
                         except TypeError as exc:
                             # `icon_parts` reached `C64ToDos.rehearse` with
                             # #383 and `C64ToAmiga.rehearse` with #422; an
                             # older tree under `--tree` has neither, and its
                             # own dialog passed nothing either.
-                            if "icon_parts" not in str(exc):
+                            if ("icon_parts" not in str(exc)
+                                    and "companions" not in str(exc)):
                                 raise
                             rehearsal = direction.rehearse(source, slot,
                                                            options, **chosen)

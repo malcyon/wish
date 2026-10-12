@@ -245,3 +245,72 @@ def test_the_c64s_own_companion_goes_to_the_c64_with_nothing_changed(
                                companions=table)
     assert again.get("story_picture") == story
     assert again.get("name") == rec.get("name")
+
+
+# -- the table is used, and a damaged side costs only the table ---------------
+
+@pytest.mark.parametrize("key, name, mon_id, story", CASES[:1] + CASES[3:4],
+                         ids=IDS[:1] + IDS[3:4])
+def test_the_writer_uses_the_table_it_is_given(key, name, mon_id, story,
+                                               monkeypatch):
+    table = _table(key)
+    neutral = _neutral(key, name, mon_id)
+    with_table, _ = dos_codec.neutral_to_c64_record(
+        neutral, icon=COMPOSED, companions=table)
+    monkeypatch.setattr(c64_codec, "companion_mon", lambda *_: None)
+    ignored, _ = dos_codec.neutral_to_c64_record(
+        neutral, icon=COMPOSED, companions=table)
+    assert with_table.get("story_picture") == story
+    assert (ignored.get("story_picture"), ignored.get_raw("region_220"),
+            ignored.get_raw("identity_pair")) == (0, COMPOSED,
+                                                  bytes([mon_id, 0]))
+
+
+@pytest.mark.parametrize("key, name, mon_id, story", CASES[:1] + CASES[3:4],
+                         ids=IDS[:1] + IDS[3:4])
+def test_the_reader_uses_the_table_it_is_given(key, name, mon_id, story,
+                                               monkeypatch):
+    table = _table(key)
+    rec = _join(key, mon_id)
+    monkeypatch.setattr(type(table), "match", lambda *_: None)
+    ignored = c64_codec.read(rec, game=key, companions=table)
+    assert ignored.get("unnamed_0ab") is None
+
+
+def _damaged_folder(tmp_path, key: str):
+    """The title's game sides copied into `tmp_path`, with the first `MON`
+    file's sector chain made to loop on itself in the first side holding one.
+    The image still opens; reading that file raises."""
+    from goldbox.d64 import sector_offset
+    disks = (gamedata.curse_disks() if key == CURSE_KEY
+             else silverblades.ssb_disks())
+    damaged = False
+    for number, disk in enumerate(disks):
+        raw = bytearray(disk.to_bytes())
+        if not damaged:
+            for entry in disk.iter_directory():
+                if (entry.is_prg and entry.name.startswith(b"MON")
+                        and len(entry.name.rstrip(b"\xa0 ")) == 5):
+                    at = sector_offset(entry.first_track, entry.first_sector)
+                    raw[at:at + 2] = bytes([entry.first_track,
+                                            entry.first_sector])
+                    damaged = True
+                    break
+        prefix = "CURSE" if key == CURSE_KEY else "SILVER"
+        (tmp_path / f"{prefix}{number}.D64").write_bytes(bytes(raw))
+    assert damaged
+    return tmp_path
+
+
+@pytest.mark.parametrize("key", [CURSE_KEY, SILVER_BLADES_KEY])
+def test_a_damaged_side_costs_only_the_companion_table(key, tmp_path):
+    from editor import dosimport, saveplan
+    from goldbox import c64_port
+    folder = _damaged_folder(tmp_path, key)
+    game = c64_port.by_key(key)
+    assert dosimport.load_companions(
+        key, sorted(folder.glob(game.disk_glob))) is None
+    files = saveplan._game_files_from_folder(folder, game)
+    assert files is not None
+    assert files.icon is not None and files.animate
+    assert files.companions is None

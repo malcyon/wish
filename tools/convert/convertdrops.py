@@ -258,9 +258,8 @@ def sweep() -> int:
                         rehearsal = direction.rehearse(
                             source, slot, options,
                             icon_parts=files.icon if files else None,
-                            **chosen, **(
-                                {"companions": files.companions}
-                                if files and files.companions else {}))
+                            companions=files.companions if files else None,
+                            **chosen)
                     else:
                         rehearsal = direction.rehearse(source, slot, options,
                                                        **chosen)

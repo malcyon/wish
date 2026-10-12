@@ -53,7 +53,7 @@ from typing import Any
 
 from goldbox import c64_port, dos_codec, titles
 from goldbox.companions import JOINABLE, Companions
-from goldbox.d64 import D64
+from goldbox.d64 import D64, D64Error
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
@@ -138,7 +138,8 @@ def load_companions(key: str, candidates: Collection[str | pathlib.Path]
     A candidate that is not a readable disk image is left out, because a
     folder's glob can match a save disk or a damaged copy beside the game
     sides; the table needs every `MON` file, so a title whose sides are
-    incomplete gets `None` too.
+    incomplete or damaged gets `None` too, and the other game files are
+    unaffected.
     """
     if key not in JOINABLE:
         return None
@@ -150,7 +151,7 @@ def load_companions(key: str, candidates: Collection[str | pathlib.Path]
             _log.debug("%s is not a readable disk image: %s", candidate, exc)
     try:
         return Companions.load(key, sides)
-    except ValueError as exc:
+    except (ValueError, D64Error, OSError) as exc:
         _log.debug("no companion table for %s: %s", key, exc)
         return None
 
