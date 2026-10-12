@@ -379,7 +379,8 @@ def test_one_lane_proves_both_neighbour_legs_and_cleans_up(tmp_path, monkeypatch
             ("--to", "33"),
             ("--waypoint", "52,7,3,2", "--back", "--peek-var", "4C62,4C2A,4CFD,4CFE"),
             ("--to", "82"),
-            ("--waypoint", "81,5,8,1", "--back", "--peek-var", "4CFD,4CFE,4C6C,4C6D")]
+            ("--waypoint", "81,5,8,1", "--back", "--arrival-answer", "RET",
+             "--peek-var", "4CFD,4CFE,4C6C,4C6D")]
         assert len({v[4] for v in events if v[0] == "trip"}) == 4
         assert len({v["stdout"] for v in receipt["trips"]}) == 4
         assert all((args.out / f"trip-{n}" / "stdout.txt").is_file() for n in range(1, 5))
@@ -1170,3 +1171,67 @@ def test_a_match_ends_the_wait_past_the_pressed_screen(tmp_path, monkeypatch):
     with pytest.raises(RouteError, match="expected loaded_menu, saw party_menu"):
         run.see("loaded_menu", 60)
     assert guest.keys == ["L"]
+
+
+@pytest.mark.parametrize("change", [None, "no_bar", "unguarded", "unlogged", "two_answers",
+                                    "two_keys", "other_key", "not_answered", "unanswered_flag",
+                                    "other_leg", "no_flag", "unreadable_log"])
+def test_village_arrival_takes_one_return_only_on_the_continue_bar(tmp_path, monkeypatch, change):
+    # guard6's way back into the Frost giant village stopped on "You have reached the
+    # other end of the village" over PRESS RETURN; a player presses Return once there.
+    names = [f"Member {n}" for n in range(6)]
+    keys = {"two_keys": ["RET", "RET"], "other_key": ["N"], "not_answered": []}.get(change, ["RET"])
+    summary = {"result": "idle", "settled": True, "areas_seen": [82, 81],
+               "arrival_keys": keys, "arrival_answered": bool(keys) and change != "unanswered_flag",
+               "party_before": names, "party_after": names.copy()}
+    flags, start, end = list(neighbour.VILLAGE_FLAGS), 82, 81
+    if change == "other_leg":
+        flags, start, end, summary["areas_seen"] = ["--to", "82"], 16, 82, [16, 82]
+    elif change == "no_flag":
+        flags = [flag for flag in flags if flag not in ("--arrival-answer", "RET")]
+    answers = [{"event": "arrival_answer", "key": key, "at_continue": change != "unguarded"}
+               for key in keys]
+    if change == "two_answers":
+        answers *= 2
+    elif change == "unlogged":
+        answers = []
+    lines = [{"event": "legality", "ok": True}, *answers, {"event": "settle", "gate": True}]
+
+    class Child:
+        returncode = 0
+
+        def communicate(self, timeout):
+            return json.dumps(summary) + "\n", ""
+
+        def poll(self):
+            return self.returncode
+
+    def popen(command, **kwargs):
+        out = pathlib.Path(command[command.index("--out") + 1])
+        log = out / "fasttravel.jsonl"
+        if change == "unreadable_log":
+            log.write_text("not json\n")
+        elif change != "no_bar":
+            log.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        else:
+            log.write_text(json.dumps({"event": "arrival_answer_held",
+                                       "reason": "the PRESS RETURN bar is absent"}) + "\n")
+        return Child()
+
+    class Run:
+        holder = "fake-holder"
+
+        def left(self, cap):
+            return cap
+
+    monkeypatch.setattr(neighbour.subprocess, "Popen", popen)
+    out = tmp_path / "child"
+    if change in (None, "not_answered"):
+        leg = neighbour.trip(Run(), tmp_path, out, flags, start, end)
+        assert leg["result"]["arrival_keys"] == keys
+        assert leg["command"][-len(flags):] == flags
+    else:
+        reason = ("continue bar" if change in ("no_bar", "unguarded", "unlogged", "two_answers",
+                                               "unreadable_log") else "trip diverged")
+        with pytest.raises(RouteError, match=reason):
+            neighbour.trip(Run(), tmp_path, out, flags, start, end)

@@ -44,6 +44,10 @@ WELL_PENDING_STDERR = (
     "The leg reached area 33 and the game is still waiting on its screen; "
     "give its keys with --arrival-answer (repeat it for several screens).\n"
 )
+# The way back into the Frost giant village arrives on a PRESS RETURN page; the child
+# answers it once, only on a frame the title's continue guard matches.
+VILLAGE_FLAGS = ["--waypoint", "81,5,8,1", "--back", "--arrival-answer", "RET",
+                 "--peek-var", "4CFD,4CFE,4C6C,4C6D"]
 TEMPLE_PENDING_STDERR = (
     "Leg 1 (the trip) never became ready for Fast Travel.\n"
     "The leg reached area 52 and the game is still waiting on its screen; "
@@ -229,6 +233,18 @@ def transport_timeout(exc: BaseException) -> bool:
     )
 
 
+def answered_at_bar(log: pathlib.Path) -> bool:
+    """Whether the child's log shows one RET, pressed on a frame showing the continue bar."""
+    try:
+        events = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+    except (OSError, ValueError):
+        return False
+    answers = [event for event in events
+               if isinstance(event, dict) and event.get("event") == "arrival_answer"]
+    return (len(answers) == 1 and answers[0].get("key") == "RET"
+            and answers[0].get("at_continue") is True)
+
+
 def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: list[str],
          start: int, end: int) -> dict:
     """Execute one independently logged, bounded fasttravelrun child."""
@@ -303,9 +319,15 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
             and (rows[0].get("settled") is True or pending_well or pending_temple),
             f"trip did not settle: {rows}")
     leg = rows[0]
-    require(leg.get("areas_seen") == [start, end] and leg.get("arrival_keys") == []
+    keys = leg.get("arrival_keys")
+    village = start == 82 and end == 81 and arguments == VILLAGE_FLAGS
+    require(leg.get("areas_seen") == [start, end]
+            and (keys == [] or (village and keys == ["RET"]))
+            and leg.get("arrival_answered") is bool(keys)
             and leg.get("party_before") == leg.get("party_after"),
             f"trip diverged from {start} to {end}: {leg}")
+    require(not keys or answered_at_bar(out / "fasttravel.jsonl"),
+            f"the arrival RET was not logged on the continue bar: {out}")
     return {"command": command, "result": leg, "pending_well": pending_well,
             "pending_temple": pending_temple,
             "stdout": str(out / "stdout.txt"), "stderr": str(out / "stderr.txt")}
@@ -443,7 +465,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
         specs = [(["--to", "33"], 16, 33),
                  (["--waypoint", "52,7,3,2", "--back", "--peek-var", "4C62,4C2A,4CFD,4CFE"], 33, 52),
                  (["--to", "82"], 16, 82),
-                 (["--waypoint", "81,5,8,1", "--back", "--peek-var", "4CFD,4CFE,4C6C,4C6D"], 82, 81)]
+                 (VILLAGE_FLAGS, 82, 81)]
         for number, (flags, source, destination) in enumerate(specs, 1):
             if number == 3:
                 require(not state.load()["on"] and not state.load()["rows"],
