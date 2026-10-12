@@ -36,6 +36,7 @@ from support.dossave import _save_dir, needs_dos_saves
 
 from editor import convert
 from goldbox import (
+    amiga_por_icons,
     amiga_savegame,
     dos_codec,
     dos_port,
@@ -324,7 +325,15 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
         assert len(want) == len(got) == dos_port.POOL_OF_RADIANCE.record_size
         differing = {_field_at(i) for i in range(len(got))
                      if want[i] != got[i]}
-        assert differing <= allowed, (char.name, sorted(differing - allowed))
+        # A figure part the Amiga draws under another number than DOS arrives
+        # as the DOS number of the identical drawing, so its byte differs.
+        renumbered = {
+            f"icon_{part}" for part in ("head", "body")
+            if amiga_por_icons.dos_option(
+                part, char.get(f"icon_{part}"), char.get("size")) not in (
+                None, char.get(f"icon_{part}"))}
+        assert differing <= allowed | renumbered, (
+            char.name, sorted(differing - allowed - renumbered))
 
 
 def _field_at(offset: int) -> str:
@@ -364,8 +373,19 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
     for n, char in enumerate(party, 1):
         record = dos_codec.DosCharacter(
             (tmp_path / "out" / f"CHRDATA{n}.SAV").read_bytes())
-        assert record.get("icon_head") == char.get("icon_head"), char.name
-        assert record.get("icon_body") == char.get("icon_body"), char.name
+        size = char.get("size")
+        # The Amiga's numbers name other drawings than DOS's, so each part
+        # arrives as the DOS number of the identical drawing, and keeps its
+        # number only where DOS has no identical one.
+        for part in ("head", "body"):
+            amiga = char.get(f"icon_{part}")
+            want = amiga_por_icons.dos_option(part, amiga, size)
+            assert record.get(f"icon_{part}") == (
+                amiga if want is None else want), (char.name, part)
+        if char.name == "GARWAN":
+            assert record.get("icon_head") == 8
+        # Colours still copy across: converting them waits on the Amiga
+        # palette being settled (Part C of the plan on WISH-382).
         assert record.raw("icon_colours") == char.raw("icon_colours"), char.name
         heads.add(record.get("icon_head"))
         bodies.add(record.get("icon_body"))

@@ -492,3 +492,61 @@ def test_the_amiga_party_arrives_with_its_own_combat_figures(shipped_disk):
     assert len({c.get("icon_head") for c in party}) > 1
     assert len(set(figures)) > 1
     assert all(any(f) for f in figures)
+
+
+def test_garwan_arrives_on_the_c64_wearing_dos_head_8(
+        shipped_disk, tmp_path, monkeypatch):
+    """GARWAN's Amiga large head 10 draws what DOS stores as large head 8
+    (`goldbox.amiga_por_icons.SAME_DRAWING`), so the C64 figure is composed
+    from head 8, not from DOS head 10, which is another face.  His Amiga
+    body 30 has no identical DOS drawing and keeps its number.
+
+    Fails when `AmigaToC64.rehearse` hands the Amiga numbers to the C64
+    composer unchanged.
+    """
+    from gamedata import disk_dir
+
+    from editor import convert, dosimport
+    from goldbox import c64_save, dos_port
+    from goldbox.iconparts import IconParts, dos_icon_tables
+
+    disks = disk_dir()
+    if disks is None:
+        pytest.skip("needs the player's C64 game disks for SPELLE64/SPELLN64")
+    parts = None
+    for path in sorted(pathlib.Path(disks).glob("*.[dD]64")):
+        try:
+            parts = IconParts.load(str(path))
+            break
+        except Exception:
+            continue
+    if parts is None:
+        pytest.skip("no C64 disk here carries the icon option tables")
+
+    adf = tmp_path / "por1.adf"
+    adf.write_bytes(shipped_disk.to_bytes())
+    party, _savgam = amiga_savegame.read_por_slot(shipped_disk, "A")
+    index = [c.name for c in party].index("GARWAN")
+    garwan = party[index]
+    assert (garwan.get("size"), garwan.get("icon_head"),
+            garwan.get("icon_body")) == (2, 10, 30)
+
+    taken = {}
+    real = dos_codec.save_disk
+
+    def spy(save0, save1, *args, **kwargs):
+        taken["save0"] = bytes(save0)
+        return real(save0, save1, *args, **kwargs)
+
+    monkeypatch.setattr(dos_codec, "save_disk", spy)
+    files = dosimport.GameFiles(icon=parts, animate=bytes(852), portraits=None)
+    convert.AmigaToC64(dos_port.POOL_OF_RADIANCE).rehearse(
+        convert.Source.detect(adf), "A", files)
+
+    container = c64_save.container_for(c64_port.POOL_OF_RADIANCE)
+    at = container.icon(dos_codec.marching_slot(index, len(party)))
+    got = taken["save0"][at:at + dos_codec.ICON_SIZE]
+    colours = bytes(garwan.get("icon_colours"))
+    tables = dos_icon_tables(title=c64_port.POOL_OF_RADIANCE.key, size="large")
+    assert got == parts.dos_icon(8, 30, "large", colours, tables=tables)
+    assert got != parts.dos_icon(10, 30, "large", colours, tables=tables)

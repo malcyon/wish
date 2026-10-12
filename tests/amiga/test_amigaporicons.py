@@ -426,3 +426,35 @@ def test_the_preparer_reads_the_tables_the_module_holds():
         pytest.skip("no Amiga Pool /program here")
     lines = []
     assert tool.report_code(lines.append) == 0, lines
+
+
+# ---------------------------------------------------------------------------
+# The exact-drawing table the conversions use
+# ---------------------------------------------------------------------------
+
+
+def test_the_exact_drawing_table_is_one_to_one_and_inverts():
+    assert set(art.SAME_DRAWING) == {
+        (kind, size) for kind in ("head", "body") for size in (1, 2)}
+    for (kind, size), rows in art.SAME_DRAWING.items():
+        assert len(set(rows.values())) == len(rows), (kind, size)
+        for amiga, dos in rows.items():
+            assert art.dos_option(kind, amiga, size) == dos
+            assert art.amiga_option(kind, dos, size) == amiga
+    assert art.dos_option("head", 10, 2) == 8
+    assert art.dos_option("head", 0, 1) is None
+    assert art.amiga_option("body", 3, 2) is None
+    for size in (0, 3, None):
+        assert art.dos_option("head", 10, size) is None
+        assert art.amiga_option("head", 8, size) is None
+
+
+def test_the_exact_drawing_table_is_what_the_disks_measure():
+    """Fails if a row is wrong against the art."""
+    tool, amiga, dos = _measured()
+    for kind in ("head", "body"):
+        for size in (1, 2):
+            rows = tool.option_table(amiga, dos, kind, size)
+            measured = {option: same for option, same, _n, _p in rows
+                        if same is not None}
+            assert measured == art.SAME_DRAWING[kind, size], (kind, size)

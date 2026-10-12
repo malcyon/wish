@@ -297,3 +297,32 @@ def recolour_table(colours: bytes) -> tuple[int, ...]:
         table[source & 0xF] = chosen & 0xF
         table[source >> 4] = chosen >> 4
     return tuple(table)
+
+
+#: For each `(kind, size)` -- `kind` "head" or "body", `size` 1 or 2 -- the
+#: Amiga option that draws, in both poses and pixel for pixel, the same
+#: picture as the DOS option it maps to.  Measured by
+#: `tools/icons/amigaporicons.py --table` against disk 2's `chead.dax`
+#: (SHA-256 e619f95a...) and `cbody.dax` (9492b0da...) and DOS `POOLRAD`
+#: `CHEAD.DAX`/`CBODY.DAX`; an option with no row has no identical DOS drawing.
+SAME_DRAWING: dict[tuple[str, int], dict[int, int]] = {
+    ("head", 1): {},
+    ("head", 2): {0: 0, 1: 1, 2: 3, 4: 7, 5: 9, 6: 11, 8: 4, 10: 8, 11: 10,
+                  12: 12, 13: 13},
+    ("body", 1): {0: 0, 9: 5, 10: 6, 21: 16, 28: 21},
+    ("body", 2): {0: 0, 1: 1, 2: 2, 10: 6, 11: 7, 20: 16, 23: 17, 26: 20,
+                  27: 21, 28: 22},
+}
+
+
+def dos_option(kind: str, option: int, size: int) -> int | None:
+    """The DOS option drawing the same picture as this Amiga one, or None."""
+    return SAME_DRAWING.get((kind, size), {}).get(option)
+
+
+def amiga_option(kind: str, option: int, size: int) -> int | None:
+    """The Amiga option drawing the same picture as this DOS one, or None."""
+    for amiga, dos in SAME_DRAWING.get((kind, size), {}).items():
+        if dos == option:
+            return amiga
+    return None

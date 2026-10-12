@@ -2256,6 +2256,7 @@ graph LR
   dos_port --> layout
   effects --> d64
   geo --> d64
+  iconparts --> amiga_por_icons
   iconparts --> assets
   iconparts --> d64
   icons --> d64

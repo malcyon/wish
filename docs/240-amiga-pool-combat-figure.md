@@ -225,17 +225,24 @@ refutes.
 
 ## What this means for a conversion -- PROBABLE
 
-`goldbox.iconparts.amiga_combat_icon` and `goldbox.amiga_por.to_dos_record`
+`goldbox.amiga_por.to_dos_record` and `goldbox.iconparts.amiga_combat_icon`
 copy `icon_head`, `icon_body` and the colour bytes unchanged into a DOS record,
-and the C64 composition starts from the same DOS numbers. That rests on the
-premise this page measures false: GARWAN, `size` 2 head 10, wears Amiga block
-74, which is DOS head 8's drawing, so a converted GARWAN arrives with DOS head
-10 instead. The colour bytes do not mean the same thing either. In DOS terms
-the Amiga's body, arm, leg and weapon pairs hold the main colour in the high
-nibble and the highlight in the low one, the reverse of DOS, while hair and
-shield keep DOS's order; and the nibbles are Amiga bitplane values, not EGA
-colours. WISH-382 owns the conversion. Grade PROBABLE because nobody has yet
-watched a converted figure in the destination game.
+and the Amiga's numbers name different drawings from DOS's: GARWAN, `size` 2
+head 10, wears Amiga block 74, which is DOS head 8's drawing. Where the ports
+meet, `goldbox.iconparts.amiga_por_icon_to_dos` and
+`amiga_por_icon_from_dos` therefore renumber each part through
+`goldbox.amiga_por_icons.SAME_DRAWING`, the table of options whose two poses
+match pixel for pixel, so a converted GARWAN arrives with DOS head 8 and the
+C64 composes from the same number. The Amiga reader, the Amiga writer and the
+in-place rewrite keep the Amiga's own numbers, because the table is not
+defined for every option. A part with no identical drawing on the other port
+keeps its number, which draws a different picture there: GARWAN's body 30 is
+63 pixels from DOS body 20. The colour bytes are copied unchanged and do not
+mean the same thing either: in DOS terms the Amiga's body, arm, leg and weapon
+pairs hold the main colour in the high nibble and the highlight in the low
+one, the reverse of DOS, while hair and shield keep DOS's order; and the
+nibbles are Amiga bitplane values, not EGA colours. Grade PROBABLE because
+nobody has yet watched a converted figure in the destination game.
 
 **The game's own Pool-to-Curse import probably changes the figure too.** Amiga
 Curse's importer at `/Curse` `0x25776` copies a Pool record's `icon_head`,

@@ -28,7 +28,7 @@ from support.convertparty import _six_icon_party
 from support.toamigapor import _por_disk_2
 
 from editor import convert
-from goldbox import c64_port, dos_codec, dos_port
+from goldbox import amiga_por_icons, c64_port, dos_codec, dos_port
 from goldbox.amiga_por import AmigaPorCharacter, write_por
 from goldbox.iconparts import DosIcon
 
@@ -186,6 +186,17 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     expected = [(c.get("icon_head"), c.get("icon_body")) for c in raw_party]
     assert expected != [(0, 0)] * len(expected), \
         "the specimen itself carries no combat icon -- pick a different one"
+    # The Amiga draws other pictures under DOS's numbers, so each part
+    # arrives as the Amiga number of the identical drawing, and keeps its
+    # number only where the Amiga has none.
+    expected = [
+        tuple(number if mapped is None else mapped
+              for number, mapped in (
+                  (c.get(f"icon_{part}"),
+                   amiga_por_icons.amiga_option(part, c.get(f"icon_{part}"),
+                                                c.get("size")))
+                  for part in ("head", "body")))
+        for c in raw_party]
 
     rehearsal = direction.rehearse(source, "A", disk2)
     assert not any(FIGURE_NOT_SET in d for d in rehearsal.report.dropped), \
@@ -197,3 +208,38 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     party, _savgam = read_por_slot(out_disk, "D")
     pairs = [(c.get("icon_head"), c.get("icon_body")) for c in party]
     assert pairs == expected, pairs
+
+
+@pytest.mark.skipif(not gamedata.have_specimen("por-item-granted"),
+                    reason="needs WISH-SPEC-por-item-granted")
+def test_dos_to_amiga_direction_writes_the_amiga_number_of_the_same_drawing(
+        tmp_path):
+    """DOS large head 8 and body 22 are the drawings the Amiga stores as
+    large head 10 and body 28.  The specimen's own figure has no identical
+    Amiga drawing, so a copy is staged with that figure: with the DOS numbers
+    copied across, the Amiga would draw another face.
+    """
+    import shutil
+
+    from goldbox.amiga_adf import AmigaDisk
+    from goldbox.amiga_savegame import read_por_slot
+    from tools.icons import dosiconstage
+
+    folder = tmp_path / "dos"
+    shutil.copytree(gamedata.specimen("por-item-granted"), folder,
+                    copy_function=shutil.copyfile)
+    record = next(folder.glob("CHRDATD?.SAV"))
+    data = bytearray(record.read_bytes())
+    data[0x0C0] = 2
+    record.write_bytes(bytes(data))
+    dosiconstage.stage(folder, "D", [(8, 22, "91a2b3c4e6f7")])
+
+    source = convert.Source.detect(folder / "SAVGAMD.DAT")
+    direction = convert.DosToAmiga(dos_port.POOL_OF_RADIANCE)
+    rehearsal = direction.rehearse(source, "A", _por_disk_2(tmp_path))
+    out_dir = tmp_path / "out"
+    direction.write(rehearsal, out_dir)
+    party, _savgam = read_por_slot(
+        AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME)), "D")
+    assert [(c.get("icon_head"), c.get("icon_body")) for c in party] == [
+        (10, 28)]

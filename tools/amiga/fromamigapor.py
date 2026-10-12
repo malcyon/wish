@@ -70,6 +70,7 @@ sys.path.insert(0, str(ROOT))
 from automap.paths import tool_disks  # noqa: E402
 from goldbox import amiga_savegame, c64_port, dos_codec  # noqa: E402
 from goldbox.amiga_adf import AmigaDisk  # noqa: E402
+from goldbox.iconparts import amiga_combat_icon, amiga_por_icon_to_dos  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools.dos import dosdisk  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -112,7 +113,9 @@ def build(disk, slot: str, disks: pathlib.Path, out: pathlib.Path | None):
         portraits = None
     save0, save1, report = dos_codec.new_save_from(
         state, party, icon, animate, portraits=portraits,
-        game=c64_port.POOL_OF_RADIANCE, item_types=dosdisk.item_types(disks))
+        game=c64_port.POOL_OF_RADIANCE, item_types=dosdisk.item_types(disks),
+        party_icons=[amiga_por_icon_to_dos(amiga_combat_icon(c), c.get("size"))
+                     for c in party])
     if out is not None:
         scratch.ensure(out.parent)
         out.write_bytes(dos_codec.save_disk(bytes(save0), bytes(save1)).data)
@@ -141,11 +144,10 @@ def build_dos(disk, slot: str, game: pathlib.Path,
     still runs in a scratch directory, so `--no-write --report` says what
     the save would account for.
     """
-    from goldbox.iconparts import amiga_combat_icon
-
     party, state = read_slot(disk, slot)
     characters = [dos_codec.to_neutral(c) for c in party]
-    icons = [amiga_combat_icon(c) for c in party]
+    icons = [amiga_por_icon_to_dos(amiga_combat_icon(c), c.get("size"))
+             for c in party]
     if out is None:
         import tempfile
 

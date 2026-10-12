@@ -49,12 +49,14 @@ hardcoded `$A700` raised `IndexError` on both.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 from dataclasses import dataclass
 from typing import Any
 
 import yaml
 
+from . import amiga_por_icons
 from .assets import asset_path
 from .d64 import D64, load_payload
 
@@ -429,8 +431,10 @@ def amiga_combat_icon(char: Any) -> DosIcon:
     #354) and `goldbox.amiga_later.AmigaCharacter` reads a Curse or Silver Blades
     one through its own shift map (#396, docs/199-amiga-combat-icons.md) --
     so the figure a player drew on the Amiga is already the number DOS
-    stores, in all three titles: nothing is recognised, composed or looked
-    up. `char` is duck-typed to either -- and to `goldbox.dos_codec.DosCharacter`,
+    stores in Curse and Silver Blades: nothing is recognised, composed or
+    looked up.  For Pool of Radiance the number is the Amiga's own, which
+    names a different drawing on DOS; :func:`amiga_por_icon_to_dos` and
+    :func:`amiga_por_icon_from_dos` translate it where the ports meet. `char` is duck-typed to either -- and to `goldbox.dos_codec.DosCharacter`,
     which shares the same `.get()`.  The neutral records carry the figure too
     (`icon_head`, `icon_body`, `icon_colours`, read by
     `goldbox.dos_codec.to_neutral` and `goldbox.amiga_later.to_neutral_later`),
@@ -472,6 +476,43 @@ def amiga_combat_icon(char: Any) -> DosIcon:
                    colours=bytes(char.get("icon_colours")),
                    figure_source=figure_source,
                    colours_source=colours_source)
+
+
+def _translate(icon: DosIcon, size: int, lookup, what: str) -> DosIcon:
+    """`icon` with each part `lookup` has a row for renumbered; colours kept."""
+    head = lookup("head", icon.head, size)
+    body = lookup("body", icon.body, size)
+    kept = [name for name, new in (("head", head), ("body", body))
+            if new is None]
+    mapped = [name for name in ("head", "body") if name not in kept]
+    note = (f"{what}: mapped {', '.join(mapped) or 'no part'} to the number "
+            f"of the identical drawing; kept the number of "
+            f"{', '.join(kept) or 'no part'}, which has no identical drawing")
+    return dataclasses.replace(
+        icon,
+        head=icon.head if head is None else head,
+        body=icon.body if body is None else body,
+        figure_source=f"{icon.figure_source} ({note})")
+
+
+def amiga_por_icon_to_dos(icon: DosIcon, size: int) -> DosIcon:
+    """An Amiga Pool of Radiance figure as the DOS (and C64) numbers drawing it.
+
+    A part with no identical DOS drawing keeps its number.  Colours are
+    unchanged.
+    """
+    return _translate(icon, size, amiga_por_icons.dos_option,
+                      "Amiga Pool of Radiance to DOS numbers")
+
+
+def amiga_por_icon_from_dos(icon: DosIcon, size: int) -> DosIcon:
+    """A DOS Pool of Radiance figure as the Amiga numbers drawing it.
+
+    A part with no identical Amiga drawing keeps its number.  Colours are
+    unchanged.
+    """
+    return _translate(icon, size, amiga_por_icons.amiga_option,
+                      "DOS to Amiga Pool of Radiance numbers")
 
 
 @dataclass(frozen=True)

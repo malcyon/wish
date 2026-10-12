@@ -110,7 +110,11 @@ from goldbox.amiga_adf import AmigaDiskError, AmigaDiskFull
 # By name rather than as a module: `amiga_port` and `amiga_por` differ by one
 # letter, and only one of them belongs in the line above.
 from goldbox.amiga_port import AmigaRecordError
-from goldbox.iconparts import amiga_combat_icon
+from goldbox.iconparts import (
+    amiga_combat_icon,
+    amiga_por_icon_from_dos,
+    amiga_por_icon_to_dos,
+)
 
 from . import dosimport, saveplan
 
@@ -704,7 +708,11 @@ class AmigaToC64(DosToC64):
                     f"leave anything of for {self.deltas.key}")
             characters = party
             party_icons = None
+            pool_icons = [amiga_por_icon_to_dos(amiga_combat_icon(c),
+                                                c.get("size"))
+                          for c in party]
         else:
+            pool_icons = None
             save = amiga_savegame.read_slot(disk, slot, self.deltas.key)
             state = amiga_savegame.state_from_savegame(save)
             characters = [amiga_later.to_neutral_later(c)
@@ -718,7 +726,7 @@ class AmigaToC64(DosToC64):
                 state, characters, options.icon, options.animate,
                 portraits=options.portraits, game=self.destination_game,
                 leave=leave, item_types=options.item_types, names=chosen,
-                leave_effects=leave_effects)
+                leave_effects=leave_effects, party_icons=pool_icons)
         else:
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,
@@ -912,6 +920,9 @@ class AmigaToDos(C64ToDos):
         # marching_slot` and `c64_party`'s own `reverse()` are the C64's
         # business and `#101`'s.
         icons = [amiga_combat_icon(c) for c in party]
+        if self.deltas is dos_port.POOL_OF_RADIANCE:
+            icons = [amiga_por_icon_to_dos(icon, c.get("size"))
+                     for icon, c in zip(icons, party)]
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
             scratch_path = pathlib.Path(scratch)
             report = dos_codec.new_dos_save_from(state, characters, scratch_path,
@@ -1307,6 +1318,14 @@ def _amiga_destination_data(deltas: dos_port.DosDeltas,
     return AmigaDisk.open(str(options)).read_file(path)
 
 
+def _figure_size(char: Any) -> int | None:
+    """1 small or 2 large, from a DOS record's `size` or a neutral `size_small`."""
+    size = char.get("size")
+    if size is None and char.get("size_small") is not None:
+        size = 1 + char.get("size_small")
+    return size
+
+
 def _rehearse_amiga_savegame(state: Any, deltas: dos_port.DosDeltas,
                              slot: str, party: list,
                              game_data: bytes | None,
@@ -1317,6 +1336,12 @@ def _rehearse_amiga_savegame(state: Any, deltas: dos_port.DosDeltas,
     if deltas is dos_port.POOL_OF_RADIANCE:
         if game_data is None:
             raise AmigaRecordError("Amiga Pool of Radiance needs ecl.dax")
+        # The sources hold DOS numbers; the Amiga's art numbers its drawings
+        # differently (`goldbox.amiga_por_icons.SAME_DRAWING`).
+        if icons is not None:
+            icons = [None if icon is None
+                     else amiga_por_icon_from_dos(icon, _figure_size(member))
+                     for icon, member in zip(icons, party)]
         return _rehearse_por_savegame(
             state, slot, party, game_data, icons=icons)
     return _rehearse_later_savegame(

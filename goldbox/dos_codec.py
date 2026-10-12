@@ -3581,7 +3581,8 @@ def to_neutral(dos: DosCharacter,
 
 
 def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
-              tables: "DosIconTables | None" = None) -> bytes | None:
+              tables: "DosIconTables | None" = None,
+              source: "DosIcon | None" = None) -> bytes | None:
     """The 36 bytes this character's own combat figure becomes (#130).
 
     `icon` is either the composed bytes every character shares -- which is
@@ -3595,9 +3596,17 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
     figures at the small size, and for one of Silver Blades' heads, and
     without it every character would be composed from the base table
     whatever he is being converted into (#335).
+
+    `source`, when given, is the figure to compose instead of the one the
+    record's own fields name: a source port whose numbers are not DOS's has
+    already translated them.
     """
     if not isinstance(icon, IconParts):
         return icon
+    if source is not None:
+        return icon.dos_icon(source.head, source.body,
+                             dos_size(char.get("size")), source.colours,
+                             tables=tables)
     return icon.dos_icon(char.get("icon_head"), char.get("icon_body"),
                          dos_size(char.get("size")),
                          bytes(char.get("icon_colours")),
@@ -8488,10 +8497,13 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 item_types=item_types)
             name = str(char.get("name", ""))
         else:
+            source_icon = (neutral_icons[index]
+                           if neutral_icons is not None else None)
             rec, one = to_c64_record(
                 char,
                 icon=_icon_for(char, icon,
-                               icon_tables.get(dos_size(char.get("size")))),
+                               icon_tables.get(dos_size(char.get("size"))),
+                               source=source_icon),
                 portraits=portraits,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
                 leave=left, item_types=item_types,
@@ -8826,10 +8838,14 @@ def new_save_from(state: "world_state.WorldState",
                   item_types: "Mapping[int, ItemType] | None" = None,
                   names: "Mapping[int, str] | None" = None,
                   leave_effects: "Mapping[int, Collection[int]] | None" = None,
+                  party_icons: "Sequence[DosIcon | None] | None" = None,
                   ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a place and a party, owing nothing to another
     save (#118).  The engine `new_save` and #353's Amiga reader share; see
     :func:`write_c64_save` for `icon`, `animate` and `portraits`.
+
+    `party_icons` gives each member's figure in DOS numbers where his record
+    holds another port's; `None` composes from the record's own fields.
 
     `names` maps a position in `party` to the name the player chose for it.
     `leave_effects` maps one to the running effects the player left out.
@@ -8844,7 +8860,8 @@ def new_save_from(state: "world_state.WorldState",
                             icon=icon, animate=animate, portraits=portraits,
                             game=container, leave=leave,
                             item_types=item_types, names=names,
-                            leave_effects=leave_effects)
+                            leave_effects=leave_effects,
+                            neutral_icons=party_icons)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
