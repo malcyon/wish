@@ -40,6 +40,8 @@ from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa:
 TITLE = nb.TITLE
 VARIABLES = {0x4C62, 0x4C2A, 0x4CFD, 0x4CFE, 0x4C6A, 0x4C6C, 0x4C6D, 0x4C6F}
 START = (16, (3, 7, 2))
+#: The ticket as `AmigaTitle` and the VM disk names take it: the bare number.
+ISSUE = "367"
 SAVE_LETTER = "B"
 SAVED = {"area": 52, "x": 7, "y": 1, "facing": 2}
 STEP_AFTER_SAVE = (7, 2, 2)
@@ -346,7 +348,7 @@ def run(args: argparse.Namespace, *, guest: WinGuest | None = None,
                    f"slot {SAVE_LETTER} is not the Temple party at 7,1 S: {slot}")
 
         reload_path = preparer(saved_df0, f"{args.out.name}-reload", letter=SAVE_LETTER,
-                               issue="WISH-367", camp=("view 1",))
+                               issue=ISSUE, camp=("view 1",))
         reload_manifest = json.loads(pathlib.Path(reload_path).read_text())
         nb.require(reload_manifest.get("state_a") == SAVED
                    and reload_manifest.get("names_a") == names,

@@ -210,6 +210,9 @@ def _fake_run(tmp_path, monkeypatch, *, slot_place=None, landing_fails=None):
 
     def prepare(df0, run_id, **kwargs):
         events.append(("prepare", pathlib.Path(df0).name, run_id, kwargs["letter"]))
+        # The real preparer builds the title first, which checks the issue it is given.
+        driver.route_silver_blades.substitute_title(issue=kwargs["issue"], items_screen=True,
+                                                    opening_scene=False)
         path = tmp_path / "reload-prepare.json"
         path.write_text(json.dumps({**manifest, "state_a": driver.SAVED}))
         return path
