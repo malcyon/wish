@@ -279,7 +279,6 @@ def test_silver_blades_menu_text_is_the_measured_one():
     key = "secret-of-the-silver-blades"
     assert trip.ROWS[key].menu_text == b"Area Cast View Encamp Search Look"
     assert trip.gate(machine(key), trip.ROWS[key])
-    assert not trip.ROWS[key].confirmed
 
 
 def test_pools_gate_takes_the_grid_and_not_a_waiting_message():
@@ -682,7 +681,8 @@ def test_nothing_reads_before_the_target_is_located():
 
 def test_only_measured_rows_are_confirmed_and_no_difference_is_offered():
     assert {k for k, r in trip.ROWS.items() if r.confirmed} == {
-        "pool-of-radiance", "curse-of-the-azure-bonds", "pools-of-darkness"}
+        "pool-of-radiance", "curse-of-the-azure-bonds", "pools-of-darkness",
+        "secret-of-the-silver-blades"}
     assert not any(r.direct_confirmed for r in trip.ROWS.values())
     assert not any(d.offered for r in trip.ROWS.values() for d in r.differences)
 
@@ -698,6 +698,7 @@ def test_what_each_difference_holds():
     assert held("curse-of-the-azure-bonds", 3, 1, back=True) == set()
     assert held("pools-of-darkness", 0x15, 0x16, back=True) == set()
     assert held("pools-of-darkness", 0x15, 0x16) == set()
+    assert held("secret-of-the-silver-blades", 0x10, 0x30, back=True) == set()
     assert "weak_gate" not in held("pool-of-radiance", 0, 14)
     assert "leave_grid" not in {d.name for d in
                                 trip.ROWS["pool-of-radiance"].differences}
@@ -1212,6 +1213,13 @@ def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():
     # The row is Pools of Darkness' on the Amiga only.
     assert trip.departure_prologue("curse-of-the-azure-bonds", 17, 19,
                                    False) == b""
+
+
+def test_a_silver_blades_trip_out_of_area_32_is_held_with_the_row_confirmed():
+    row = trip.ROWS["secret-of-the-silver-blades"]
+    assert row.confirmed
+    lengths = {32: trip.BUFFER_SIZE, 16: 1}
+    assert trip.leg_held(row, 32, 16, False, lengths)
 
 
 def test_the_hand_over_saves_are_counted_in_the_room_a_trip_needs():

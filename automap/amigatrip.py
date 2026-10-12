@@ -238,13 +238,6 @@ class TripRow:
     arrival_statements: tuple[tuple[int, bytes], ...] = ()
 
 
-def _return_landing() -> Difference:
-    return Difference(
-        "return_landing",
-        "decision 1: Return lands where the arriving script puts the party",
-        lambda here, to, back: back)
-
-
 #: The one-sided entry-1 routes' stand facings: the side of the route square
 #: the step cannot cross, so the party stands there without stepping (a step
 #: into the square would pass a minute and roll for a wandering monster).
@@ -504,7 +497,7 @@ ROWS: dict[str, TripRow] = {
         script_file="/DISKB/ECL.GLB",
         confirmed=True,
         came_from_areas=(_TILVERTON,)),
-    # PROBABLE: code only, plus the menu text read live.
+    # CONFIRMED: code, the menu text read live, and trips, Returns, a save and a reload.
     "secret-of-the-silver-blades": TripRow(
         key="secret-of-the-silver-blades",
         title="Secret of the Silver Blades",
@@ -516,8 +509,7 @@ ROWS: dict[str, TripRow] = {
         menu_text=b"Area Cast View Encamp Search Look",
         key_buffer=0x4F6C, area_file=0x7F12,
         script_file="/DISK2/ECL.GLB",
-        confirmed=False,
-        differences=(_return_landing(),),
+        confirmed=True,
         # The C64 row's six writes (`fasttravel.SECRET_OF_THE_SILVER_BLADES`):
         # the Well reads its landing table through `$4C62` and latches the
         # shaft event with `$4C2A`; the other four never store `$4CFD = $FF`.

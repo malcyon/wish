@@ -254,7 +254,9 @@ def test_pool_of_radiance_is_not_greyed_out_in_an_area_with_doors(lengths, here)
     assert bar.button.isEnabled()
 
 
-def test_an_unconfirmed_title_greys_the_whole_row_with_the_sentence(lengths):
+def test_an_unconfirmed_title_greys_the_whole_row_with_the_sentence(lengths, monkeypatch):
+    monkeypatch.setitem(amigatrip.ROWS, BLADES,
+                        dataclasses.replace(amigatrip.ROWS[BLADES], confirmed=False))
     window, _ = attached(BLADES, 33, ticked=(3, 16))
     bar = window.fasttravel_bar
     for widget in (bar.combo, bar.button, bar.back_button):

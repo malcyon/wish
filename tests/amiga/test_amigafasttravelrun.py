@@ -1,5 +1,6 @@
 """`tools/amiga/fasttravelrun.py`, with a fake fast travel, target and screen."""
 
+import dataclasses
 import hashlib
 import json
 import pathlib
@@ -1042,11 +1043,17 @@ def test_legality_lists_each_area_with_its_verdict_and_makes_no_trip(monkeypatch
     assert capsys.readouterr().out.splitlines() == ["1\tAlpha\toffered", "2\tBeta\twithheld\theld"]
 
 
+def _unconfirm(monkeypatch, key):
+    monkeypatch.setitem(amigatrip.ROWS, key,
+                        dataclasses.replace(amigatrip.ROWS[key], confirmed=False))
+
+
 def test_legality_with_measure_row_reports_what_the_measured_row_allows(monkeypatch, capsys):
     from automap import amiga, amigafasttravel
     from tools.amiga import amigadrive
 
     key = "secret-of-the-silver-blades"
+    _unconfirm(monkeypatch, key)
 
     class T:
         def __init__(self, pipe, machine):
@@ -1122,6 +1129,7 @@ def _fake_main(monkeypatch, tmp_path, argv, title="secret-of-the-silver-blades")
 
 def test_measure_row_confirms_the_row_for_the_run_and_puts_it_back(monkeypatch, tmp_path):
     key = "secret-of-the-silver-blades"
+    _unconfirm(monkeypatch, key)
     before = amigatrip.ROWS[key]
     assert not before.confirmed
     seen = _fake_main(monkeypatch, tmp_path, ["--to", "32", "--measure-row"])

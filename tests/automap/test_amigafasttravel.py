@@ -127,8 +127,9 @@ def test_an_offered_trip_arms_and_says_the_c64_sentence(disks):
     assert m.read(BASE + trips.ROWS[CURSE].key_buffer, 2) == trips.FORWARD_KEY
 
 
-def test_an_unconfirmed_title_is_held(disks):
-    """Silver Blades has no menu text read yet, so its row is unconfirmed."""
+def test_an_unconfirmed_title_is_held(disks, monkeypatch):
+    monkeypatch.setitem(trips.ROWS, BLADES,
+                        dataclasses.replace(trips.ROWS[BLADES], confirmed=False))
     verdict = travel(BLADES).legality(Machine(), area(7))
     assert not verdict
     assert verdict.reason == amigaactions.unsupported(
