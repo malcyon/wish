@@ -956,3 +956,67 @@ def test_audio_proof_belongs_to_winuae_only(phase, extra, message, capsys):
     with pytest.raises(SystemExit):
         driver.main(command)
     assert message in capsys.readouterr().err
+
+
+def test_fsuae_trip_gives_each_leg_half_the_time_left_up_to_900_seconds(tmp_path, monkeypatch):
+    events = []
+    _fsuae_wiring(monkeypatch, events)
+    budgets = []
+    monkeypatch.setattr(driver.fasttravelrun, "run_legs",
+                        lambda *a, report, **kw: budgets.append(a[10]))
+    guest = _FsuaeGuest(events, {})
+    driver._origin_trip(guest, "holder", tmp_path, tmp_path / "a", 2000)
+    driver._origin_trip(guest, "holder", tmp_path, tmp_path / "b", 1000)
+    assert budgets == [900.0, 500.0]
+
+
+def test_fsuae_trip_turns_a_dropped_debugger_connection_into_a_route_error(tmp_path, monkeypatch):
+    events = []
+    _fsuae_wiring(monkeypatch, events)
+
+    def dropped(*a, **kw):
+        raise driver.amiga.FsuaeError("the connection closed")
+
+    monkeypatch.setattr(driver.fasttravelrun, "run_legs", dropped)
+    with pytest.raises(RouteError, match="the connection closed"):
+        driver._origin_trip(_FsuaeGuest(events, {}), "holder", tmp_path, tmp_path / "t", 2000)
+
+
+def test_fsuae_origin_reload_reads_through_the_guests_connection(tmp_path, monkeypatch):
+    args, _, events, _ = _reload_coordinator(tmp_path, monkeypatch)
+    guest = _FsuaeGuest(events, {key: f"remote-{key}" for key in ("disk1", "disk2", "disk3")},
+                        running=False)
+    root = args.out.parent
+    guest.contents = {"disk3": lambda: (root / "disk3.adf").read_bytes()}
+    built = _fsuae_wiring(monkeypatch, events)
+    monkeypatch.setattr(driver, "_target", lambda holder: pytest.fail("FS-UAE used the WinUAE pipe"))
+    args.emulator, args.audio_proof = "fsuae", None
+    receipt = driver.run_origin_reload(args, guest=guest)
+    assert receipt["success"] is True and receipt["emulator"] == "fsuae"
+    assert built and all(debugger is guest.gdb for debugger in built)
+
+
+class _NoShot(_FsuaeGuest):
+    shot = None
+
+
+class _NoLiveGet(_FsuaeGuest):
+    get_live = None
+
+
+@pytest.mark.parametrize("phase", ["return", "reload"])
+@pytest.mark.parametrize("guest_class, missing", [(_NoShot, "shot"), (_NoLiveGet, "get_live")])
+def test_fsuae_phase_stops_before_booting_when_the_guest_lacks_a_call(
+        tmp_path, monkeypatch, phase, guest_class, missing):
+    if phase == "return":
+        args, _, events, _, _, disks = _return_coordinator(tmp_path, monkeypatch)
+        run = driver.run_origin_return
+    else:
+        args, _, events, _ = _reload_coordinator(tmp_path, monkeypatch)
+        disks = ("disk1", "disk2", "disk3")
+        run = driver.run_origin_reload
+    guest = guest_class(events, {key: f"remote-{key}" for key in disks})
+    args.emulator, args.audio_proof = "fsuae", None
+    with pytest.raises(RouteError, match=f"no {missing} method"):
+        run(args, guest=guest)
+    assert not [event for event in events if event[0] in ("boot", "trip")]

@@ -2030,6 +2030,15 @@ def _origin_guest(args: argparse.Namespace, guest: Any) -> Any:
     return WinGuest()
 
 
+def _require_fsuae_api(args: argparse.Namespace, guest: Any) -> None:
+    """Stop before the boot when an FS-UAE guest lacks the screen or live-read calls the phase ends on."""
+    if getattr(args, "emulator", "winuae") != "fsuae":
+        return
+    for name in ("shot", "get_live"):
+        _require(callable(getattr(guest, name, None)),
+                 f"fsuae_guest: the FS-UAE guest has no {name} method")
+
+
 def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
     """One boot: load source-01 G, Fast Travel to 22 and Return, capture, and save a new F."""
     _require(os.name == "posix", "return7_privacy: POSIX owner checks are required")
@@ -2092,6 +2101,7 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
         receipt["selected_identity_sha256"] = controls["identity"]["sha256"]
         source_disk = amiga_adf.AmigaDisk.open(source)
         receipt["checks"]["preflight"] = True
+        _require_fsuae_api(args, guest)
         boot = _boot(SourceBootGuest(guest, action_end, deadline), args.manifest, manifest,
                      args.holder, args.audio_proof,
                      time.monotonic() + action_left(1200), command)
@@ -2390,6 +2400,7 @@ def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None
         receipt["selected_identity_sha256"] = controls["identity"]["sha256"]
         seed_disk = amiga_adf.AmigaDisk.open(seed["disk"])
         receipt["checks"]["preflight"] = True
+        _require_fsuae_api(args, guest)
         boot = _boot(SourceBootGuest(guest, action_end, deadline), manifest_path, manifest,
                      args.holder, args.audio_proof,
                      time.monotonic() + action_left(1200), command)
@@ -2740,7 +2751,7 @@ def _origin_trip(guest: Any, holder: str, disks: pathlib.Path, out: pathlib.Path
     """The guarded trip to 22 and back: a driver subprocess on WinUAE, in this process on FS-UAE.
 
     FS-UAE serves one debugger client and the guest holds it, so the legs run here on its target.
-    Their own per-leg budget bounds the run; `left` bounds only the WinUAE subprocess.
+    Each leg gets half of `left`, at most 900 seconds; on WinUAE `left` bounds the subprocess.
     """
     if getattr(guest, "gdb", None) is None:
         return _run_trip(holder, disks, out, left)
@@ -2756,8 +2767,8 @@ def _origin_trip(guest: Any, holder: str, disks: pathlib.Path, out: pathlib.Path
         fasttravelrun.run_legs(
             TITLE, str(disks), 22, True, ("RET",),
             fasttravelrun.amigavars.parse_list("25,26,34,35,129,C1,BF"), out, target,
-            guest.shot, press, 900.0, report=legs.append)
-    except (fasttravelrun.DriverError, amiga.GuestError) as exc:
+            guest.shot, press, min(900.0, left / 2), report=legs.append)
+    except (fasttravelrun.DriverError, amiga.GuestError, amiga.FsuaeError) as exc:
         raise RouteError(str(exc)) from exc
     return legs
 

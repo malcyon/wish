@@ -1302,12 +1302,23 @@ def test_sigterm_exits_143_and_the_old_handler_comes_back(monkeypatch, tmp_path)
     assert signal.getsignal(signal.SIGTERM) is before
 
 
-def test_run_legs_runs_both_legs_on_the_channels_it_is_given_and_reports_each(
-        monkeypatch, tmp_path):
-    argv = _interrupted_run(monkeypatch, tmp_path, lambda: {"result": "idle", "settled": True})
+def test_main_runs_the_same_legs_run_legs_runs(monkeypatch, tmp_path):
+    seen = []
+
+    def fake(fasttravel, target, row, area, out, shot, press, log, **kw):
+        seen.append((getattr(area, "id", None), kw["back"] if "back" in kw else False,
+                     kw["answer"], kw["budget"], kw["arrival_answer"], kw["peek_vars"],
+                     kw["title"]))
+        return {"result": "idle", "settled": True}
+
+    argv = _interrupted_run(monkeypatch, tmp_path, lambda: None)
+    monkeypatch.setattr(ftr, "run_trip", fake)
+    assert ftr.main([*argv, "--answer", "Y", "--arrival-answer", "RET", "--peek-var", "25,C1",
+                     "--budget", "77", "--title", "pools-of-darkness"]) == 0
+    via_main, seen[:] = list(seen), []
     reported = []
-    previous = signal.getsignal(signal.SIGTERM)
-    results = ftr.run_legs("pools-of-darkness", "D", 3, True, None, (), tmp_path, object(),
-                           lambda path: None, lambda key: None, 60.0, report=reported.append)
-    assert argv and results == reported and len(results) == 2
-    assert signal.getsignal(signal.SIGTERM) is previous
+    results = ftr.run_legs("pools-of-darkness", "D", 3, True, ("RET",), [0x25, 0xC1], tmp_path,
+                           object(), lambda path: None, lambda key: None, 77.0, answer="Y",
+                           report=reported.append)
+    assert seen == via_main and len(seen) == 2 and results == reported
+    assert [leg[:2] for leg in seen] == [(3, False), (None, True)]
