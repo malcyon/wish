@@ -33,6 +33,8 @@ STATUSES = ("passed", "failed", "unproven", "awaiting image review")
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
+#: Ordinary-run key limits above the default; the full Silver Blades route presses 44 keys.
+ORDINARY_MAPPING_COMMANDS = {"ssb": 44}
 #: The camp reload adds Y, the slot letter, B, E and N to the 38 keys before them.
 CAMP_LOAD_MAPPING_COMMANDS = 43
 #: Seconds to wait for each guarded camp LOAD screen, and for the disk load after the slot.
@@ -147,12 +149,6 @@ def _transition_phase(route: Any) -> Any:
     if phase is None or not phase.ready or phase != maproute._ssb_transition():
         raise AcceptanceStop("leave-town YES needs the guarded leave-town transition")
     return phase
-
-def _mapping_budget(route: Any) -> int:
-    """The keys the route's phases press; a route longer than the default cap needs that many."""
-    return sum(1 for phase in route.phases for step in phase.steps
-               if step.kind in ("key", "turn", "move", "insert"))
-
 
 def _action_budget(route: Any) -> int:
     from automap import amigaparty  # noqa: PLC0415
@@ -492,7 +488,6 @@ class Controller:
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         self.action_limit = _action_budget(route)
-        self.mapping_limit = max(MAX_MAPPING_COMMANDS, _mapping_budget(route))
         self.discovery = getattr(args, "discover", None) in (*LEAVE_MODES, *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
@@ -528,7 +523,8 @@ class Controller:
         name = "action_commands" if action else "mapping_commands"
         cap = (self.action_limit if action
                else CAMP_LOAD_MAPPING_COMMANDS if getattr(self.args, "discover", None) == "ssb-camp-load"
-               else self.mapping_limit)
+               else MAX_MAPPING_COMMANDS if getattr(self.args, "discover", None)
+               else ORDINARY_MAPPING_COMMANDS.get(self.route.title, MAX_MAPPING_COMMANDS))
         if getattr(self, name) >= cap:
             raise AcceptanceStop(f"the {cap}-command {'action' if action else 'mapping'} cap is reached")
         setattr(self, name, getattr(self, name) + 1)

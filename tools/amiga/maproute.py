@@ -369,9 +369,7 @@ def _phases(title: str, load: Phase, slot: str) -> tuple[Phase, ...]:
             "reload": "The game's no-save return to the load picker is not measured.",
             "reopen_step": "The post-restart sewer step is not measured.",
         }
-    elif title == "ssb":
-        needs = {}
-    else:
+    elif title != "ssb":
         needs = {
             "stationary": "Two turns each way from GEO21 are not recorded.",
             "walk": "Three guarded GEO21 movement checkpoints are not recorded.",

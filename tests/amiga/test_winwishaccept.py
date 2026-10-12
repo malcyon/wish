@@ -3333,20 +3333,43 @@ def test_story_pages_during_the_reload_are_answered(tmp_path, monkeypatch):
     assert "ssb_camp_reloaded" in controller.checkpoints
 
 
-def test_the_full_silver_blades_route_fits_the_ordinary_key_limit(tmp_path, monkeypatch):
+def _ordinary_ssb_controller(tmp_path, monkeypatch, extra_phase=()):
     controller, *_ = _discovery_controller(tmp_path, monkeypatch)
-    route = controller.route
-    route.phases = _real_ssb_phases()
-    assert winwishaccept._mapping_budget(route) == 44
-    again = winwishaccept.Controller(
-        controller.args, guest=object(), lane=controller.lane, game=controller.game,
-        guards=controller.guards, route=route, zipped=controller.zipped,
-        info=controller.info, clock=controller.clock, sleep=controller.sleep)
-    again.args.discover = None
-    again.mapping_commands = 43
-    again._count()
+    controller.route.phases = (*_real_ssb_phases(), *extra_phase)
+    controller.args.discover = None
+    return controller
+
+
+def test_the_full_silver_blades_route_fits_the_ordinary_key_limit(tmp_path, monkeypatch):
+    controller = _ordinary_ssb_controller(tmp_path, monkeypatch)
+    keys = sum(1 for phase in controller.route.phases for step in phase.steps
+               if step.kind in ("key", "turn", "move", "insert"))
+    assert winwishaccept.ORDINARY_MAPPING_COMMANDS == {"ssb": 44} == {"ssb": keys}
+    for _ in range(44):
+        controller._count()
     with pytest.raises(winwishaccept.AcceptanceStop, match="44-command mapping cap"):
-        again._count()
+        controller._count()
+
+
+def test_a_route_with_more_keys_than_its_title_limit_stops(tmp_path, monkeypatch):
+    extra = (_phase("extra", "world", _step("key", "world", key="NP8")),)
+    controller = _ordinary_ssb_controller(tmp_path, monkeypatch, extra)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="44-command mapping cap"):
+        for _ in range(45):
+            controller._count()
+    assert controller.mapping_commands == 44
+
+
+def test_other_titles_and_discovery_keep_the_default_key_limit(tmp_path, monkeypatch):
+    controller = _ordinary_ssb_controller(tmp_path, monkeypatch)
+    controller.args.discover = "ssb-leave"
+    controller.mapping_commands = 40
+    with pytest.raises(winwishaccept.AcceptanceStop, match="40-command mapping cap"):
+        controller._count()
+    controller.args.discover = None
+    controller.route.title = "pool"
+    with pytest.raises(winwishaccept.AcceptanceStop, match="40-command mapping cap"):
+        controller._count()
 
 
 def test_the_flag_check_runs_on_silver_blades(tmp_path, monkeypatch):
