@@ -873,3 +873,58 @@ def test_a_pick_stops_with_no_further_key(tmp_path, monkeypatch, row, moves, key
     with pytest.raises(da.StepFailed, match=why):
         d.pick(row)
     assert game.keys == keys
+
+
+# -- pick on drawn lists: the question row, a doubled row, a drifted highlight ---
+
+def _list_frame(rows) -> dosbox.Screen:
+    """A list menu in the stand-in font: `rows` are (text, lit) from text row
+    17 down, the lit one white and the rest green."""
+    px = bytearray(W * H * 3)
+    for n, (text, lit) in enumerate(rows):
+        _draw(px, da.LIST_MENU_ROWS[0] + n, da.LIST_MENU_COLUMNS[0], text,
+              da.LIST_MENU_LIT if lit else _GREEN)
+    return dosbox.Screen(W, H, bytes(px))
+
+
+class SettleDrift(Shots):
+    """`Shots` whose settles show `settles` in turn, then the frame shown."""
+
+    def __init__(self, tmp_path, frames, moves, settles):
+        super().__init__(tmp_path, frames, moves)
+        self.settles = list(settles)
+
+    def settle(self, quiet=0.6, timeout=30.0):
+        return self.settles.pop(0) if self.settles else self.capture()
+
+
+ASKED = [("WHAT DO YOU DO", False), ("GO LEFT", True), ("GO RIGHT", False)]
+
+
+def test_a_pick_never_takes_the_menus_question_for_a_row(tmp_path, monkeypatch):
+    game = Shots(tmp_path, [_list_frame(ASKED)], {})
+    d = _shots_driver(game, monkeypatch, _FONT)
+    with pytest.raises(da.StepFailed, match="is not a row of the list"):
+        d.pick("WHAT DO YOU DO")
+    assert game.keys == []
+
+
+def test_a_pick_stops_on_a_row_the_list_draws_twice(tmp_path, monkeypatch):
+    doubled = [("WHAT DO YOU DO", False), ("GO", True), ("GO", False)]
+    game = Shots(tmp_path, [_list_frame(doubled), _list_frame(ASKED)],
+                 {(0, "Return"): 1})
+    d = _shots_driver(game, monkeypatch, _FONT)
+    with pytest.raises(da.StepFailed, match="draws a row twice"):
+        d.pick("GO")
+    assert game.keys == []
+
+
+def test_a_pick_reads_the_rows_again_before_return(tmp_path, monkeypatch):
+    shown = _list_frame(ASKED)
+    drifted = _list_frame([ASKED[0], ("GO LEFT", False), ("GO RIGHT", True)])
+    game = SettleDrift(tmp_path, [shown, _list_frame([("LATER", False)])],
+                       {(0, "Return"): 1}, [shown, drifted])
+    d = _shots_driver(game, monkeypatch, _FONT)
+    with pytest.raises(da.StepFailed, match="no longer shows 'GO LEFT' highlighted"):
+        d.pick("GO LEFT")
+    assert game.keys == []

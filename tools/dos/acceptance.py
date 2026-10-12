@@ -5670,7 +5670,10 @@ class Driver:
         `dosbox.LIST_DOWN` or `LIST_UP`, each press believed only when the
         highlight lands on the next row, then `Return`, believed when the text
         window changes.  A menu without `row`, or with no row or several rows
-        highlighted, stops the run with nothing pressed."""
+        highlighted, stops the run with nothing pressed; so does a `row` that
+        is the menu's question (its first drawn row) or is drawn twice, and a
+        settled screen that no longer shows `row` alone highlighted before
+        `Return`."""
         label = "pick"
         if self.title.key not in ANSWER_TITLES or self.where != "script":
             raise StepFailed(f"pick needs a script's list menu in "
@@ -5683,12 +5686,18 @@ class Driver:
         rows = list_menu_rows(screen, font)
         shot = self.shot(label)
         texts = [r["text"] for r in rows]
-        if row not in texts:
-            raise self.fail(label, f"{row!r} is not a row of the list: {texts}")
+        # The first drawn row is the menu's question, never a choice.
+        choices = texts[1:]
+        if row not in choices:
+            raise self.fail(label, f"{row!r} is not a row of the list: {choices}")
+        if len(set(choices)) != len(choices):
+            raise self.fail(label, f"the list draws a row twice, so {row!r} names "
+                            f"no one row: {choices}")
         lit = [i for i, r in enumerate(rows) if r["lit"]]
-        if len(lit) != 1:
-            raise self.fail(label, f"{len(lit)} rows are highlighted, not one: {texts}")
-        here, want, presses = lit[0], texts.index(row), []
+        if len(lit) != 1 or lit[0] == 0:
+            raise self.fail(label, f"{len(lit)} rows are highlighted, not one "
+                            f"choice: {texts}")
+        here, want, presses = lit[0], texts.index(row, 1), []
         while here != want:
             key, step = (dosbox.LIST_DOWN, 1) if want > here else (dosbox.LIST_UP, -1)
             self.s.key(key)
@@ -5704,6 +5713,11 @@ class Driver:
                                 f"{texts[here]!r} to {texts[here + step]!r}")
             here += step
         screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, label))
+        now = list_menu_rows(screen, font)
+        if ([r["text"] for r in now] != texts
+                or [i for i, r in enumerate(now) if r["lit"]] != [want]):
+            raise self.fail(label, f"the list no longer shows {row!r} highlighted "
+                            "before Return")
         text = screen.digest(TEXT_WINDOW)
         self.s.key("Return")
         if not self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != text,
