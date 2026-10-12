@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Add Pool of Radiance characters to an Amiga Curse party through ADD CHARACTER and save it.
 
-`stage` copies each `NAME.cha` and `NAME.spc` off a Pool disk's `save` drawer into
+`stage` copies each `NAME.cha` and `NAME.spc` off a Pool save disk's root, where REMOVE
+writes them (or a named drawer), into
 the `SAVE` drawer of a copy of a prepared Curse disk A, as Curse's Transfer does
 (no `.itm`), and writes a manifest `acceptance.py boot` and `run` take. `run` boots
 that manifest in one muted WinUAE lane and, pressing only on guarded screens, loads
@@ -28,13 +29,15 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from goldbox import amiga_adf, amiga_savegame  # noqa: E402
-from goldbox.amiga_por import AMIGA_POR_RECORD_SIZE, POR_SAVE_DRAWER  # noqa: E402
+from goldbox.amiga_por import AMIGA_POR_RECORD_SIZE  # noqa: E402
 from tools.amiga import acceptance, route_curse  # noqa: E402
 from tools.amiga.route import effect_fields  # noqa: E402
 from tools.amiga.screens import PixelGuards  # noqa: E402
 from tools.amiga.staging import sha256  # noqa: E402
 from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
 
+#: Where Amiga Pool's REMOVE writes `name.cha`, `.itm` and `.spc`: the save disk's root.
+SOURCE_ROOT = "/"
 #: Curse's own drawer on disk A, the one its load, save and ADD pickers read.
 CURSE_DRAWER = "SAVE"
 #: What Transfer copies and the ADD picker lists; `.sav` is listed too (picker 0x24D6E).
@@ -85,13 +88,26 @@ def _record_name(record: bytes) -> str:
     return record[:0x10].split(b"\0", 1)[0].decode("latin-1")
 
 
+def _is_root(drawer: str) -> bool:
+    return not drawer.strip("/")
+
+
 def _drawer_files(disk: amiga_adf.AmigaDisk, drawer: str) -> list[str]:
-    return [e.name for e in disk.entries(disk.lookup(drawer).block) if not e.is_dir]
+    header = None if _is_root(drawer) else disk.lookup(drawer).block
+    return [e.name for e in disk.entries(header) if not e.is_dir]
+
+
+def _in_drawer(drawer: str, name: str) -> str:
+    return f"/{name}" if _is_root(drawer) else f"{drawer.strip('/')}/{name}"
 
 
 def copy_characters(source: amiga_adf.AmigaDisk, target: amiga_adf.AmigaDisk,
-                    names: list[str], *, source_drawer: str = POR_SAVE_DRAWER) -> list[dict]:
+                    names: list[str], *, source_drawer: str = SOURCE_ROOT) -> list[dict]:
     """Copy each name's `.cha` and `.spc` into the target's `SAVE` drawer, unchanged.
+
+    The source files are found where REMOVE writes them, the disk root unless `source_drawer`
+    names a drawer, by `name_key`, so case and REMOVE's cleaning do not matter; each keeps its
+    own file name on the Curse disk. The `.itm` stays behind, as Curse's Transfer leaves it.
 
     The drawer must list no `.cha` or `.sav` before the copy, so the ADD picker then lists
     exactly the staged characters. A `.cha` that is not a Pool record, or a name already on
@@ -104,7 +120,8 @@ def copy_characters(source: amiga_adf.AmigaDisk, target: amiga_adf.AmigaDisk,
     present = _drawer_files(target, CURSE_DRAWER)
     listed = [name for name in present if LISTED.fullmatch(name)]
     require(not listed, f"the Curse drawer already lists {listed}")
-    offered = [n[:-4] for n in _drawer_files(source, source_drawer) if n.lower().endswith(".cha")]
+    files = _drawer_files(source, source_drawer)
+    offered = [n[:-4] for n in files if n.lower().endswith(".cha")]
     copies = []
     for name, key in zip(names, keys):
         found = [stem for stem in offered if name_key(stem) == key]
@@ -113,20 +130,20 @@ def copy_characters(source: amiga_adf.AmigaDisk, target: amiga_adf.AmigaDisk,
         stem = found[0]
         row: dict[str, Any] = {"name": name, "stem": stem, "key": key}
         for suffix in CHARACTER_SUFFIXES:
-            path = f"{source_drawer}/{stem}{suffix}"
-            try:
-                data = source.read_file(path)
-            except amiga_adf.AmigaDiskError:
-                require(suffix != ".cha", f"{path} is not on {source.volume_name}")
+            named = [n for n in files if n.lower() == f"{stem}{suffix}".lower()]
+            if not named:
+                require(suffix != ".cha", f"{stem}{suffix} is not on {source.volume_name}")
                 row[suffix[1:]] = None
                 continue
+            path = _in_drawer(source_drawer, named[0])
+            data = source.read_file(path)
             if suffix == ".cha":
                 require(len(data) == AMIGA_POR_RECORD_SIZE,
                         f"{path} is {len(data)} bytes, not a Pool record")
-                require(_record_name(data) == stem,
-                        f"{path} holds {_record_name(data)!r}, not {stem!r}")
-            destination = f"{CURSE_DRAWER}/{stem}{suffix}"
-            require(not any(n.lower() == f"{stem}{suffix}".lower() for n in present),
+                require(name_key(_record_name(data)) == key,
+                        f"{path} holds {_record_name(data)!r}, not {name!r}")
+            destination = f"{CURSE_DRAWER}/{named[0]}"
+            require(not any(n.lower() == named[0].lower() for n in present),
                     f"{destination} is already on the Curse disk")
             target.write_file(destination, data)
             back = target.read_file(destination)
@@ -149,7 +166,7 @@ def _slot_members(disk: amiga_adf.AmigaDisk, letter: str) -> list:
 
 def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, names: list[str],
           out: pathlib.Path, *, load: str = "A", save: str = "D",
-          source_drawer: str = POR_SAVE_DRAWER) -> pathlib.Path:
+          source_drawer: str = SOURCE_ROOT) -> pathlib.Path:
     """Copy a Curse prepare run's disks into `out`, stage the characters, write `out/prepare.json`."""
     require(not out.exists(), f"{out} already exists")
     require(bool(SLOT.fullmatch(load)) and bool(SLOT.fullmatch(save)) and load != save,
@@ -586,7 +603,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="an `acceptance.py prepare --title curse` prepare.json")
     s.add_argument("--source-disk", type=pathlib.Path, required=True,
                    help="the Pool disk whose drawer holds NAME.cha")
-    s.add_argument("--source-drawer", default=POR_SAVE_DRAWER)
+    s.add_argument("--source-drawer", default=SOURCE_ROOT,
+                   help="where the Pool files are: the disk root, where REMOVE writes them "
+                        "(default), or a drawer such as `save`")
     s.add_argument("--name", action="append", required=True,
                    help="a member's name; repeat for several (the file stem is cleaned as "
                         "Pool's REMOVE cleans it)")

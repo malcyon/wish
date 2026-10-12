@@ -25,11 +25,12 @@ def _record(name: str, control: int = 0, status: int = 0, kind: int = 0) -> byte
     return bytes(raw)
 
 
-def _pool_disk(files: dict[str, bytes]) -> amiga_adf.AmigaDisk:
-    disk = amiga_adf.AmigaDisk.blank("poolsave")
+def _pool_disk(files: dict[str, bytes], drawer: str = "") -> amiga_adf.AmigaDisk:
+    """A Pool save disk; REMOVE writes its files at the root, so that is the default."""
+    disk = amiga_adf.AmigaDisk.blank("POOLSAVE")
     disk.make_dir("save")
     for name, data in files.items():
-        disk.write_file(f"save/{name}", data)
+        disk.write_file(f"{drawer}/{name}" if drawer else name, data)
     return disk
 
 
@@ -89,6 +90,32 @@ def test_copy_finds_a_name_remove_cleaned():
                                     target, ["J.R. Smith"])
     assert rows[0]["stem"] == "JRSMITH"
     assert target.read_file("SAVE/JRSMITH.cha")[0x85] == 0xB2
+
+
+@pytest.mark.parametrize("drawer", [None, "", "/"])
+def test_copy_finds_remove_s_lower_case_files_at_the_disk_root(drawer):
+    """Amiga Pool's REMOVE wrote `/brutus.cha`, `.itm` and `.spc` at the save disk's root."""
+    cha, spc = _record("BRUTUS", 0xB3, 1, 4), bytes(range(20))
+    source = _pool_disk({"brutus.cha": cha, "brutus.itm": b"items", "brutus.spc": spc})
+    target = _curse_disk()
+    kwargs = {} if drawer is None else {"source_drawer": drawer}
+    rows = curseadd.copy_characters(source, target, ["BRUTUS"], **kwargs)
+    assert rows[0]["stem"] == "brutus" and rows[0]["key"] == "BRUTUS"
+    assert rows[0]["cha"]["source"] == "/brutus.cha"
+    assert target.read_file("SAVE/brutus.cha") == cha
+    assert target.read_file("SAVE/brutus.spc") == spc
+    names = [e.name for e in target.entries(target.lookup("SAVE").block)]
+    assert "brutus.cha" in names and "brutus.spc" in names
+    assert not any(n.lower().endswith(".itm") for n in names)
+
+
+def test_copy_still_reads_a_named_drawer():
+    target = _curse_disk()
+    source = _pool_disk({"ROSALIND.cha": _record("ROSALIND")}, drawer="save")
+    rows = curseadd.copy_characters(source, target, ["ROSALIND"], source_drawer="save")
+    assert rows[0]["cha"]["source"] == "save/ROSALIND.cha"
+    with pytest.raises(RouteError, match="0 .cha files"):
+        curseadd.copy_characters(source, _curse_disk(), ["ROSALIND"])
 
 
 def test_copy_records_a_character_with_no_effects_file():
@@ -548,7 +575,8 @@ def test_stage_puts_a_registered_pool_character_beside_curse_slot_a(tmp_path):
                   "diskb": {"path": str(diskb), "sha256": digest(diskb)}},
         "registered": {"specimen": {"path": str(specimen), "sha256": digest(specimen)}}}))
     source_hash = digest(source)
-    path = curseadd.stage(prep, source, ["ROSALIND", "GENHEERIS"], tmp_path / "out")
+    path = curseadd.stage(prep, source, ["ROSALIND", "GENHEERIS"], tmp_path / "out",
+                          source_drawer="save")
     staged = json.loads(path.read_text())
     assert staged["add"]["load_names"] == ["GALAIN", "HOLLAND", "IILANDA", "SUNDRA"]
     assert [row["stem"] for row in staged["add"]["copies"]] == ["ROSALIND", "GENHEERIS"]
@@ -558,7 +586,8 @@ def test_stage_puts_a_registered_pool_character_beside_curse_slot_a(tmp_path):
     assert disk.verify() == []
     assert digest(source) == source_hash and digest(save) == staged["prepared_from"]["save_sha256"]
     with pytest.raises(RouteError, match="already exists"):
-        curseadd.stage(prep, source, ["ROSALIND"], tmp_path / "out")
+        curseadd.stage(prep, source, ["ROSALIND"], tmp_path / "out", source_drawer="save")
     with pytest.raises(RouteError, match="player members"):
         curseadd.stage(prep, source, ["ROSALIND", "CONJURER", "ADDERLY"], tmp_path / "out2",
+                       source_drawer="save",
                        load="A")
