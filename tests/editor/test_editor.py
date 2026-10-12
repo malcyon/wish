@@ -7788,34 +7788,43 @@ def test_the_amiga_later_reader_takes_the_first_folder_that_holds_the_art(
 #: writes, each at the record's own offsets.
 _AMIGA_POD_FIGURES = {1: (1, 3), 2: (2, 4)}
 
+#: Each member's six colour bytes, as the ICON screen's recolour reads them:
+#: the part values are 1, 2, 3, 4, 6 and 7 (each with 8 added for the second
+#: nibble), so the tiles' pixel 1 takes the first byte's low nibble, pixel 11
+#: the third byte's high nibble and pixel 7 the sixth byte's low nibble.
+_AMIGA_POD_COLOURS = {1: bytes([0x5A, 0x66, 0x2C, 0x77, 0x88, 0x93]),
+                      2: bytes([0x7E, 0x66, 0x41, 0x77, 0x88, 0xD6])}
+
 
 def _generated_amiga_pod_art():
     """Art for the two members `_amiga_pod_synthetic` writes: size 2, so heads
     are blocks 65 and 66 and bodies 67 and 68, the body's second pose 128
-    higher and one head for both poses, on a 32-colour palette. Pixel values
-    6, 14 and 15 are ones the recolour leaves alone, and 21 lies past the
-    sixteenth palette entry."""
+    higher and one head for both poses, on a 32-colour palette. The head's
+    pixel 1, the ready body's 11 and the action body's 7 are recoloured by
+    `_AMIGA_POD_COLOURS`; the head's 21 lies past the sixteenth palette entry
+    and no colour byte touches it."""
     from editor.amigapodfigure import FigureArt
     from goldbox import amiga_later_icons as later
 
-    def tile(height, y, x, value):
+    def tile(height, *pixels):
         rows = [[0] * 24 for _ in range(height)]
         opaque = [[False] * 24 for _ in range(height)]
-        rows[y][x], opaque[y][x] = value, True
+        for y, x, value in pixels:
+            rows[y][x], opaque[y][x] = value, True
         return later.Tile(height, 24, tuple(map(tuple, rows)),
                           tuple(map(tuple, opaque)))
 
     heads, bodies = {}, {}
     for option, x in ((1, 5), (2, 9)):
-        heads[64 + option] = tile(8, 0, x, 21)
+        heads[64 + option] = tile(8, (0, x, 1), (1, x, 21))
     for option, x in ((3, 3), (4, 7)):
-        bodies[64 + option] = tile(24, 10, x, 14)
-        bodies[192 + option] = tile(24, 10, x + 1, 15)
+        bodies[64 + option] = tile(24, (10, x, 11))
+        bodies[192 + option] = tile(24, (10, x + 1, 7))
     frame = later.Tile(24, 24, ((7,) * 24,) * 24, ((True,) * 24,) * 24)
     palette = tuple((8 * i, 255 - 8 * i, 5 * i) for i in range(32))
     return FigureArt(later.LaterArt(
         "pools-of-darkness", heads, bodies, (frame, frame), palette,
-        bytes(range(32)), bytes(6), bytes(range(32)), 32, 0))
+        bytes(range(32)), bytes([1, 2, 3, 4, 6, 7]), bytes(range(32)), 32, 0))
 
 
 def _amiga_pod_synthetic(tmp_path, settle=True):
@@ -7840,6 +7849,9 @@ def _amiga_pod_synthetic(tmp_path, settle=True):
         data[at + amiga_pod.ICON_HEAD] = head
         data[at + amiga_pod.ICON_BODY] = body
         data[at + amiga_pod.SIZE] = 2
+        colours = at + amiga_pod.ICON_COLOURS
+        data[colours:colours + amiga_pod.ICON_COLOUR_COUNT] = (
+            _AMIGA_POD_COLOURS[head])
     disk.write_file(saves.pod_slot_path("A"), bytes(data))
     path = tmp_path / "pod3.adf"
     disk.save(str(path))
@@ -7868,15 +7880,18 @@ def test_an_amiga_pod_member_shows_his_two_poses_in_the_figure_box(
         shots.append(preview.grab().toImage())
     first, second = seen
     ready, action = first.poses
-    assert ready[0][5] == palette[21] and ready[10][3] == palette[14]
-    assert action[0][5] == palette[21] and action[10][4] == palette[15]
-    assert second.poses[0][0][9] == palette[21]
-    assert second.poses[0][10][7] == palette[14]
+    # Each recoloured pixel shows the nibble of the colour byte that owns it.
+    assert ready[0][5] == palette[0xA] and ready[1][5] == palette[21]
+    assert ready[10][3] == palette[0x2]
+    assert action[0][5] == palette[0xA] and action[10][4] == palette[0x3]
+    assert second.poses[0][0][9] == palette[0xE]
+    assert second.poses[0][10][7] == palette[0x4]
+    assert second.poses[1][10][8] == palette[0x6]
     assert first.poses != second.poses
     assert first.background == second.background == palette[0]
     scale, x0, y0 = preview._geometry()
     assert shots[0].pixelColor(x0 + 5 * scale + scale // 2,
-                               y0 + scale // 2) == QColor(*palette[21])
+                               y0 + scale // 2) == QColor(*palette[0xA])
     assert shots[0] != shots[1]
 
 
@@ -8032,6 +8047,18 @@ def test_an_amiga_pod_record_that_is_not_a_character_gets_no_figure():
     art = _generated_amiga_pod_art()
     assert art.figure(b"short") is None
     assert art.figure(None) is None
+
+
+def test_a_record_of_bytes_is_drawn_only_by_amiga_pod_art(
+        app, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr("editor.amigalaterfigure.load", lambda folders, title:
+                        None)
+    w, _path = _amiga_later_editor(tmp_path, "CURSE")
+    w.figure_art = _generated_amiga_later_art()
+    assert w._figure_of(SimpleNamespace(native=bytes(0x194))) is None
+    w.figure_art = _generated_amiga_pod_art()
+    assert w._figure_of(w.party.member(0)) is None
 
 
 def _registered_amiga_pod_disks(tmp_path):

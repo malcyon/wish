@@ -2747,11 +2747,13 @@ class EditorBinding(QObject):
 
     def _figure_of(self, member) -> "amigafigure.Figure | None":
         """`member`'s combat figure drawn from the art found, or None."""
-        if (self.figure_art is None
-                or not isinstance(member.native, (amiga_por.AmigaPorCharacter,
-                                                  amiga_later.AmigaCharacter,
-                                                  dos_codec.DosCharacter,
-                                                  bytes))):
+        if self.figure_art is None:
+            return None
+        kinds = (amiga_por.AmigaPorCharacter, amiga_later.AmigaCharacter,
+                 dos_codec.DosCharacter)
+        if isinstance(self.figure_art, amigapodfigure.FigureArt):
+            kinds = (bytes,)
+        if not isinstance(member.native, kinds):
             return None
         return self.figure_art.figure(member.native)
 
