@@ -9,6 +9,7 @@ import pytest
 
 from automap import amiga
 from automap import winuae as winuae_transport
+from automap.maps import AMIGA_ONLY_TITLES
 from wish import amigalocate, winuae
 from wish import backends as bk
 
@@ -71,6 +72,15 @@ def test_each_platforms_rows_are_grouped_with_the_c64_ones_first(
         monkeypatch.setenv(env, "1")
     assert [b.name for b in bk.backends()] == [
         "VICE (C64)", "C64 Ultimate", "WinUAE (Amiga)", "FS-UAE (Amiga)"]
+
+
+def test_the_pools_of_darkness_folder_is_offered_with_only_the_winuae_flag(
+        monkeypatch):
+    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
+    assert bk.amiga_only_titles() == ()
+    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
 
 
 # -- the probe -----------------------------------------------------------------

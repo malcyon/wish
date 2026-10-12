@@ -1350,8 +1350,10 @@ def test_there_is_a_tab_for_every_title_with_an_area_table(
     for game in preferences.game_folder_titles():
         label = getattr(dialog.ui,
                         f"game_folder_label_{preferences._row_suffix(game)}")
-        if game in preferences.travel_titles():
-            assert game.title in [tabs.tabText(i) for i in range(tabs.count())]
+        on_a_tab = game.title in [tabs.tabText(i) for i in range(tabs.count())]
+        # The Pools of Darkness row is always there; its tab only with an
+        # Amiga backend.
+        assert on_a_tab == (amiga or game in preferences.TRAVEL_TITLES)
         assert label.text() == game.title
 
 

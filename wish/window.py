@@ -127,7 +127,7 @@ class WishWindow(QMainWindow):
         self._title = title
         self.disks, self.disks_source = paths.resolve_disks(
             flag=disks, beside=save, game=folder_title_named(title),
-            settings=self.settings, also=AMIGA_ONLY_TITLES)
+            settings=self.settings, also=backends.amiga_only_titles())
         # Behind the flag, like everything else the Ultimate touches. A stored
         # host in a settings file predating the flag -- or hand-edited -- used
         # to reach `$POR_ULTIMATE` on every window build regardless, which is
@@ -407,7 +407,7 @@ class WishWindow(QMainWindow):
         self.disks, self.disks_source = paths.resolve_disks(
             flag=self.disks_flag, beside=self.editor.path,
             game=self.disk_game(), settings=self.settings,
-            also=AMIGA_ONLY_TITLES)
+            also=backends.amiga_only_titles())
         where = self.disks_text()
         debuglog.note("game disks: %s (%s)", where or "nothing found",
                       self.disks_source)

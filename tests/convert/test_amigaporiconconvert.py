@@ -10,9 +10,7 @@ line still says a conversion "does not carry" a combat icon)` already gave
 `goldbox.amiga_later.write_later` an `icon` argument and wired it through
 `goldbox.iconparts.amiga_combat_icon` for Curse and Silver Blades. This file is
 the same fix for Pool of Radiance's own writer, `goldbox.amiga_por.write_por`,
-which `#383 (The live Convert dialog never wires a C64 party's own combat
-icon into DOS, so region_220 stays on the drop list)` proves on
-the DOS side.
+which `#383` proves on the DOS side.
 
 Two levels: `write_por` itself, against a synthetic character built by
 `test_amiga.sample()` -- no disk needed -- and the live `C64ToAmiga`

@@ -298,14 +298,9 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 
 
 # ---------------------------------------------------------------------------
-# `#511 (Open a DOS save folder and an Amiga save disk in the Character
-# Editor, so editing a DOS character does not mean two conversions)`'s stage
-# 4 condition: `File > Open` + `File > Save As` have to cover every
-# registered direction "without losing any capability" before `File >
-# Convert...` can go. `saveplan.prepare_save_as` is Save As's own route --
-# `editor.window.EditorBinding.save_as` calls it the same way -- so this
-# proves it for the same specimens the dialog byte-comparison above already
-# exercises, plus the four Amiga directions that comparison does not cover.
+# `saveplan.prepare_save_as` is Save As's own route, so this covers the same
+# specimens the byte-comparison above exercises, plus the four Amiga
+# directions that comparison does not cover.
 #
 # A case that raises `saveplan.SaveAsError` here is a real conversion defect
 # (`.claude/rules/conversions.md`: blocking a save is not a fix), not
@@ -317,7 +312,7 @@ def test_c64_to_dos_matches_the_library_for_every_title(
 def test_save_as_prepares_what_convert_writes_dos_to_c64(
         app, tmp_path, specimen_name, file_name, game):
     """`saveplan.prepare_save_as` returns a `SavePlan` for the same DOS
-    source and C64 destination the dialog comparison above already writes,
+    source and C64 destination the comparison above already writes,
     rather than raising `SaveAsError`."""
     folder = _dos_specimen(specimen_name)
     if folder is None:

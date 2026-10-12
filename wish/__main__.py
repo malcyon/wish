@@ -136,12 +136,11 @@ def main(argv: list[str] | None = None) -> int:
     # own folder in Preferences, else beside the save, else the usual
     # folders. The window resolves the same way from the same three inputs,
     # so the maps it is handed and the folder it reports cannot disagree.
-    from automap.maps import AMIGA_ONLY_TITLES
     from automap.paths import resolve_disks
 
-    from .backends import amiga_enabled
+    from .backends import amiga_enabled, amiga_only_titles
     where, source = resolve_disks(flag=args.disks, beside=args.save, game=game,
-                                  also=AMIGA_ONLY_TITLES)
+                                  also=amiga_only_titles())
     maps, game = load_maps_titled(str(where) if where else None, game,
                                   amiga_only=amiga_enabled())
     if args.svg:

@@ -1080,14 +1080,16 @@ The row is not `disturbs` (a poll measured about 20 ms, served from the running
 machine's frame handler) and polls every 200 ms, like VICE. Its removal
 condition is written beside the flag's name in `wish/backends.py`.
 
-**Either Amiga flag decides whether the map loader names Pools of Darkness from
-its Amiga disks.** Pools of Darkness never shipped on the Commodore 64, so no
-C64 container describes it. `automap.maps.AMIGA_ONLY_TITLES` (Pools of
-Darkness) always has a disk-folder row in Preferences, and the folder set there
-is the one in use. With `WISH_EXPERIMENTAL_AMIGA_FSUAE` or
-`WISH_EXPERIMENTAL_AMIGA_WINUAE` on, the map loader also names a disk whose
-volume says `POD 3` or `Pools of Darkness` as that title; with both off a
-folder holding only Pools of Darkness disks gives no maps.
+**Either Amiga flag decides whether Wish names Pools of Darkness from its Amiga
+disks and looks up its folder.** Pools of Darkness never shipped on the
+Commodore 64, so no C64 container describes it. Its row in Preferences is always
+there, but with `WISH_EXPERIMENTAL_AMIGA_FSUAE` or
+`WISH_EXPERIMENTAL_AMIGA_WINUAE` on (`backends.amiga_only_titles`),
+`automap.maps.AMIGA_ONLY_TITLES` (Pools of Darkness) also joins the titles the
+Wish window's folder lookup tries, and the map loader names a disk whose
+volume says `POD 3` or `Pools of Darkness` as that title. With both off neither
+happens, and a folder holding only Pools of Darkness disks gives no maps. The
+Character Editor reads the Pools of Darkness game disks from that row either way.
 
 **What the fork needs.** The player runs the game in `grahambates/fs-uae`'s
 GDB-remote build, the one `uae-dap` 1.1.5 ships and

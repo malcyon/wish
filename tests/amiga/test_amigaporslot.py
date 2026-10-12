@@ -1,9 +1,6 @@
 """`amigaporslot.import_slot`: the character-file selection regex.
 
-Built for #664 (Save As and File > Convert block a Pool of Radiance party
-with a companion to the Amiga, because the Amiga writers stop at six
-characters), whose 2026-09-28 comment found `import_slot` still capping the
-files it copies at six even after `PARTY_MAX` was widened to eight.
+It copies up to `PARTY_MAX` (eight) character files, not six.
 """
 
 from __future__ import annotations

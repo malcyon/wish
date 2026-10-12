@@ -3,7 +3,7 @@ writes one, under that route's own error title, and leaves the image as it was.
 
 The party is a made-up Pool of Radiance save whose disk has no free block.
 Its character's item file is one block long; sixteen items make it three, so
-Save, Save As and the Convert window each need blocks the disk has not got. A
+Save and Save As each need blocks the disk has not got. A
 save that keeps every file its size still fits, because AmigaDOS frees a
 replaced file before it allocates the new one. No game data is read.
 """

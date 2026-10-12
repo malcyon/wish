@@ -9,6 +9,7 @@ the machine turns out to be running it. The disks here are synthetic and hold
 no game data.
 """
 
+import pathlib
 import struct
 
 import pytest
@@ -490,11 +491,21 @@ def test_a_pool_of_radiance_row_still_answers_first(tmp_path, monkeypatch):
         por, paths.GAME_PREFERENCE)
 
 
+def test_the_titles_to_try_come_from_the_amiga_backend(monkeypatch):
+    assert bk.amiga_only_titles() == ()
+    for off in ("", "0", "off"):
+        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, off)
+        assert bk.amiga_only_titles() == ()
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
+
+
 def test_a_winuae_only_player_gets_the_pod_folder_and_its_maps(
         app, tmp_path, monkeypatch):
     settings, pod = _only_pod(tmp_path, monkeypatch)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
     win = window(app, maps=None, settings=settings)
     try:
         assert win.map.state.title == POD.title
@@ -536,14 +547,14 @@ def test_a_window_with_only_the_pod_folder_names_its_title(
 
 
 @pytest.mark.parametrize("value", [None, "", "0", "off"])
-def test_without_a_backend_the_pod_folder_is_in_use_but_maps_nothing(
+def test_without_a_backend_the_pod_folder_is_not_taken(
         app, tmp_path, monkeypatch, value):
-    settings, pod = _only_pod(tmp_path, monkeypatch)
+    settings, _pod = _only_pod(tmp_path, monkeypatch)
     if value is not None:
         monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
     win = window(app, maps=None, settings=settings)
     try:
-        assert win.disks == pod
+        assert win.disks is None
         assert win.mapper._maps == {}
         assert win.map.state.title != POD.title
     finally:
@@ -789,19 +800,46 @@ def test_with_either_backend_on_a_pools_dos_install_is_named(tmp_path, monkeypat
     assert rows["Titles"] == POD.title
 
 
-def test_a_pools_dos_install_set_in_its_row_is_in_use_and_named_with_no_backend(
+@pytest.mark.parametrize("game", [None, POOL])
+def test_with_no_backend_a_pools_dos_install_is_not_named(tmp_path, monkeypatch,
+                                                          game):
+    nowhere(tmp_path, monkeypatch)
+    folder = dos_install(tmp_path / "dos")
+    rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
+    assert POD.title not in rows["Titles"]
+
+
+def test_a_pools_folder_set_in_its_row_is_not_the_wish_window_folder_with_no_backend(
         app, tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     assert not bk.amiga_enabled()
     folder = dos_install(tmp_path / "DARKNESS")
     settings = Settings(game_folders={POD.key: str(folder)})
-    rows = dict(preferences.report(settings))
-    assert rows["In use"] == str(folder)
-    assert rows["Titles"] == POD.title
+    assert dict(preferences.report(settings))["In use"] == "nothing found"
     win = window(app, maps=None, settings=settings)
     try:
-        assert str(win.disks) == str(folder)
-        assert str(win.editor.disks) == str(folder)
+        assert win.disks is None
+    finally:
+        win.close()
+
+
+def test_the_editor_still_finds_the_pools_folder_from_its_own_row_with_no_backend(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    assert not bk.amiga_enabled()
+    folder = dos_install(tmp_path / "DARKNESS")
+    settings = Settings(game_folders={POD.key: str(folder)})
+    win = window(app, maps=None, settings=settings)
+    try:
+        asked = []
+
+        def read_dos(where, game):
+            asked.append(pathlib.Path(where))
+            return {1: "named"}
+
+        names = win.editor._port_names(read_dos, lambda where, game: {}, POD)
+        assert names == {1: "named"}
+        assert asked[0] == folder
     finally:
         win.close()
 

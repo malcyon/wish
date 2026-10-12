@@ -3,82 +3,41 @@
 `goldbox/dos_codec.py` does the conversion and this is the library over it.
 The one thing this file exists for is the order of events: the conversion is
 **rehearsed** in memory first, and only then is there anything to write --
-never a write the player cannot see coming.
+never a write the player cannot see coming. `editor/convert.py` imports
+`GameFiles`, `rehearse`, `pane_text`, `log_unshown_losses`, `NO_DISKS` and
+`NO_DISKS_TITLE` from here, as do several tools and test files.
 
-**This was a window in its own right, `File ▸ Import ▸ DOS Save Folder…`,
-from 2026-08-24 until 2026-09-14, when Donald authorised lifting
-`WISH_EXPERIMENTAL_CONVERT` and removing that menu entry in the same commit**
-(`#52 (File ▸ Import and File ▸ Export for every direction the library
-supports)`): Save As was the only route once
-the flag came off, and two menu items reaching the same conversion was
-always the state the flag's own removal was meant to end, condition 7. The
-module **keeps its name**: `editor/convert.py` imports `GameFiles`,
-`rehearse`, `pane_text`, `log_unshown_losses`, `NO_DISKS`
-and `NO_DISKS_TITLE` from it at module load, and so do
-several tools and test files, so renaming the file to match what it now is
-would touch every one of them for no behaviour change. What is gone is only
-`class DosImportDialog` and the strings only it used.
+No window shows the report. `C64SaveReport.messages` and every
+`C64SaveReport.losses` line, name truncation included, go to the debug log
+(`log_unshown_losses`): a loss does not become acceptable by being shown to a
+player rather than fixed, and a modal reporting a bug in place of a fix is the
+pattern this module is kept narrow to prevent.
 
-`DosImportDialog` carried no pane in its last form either: Donald approved
-removing it directly, on 2026-09-14, the way `editor/convert.py`'s dialog
-lost its own on 2026-09-10. It drew `pane_text` -- `C64SaveReport.messages`,
-then every `C64SaveReport.losses` line, unfiltered -- from 2026-09-06 until
-then. What it showed instead, in its last form, was one modal and nothing
-else, ported from `editor/convert.py`'s own `_maybe_warn`: one of the
-rejections below. `C64SaveReport.messages` and every `C64SaveReport.losses`
-line, name truncation included, went to the debug log instead
-(`log_unshown_losses`) -- a loss does not become acceptable by being shown
-to a player rather than fixed, and the name-truncation consent modal this
-paragraph once described (`name_warnings`) is retired for the same reason
-(#619, `docs/227-editor-open-save-as.md`). Two of those losses are Donald's
-own examples of why: a magic-user memorising more spells than the
-destination title's own slots and a spell id outside the destination's own
-book are both **bugs** (#508, #509), not platform limits, and a modal
-reporting a bug instead of it getting fixed is the pattern that dialog was
-kept narrow to stop, the same ruling `editor/convert.py`'s own docstring
-quotes -- *"the agents find a bug, and instead of fixing it, they want to
-write an excuse to the player and then they never fix it... We need it to
-be correct."*
+`goldbox.dos_codec.NOT_SET_OUT` and `C64SaveReport.messages` stay in
+`goldbox/dos_codec.py`: `dos_codec.convert_save` converts a never-set-out Pool
+of Radiance party to the start of the story and says so in `report.messages`,
+while a Curse or Silver Blades one is written as the C64's own pre-adventure
+save and adds no message. `tests/convert/test_dosconvert.py` and
+`tests/convert/test_curseconvert.py` pin that against real specimens, and
+`report.summary()` puts the sentence in front of whoever runs a driven tool
+with `--report`.
 
-**`goldbox.dos_codec.NOT_SET_OUT` and `C64SaveReport.messages` stay,
-unshortened, in `goldbox/dos_codec.py`.** Removing this dialog does not make
-either dead: `dos_codec.convert_save`'s own contract -- a never-set-out
-Pool of Radiance party is converted to the start of the story and
-`report.messages` says so, while a Curse or Silver Blades one is written as
-the C64's own pre-adventure save and adds no message -- is pinned directly against real specimens in `tests/convert/test_dosconvert.py` and
-`tests/convert/test_curseconvert.py`, independent of any window, and `report.summary()`
-still puts the sentence in front of whoever runs a driven tool with
-`--report`. Only the display of it is gone, the way `editor/convert.py`'s
-pane stopped drawing it on 2026-09-10 while the constant and the field it
-fills stayed exactly where they were.
+`report.warnings` is not shown wholesale -- most of it is bookkeeping (a
+quest-flag byte count, a party's roster slots left empty) that fires on every
+conversion and says nothing about what the player owns. `losses` is the
+hand-picked subset `write_c64_save` knows is the player's own loss; see its
+docstring in `goldbox/dos_codec.py`.
 
-**`report.warnings` is not shown wholesale, and never has been** -- most of
-it is this project's own bookkeeping (a quest-flag byte count, a party's
-roster slots left empty), which fires on every conversion and is not a fact
-about anything the player owns.  `losses` is the hand-picked subset
-`write_c64_save` already knows is the player's own loss; see its docstring
-in `goldbox/dos_codec.py` for which lines those are. Every one of them goes
-to the debug log (`log_unshown_losses` below) and none is shown to a player
-(#619).
+There is no template. `goldbox.dos_codec` writes all 9216 bytes of both
+payloads and `D64.blank()` carries them, so the result holds nothing from
+anybody else's saved game.
 
-**There is no template any more** (#118). The dialog used to make the user
-pick an existing `.d64` to convert *onto*, and every byte the conversion did
-not explicitly set kept the value it had in somebody else's saved game -- a
-different party, in a different place, at a different time. `goldbox.dos_codec`
-now writes all 9216 bytes of both payloads and `D64.blank()` carries them, so
-what the user gets is theirs and nothing else's.
-
-What that costs is the player's own game disks at the moment a conversion
-runs: the combat icon is composed out of `SPELLE64`/`SPELLN64` and `$8400`
-is `ANIMATE00`, and neither may be stored here. Donald's ruling, 2026-08-27
--- *"We should never attempt to write a save file if we don't have the game
-disks and we need them. That would mean making up data, which we will not
-do."* -- so Save As checks for both and does not convert
-rather than making up either (`NO_DISKS` above). The third
-thing a Pool of Radiance conversion once read off the disks, the creation
-menu in `GEN`, is twenty-six integers and is stored
-(`goldbox.portraits.POOL_OF_RADIANCE_MENU`, 2026-09-06), so a sheet portrait
-needs no disk and nothing here blocks for its lack.
+That needs the player's own game disks when a conversion runs: the combat icon
+is composed out of `SPELLE64`/`SPELLN64` and `$8400` is `ANIMATE00`, and
+neither may be stored here, so Save As checks for both and does not convert
+rather than make either up (`NO_DISKS` above). The creation menu in `GEN` is
+twenty-six integers and is stored (`goldbox.portraits.POOL_OF_RADIANCE_MENU`),
+so a sheet portrait needs no disk.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`;
 `rehearse` below takes the folder directly, as Save As resolves it.

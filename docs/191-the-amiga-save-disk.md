@@ -266,8 +266,7 @@ Four things cost time on the way.
 
 **The Save As route to the Amiga has not been run in WinUAE.** What was
 driven, twice on 2026-09-08 and once from each source, is
-`EditorBinding.convert(source=…, destination="amiga", disk=…, folder=…)` --
-the Convert dialog's own path with every row filled in -- and then in WinUAE: the picker offered the written slot, the status line read the source's
+the Convert dialog (since replaced by Save As) with every row filled in -- and then in WinUAE: the picker offered the written slot, the status line read the source's
 own square and clock, `VIEW` matched the source record value for value, and
 `ENCAMP ▸ SAVE` wrote a second slot the game read back. `AmigaDisk.verify()`
 returned `[]` on both images afterwards. `#36 (Write an Amiga disk image, not
@@ -287,7 +286,7 @@ holds -- **which of the two the C64 itself draws is unmeasured.**
 
 `tools/amiga/toamigapor.py` remains the way to ask for a disk without the editor.
 
-**The Convert dialog asks for the player's Amiga disk 2**, not disk 1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
+**Save As asks for the player's Amiga disk 2**, not disk 1: since `#316 (Write the Amiga Pool of Radiance saved game from the source
 save, so a converted party arrives where it was standing)` the saved game is
 built from the save being converted, and the only thing read off an Amiga disk
 is the area's script out of `ecl.dax`.

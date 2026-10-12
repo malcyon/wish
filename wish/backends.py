@@ -166,6 +166,19 @@ def amiga_fsuae_enabled() -> bool:
     return os.environ.get(AMIGA_FSUAE_ENV, "").strip().lower() in TRUE
 
 
+def amiga_only_titles() -> tuple:
+    """The titles that have Amiga disks and no C64 container, while an Amiga
+    backend is on; nothing otherwise, so the flags off change no lookup.
+
+    The automapper reads these titles' maps off Amiga disks, so its folder
+    lookup tries their rows only then.
+    """
+    if not amiga_enabled():
+        return ()
+    from automap.maps import AMIGA_ONLY_TITLES
+    return AMIGA_ONLY_TITLES
+
+
 def _amiga_fsuae() -> list[Backend]:
     """The patched FS-UAE, if `WISH_EXPERIMENTAL_AMIGA_FSUAE` says so and its
     module imports.

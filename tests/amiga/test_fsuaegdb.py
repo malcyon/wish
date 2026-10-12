@@ -3284,7 +3284,7 @@ def test_the_drivers_window_gets_the_maps_and_title_a_real_launch_would(
     assert kw["title"] == "Secret of the Silver Blades"
     assert kw["session"] is not None
     assert calls["load"] == (str(folder), None, True)
-    assert calls["resolve"]["also"] == automaps.AMIGA_ONLY_TITLES
+    assert calls["resolve"]["also"] == backends.amiga_only_titles()
 
 
 # Interrupted runs, the journal, and a dead helper connection

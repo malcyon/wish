@@ -944,7 +944,7 @@ def test_no_marked_string_reaches_a_player_in_c64_conversion_or_the_automapper()
     #: string Donald words"*), and `.claude/rules/gui-text.md` exempts that
     #: log by name, so a line that only ever lands on `report.dropped` is
     #: nobody's to word. `editor/dosimport.pane_text` is the whole of what
-    #: the Convert dialog draws and it reads `messages` and `losses` alone,
+    #: Save As draws and it reads `messages` and `losses` alone,
     #: logging `dropped` instead. The four: `goldbox.c64_codec`'s
     #: combat-icon line in `write` (9 to 8), `goldbox.dos_codec.to_neutral`'s
     #: portrait-position line (8 to 7), and `goldbox.amiga`'s `0x11F`
@@ -1364,19 +1364,12 @@ def test_dos_to_amiga_direction_is_the_transfer_test(tmp_path):
            built[amiga_savegame.POR_POS_FACING]) == (state.x, state.y, state.facing * 2)
 
 
-# ---------------------------------------------------------------------------
-# The four-row form (#413, "The Convert window changes shape depending on
-# which platforms you are converting between") -- the same four rows, in the
-# same places, for every one of the six directions.
-# ---------------------------------------------------------------------------
-
-
 def test_rehearse_por_savegame_copies_each_characters_own_losses():
     """`_rehearse_por_savegame` (#619) copies `dropped` and `warnings` off
     each character's own `write_por` report onto the rehearsal's report,
     and now does the same for `losses` -- a name cut to the Amiga's own
     field width, or a value clamped into a narrower one, has to reach the
-    same report `saveplan.losses` and `File > Convert...` read, not stop at
+    same report `saveplan.losses` reads, not stop at
     each character's own.
 
     Fails before the fix: `report.losses` is empty even though

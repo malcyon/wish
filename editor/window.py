@@ -41,6 +41,7 @@ from goldbox import (
     c64_codec,
     classcode,
     dos_codec,
+    dos_savegame,
     stonecracker,
     titles,
     treasuresplit,
@@ -101,7 +102,7 @@ DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
 SAVE_AS_TITLE = "Save the disk as"
 
 #: The Amiga disk pickers' titles and filter, and the picker title for the
-#: DOS game folder. Approved text, moved here unchanged from `editor.convert`.
+#: DOS game folder. Approved text.
 DISK_TITLE = "Choose Amiga game disk 2"
 DISK_ONE_TITLE = "Choose Amiga game disk 1"
 DISK_THREE_TITLE = "Select location of Amiga game disk 3"
@@ -1981,6 +1982,11 @@ class EditorBinding(QObject):
                 _log.exception("could not open %s", path)
                 QMessageBox.critical(self.root, "Cannot open", str(exc))
             return
+        except dos_savegame.DosNameClashError as exc:
+            _log.debug("could not open %s: %s", path, exc)
+            QMessageBox.critical(self.root, "Cannot open",
+                                 exc.player_message or str(exc))
+            return
         except Exception as exc:
             _log.exception("could not open %s", path)
             QMessageBox.critical(self.root, "Cannot open", str(exc))
@@ -2853,6 +2859,12 @@ class EditorBinding(QObject):
             _log.debug("Save As: the open save's disk is full")
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, DISK_FULL)
             return
+        except dos_savegame.DosNameClashError as exc:
+            _log.debug("Save As: the open save's folder has a name clash: %s",
+                       exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE,
+                                 exc.player_message or SAVE_AS_FAILED)
+            return
         except Exception:
             _log.exception("could not read the open save for Save As")
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)
@@ -3376,6 +3388,10 @@ class EditorBinding(QObject):
         except AmigaDiskFull:
             _log.debug("Save As to %s: the copied disk 3 is full", path)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, DISK_FULL)
+        except dos_savegame.DosNameClashError as exc:
+            _log.debug("Save As to %s blocked: %s", path, exc)
+            QMessageBox.critical(self.root, CANNOT_SAVE_TITLE,
+                                 exc.player_message or SAVE_AS_FAILED)
         except Exception:
             _log.exception("could not prepare a Save As to %s", path)
             QMessageBox.critical(self.root, CANNOT_SAVE_TITLE, SAVE_AS_FAILED)

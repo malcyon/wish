@@ -184,26 +184,120 @@ def _clash_folder(folder: pathlib.Path, *names: str) -> None:
             b"\x00" * dos_port.POOL_OF_RADIANCE.record_size)
 
 
-@pytest.mark.parametrize("names", [
-    ("CHRDATD1.SAV", "chrdatd1.sav"),
-    ("CHRDATD1.SAV", "chrdatd1.sav", "Chrdatd1.sav"),
-], ids=["two", "three"])
-def test_opening_a_folder_with_a_case_clash_stops_and_changes_nothing(
-        two_case_names_possible, tmp_path, monkeypatch, names):
+def _clash_text(first: str, second: str) -> str:
+    return (
+        f"This folder contains both {first} and {second}. DOS treats "
+        "these names as the same save file.\n\nMove the copy you do not want "
+        "to another folder, then try again. No files have been changed.")
+
+
+def _boxes(monkeypatch):
+    import editor.window as ew
+
+    shown: list = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda _parent, title, text, *a, **k: shown.append(
+                            (title, text)))
+    monkeypatch.setattr(ew.QMessageBox, "warning", lambda *a, **k: None)
+    return shown
+
+
+def _snapshot(folder: pathlib.Path):
+    return sorted((p.name, p.read_bytes()) for p in folder.iterdir())
+
+
+@pytest.mark.parametrize("names, first, second", [
+    (("CHRDATD1.SAV", "chrdatd1.sav"), "CHRDATD1.SAV", "chrdatd1.sav"),
+    (("CHRDATD1.SAV", "chrdatd1.SAV"), "CHRDATD1.SAV", "chrdatd1.SAV"),
+], ids=["lower", "mixed"])
+def test_opening_a_folder_with_two_clashing_character_files_says_which(
+        two_case_names_possible, tmp_path, monkeypatch, names, first, second):
     from support.editorwindow import make_root
 
     import editor.window as ew
 
     _ = QApplication.instance() or QApplication([])
     _clash_folder(tmp_path / "slot", *names)
-    before = sorted((p.name, p.read_bytes()) for p in (tmp_path / "slot").iterdir())
-    shown = []
-    monkeypatch.setattr(ew.QMessageBox, "critical",
-                        lambda _parent, title, text, *a, **k: shown.append(title))
+    before = _snapshot(tmp_path / "slot")
+    shown = _boxes(monkeypatch)
     window = ew.EditorBinding(make_root())
 
     window.load(str(tmp_path / "slot" / "SAVGAMD.DAT"))
 
-    assert shown == ["Cannot open"]
+    assert shown == [("Cannot open", _clash_text(first, second))]
     assert window.party is None
-    assert sorted((p.name, p.read_bytes()) for p in (tmp_path / "slot").iterdir()) == before
+    assert _snapshot(tmp_path / "slot") == before
+
+
+def test_opening_a_folder_with_a_clash_among_three_names_shows_no_approved_pair(
+        two_case_names_possible, tmp_path, monkeypatch):
+    from support.editorwindow import make_root
+
+    import editor.window as ew
+
+    _ = QApplication.instance() or QApplication([])
+    _clash_folder(tmp_path / "slot", "CHRDATD1.SAV", "chrdatd1.sav",
+                  "Chrdatd1.sav")
+    before = _snapshot(tmp_path / "slot")
+    shown = _boxes(monkeypatch)
+    window = ew.EditorBinding(make_root())
+
+    window.load(str(tmp_path / "slot" / "SAVGAMD.DAT"))
+
+    assert [title for title, _text in shown] == ["Cannot open"]
+    assert "DOS treats these names" not in shown[0][1]
+    assert _snapshot(tmp_path / "slot") == before
+
+
+def test_opening_a_folder_with_a_clashing_item_file_says_which(
+        two_case_names_possible, tmp_path, monkeypatch):
+    from support.editorwindow import make_root
+
+    import editor.window as ew
+
+    _ = QApplication.instance() or QApplication([])
+    slot = tmp_path / "slot"
+    _clash_folder(slot, "CHRDATD1.SAV")
+    for name in ("CHRDATD1.ITM", "chrdatd1.itm"):
+        (slot / name).write_bytes(b"\x00" * dos_codec.ITEM_SIZE)
+    before = _snapshot(slot)
+    shown = _boxes(monkeypatch)
+    window = ew.EditorBinding(make_root())
+
+    window.load(str(slot / "SAVGAMD.DAT"))
+
+    assert shown == [("Cannot open",
+                      _clash_text("CHRDATD1.ITM", "chrdatd1.itm"))]
+    assert _snapshot(slot) == before
+
+
+@pytest.mark.parametrize("names, text", [
+    (["CHRDATD1.ITM", "chrdatd1.itm"],
+     _clash_text("CHRDATD1.ITM", "chrdatd1.itm")),
+    (["A.SAV", "a.sav", "A.sav"], None),
+], ids=["pair", "three"])
+def test_a_clash_found_while_preparing_a_save_as_is_shown_like_the_open_one(
+        tmp_path, monkeypatch, names, text):
+    from support.editorwindow import make_root
+
+    import editor.window as ew
+    from editor import saveplan
+    from goldbox import dos_savegame
+
+    _ = QApplication.instance() or QApplication([])
+    _slot(tmp_path)
+    shown = _boxes(monkeypatch)
+    window = ew.EditorBinding(make_root())
+    window.load(str(tmp_path))
+    assert window.party is not None and shown == []
+
+    def clash(*_args, **_kwargs):
+        raise dos_savegame.DosNameClashError(tmp_path, names)
+    monkeypatch.setattr(saveplan, "prepare_save_as", clash)
+    window.begin_save_as("dos")
+    window._child("destination_path").setText(str(tmp_path.parent / "out"))
+    window._child("button_destination_save_as").click()
+
+    assert [title for title, _body in shown] == ["Cannot save"]
+    assert shown[0][1] == (text or ew.SAVE_AS_FAILED)
+    assert not (tmp_path.parent / "out").exists()

@@ -104,8 +104,8 @@ slot or VM lane nobody is using.
 1. Pass `timeout: 600000` (the tool's own maximum) on every Bash call that
    converts a save, boots or drives an emulator, takes a screenshot, or waits
    on any of those — and on every poll loop too.
-2. Some operations genuinely take longer than ten minutes (a C64 write via
-   `EditorBinding.convert` has taken over 30 minutes on a busy night). When a
+2. Some operations genuinely take longer than ten minutes (a C64 Save As
+   write has taken over 30 minutes on a busy night). When a
    call is moved to the background anyway, poll its output file in the
    foreground for the harness's own completion marker rather than trusting the
    notification promise:

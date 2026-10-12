@@ -751,9 +751,7 @@ class C64ToDos(Direction):
     figure (`#320 (A C64 party converted to DOS arrives with no combat
     figure at all, because the table only runs one way)`). Save As
     supplies it, off the *source*'s own title rather than the destination's
-    (`#383 (The live Convert dialog never wires a C64 party's own combat
-    icon into DOS, so region_220 stays on the drop list)`); left out, every
-    figure is the game's own default, as before that ticket.
+    (`#383`); left out, every figure is the game's own default.
     """
 
     source_port = "c64"
