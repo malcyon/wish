@@ -20,6 +20,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_c64traitslots.py` | Checks which effects from both neutral effect lists reach the C64's ten trait slots. |
 | `test_companionc64.py` | Checks that a Curse or Silver Blades companion keeps his picture, gets his `MON` file's story byte and the default icon on the C64, and gets his `MON` id back from his name, on the player's own disks. |
 | `test_companions.py` | Checks that a C64 companion's name gives his `MON` file, picture and story byte, and that the default icon is the one `INIT` seeds, on the player's own Curse and Silver Blades disks. |
+| `test_companionshare.py` | Checks that a Curse or Silver Blades companion who joined on the C64 gets the treasure share his DOS join stores, on DOS and the Amiga and back, and that only companions no save holds have a share the DOS writer stops on, on the player's own disks. |
 | `test_convert.py` | Checks `editor.convert`'s registry: which directions the library can write whole, as round trips, and the dialog built on it. |
 | `test_convertmatrix.py` | Checks that the bytes Save As writes for each of the six DOS and C64 directions equal what the library's own entry point writes. |
 | `test_convertrun.py` | Checks that `tools/convert/convertrun.py` writes the bytes Save As prepared and reports why it stopped instead of writing. |

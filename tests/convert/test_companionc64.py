@@ -156,8 +156,9 @@ def test_a_companion_who_joined_on_the_c64_gets_his_mon_id_as_his_picture(
     char = c64_codec.read(rec, game=key, companions=table)
     assert char.get("unnamed_0ab") == table.picture_for(mon_id) == mon_id
     if "treasure_share" in char.fields:
-        # A bare `MON` payload holds the authors' `$FF` fill here, which no
-        # DOS record can; the picture is what this test is about.
+        # A bare `MON` payload holds `$FF` here, as DOS's own `MON` record
+        # does; the writer stops on bit 2, and the picture is what this test
+        # is about.
         char.set("treasure_share", 0, "test")
     back, _, _, _ = dos_codec.write(char, deltas=DEFAULTS[key])
     f = dos_port.FIELDS_BY_NAME_FOR[key]["unnamed_0ab"]

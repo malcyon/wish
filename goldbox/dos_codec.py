@@ -6913,8 +6913,8 @@ def write(char: NeutralCharacter,
     elif share is not None:
         if char.port == "C64" and int(share.value) & 0x04:
             raise ValueError(
-                f"treasure share {int(share.value):#04x} has bit 2 set; "
-                "DOS and Amiga records mask shares with 7")
+                f"treasure share {int(share.value):#04x} has bit 2 set, "
+                "which the C64 ignores and DOS and the Amiga may count")
         rec[share_offset] = int(share.value) & 0xFF
         emit(share, "field_83_87", share_offset, 1,
              " -- raw treasure share, unchanged")
