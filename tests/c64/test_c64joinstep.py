@@ -334,7 +334,7 @@ def test_the_join_step_stops_when_the_last_move_is_blocked(monkeypatch):
     assert game.keys == []
 
 
-# --- the review's guards ---------------------------------------------------------
+# --- bounded waits, highlight and text checks before a key, gates put back ------
 
 class Looped(RuntimeError):
     """A fake clock ran past any bound the step has: the step never stops."""
