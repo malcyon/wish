@@ -936,13 +936,19 @@ CLIXML_ERROR = re.compile(r'<S S="Error">(.*?)</S>', re.S)
 CLIXML_ESCAPE = re.compile(r"_x([0-9A-Fa-f]{4})_")
 
 
+def _clixml_char(match: re.Match[str]) -> str:
+    """The character a CLIXML `_xHHHH_` escape stands for; a lone surrogate, which no encoding can write, is U+FFFD."""
+    code = int(match.group(1), 16)
+    return "\ufffd" if 0xD800 <= code <= 0xDFFF else chr(code)
+
+
 def clixml_errors(text: str) -> str:
     """The error records in the CLIXML PowerShell writes to a redirected stderr, as text."""
     if CLIXML not in text:
         return ""
     xml = text[text.index(CLIXML):]
     found = "".join(html.unescape(m) for m in CLIXML_ERROR.findall(xml))
-    found = CLIXML_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), found)
+    found = CLIXML_ESCAPE.sub(_clixml_char, found)
     return " ".join(found.split())
 
 

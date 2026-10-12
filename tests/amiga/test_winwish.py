@@ -1307,6 +1307,13 @@ def test_an_answer_cut_after_the_begin_marker_names_powershells_error_and_the_ex
     assert "progress" not in message and "_x000D_" not in message
 
 
+def test_a_surrogate_escape_in_a_powershell_error_becomes_a_replacement_character():
+    text = '#< CLIXML\n<Objs><S S="Error">bad _xD800_ and _xDFFF_ end_x000D__x000A_</S></Objs>'
+    found = winwish.clixml_errors(text)
+    # ascii() keeps a failing diff serialisable: xdist loses a report that holds a lone surrogate.
+    assert ascii(found) == ascii("bad \ufffd and \ufffd end")
+
+
 def test_an_answer_cut_with_no_powershell_error_blames_the_session_and_keeps_sshs_words():
     run = FakeRun([(lambda a: a[1] == "ps", 255,
                     "\n".join([winwish.UI_BEGIN, "ok", "#< CLIXML",
