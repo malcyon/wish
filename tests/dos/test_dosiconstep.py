@@ -40,12 +40,17 @@ BARS = {
     "ssb": {"camp": "SAVE VIEW MAGIC REST ALTER FIX EXIT",
             "alter": "ORDER DROP SPEED ICON LEVEL EXIT",
             "icon": "PARTS 1ST-COLOR 2ND-COLOR SIZE EXIT"},
+    # Pools of Darkness spells its bars in `GAME.EXE`; its camp bar has no
+    # `REST` (measured, `s10s-dev-darkness`).
+    "darkness": {"camp": "SAVE VIEW MAGIC ALTER EXIT",
+                 "alter": "ORDER DROP SPEED ICON LEVEL EXIT",
+                 "icon": "PARTS 1ST-COLOR 2ND-COLOR SIZE EXIT"},
 }
 QUESTION = "IS THIS ICON OK? YES NO"
 NEXT_KEY = {"pool": da.POOL_ROSTER_NEXT, "curse": da.CAMP_ROSTER_NEXT["curse"],
-            "ssb": da.CAMP_ROSTER_NEXT["ssb"]}
+            "ssb": da.CAMP_ROSTER_NEXT["ssb"], "darkness": da.POD_ROSTER_NEXT}
 NAMES = ("BRUTUS", "MAGNUS", "ROLAND")
-#: The record sizes of the three titles, which name their layouts.
+#: The record sizes of the four titles, which name their layouts.
 SIZES = {"pool": 285, "curse": 422, "ssb": 439, "darkness": 510}
 
 
@@ -67,7 +72,7 @@ def _record(title: str, name: str) -> bytes:
 
 
 class FakeIcon:
-    """A camp with `ALTER > ICON` as the three overlays run it.
+    """A camp with `ALTER > ICON` as the four overlays run it.
 
     `failure` breaks one screen of the route: `alter` (ALTER opens some other
     bar), `icon` (ICON does), `question` (EXIT asks nothing and goes back to
@@ -168,7 +173,7 @@ def _camped(tmp_path, title, **kw) -> tuple[FakeIcon, da.Driver]:
 # -- the route ---------------------------------------------------------------
 
 
-@pytest.mark.parametrize("title", sorted(da.ICON_TITLES))
+@pytest.mark.parametrize("title", sorted(BARS))
 @pytest.mark.parametrize("line", (1, 3))
 def test_icon_shoots_the_lines_screen_and_comes_back_to_camp(tmp_path, title, line):
     game, d = _camped(tmp_path, title)
@@ -183,7 +188,7 @@ def test_icon_shoots_the_lines_screen_and_comes_back_to_camp(tmp_path, title, li
     assert got["icon"].endswith(f"icon-{line}")
 
 
-@pytest.mark.parametrize("title", sorted(da.ICON_TITLES))
+@pytest.mark.parametrize("title", sorted(BARS))
 def test_icon_presses_nothing_that_edits_the_figure_or_saves(tmp_path, title):
     game, d = _camped(tmp_path, title)
     for line in (1, 2, 3):
@@ -254,7 +259,7 @@ def test_a_save_folder_that_changed_stops_the_step(tmp_path):
         d.icon(1)
 
 
-def test_icon_is_not_driven_outside_camp_or_in_darkness(tmp_path):
+def test_icon_is_not_driven_outside_camp(tmp_path):
     game, d = _camped(tmp_path, "pool")
     d.where = "map"
     with pytest.raises(da.StepFailed, match="camp first"):
@@ -282,6 +287,7 @@ def test_each_bar_of_the_route_is_read_as_its_own_screen(title):
 
 @pytest.mark.parametrize("bar", (
     "", "SAVE VIEW MAGIC REST EXIT",                    # no ALTER
+    "SAVE VIEW REST ALTER EXIT",                        # no MAGIC
     "ORDER DROP SPEED PICS EXIT",                       # no ICON
     "PARTS SIZE EXIT",                                  # no colour word
     "ICON:PARTS COLOR-1 COLOR-2 SIZE",                  # does not end in EXIT
@@ -309,17 +315,18 @@ def test_icon_parses_and_is_ordered_after_camp():
     with pytest.raises(ValueError, match="camp first"):
         da.validate_steps([da.parse_step(s) for s in ("load", "begin", "icon 1")],
                           "curse")
-    with pytest.raises(ValueError, match="not darkness"):
-        da.validate_steps([da.parse_step(s) for s in ("load", "begin", "camp",
-                                                      "icon 1")], "darkness")
+    da.validate_steps([da.parse_step(s) for s in ("load", "begin", "camp", "icon 1",
+                                                  "icon 6")], "darkness")
 
 
 #: Where each title's ICON editor reads and writes the figure: head, body,
 #: size and the first colour byte (Pool `GAME.OVR` 0x1D235-0x1D24B and
-#: 0x1D1F7, Curse 0x24509-0x24532, Silver Blades 0x219F7-0x21A20).
+#: 0x1D1F7, Curse 0x24509-0x24532, Silver Blades 0x219F7-0x21A20, Pools of
+#: Darkness 0x183E9-0x18420).
 OVERLAY_OFFSETS = {"pool": (0x0BD, 0x0BE, 0x0C0, 0x0C1),
                    "curse": (0x141, 0x142, 0x144, 0x145),
-                   "ssb": (0x153, 0x154, 0x156, 0x157)}
+                   "ssb": (0x153, 0x154, 0x156, 0x157),
+                   "darkness": (0x19A, 0x19B, 0x19D, 0x19E)}
 
 
 @pytest.mark.parametrize("title", sorted(OVERLAY_OFFSETS))

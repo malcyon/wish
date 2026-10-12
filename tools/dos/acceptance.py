@@ -223,7 +223,7 @@ body and six colour bytes) at the title's own record offsets
 (`goldbox.dos_port`), leaving `size` alone, last of the stages.
 
 **`icon N` shoots roster line N's own `ALTER > ICON` screen in camp** (Pool,
-Curse and Silver Blades) and leaves the figure as it was.  The line is
+Curse, Silver Blades and Pools of Darkness) and leaves the figure as it was.  The line is
 highlighted as for `sheet N`, its name read off the roster with the title's
 font names the installed record, and every key goes out only after its bar
 has been read as text: `ALTER` on the camp bar, `ICON` on the Alter bar,
@@ -1154,22 +1154,33 @@ ICON_OPEN = "i"
 #: answer starts the editor again (Pool 0x1D89E, Curse 0x24596, Silver
 #: Blades 0x21A87).  So with no sub-menu opened, `E` then `Y` leaves the
 #: figure as it was, and `Y` is the only way out.
+#:
+#: Pools of Darkness runs the same exit through its menu routine
+#: (`GAME.OVR` 0x3A422), which returns the index of the item whose first
+#: letter or digit is the upper-cased key (hotkeys built at 0x3A220, looked
+#: up at 0x3A376), and Return the highlighted item's.  The ICON bar's item
+#: 4, `Exit`, ends the editor (0x17FD8); the copy taken on entry (0x17E72)
+#: is written back at 0x183E9-0x18420; `Is this icon ok?` (ds:0x1D4E) goes
+#: to the Yes/No menu 0x3B66D, which highlights item [0x5362] + 1 and
+#: returns 0 for `Yes`; 0x1846A leaves on [0x5362], 0 in the data and never
+#: stored, and anything else restarts the editor at 0x17E52.
 ICON_EXIT = "e"
 ICON_KEEP = "y"
 #: `EXIT` on the Alter bar, back to the camp bar.
 ALTER_EXIT = "e"
-#: The titles `icon N` is driven in.  Pools of Darkness has the same strings
-#: (`GAME.EXE`), but its editor's exit has not been read.
-ICON_TITLES = frozenset({"pool", "curse", "ssb"})
+#: The titles `icon N` is driven in.
+ICON_TITLES = frozenset({"pool", "curse", "ssb", "darkness"})
 #: The words each bar of the route must hold, read with the title's font.
 #: The ICON bar's colour words differ: Pool's `COLOR-1 COLOR-2`, the later
-#: titles' `1ST-COLOR 2ND-COLOR` (`START.EXE`).
-ICON_CAMP_WORDS = frozenset({"SAVE", "VIEW", "MAGIC", "REST", "ALTER"})
+#: titles' `1ST-COLOR 2ND-COLOR` (`START.EXE`; Pools of Darkness `GAME.EXE`,
+#: whose Alter and ICON bars are Silver Blades' words).  Pools of Darkness'
+#: camp bar is `SAVE VIEW MAGIC ALTER EXIT`, with no `REST`.
+ICON_CAMP_WORDS = frozenset({"SAVE", "VIEW", "MAGIC", "ALTER"})
 ICON_ALTER_WORDS = frozenset({"ORDER", "DROP", "SPEED", "ICON"})
 ICON_BAR_WORDS = frozenset({"PARTS", "SIZE"})
 ICON_COLOUR_WORDS = frozenset({"COLOR-1", "1ST-COLOR"})
 #: The question the editor asks on the way out, `Is this icon ok?` in all
-#: three overlays (Pool `GAME.OVR` 0x1D19A).
+#: four titles (Pool `GAME.OVR` 0x1D19A, Pools of Darkness `GAME.EXE`).
 ICON_QUESTION = "THIS ICON OK"
 #: How long each screen of the route is given to show after its key, and
 #: the gap between the two captures that must read it the same.
@@ -1178,9 +1189,11 @@ ICON_SETTLE = 0.5
 #: The OLD and NEW figure bands of the ICON screen, under the `OLD` and
 #: `NEW` labels at text rows 6 and 12 (Pool `GAME.OVR` 0x1D272-0x1D2E1):
 #: OLD at y 56-79 and NEW at y 104-127, each a 24-pixel READY box at x 32-55
-#: and an ACTION box at x 104-127.  Measured on seven captures, three Pool,
-#: two Curse and two Silver Blades, where every non-paper pixel of the four
-#: figures fell inside the boxes and the two bands were equal.
+#: and an ACTION box at x 104-127.  Measured on eleven captures, three Pool,
+#: two Curse, two Silver Blades and four Pools of Darkness (two members, at
+#: the ICON bar and at the question), where every non-paper pixel of the four
+#: figures fell inside the boxes and the two bands were equal.  Pools of
+#: Darkness also draws its mouse pointer near (163-176, 100-115), outside.
 ICON_FIGURES = {title: ((32, 56, 96, 24), (32, 104, 96, 24)) for title in ICON_TITLES}
 #: The roster's first text row and column in camp (`POD_ROSTER["camp"]`).
 ICON_ROSTER_ROW, ICON_ROSTER_COLUMN = 32 // CELL, 136 // CELL
