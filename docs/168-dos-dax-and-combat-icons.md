@@ -111,6 +111,43 @@ of BRUTUS's prediction against MAGNUS's screen differs in 77 pixels.
 `tests/icons/test_dosicons.py` repeats the comparison wherever the captures
 are, and `tools/icons/dosicons.py --capture NAME PNG` compares one member.
 
+## Pools of Darkness
+
+Pools of Darkness keeps the block numbering and the colour rule but stores its
+art for VGA, so `goldbox/dos_pod_icons.py` reads it rather than
+`goldbox/dos_icons.py`. Read statically from the archives' `DARKNESS`
+folder: `GAME.OVR` by file offset, and `GAME.EXE` by offset in its load image
+as `tools/dos/unexepack.py` expands it (data segment `0x9E7`). Everything here is for the VGA mode the
+shipped `POOL4.CFG` selects; the EGA path (display mode 0) was not read.
+
+| rule | grade | evidence |
+|---|---|---|
+| The display line `V` selects display mode 2 and BIOS mode 13h; `E` mode 0, `T` mode 1 | CONFIRMED | `GAME.EXE` image `0x1A08`-`0x1A79` sets `ds:0x8834` and the BIOS mode from the config character; the archives' `POOL4.CFG` reads `1`, `V` |
+| The image header: byte 0 rows, byte 1 width in eights, word 6 the frame count, byte 8 the first palette entry, byte 9 the count less one, then three six-bit DAC values an entry, one EGA nibble an entry (high first), and four bytes skipped (32 for a 112-entry palette from entry 32) | CONFIRMED by code and by length | the header reader `GAME.EXE` image `0x1CE9`; every block of `CHEAD.DAX` (28), `CBODY.DAX` (128) and `COMSPR.DAX` (44) is exactly that header plus `rows x width` bytes, so 182 bytes for the figures' 48 entries from `0x60` and 126 for `COMSPR`'s 32 from `0x40` |
+| Words 2 and 4 go into the image record (`+4`, `+6`) and are 0 in every figure block; the header palette goes to the shadow palette `ds:0xD51E` and the nibbles to `ds:0xD81E`, neither to the hardware | CONFIRMED | `0x1F19`-`0x1F2B`, `0x1DA2`-`0x1E4F`; the shadow reaches the DAC only through `0x3B54` |
+| In mode 2 the pixels are copied as they are, one byte a pixel, to the image record's `+0x1B` | CONFIRMED | `0x2386`-`0x23EC` |
+| Every head and body byte is a part number 0-15; 8 is the commonest | CONFIRMED | sweep of all 156 blocks |
+| The block loader (`GAME.OVR:0x3FEE9`) adds `0x40` when the name ends in `T` (`size` 2), loads the body's second pose from `id + 0x80`, and loads the *same* head block for both poses; `CHEAD.DAX` holds only ids 0-13 and 64-77 | CONFIRMED | `0x3FF63`, `0x3FFCD` (the `CHEAD` compare), `0x40002` |
+| The figure fields are `icon_head` `@0x19A`, `icon_body` `@0x19B`, the figure slot `@0x19C`, `size` `@0x19D` and `icon_colours` `@0x19E`-`0x1A3` | CONFIRMED by code and by `goldbox.dos_port` | the loader `0x11048`; the ICON routine's write-back `0x183E9`-`0x18420` |
+| The see-through value is 8: the block loader passes key 8 for `CHEAD`, `CBODY` and `COMSPR`, and the VGA blitter skips every pixel equal to the key | CONFIRMED by code | key `0x3FFA4`, `0x400AE`; stored at `+0x16` by `0x1F36`; blitter `GAME.EXE` image `0x4541`, loop `0x4776`-`0x4784`; mode 2 builds no mask (`+0x17` is 0, `0x1EF4`) |
+| In mode 2 the head is written over the body wherever the head byte is not 8, from row 0; mode 0 ORs as the other titles do | CONFIRMED by code | `GAME.OVR:0x10F8F`-`0x10FEB`, called twice by the loader |
+| The recolour is the other titles' rule: part table `ds:0x6DDD` = `06 01 02 03 04 06 07`, low nibble to part `t`, high to `t + 8`, one simultaneous substitution | CONFIRMED by code | table builder `0x11134`-`0x111BE` and the ICON copy `0x17D2D`-`0x17DB7`; substitution `GAME.EXE` image `0x3051`, VGA branch `0x34B6` |
+| So a stored 8 is see-through, a stored or recoloured 0 draws black, and a colour nibble of 8 makes its part see-through | CONFIRMED by code; not captured | the blitter compares the recoloured byte with the key |
+| The ICON screen draws the figure from slot 12, a recoloured copy of the member's slot, at cells (1, 2) and (4, 2) for OLD and (1, 4) and (4, 4) for NEW, over `COMSPR` block 15 pose 0 behind both poses | CONFIRMED by code | routine `0x17E16`: box load `0x17E33`, copy and recolour `0x17BE4`, draw `0x17B42` with rows 2 and 4 |
+| `COMSPR` block 15 has no see-through pixel, so whatever the screen fills behind it does not show | CONFIRMED | the archives' block holds only 0x48, 0x4F and 0x57; the fill routine `GAME.EXE` image `0x3727` was not read, and `on_box` stops on a box with see-through pixels |
+| The ICON routine sets DAC entries 0x40-0x5F from the box block's header palette and no other entry | CONFIRMED by code | `0x17E45`; the routine's only other calls are menus, text, the loader and the draws |
+| DAC entries 0-15 hold the sixteen EGA colours on the ICON screen | PROBABLE | `0x1A106` writes them from `GAME.EXE` `ds:0x9D6` and applies them (`0x1A1A2`); every block in the folder whose palette covers 0-15 (`8X8D0` 202, `CURSOR` 1, `TITLE` 1-3) holds the same sixteen. Not captured |
+| The pixel places equal the other titles' measured ones, (32, 56), (104, 56), (32, 104), (104, 104) | SPECULATIVE | same cells and the same `* 3` eight-pixel units (`0x4021A`); the VGA flush from the screen buffer to video memory was not read. A VGA ICON capture settles it |
+| The answer to `is this icon ok?` is the menu item index, and Yes is item 0; `ds:0x5362` is 0, so Yes leaves the editor | CONFIRMED by code | `0x3B66D` returns the `Yes No` item (`ds:0x2B64`) and highlights item `[0x5362] + 1` first; `ds:0x5362` is 0 in `GAME.EXE`'s data and no instruction stores to it; `0x1846A` |
+| Both `y` and Return answer Yes | PROBABLE | the menu `0x3A422` upper-cases the key and matches the item hotkeys (`0x3A90F`), and Return takes the highlighted item; the hotkey table builder `0x3A376` was not read |
+
+**Settling experiments.** One DOSBox-X boot of the archives' `DARKNESS`, slot
+A, reaching camp, Alter, Icon for DOMINIC: compare each pose at the four
+places against `compose` and `on_box`, which settles the places and entries
+0-15. Stage one member's `icon_colours` with a low nibble of 8 in the body
+byte (`98 ..`) first: the body should show the box through it, or the
+see-through reading is wrong.
+
 ## `icon_dimension` `@0x06C` -- CONFIRMED
 
 It is the creature's combat footprint, and a player's is always 1:

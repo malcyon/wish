@@ -1,10 +1,12 @@
-"""`goldbox/dos_icons.py` composes a DOS combat figure the way the loader does.
+"""`goldbox/dos_icons.py` and `goldbox/dos_pod_icons.py` compose a DOS combat
+figure the way the loader does.
 
 The synthetic tests build their own blocks, so they run anywhere.  The rest
 read the player's DOS games and skip without them: every block decodes, Silver
 Blades' re-drawn head comes from its own file, Donald's own Pool of Radiance
-party composes, and `tools/icons/dosicons.py` re-reads every rule the module
-holds out of each title's `GAME.OVR` and `START.EXE`.
+party composes, `tools/icons/dosicons.py` re-reads every rule the module
+holds out of each title's `GAME.OVR` and `START.EXE`, and Pools of Darkness'
+blocks hold part values and the archives' party composes over the box.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import struct
 import pytest
 
 from goldbox import dos_icons as di
+from goldbox import dos_pod_icons as dp
 
 POOL, CURSE, SSB = ("pool-of-radiance", "curse-of-the-azure-bonds",
                     "secret-of-the-silver-blades")
@@ -339,3 +342,196 @@ def test_every_captured_icon_screen_is_the_composed_figure(folders):
                 if differ:
                     wrong.append((run, result["name"], which, n, differ))
     assert wrong == []
+
+
+# -- Pools of Darkness ------------------------------------------------------------------
+#: Pools of Darkness keeps the archives' game folder name.
+POD = "pools-of-darkness"
+
+
+def pod_image(rows: list[list[int]], first: int = 0x60, count: int = 48,
+              colours: bytes | None = None) -> bytes:
+    """A VGA block: the header the reader takes, then one byte a pixel."""
+    height, width = len(rows), len(rows[0])
+    head = bytes([height, width // 8, 0, 0, 0, 0, 1, 0, first, count - 1])
+    pal = colours if colours is not None else bytes(3 * count)
+    out = head + pal + bytes(count // 2) + bytes(4)
+    return out + bytes(v for row in rows for v in row)
+
+
+def pod_blank(height: int = 24, value: int = dp.KEY) -> list[list[int]]:
+    return [[value] * 24 for _ in range(height)]
+
+
+def pod_block(rows) -> dp.PodBlock:
+    return dp.decode_block(pod_image(rows))
+
+
+def pod_art(head_rows, body_rows, body_action=None, head_id=0, body_id=0,
+            size=2):
+    """Heads and bodies holding one head and one body at `size`."""
+    (head, ready), (_, action) = dp.block_ids(head_id, body_id, size)
+    heads = {head: pod_block(head_rows)}
+    bodies = {ready: pod_block(body_rows),
+              action: pod_block(body_action or body_rows)}
+    return heads, bodies
+
+
+def test_a_pod_figure_block_has_the_182_byte_header():
+    """48 palette entries of three bytes, 24 nibble bytes and four skipped."""
+    raw = pod_image(pod_blank(10))
+    assert len(raw) == 182 + 10 * 24
+    assert dp.header_length(48, 0x60) == 182
+    assert dp.header_length(32, 0x40) == 126
+
+
+def test_a_pod_block_reads_one_byte_a_pixel():
+    rows = pod_blank(2)
+    rows[0][:3] = [0x12, 0x57, 3]
+    block = dp.decode_block(pod_image(rows))
+    assert block.rows[0][:3] == (0x12, 0x57, 3)
+    assert (block.height, block.width, block.first) == (2, 24, 0x60)
+
+
+def test_a_pod_block_keeps_its_palette_and_ega_nibbles():
+    colours = bytes(range(6)) + bytes(3 * 30)
+    raw = bytearray(pod_image(pod_blank(1), first=0x40, count=32,
+                              colours=colours))
+    raw[10 + 96] = 0x9A
+    block = dp.decode_block(bytes(raw))
+    assert block.colours[:2] == ((0, 1, 2), (3, 4, 5))
+    assert block.ega[:2] == (9, 10)
+
+
+def test_a_pod_block_whose_length_the_header_does_not_describe_is_named():
+    with pytest.raises(dp.DosArtError, match="not 421"):
+        dp.decode_block(pod_image(pod_blank(10))[:-1])
+
+
+def test_the_pod_head_is_written_over_the_body_where_it_is_not_8():
+    head, body = pod_blank(10), pod_blank(24, 1)
+    head[0][0], head[0][1] = 0, 2
+    ready, _ = dp.compose(*pod_art(head, body), 0, 0, 2, SAME)
+    assert ready[0][:3] == (0, 2, 1)
+
+
+def test_the_pod_head_lands_from_row_0():
+    head, body = pod_blank(10), pod_blank()
+    head[0][5] = 4
+    ready, _ = dp.compose(*pod_art(head, body), 0, 0, 2, SAME)
+    assert ready[0][5] == 4
+    assert all(v is None for row in ready[1:] for v in row)
+
+
+def test_both_pod_poses_share_the_head_and_take_their_own_body():
+    head, body, action = pod_blank(10), pod_blank(), pod_blank()
+    head[0][0], body[23][0], action[23][1] = 4, 1, 2
+    heads, bodies = pod_art(head, body, action)
+    assert list(heads) == [64]
+    assert sorted(bodies) == [64, 192]
+    ready, act = dp.compose(heads, bodies, 0, 0, 2, SAME)
+    assert (ready[0][0], act[0][0]) == (4, 4)
+    assert (ready[23][:2], act[23][:2]) == ((1, None), (None, 2))
+
+
+def test_pod_size_one_reads_the_blocks_from_0():
+    assert dp.block_ids(3, 7, 1) == ((3, 7), (3, 135))
+    assert dp.block_ids(3, 7, 2) == ((67, 71), (67, 199))
+
+
+def test_the_pod_recolour_takes_the_low_nibble_for_the_part():
+    body = pod_blank()
+    body[0][:2] = [1, 9]
+    colours = bytes.fromhex("5aa2b3c4e6f7")
+    ready, _ = dp.compose(*pod_art(pod_blank(10), body), 0, 0, 2, colours)
+    assert ready[0][:2] == (0xA, 0x5)
+
+
+def test_a_pod_pixel_is_see_through_wherever_it_ends_as_8():
+    """Stored 8 is see-through; so is a part a colour nibble turns into 8."""
+    body = pod_blank()
+    body[0][:3] = [0, 1, 2]
+    colours = bytes.fromhex("98a2b3c4e6f7")
+    ready, _ = dp.compose(*pod_art(pod_blank(10), body), 0, 0, 2, colours)
+    assert ready[0][:4] == (0, None, 2, None)
+
+
+def test_the_pod_box_shows_only_where_the_figure_is_see_through():
+    box = pod_block(pod_blank(24, 0x57))
+    pose = tuple(tuple([4] + [None] * 23) for _ in range(24))
+    drawn = dp.on_box(box, pose)
+    assert drawn[0][:2] == (4, 0x57)
+
+
+def test_a_pod_box_with_see_through_pixels_is_named():
+    with pytest.raises(dp.DosArtError, match="see-through"):
+        dp.on_box(pod_block(pod_blank()), ((None,) * 24,) * 24)
+
+
+def test_the_pod_palette_is_ega_below_16_and_the_box_s_own_above():
+    colours = bytes([0x2A, 0x15, 0x3F]) + bytes(3 * 31)
+    box = dp.decode_block(pod_image(pod_blank(24, 0x40), first=0x40,
+                                    count=32, colours=colours))
+    palette = dp.icon_palette(dp.PodGameArt({}, {}, box))
+    assert palette[0x40] == (0xAA, 0x55, 0xFF)
+    assert [palette[i] for i in range(16)] == list(di.EGA)
+    assert 0x60 not in palette
+
+
+def test_a_pod_game_folder_is_read_whatever_the_case_of_its_names(tmp_path):
+    head, body = pod_image(pod_blank(10)), pod_image(pod_blank())
+    box = pod_image(pod_blank(24, 0x57), first=0x40, count=32)
+    (tmp_path / "chead.dax").write_bytes(dax({64: head}))
+    (tmp_path / "CBODY.DAX").write_bytes(dax({64: body, 192: body}))
+    (tmp_path / "Comspr.Dax").write_bytes(dax({15: box}))
+    game = dp.read_game(tmp_path)
+    assert sorted(game.heads) == [64]
+    assert game.box.rows[0][0] == 0x57
+
+
+def test_a_pod_game_folder_without_the_box_is_named(tmp_path):
+    raw = pod_image(pod_blank())
+    for name in ("CHEAD.DAX", "CBODY.DAX", "COMSPR.DAX"):
+        (tmp_path / name).write_bytes(dax({0: raw}))
+    with pytest.raises(dp.DosArtError, match="no block 15"):
+        dp.read_game(tmp_path)
+
+
+@pytest.fixture(scope="module")
+def pod_folder():
+    dosicontitles = pytest.importorskip("tools.icons.dosicontitles")
+    gamedisks = pytest.importorskip("automap.gamedisks")
+    root = gamedisks.find("dos-archives")
+    if root is None:
+        pytest.skip("needs the DOS games; set $FR_ARCHIVES")
+    try:
+        return dosicontitles.find_folders(root, [POD])[POD]
+    except SystemExit as exc:
+        pytest.skip(str(exc))
+
+
+def test_every_pod_figure_block_decodes_to_part_values(pod_folder):
+    game = dp.read_game(pod_folder)
+    assert sorted(game.heads) == [*range(14), *range(64, 78)]
+    assert len(game.bodies) == 128
+    blocks = [*game.heads.values(), *game.bodies.values()]
+    assert all(b.width == 24 for b in blocks)
+    assert {v for b in blocks for row in b.rows for v in row} <= set(range(16))
+    assert not any(v == dp.KEY for row in game.box.rows for v in row)
+
+
+def test_the_archives_pod_party_composes(pod_folder):
+    from goldbox import dos_codec
+    game = dp.read_game(pod_folder)
+    records = sorted((pod_folder / "SAVE").glob("CHRDATA?.SAV"))
+    if not records:
+        pytest.skip("the archives' Pools of Darkness has no slot A party")
+    palette = dp.icon_palette(game)
+    for path in records:
+        char = dos_codec.read_character(path)
+        for pose in dp.compose(game.heads, game.bodies, char.get("icon_head"),
+                               char.get("icon_body"), char.get("size"),
+                               bytes(char.get("icon_colours"))):
+            drawn = dp.on_box(game.box, pose)
+            assert sum(v is not None for row in pose for v in row) > 50
+            assert all(v in palette for row in drawn for v in row)
