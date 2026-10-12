@@ -13,8 +13,10 @@ just before `R` and with his record in the loaded slot.
         --holder H --out DIR [--wait-lane S]
     tools/amiga/poolremove.py judge --out DIR
 
-The walk starts in New Phlan, or on the Slums square west of its gate
-(`SLUMS_START`), and keeps off every square that carries a script id until the
+The walk starts in New Phlan or anywhere in the Slums. A Slums walk keeps off
+every Slums square that carries a script id until the gate square (`SLUMS_GATE`),
+faces east and steps into New Phlan at (0,4). In New Phlan it keeps off every square
+that carries a script id until the
 hall's door at (6,2), where New Phlan's script loads the hall (area 11). Inside,
 the party walks north to (6,0) and east into the magic-users' school at (7,0),
 which asks whether to train; YES opens the party menu (ECL0B `PROGRAM 0`).
@@ -52,7 +54,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from goldbox import amiga_adf, amiga_por, amiga_savegame, geo  # noqa: E402
+from goldbox import amiga_adf, amiga_por, amiga_savegame, areas, geo  # noqa: E402
 from tools.amiga import acceptance, noencounters, route_pool  # noqa: E402
 from tools.amiga.screens import PixelGuards  # noqa: E402
 from tools.amiga.staging import sha256  # noqa: E402
@@ -69,8 +71,14 @@ SLUMS_START: Place = (SLUMS, 15, 4, geo.WEST)
 SLUMS_EXIT: tuple[tuple[str, Place], ...] = (
     ("NP6", (SLUMS, 15, 4, geo.NORTH)), ("NP6", (SLUMS, 15, 4, geo.EAST)),
     ("NP8", (NEW_PHLAN, 0, 4, geo.EAST)))
+#: The Slums square a step east from which lands in New Phlan at `GATE_LANDING`
+#: (`route_pool.POOL.edge_exits`), and that landing.
+SLUMS_GATE = SLUMS_START[1:3]
+GATE_LANDING: Place = SLUMS_EXIT[-1][1]
 #: New Phlan's square whose script id 10 sends the party into the hall (ECL00 `NEWECL 11`).
 HALL_DOOR = (6, 2)
+#: The Slums' wall data on the game disks.
+SLUMS_GEO = areas.area_in(SLUMS, areas.POOL_OF_RADIANCE).geos[0]
 #: Inside the hall, on New Phlan's map: north to (6,0), then east into the magic-users' school
 #: (7,0), square attribute 13, whose `DO YOU WANT TO TRAIN?` is answered YES.
 HALL_SQUARES = ((6, 1), (6, 0), (7, 0))
@@ -271,8 +279,9 @@ def _open(walls: Any, x: int, y: int, direction: int) -> bool:
             or walls.barrier(x, y, direction) == geo.PASSABLE)
 
 
-def _path(walls: Any, start: tuple[int, int], goal: tuple[int, int]) -> list[tuple[int, int]]:
-    """The shortest New Phlan path from `start` to `goal` that enters no square with a script id but `goal`."""
+def _path(walls: Any, start: tuple[int, int], goal: tuple[int, int],
+          where: str = "New Phlan", goal_name: str = "the hall's door") -> list[tuple[int, int]]:
+    """The shortest path on `walls` from `start` to `goal` that enters no square with a script id but `goal`."""
     previous: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
     queue = collections.deque([start])
     while queue:
@@ -287,7 +296,7 @@ def _path(walls: Any, start: tuple[int, int], goal: tuple[int, int]) -> list[tup
                 continue
             previous[there] = here
             queue.append(there)
-    require(goal in previous, f"New Phlan has no path from {start} to the hall's door {goal} "
+    require(goal in previous, f"{where} has no path from {start} to {goal_name} {goal} "
                               "that keeps off the squares with scripts")
     path, square = [], goal
     while square is not None:
@@ -318,17 +327,33 @@ def _steps(place: Place, squares: Sequence[tuple[int, int]], area_of: Callable[[
     return steps, (area, x, y, facing)
 
 
-def plan_walk(place: Place, walls: Any) -> list[WalkStep]:
+def _gate_exit(place: Place, slums: Any) -> list[WalkStep]:
+    """From `SLUMS_GATE`, the turns to face east and the step into New Phlan.
+
+    A party facing west turns right twice, the keys the temple runs measured (`SLUMS_EXIT`).
+    """
+    require(_open(slums, *SLUMS_GATE, geo.EAST), f"the Slums gate {SLUMS_GATE} is closed to the east")
+    turn = (geo.EAST - place[3]) % 4
+    if turn == 2:
+        return [WalkStep(key, expect) for key, expect in SLUMS_EXIT]
+    steps = [WalkStep(TURNS[turn], (SLUMS, *SLUMS_GATE, geo.EAST))] if turn else []
+    return [*steps, WalkStep(STEP, GATE_LANDING)]
+
+
+def plan_walk(place: Place, walls: Any, slums: Any = None) -> list[WalkStep]:
     """The keys from `place` to the school's question, each with the place it must leave the party on.
 
-    `walls` is New Phlan's map (`GEO00`), which the hall shares. A start that is neither in
-    New Phlan nor `SLUMS_START` is blocked.
+    `walls` is New Phlan's map (`GEO00`), which the hall shares; `slums` is the Slums' map
+    (`GEO14`), needed for a start there. A start in any other area is blocked.
     """
     steps: list[WalkStep] = []
-    if place == SLUMS_START:
-        steps += [WalkStep(key, expect) for key, expect in SLUMS_EXIT]
-        place = SLUMS_EXIT[-1][1]
-    require(place[0] == NEW_PHLAN, f"the walk starts in New Phlan or at {SLUMS_START}, "
+    if place[0] == SLUMS:
+        require(slums is not None, "a walk from the Slums needs the Slums' map")
+        route = _path(slums, (place[1], place[2]), SLUMS_GATE, "The Slums", "the gate")[1:]
+        steps, place = _steps(place, route, lambda s: SLUMS, slums, last_answers=False)
+        steps += _gate_exit(place, slums)
+        place = GATE_LANDING
+    require(place[0] == NEW_PHLAN, f"the walk starts in New Phlan or the Slums, "
                                    f"not at {place}")
     route = _path(walls, (place[1], place[2]), HALL_DOOR)[1:]
     outside, place = _steps(place, route, lambda s: HALL if s == HALL_DOOR else NEW_PHLAN,
@@ -483,7 +508,7 @@ def preflight(manifest_path: pathlib.Path, member: str,
                                       f"exactly one {member}")
     require(all(state in HALL_GUARDS for state in HALL_STATES),
             "the hall's screens have no guards")
-    steps = plan_walk(manifest_place(manifest), load_geo("GEO00"))
+    steps = plan_walk(manifest_place(manifest), load_geo("GEO00"), load_geo(SLUMS_GEO))
     return manifest, steps, names.index(wanted) + 1
 
 
@@ -750,7 +775,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "plan":
             manifest = json.loads(args.manifest.read_text())
-            steps = plan_walk(manifest_place(manifest), route_pool._disk_geo("GEO00"))
+            steps = plan_walk(manifest_place(manifest), route_pool._disk_geo("GEO00"),
+                              route_pool._disk_geo(SLUMS_GEO))
             print(json.dumps([[s.key, None if s.expect is None else list(s.expect)]
                               for s in steps]))
         elif args.command == "judge":

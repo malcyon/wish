@@ -171,7 +171,7 @@ class Map:
 
 
 def test_the_walk_from_the_slums_crosses_the_gate_then_reaches_the_school():
-    steps = poolremove.plan_walk(poolremove.SLUMS_START, Map())
+    steps = poolremove.plan_walk(poolremove.SLUMS_START, Map(), Map())
     assert [s.key for s in steps[:3]] == ["NP6", "NP6", "NP8"]
     assert steps[2].expect == (poolremove.NEW_PHLAN, 0, 4, geo.EAST)
     door = [s for s in steps if s.expect and s.expect[0] == poolremove.HALL]
@@ -186,6 +186,65 @@ def test_the_walk_goes_round_a_square_with_a_script():
     detour = poolremove.plan_walk((0, 4, 2, geo.EAST), Map(scripts={(5, 2): 7}))
     squares = [s.expect[1:3] for s in detour if s.expect and s.key == "NP8"]
     assert (5, 2) not in squares and squares[squares.index((6, 2)) - 1] != (5, 2)
+
+
+def _squares(steps, area):
+    return [s.expect[1:3] for s in steps if s.key == "NP8" and s.expect and s.expect[0] == area]
+
+
+def test_the_walk_from_another_slums_square_finds_the_gate_round_a_script():
+    start = (poolremove.SLUMS, 8, 3, geo.WEST)
+    slums = Map(scripts={(9, 3): 4, (10, 4): 9})
+    steps = poolremove.plan_walk(start, Map(), slums)
+    walked = _squares(steps, poolremove.SLUMS)
+    assert walked[-1] == poolremove.SLUMS_GATE
+    assert not {(9, 3), (10, 4)} & set(walked)
+    landing = steps.index(poolremove.WalkStep("NP8", poolremove.GATE_LANDING))
+    assert steps[landing - 1].expect == (poolremove.SLUMS, *poolremove.SLUMS_GATE, geo.EAST)
+    assert steps[-1] == poolremove.WalkStep("NP8", None)
+
+
+def test_a_slums_walk_faces_east_on_the_gate_before_it_steps():
+    for facing, keys in ((geo.NORTH, ["NP6", "NP8"]), (geo.EAST, ["NP8"]),
+                         (geo.SOUTH, ["NP4", "NP8"]), (geo.WEST, ["NP6", "NP6", "NP8"])):
+        steps = poolremove.plan_walk((poolremove.SLUMS, 15, 4, facing), Map(), Map())
+        assert [s.key for s in steps[:len(keys)]] == keys, facing
+        assert steps[len(keys) - 1].expect == poolremove.GATE_LANDING
+
+
+def test_a_walk_from_the_slums_needs_its_map():
+    with pytest.raises(RouteError, match="needs the Slums' map"):
+        poolremove.plan_walk((poolremove.SLUMS, 8, 3, geo.WEST), Map())
+
+
+def test_a_slums_square_with_no_clear_path_to_the_gate_is_blocked():
+    with pytest.raises(RouteError, match="The Slums has no path from"):
+        poolremove.plan_walk((poolremove.SLUMS, 8, 3, geo.WEST), Map(),
+                             Map(scripts={(7, 3): 1, (9, 3): 1, (8, 2): 1, (8, 4): 1}))
+
+
+def test_the_slums_walk_on_the_game_maps_keeps_off_every_script_square():
+    """The real Slums and New Phlan maps, from (8,3) facing west: open edges, no scripted square."""
+    try:
+        new_phlan = poolremove.route_pool._disk_geo("GEO00")
+        slums = poolremove.route_pool._disk_geo(poolremove.SLUMS_GEO)
+    except RouteError:
+        pytest.skip("needs the Amiga or DOS Pool game disks")
+    start = (poolremove.SLUMS, 8, 3, geo.WEST)
+    steps = poolremove.plan_walk(start, new_phlan, slums)
+    here = start
+    for step in steps:
+        if step.key == "NP8":
+            walls = slums if here[0] == poolremove.SLUMS else new_phlan
+            assert poolremove._open(walls, *here[1:]), (here, step)
+        if step.expect is None:
+            break
+        here = step.expect
+    walked = _squares(steps, poolremove.SLUMS)
+    assert walked[-1] == poolremove.SLUMS_GATE
+    assert all(slums.script_id(x, y) == 0 for x, y in walked)
+    assert poolremove.WalkStep("NP8", poolremove.GATE_LANDING) in steps
+    assert steps[-1] == poolremove.WalkStep("NP8", None)
 
 
 def test_a_start_outside_new_phlan_is_blocked():
@@ -260,6 +319,12 @@ class Game:
             return
         dx, dy = poolremove.DELTAS[facing]
         x, y = x + dx, y + dy
+        if area == poolremove.SLUMS:
+            if x == 16:
+                self.place = (poolremove.NEW_PHLAN, 0, y, facing)
+            else:
+                self.place = (area, x, y, facing)
+            return
         if (x, y) == poolremove.HALL_DOOR:
             area = poolremove.HALL
         if (x, y) == poolremove.SCHOOL:
@@ -413,7 +478,12 @@ def rig(tmp_path, monkeypatch):
     path = inputs / "prepare.json"
     path.write_text(json.dumps(manifest))
 
-    def go(member="MAGNUS", **options):
+    def go(member="MAGNUS", start=None, **options):
+        if start is not None:
+            game.place = start
+            area, x, y, facing = start
+            path.write_text(json.dumps({**manifest, "state_a": {"area": area, "x": x, "y": y,
+                                                                "facing": facing}}))
         args = argparse.Namespace(manifest=path, member=member, holder="h", out=tmp_path / "out",
                                   guards=None, wait_lane=0, walk_retry=1,
                                   budget=2400)
@@ -430,6 +500,15 @@ def test_the_run_removes_the_member_and_judges_the_disk(rig):
     assert rig.events == ["boot", "halt"]
     assert rig.game.keys[-3:] == ["NP1", "R", "B"] and "E" not in rig.game.keys
     assert (rig.out / "member-memory.bin").read_bytes() == rig.game.records[0x1200]
+
+
+def test_the_run_walks_from_a_slums_square_through_the_gate_to_the_hall(rig):
+    receipt = rig.go(start=(poolremove.SLUMS, 8, 3, geo.WEST))
+    assert receipt["success"] and receipt["verdict"]["file"] == "MAGNUS.cha"
+    places = [tuple(entry["place"]) for entry in receipt["walk"][-1] if entry.get("place")]
+    assert places[0][:3] == (poolremove.SLUMS, 8, 3)
+    assert poolremove.GATE_LANDING in places
+    assert receipt["walk"][-1][-1] == {"key": "NP8", "expect": "the school's question"}
 
 
 def test_a_member_the_slot_lacks_stops_before_any_lane(rig):
