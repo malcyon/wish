@@ -303,6 +303,12 @@ def _ssb_transition() -> Phase:
     )
 
 
+def _ssb_camp() -> Phase:
+    # Encamp on the guarded camp bar: the first key of a reload through camp LOAD, whose
+    # later screens are not measured, so it is not part of the route's reload phase.
+    return _phase("camp", "world", Step("key", "camp", key="E"))
+
+
 def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
     if title == "pool":
         needs = {

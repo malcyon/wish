@@ -2934,3 +2934,75 @@ def test_leave_yes_preflight_requires_the_leave_town_guard(tmp_path, monkeypatch
                        match="route has no measured guards for leave_town"):
         winwishaccept.preflight(args, guest=SimpleNamespace(gh=lambda *a: pytest.fail("guest")),
                                 route_for=lambda *unused: route, driver_sha=SHA)
+
+
+def test_camp_load_discovery_presses_load_only_on_the_guarded_camp(tmp_path, monkeypatch):
+    seen = []
+    controller, game, snapshots, calls = _leave_yes_controller(
+        tmp_path, monkeypatch, guards=lambda state, path: seen.append(state) or True)
+    controller.args.discover = "ssb-camp-load"
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[-4:] == ["NP8", "Y", "E", "L"]
+    assert game.keys[game.keys.index("Y"):].count("L") == 1
+    assert seen.index("camp") > seen.index("leave_town")
+    assert controller.mapping_commands == 6 + 2 + 4 + 17 + 5 + 1 + 1 + 2
+    assert result["completed_sequence"] == ["load", "stationary", "walk", "transition", "camp"]
+    assert ("checkpoint", "ssb_ruins_arrival") in calls
+    assert ("checkpoint", "ssb_camp_load_unknown") in calls
+    assert snapshots[-1] == "ssb_camp_load_terminal"
+    assert 1 <= len(result["discovery"]["evidence"]) <= 3
+    assert result["mapping"]["transition"]["status"] == "awaiting image review"
+    assert result["mapping"]["reload"]["status"] == "unproven"
+    assert result["discovery"]["status"] == "awaiting image review"
+    assert ("down",) in calls
+
+
+def test_camp_load_discovery_sends_no_load_when_camp_is_not_recognized(tmp_path, monkeypatch):
+    controller, game, _, calls = _leave_yes_controller(
+        tmp_path, monkeypatch, guards=lambda state, path: state != "camp")
+    controller.args.discover = "ssb-camp-load"
+    result = controller.run_discovery()
+    assert "camp screen was not recognized" in result["failure"]
+    assert game.keys[-3:] == ["NP8", "Y", "E"]
+    assert ("checkpoint", "ssb_camp_load_unknown") not in calls
+    assert ("down",) in calls
+
+
+def test_camp_load_discovery_has_the_leave_town_deadline():
+    assert winwishaccept._deadline_limit("ssb-camp-load") == 2100
+    assert "ssb-camp-load" in winwishaccept.LEAVE_MODES
+
+
+def test_camp_load_preflight_requires_the_camp_guard(tmp_path, monkeypatch):
+    from tools.amiga import maproute, route_silver_blades
+
+    args = _discovery_args(tmp_path)
+    args.discover = "ssb-camp-load"
+    args.deadline = 2100
+    args.manifest.write_text('{"title":"ssb","substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for key in ("df0", "df1"):
+        (tmp_path / f"{key}.adf").write_bytes(key.encode())
+    route = _discovery_route(tmp_path)
+    route.phases = (*route.phases[:3], maproute._ssb_transition(), *route.phases[4:])
+    pinned = {"df0": winwishaccept.DISCOVERY_DF0_SHA256,
+              "df1": route_silver_blades.DISK_B_SHA256}
+    route.media = tuple(SimpleNamespace(key=m.key, path=m.path, sha256=pinned[m.key])
+                        for m in route.media)
+    original_digest = winwishaccept.digest
+    monkeypatch.setattr(winwishaccept, "digest", lambda path: pinned[path.stem]
+                        if path.suffix == ".adf" else original_digest(path))
+    route.guard_path.write_text("{}")
+    monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
+        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
+        rules={name: True for phase in route.phases[:4]
+               for name in (phase.initial_state, *(s.state for s in phase.steps))}
+        | {"continue": True, "title": True}))
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="route has no measured guards for camp"):
+        winwishaccept.preflight(args, guest=SimpleNamespace(gh=lambda *a: pytest.fail("guest")),
+                                route_for=lambda *unused: route, driver_sha=SHA)

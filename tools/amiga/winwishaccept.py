@@ -60,7 +60,9 @@ OPENING_THIRD_RULE = {
              "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"}],
 }
 #: Discovery modes that walk the measured route to the east gate; the second answers YES.
-LEAVE_MODES = ("ssb-leave", "ssb-leave-yes")
+LEAVE_MODES = ("ssb-leave", "ssb-leave-yes", "ssb-camp-load")
+#: Leave-town modes that answer YES and check the arrival in The Ruins.
+YES_MODES = ("ssb-leave-yes", "ssb-camp-load")
 OPENING_MODES = ("ssb-opening-first", "ssb-opening-second", "ssb-opening-after-second",
                  "ssb-opening-after-third")
 
@@ -276,7 +278,7 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
             _opening_first_phase(route)
         else:
             _discovery_phases(route)
-            if mode == "ssb-leave-yes":
+            if mode in YES_MODES:
                 _transition_phase(route)
         from tools.amiga import route_silver_blades  # noqa: PLC0415
 
@@ -326,8 +328,11 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         if mode == "ssb-opening-after-third":
             states.add("ssb_opening_third")
     elif discovery:
+        from tools.amiga import maproute  # noqa: PLC0415
+
         prefix = [*_discovery_phases(route).values(),
-                  *((_transition_phase(route),) if mode == "ssb-leave-yes" else ())]
+                  *((_transition_phase(route),) if mode in YES_MODES else ()),
+                  *((maproute._ssb_camp(),) if mode == "ssb-camp-load" else ())]
         states = {"title"} | _page_states(route) | {
             state for phase in prefix
             for state in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -1650,14 +1655,18 @@ class Controller:
 
     def run_discovery(self) -> dict[str, Any]:
         """Walk to the east gate; `ssb-leave` observes the leave-town question,
-        `ssb-leave-yes` answers it YES and checks the arrival in The Ruins."""
+        `ssb-leave-yes` answers it YES and checks the arrival in The Ruins, and
+        `ssb-camp-load` then encamps and observes the screen camp LOAD opens."""
         self.summary["discovery"] = row()
         self.summary["challenge_key_count"] = None
         self.summary["challenge_key_count_verified"] = False
         try:
             phases = _discovery_phases(self.route)
-            answer_yes = getattr(self.args, "discover", None) == "ssb-leave-yes"
-            transition = _transition_phase(self.route) if answer_yes else None
+            from tools.amiga import maproute  # noqa: PLC0415
+
+            mode = getattr(self.args, "discover", None)
+            transition = _transition_phase(self.route) if mode in YES_MODES else None
+            camp = maproute._ssb_camp() if mode == "ssb-camp-load" else None
             self._up()
             self._game_section()
             title = self._await("title", limit=300)
@@ -1677,8 +1686,20 @@ class Controller:
                 # NP8 waits for the leave-town guard; Y goes only after it matches.
                 self.run_phase(transition)
                 self.summary["mapping"]["transition"] = row("awaiting image review")
+                if camp is None:
+                    self.summary["discovery"]["status"] = "awaiting image review"
+                    self.summary["discovery"]["reason"] = "The Ruins arrival pair awaits image review"
+                    return self.summary
+                # E waits for the camp bar; L goes only after it matches, and the
+                # screen it opens is observed with no further key.
+                self.run_phase(camp)
+                self.game.snapshot("ssb_camp_load_terminal", self.args.holder)
+                self._press("L")
+                end = min(self.clock() + 5, self.route_end)
+                frame = self._capture_unknown_frames("ssb_camp_load_unknown", "campload", end)
+                self._checkpoint("ssb_camp_load_unknown", None, frame)
                 self.summary["discovery"]["status"] = "awaiting image review"
-                self.summary["discovery"]["reason"] = "The Ruins arrival pair awaits image review"
+                self.summary["discovery"]["reason"] = "The camp LOAD screen remains unidentified"
                 return self.summary
             self.game.snapshot("ssb_leave_terminal", self.args.holder)
             self._press("NP8")

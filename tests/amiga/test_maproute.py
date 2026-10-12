@@ -185,3 +185,16 @@ def test_silver_blades_transition_answers_the_guarded_leave_town_question(tmp_pa
     assert "leave_town" in guards
     assert not any("leave-town" in reason for reason in route.unresolved)
     assert not phases["reload"].ready and not phases["reopen_step"].ready
+
+
+def test_silver_blades_camp_step_encamps_from_the_ruins_on_the_camp_guard(tmp_path: Path):
+    route = maproute.route_for("ssb", _manifest("ssb", tmp_path))
+    camp = maproute._ssb_camp()
+    guards = json.loads(route.guard_path.read_text())["guards"]
+
+    assert camp.ready and camp.initial_state == "world"
+    assert [(s.kind, s.key, s.state, s.checkpoint) for s in camp.steps] == [
+        ("key", "E", "camp", None)]
+    assert "camp" in guards
+    assert "camp" not in [phase.name for phase in route.phases]
+    assert not {phase.name: phase for phase in route.phases}["reload"].ready
