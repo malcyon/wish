@@ -204,3 +204,29 @@ def test_c64strength_does_not_open_a_sheet_on_a_bitmap_screen(tmp_path):
     run.log = lambda kind, **k: logged.append(k)
     assert run.view_in_world("BRUTUS") == {}
     assert logged[-1]["why"] == "the screen is a bitmap"
+
+
+def test_the_acceptance_driver_reads_names_from_the_settled_panel():
+    """A world screen still redrawing (three of seven names drawn) when the
+    step starts must not supply the names for the rows the settled read found."""
+    from tools.c64 import acceptance as A
+
+    full = [("WISHFTR", "8 7"), ("WISHCLE", "10 6"), ("WISHMAG", "6 4"),
+            ("WISHTHI", "10 5"), ("WISHDWF", "9 4"), ("WISHHEL", "10 7"),
+            ("EVOKER", "9 6")]
+
+    class Redrawing(Sess):
+        def __init__(self):
+            self.s = Screen(full[:3])
+
+        def party_rows(self, s):
+            return [r for r in sorted(s.lines) if r > 2]
+
+        def stable_party_rows(self):
+            self.s = Screen(full)
+            return self.party_rows(self.s)
+
+    run = A.PoolRun.__new__(A.PoolRun)
+    run.sess = Redrawing()
+    run.fail = lambda tag, why: A.StepFailed(why)
+    assert run.panel_index("EVOKER") == 6

@@ -2511,9 +2511,14 @@ class PoolRun:
 
     def panel_index(self, who: str) -> int:
         """Which panel row WHO is: a number counts from 1, a name must equal
-        one row's name column as the panel draws it."""
+        one row's name column as the panel draws it.
+
+        The names are read from a frame taken after the panel has settled,
+        with that frame's own rows: a world screen still redrawing after a
+        disk prompt shows only its first names."""
+        self.sess.stable_party_rows()
         s = self.sess.screen()
-        rows = [] if s is None else self.sess.stable_party_rows()
+        rows = [] if s is None else self.sess.party_rows(s)
         try:
             if route_pool.is_line_number(who):
                 return route_pool.line_number(who, len(rows) if s else None)
