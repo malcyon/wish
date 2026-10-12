@@ -880,9 +880,8 @@ C64).
 **What the window offers.** The Amiga Fast Travel row first requires
 `WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL`; the mapping backend's separate flag does
 not enable travel. `automap/window.py` also requires a confirmed title row in
-`automap/amigatrip.py`. Of the four titles, Pool of Radiance, Curse and Pools of
-Darkness have confirmed rows; Silver Blades remains `confirmed=False`, so its
-row is greyed even with the travel flag. `automap/amigafasttravel.py` then
+`automap/amigatrip.py`. All four titles have confirmed rows, Silver Blades
+included. `automap/amigafasttravel.py` then
 requires a writable target, the game's gate, a `fasttravelable` destination
 with a script on the player's disks, and room in the departing script for the
 trip and any departure statements (tier 1 or 2, or Pool of Radiance's init
@@ -890,20 +889,28 @@ span in areas 1 and 28). A trip goes straight to the destination unless a row
 of `automap/departures.py` applies ([`150`](150-departing-prologues.md), "How
 Fast Travel leaves an area"): a write row adds guarded `SAVE`s, while Return
 out of the Kobold Caves with Princess Fatima walks its proven door. Forward
-Fast Travel from those caves is held; Return remains separately eligible. Pool
-and Pools of Darkness no longer have a blanket Return hold. Silver Blades
-retains `return_landing` and is still unconfirmed; individual departures also
-remain held where the script lacks room. Pools of Darkness offers rows from
+Fast Travel from those caves is held; Return remains separately eligible, and
+no title has a blanket Return hold. Individual departures remain held where the
+script lacks room. Pools of Darkness offers rows from
 `AREAS_POOLS_OF_DARKNESS` in `goldbox/areas.py` except destinations marked not
 `fasttravelable`; its gate also opens on an overland (mode 3, menu kind 4,
-`Encamp`), CONFIRMED live (WISH-338 comment 5f95b787). This replaces the old
-blanket Return holds because the current title rows and live Pool and Pools of
-Darkness Return receipts establish narrower eligibility, not full acceptance:
-Pool's Fatima Return and the Pools of Darkness 22,4 Return, 22,3 saved step and
-22,2 reload step ran, but the four-title real-tab and whole-item checks remain
-open (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276,
-85511f41). The 73 matching saved item records do not explain two changed live
-node hashes across reload; the historical 66-byte nodes were not retained.
+`Encamp`), CONFIRMED live (WISH-338 comment 5f95b787).
+
+**Real-tab runs.** All four titles completed Fast Travel, a step, Return and a
+step, clicked in Wish's own window under WinUAE: Pool to 8 and Curse to 3, each
+with a game-written save and a reload, then Silver Blades to 48 and Pools of
+Darkness to 22 (WISH-360 (Complete Amiga Fast Travel and Return), comment
+c522ce0b). FS-UAE tab runs passed for all four titles too (comments 29b74103
+and 6d7f7f53). After a NO at Princess Fatima's door, Return is withdrawn and
+the party walks on (comment 3439b60f). The Pools of Darkness item check is settled. A seven-member party
+Fast Travelled, Returned, saved F and reloaded: 64 item heads and 4 bundle
+children showed 0 payload differences before and after travel and after
+reload, and the only metadata differences were display offsets (comment
+6007dd92); FS-UAE passed all 10 reload checks (comment 5eccc27f). This
+replaces the earlier open note about two changed live node hashes (comment
+85511f41), because the live node holds a rebuilt display buffer and heap links
+besides the 20 saved payload bytes (comment e744989f), and the later capture
+compares those apart.
 
 ### Fast Travel's free bytes, init entries and gates, read from the code
 

@@ -145,7 +145,7 @@ consequence is what a player meets when the departure is skipped.
 
 | row | leaving | guard, then what the trip does | if skipped | evidence | enabled |
 |---|---|---|---|---|---|
-| P1 | Pool, Kobold Caves (13) | `PRINCESS FATIMA` in a slot: Fast Travel does not leave area 13; Return walks out through `(13, 27)` | she stays in the party and the save; no other script removes her | CONFIRMED live under the earlier code ([below](#visible-fast-travelling-out-of-the-kobold-caves-keeps-an-npc-the-game-meant-to-take-away)); Amiga Return with her and YES passed (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276 and a59ab194); C64 current-code Return not run | C64, Amiga |
+| P1 | Pool, Kobold Caves (13) | `PRINCESS FATIMA` in a slot: Fast Travel does not leave area 13; Return walks out through `(13, 27)` | she stays in the party and the save; no other script removes her | CONFIRMED live under the earlier code ([below](#visible-fast-travelling-out-of-the-kobold-caves-keeps-an-npc-the-game-meant-to-take-away)); Amiga Return with her passed with YES (comments d7f16276 and a59ab194) and with NO, where Return is withdrawn and the party walks on (comment 3439b60f); C64 current-code Return not run | C64, Amiga |
 | P2 | Pool, Lizardman Keep (16) | `$4A5D` >= 40 and `$4AB5` != 255: `$4AB5` = 254 (`ECL10 $9CBD`-`$9CCF`) | the City Hall clerk does not pay the lizardmen commission until the party walks back in and out | CONFIRMED (bytecode); Amiga trip 16 to 0 writes it, 3 of 3 guard cases | C64, Amiga |
 | P3 | Pool, Buccaneer Base (1) | `$4AA9` == 1: `$4AA9` = 254 (`ECL01 $9936`-`$993D`) | the Bivant heir reward is not paid until the party walks back in and out by the edge | CONFIRMED (bytecode); Amiga trips 1 to 0 and 1 to 25 write it, a walked control writes the same 0xFE, and a game-written save holds it | C64, Amiga |
 | P4 | Pool, Nomad Camp (17) | `$4A7C` & 5 non-zero and `$4AB7` != 255: `$4AB7` = 254 (`ECL11 $A1B9`-`$A1ED`) | the "nomads stopped" commission is not paid until the party walks back in and off an edge | CONFIRMED (bytecode); Amiga trip 17 to 0, 5 of 5 guard cases | C64, Amiga |
@@ -197,10 +197,12 @@ and a59ab194). The older forward-trip NO control stayed in area 13 with eight
 names and no Return armed; that is evidence for the old path, not a current-tab
 NO check. `areas_seen` omitted 27 because `continue_pending` read that area and
 armed the next hop before the driver's next area sample; its `continue` event
-establishes the intermediate area. The current Return NO path and C64
-current-code Return still need live checks. This replaces the unrun L2 claim
-because the Amiga YES Return and reload now have retained receipts, while the
-forward path has since been held.
+establishes the intermediate area. The Amiga Return with NO also passed: the party stayed in area 13 with its
+eight names, Wish stopped offering that Return, and the party turned, found the
+door locked and bashed it open (comment 3439b60f). C64 current-code Return
+still needs a live check. This replaces the unrun L2 claim because the Amiga
+YES and NO Returns now have retained receipts, while the forward path has since
+been held.
 
 ### Curse, Silver Blades and Pools of Darkness
 
@@ -214,8 +216,9 @@ has no Curse re-entry addresses, so a `route_to` row cannot run there.
 **Secret of the Silver Blades** (68de904c). Needed: S1, S2 and S3, all
 disabled. Not needed (eleven exits, N1-N11), among them the Ruins' `$4CFF`
 write (one of eleven exits makes it), the wall pins and the cancel byte. The
-Amiga does not offer Fast Travel for this title, and whether DOS and the Amiga
-store `$C059`/`$C05A` at all is unread.
+Amiga offers Fast Travel for this title now that its trip row is confirmed in
+`automap/amigatrip.py`; it carries no departure row, because these three are
+disabled. Whether DOS and the Amiga store `$C059`/`$C05A` at all is unread.
 
 **Pools of Darkness** (b7604d0f, revised by 77050ad9 and 6191dd8c). Needed:
 D11 above. The story companion rows D1-D10 are not built. On the English
@@ -239,7 +242,7 @@ Each defaults to straight until its check settles it.
 
 | case | what is known | what would settle it |
 |---|---|---|
-| Return out of the Kobold Caves | Amiga Return with Princess Fatima and YES walked her exit, removed her and reached New Phlan; the saved seven-member party reloaded and stepped (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276 and a59ab194) | Live Amiga Return with NO and current-code C64 Return; the earlier Amiga forward NO control does not settle either |
+| Return out of the Kobold Caves | Amiga Return with Princess Fatima and YES walked her exit, removed her and reached New Phlan; the saved seven-member party reloaded and stepped (WISH-360 (Complete Amiga Fast Travel and Return), comments d7f16276 and a59ab194) | Amiga Return with NO is settled (comment 3439b60f); current-code C64 Return remains |
 | L1, C64 direct trips | not run under the current code | `tools/c64/fasttravelrun.py` from `WISH-SPEC-por-c64-party-l1-intown`: 0 to 18, 18 to 9, 9 to 18, 18 to 7, 7 to 0, 0 to 1, 1 to 25, 0 to 28, 28 to 25, 0 to 26; every leg `areas_seen` [here, to], no fight, 0 to 26 on the grid with no dock text |
 | Pool castle alarm, Stojanow Gate south exit | the exit clears `$4A64`; the alarm may lapse on its own | stage NEWSAVE1 at alarm 1 in area 9, trip to 18, rest 1, 6 and 24 hours, trip back, read `$4A64` after one step; 0 within a day means not needed |
 | Pool, camp interrupted in a window-25 cave | can leave for area 1 with `$4A9E` still 255 (SPECULATIVE, game behaviour) | the breakpoint run in 58caa381 |
@@ -448,8 +451,9 @@ door, which is in `DOORS_PROVEN`, and sends one forward key.
 
 **The older direct-trip sample is not a current-path check.** The Amiga YES
 Return under the current departure rule has the live and reload receipts above;
-the C64 current-code Return and Amiga NO Return remain unmeasured. This
-replaces the old unrun-L2 note because the Amiga Return run now exists.
+the Amiga NO Return was measured separately (comment 3439b60f) and the C64
+current-code Return remains unmeasured. This replaces the old unrun-L2 note
+because the Amiga Return runs now exist.
 
 **An area pair does not name a handler**, which is why the row tests the party
 and does not just name the door: `ECL0D` has two `NEWECL 27` statements,

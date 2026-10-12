@@ -136,7 +136,8 @@ DEPARTURES: tuple[Departure, ...] = (
               frozenset({C64, AMIGA}), guards=(Guard(0x4A9E, "==", 255),),
               writes=((0x4A9E, 0),)),
     # New Verdigris' leave question, `ECL10 $84F7-$84FE` and `$9A25-$9A2C`,
-    # sets `$4CD9` from 1 to `$FF`. Amiga Silver Blades has no Fast Travel.
+    # sets `$4CD9` from 1 to `$FF`. The row is C64-only: Amiga Silver Blades
+    # has no departure row.
     # Off until a live run shows the skip breaks game state: Fast Travel goes
     # straight to the destination otherwise.
     Departure(SECRET_OF_THE_SILVER_BLADES, frozenset({0x10}), frozenset({C64}),
