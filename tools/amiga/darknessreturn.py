@@ -1343,15 +1343,24 @@ class GuardedRun:
             self.see(following)
 
     def title(self) -> None:
+        """Wait for the title for up to the title's limit, skipping a late intro if guarded.
+
+        A guard set without an `intro` rule (the source-selected controls) keeps
+        waiting, since the intro gives way to the title by itself.
+        """
         beginning = time.monotonic()
+        limit = route_darkness.DARKNESS.title_limit
         for attempt in range(4):
+            remaining = limit - (time.monotonic() - beginning)
+            _require(remaining > 0, f"the title did not match its guard within {limit:.0f}s")
             try:
-                self.see("title", min(120, self.left(420 - (time.monotonic() - beginning))))
+                self.see("title", min(120, self.left(remaining)))
                 return
             except RouteError:
-                if attempt == 3 or time.monotonic() - beginning < route_darkness.DARKNESS.boot_span:
-                    if attempt == 3:
-                        raise
+                if attempt == 3:
+                    raise
+                if (time.monotonic() - beginning < route_darkness.DARKNESS.boot_span
+                        or "intro" not in self.guards):
                     continue
                 self.see("intro", 10)
                 self.guest.press(self.holder, "ESC", timeout=self.left(30))
