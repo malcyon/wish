@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
@@ -72,13 +73,13 @@ class Loaded(QObject):
 
 
 class _Job(QRunnable):
-    def __init__(self, serial: int, folders, carrier: Loaded):
+    def __init__(self, serial: int, loader: Callable[[], object], carrier: Loaded):
         super().__init__()
-        self._serial, self._folders, self._carrier = serial, list(folders), carrier
+        self._serial, self._loader, self._carrier = serial, loader, carrier
 
     def run(self) -> None:
         try:
-            found = load(self._folders)
+            found = self._loader()
         except Exception as exc:
             _log.debug("the figure art load failed: %s", exc)
             found = None
@@ -88,14 +89,14 @@ class _Job(QRunnable):
             _log.debug("the window closed before the figure art arrived")
 
 
-def start(serial: int, folders, carrier: Loaded) -> None:
-    """Run :func:`load` on a worker thread and emit `carrier.done(serial, art)`
-    when it ends; `art` is None when nothing was found.
+def start(serial: int, loader: Callable[[], object], carrier: Loaded) -> None:
+    """Run `loader` on a worker thread and emit `carrier.done(serial, art)` when
+    it ends; `art` is None when nothing was found.
 
     Opening the `.adf` images of up to five folders takes as long as they are
     many, so the window does not wait for it.
     """
-    QThreadPool.globalInstance().start(_Job(serial, folders, carrier))
+    QThreadPool.globalInstance().start(_Job(serial, loader, carrier))
 
 
 def load(folders) -> FigureArt | None:

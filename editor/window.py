@@ -2702,8 +2702,9 @@ class EditorBinding(QObject):
             return
         if (party.port == "amiga"
                 and party.game.key == por_games.POOL_OF_RADIANCE.key):
+            folders = list(self._port_folders(party.game))
             amigafigure.start(self._figure_serial,
-                              self._port_folders(party.game),
+                              lambda: amigafigure.load(folders),
                               self._figure_carrier)
         elif (party.port == "amiga"
                 and party.game.key in amigalaterfigure.TITLES):
