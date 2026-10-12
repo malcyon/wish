@@ -438,6 +438,7 @@ class Automapper:
         self._stale_line: tuple[int, int, int] | None = None
         self._started = False       # no "last position" to be adjacent to yet
         self._last: Fix | None = None       # the previous fix, for _blocked_step
+        self._resumed = False       # polling has just started again after a gap
         #: The target the rest of this state belongs to. A strong reference on
         #: purpose: `is` against an object that has been freed could be true of
         #: a different object allocated at the same address, and holding it
@@ -651,6 +652,8 @@ class Automapper:
                 # polls unchanged, so it was a move inside this area and not
                 # a load still in progress.
                 self._visit(*self._pending)
+            elif self._settled_after_gap(fix):
+                pass                        # the walk happened while nobody polled
             elif fix.source == "memory" or self._pending != (fix.x, fix.y):
                 same = (self._pending == (fix.x, fix.y)
                         and self._pending_source == fix.source)
@@ -680,7 +683,7 @@ class Automapper:
         # contradiction. `_poll_outdoors` never touches the fingerprint
         # either, and this is the same rule on the way back in.
         if self.fingerprint and not changed_area and not returning:
-            if moved and self._adjacent(fix.x, fix.y):
+            if moved and not self._resumed and self._adjacent(fix.x, fix.y):
                 self.fingerprint.moved(self.state.x, self.state.y, fix.x, fix.y)
             else:
                 self.fingerprint.saw(fix.x, fix.y)
@@ -695,6 +698,7 @@ class Automapper:
         self.state.x, self.state.y = fix.x, fix.y
         self.state.facing, self.state.source = fix.facing, fix.source
         self._started = True
+        self._resumed = False
         self._last = fix
         self._visit(fix.x, fix.y)
         return changed
@@ -877,6 +881,7 @@ class Automapper:
         self._stale_line = None
         self._drop_hold()
         self._last = None
+        self._resumed = False
         self.title_check = UNKNOWN
         self._contradictions = 0
 
@@ -943,6 +948,29 @@ class Automapper:
         self._pending_source = ""
         self._pending_polls = 0
         self._hold_unsafe = False
+
+    def resume(self) -> None:
+        """Polling stopped and has started again, so the party may be anywhere.
+
+        The connection and the area are kept: the first fix after the gap still
+        takes the jump path, which names the area before anything is recorded.
+        """
+        self._resumed = True
+        self._drop_hold()
+        self._last = None
+
+    def _settled_after_gap(self, fix: Fix) -> bool:
+        """Is *fix* a memory jump read often enough, over our map, since a gap?
+
+        The conditions of `_stepped_from_pending`, with one more read of the
+        same square in place of a passable step.
+        """
+        return (self._resumed
+                and fix.source == "memory"
+                and self._pending_source == "memory"
+                and self._pending == (fix.x, fix.y)
+                and not self._hold_unsafe
+                and self._pending_polls >= self.MIN_HELD_POLLS)
 
     def _stepped_from_pending(self, fix: Fix) -> bool:
         """Is *fix* one passable step from the held memory jump on the resident map?

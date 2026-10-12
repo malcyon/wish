@@ -704,6 +704,7 @@ class WishWindow(QMainWindow):
         """
         self.map.show_controls(index == MAP_TAB)
         if index == MAP_TAB:
+            self.mapper.resume()
             self.session.set_reader(self._read_map)
             self.map.canvas.setFocus()
             self.statusBar().showMessage(self.map.status_text())

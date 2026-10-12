@@ -743,6 +743,19 @@ def test_a_hidden_map_tab_reads_nothing(app, tmp_path, monkeypatch):
     assert len(target.reads) == quiet
 
 
+def test_showing_the_map_tab_tells_the_mapper_polling_resumed(app, tmp_path,
+                                                              monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from wish.window import EDITOR_TAB, MAP_TAB, WishWindow
+    w = WishWindow(maps={}, session=fake_session(MemoryTarget(machine().memory)))
+    w.tabs.setCurrentIndex(EDITOR_TAB)
+    calls = []
+    monkeypatch.setattr(w.mapper, "resume", lambda: calls.append(1))
+    w.tabs.setCurrentIndex(MAP_TAB)
+    assert calls == [1]
+
+
 def test_the_seen_count_keeps_updating_without_leaving_the_tab(app, tmp_path,
                                                                 monkeypatch):
     """The status bar used to be filled once, on arrival, and never again."""

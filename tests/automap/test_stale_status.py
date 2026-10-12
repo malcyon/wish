@@ -254,3 +254,44 @@ def test_the_marker_follows_the_walk_after_a_blank_block_blip(tmp_path, monkeypa
         go(target, mapper, (9, y, 2), polls=3, status="S 8:50")
     assert (mapper.state.x, mapper.state.y) == (9, 4)
     assert (9, 3) in mapper.state.exploration
+
+
+def test_a_walk_while_polling_stopped_is_believed_on_the_third_read(
+        tmp_path, monkeypatch):
+    target, mapper, _ = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    mapper.resume()
+    go(target, mapper, (9, 0, 2), polls=3, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (9, 0)
+    assert (9, 0) in mapper.state.exploration
+
+
+def test_a_resumed_jump_is_held_when_the_block_goes_unknown(tmp_path, monkeypatch):
+    target, mapper, sewers = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    mapper.resume()
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    target.memory[RESIDENT_GEO] = bytes(GEO_SIZE)
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    target.memory[RESIDENT_GEO] = sewers.to_bytes()
+    go(target, mapper, (9, 0, 2), polls=1, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+    assert (9, 0) not in mapper.state.exploration
+
+
+def test_a_resumed_jump_is_held_after_two_reads(tmp_path, monkeypatch):
+    target, mapper, _ = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    mapper.resume()
+    go(target, mapper, (9, 0, 2), polls=2, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (2, 15)
+
+
+def test_the_gap_allowance_is_spent_by_the_first_believed_fix(tmp_path, monkeypatch):
+    target, mapper, _ = arrive_in_the_sewers((2, 15), tmp_path, monkeypatch)
+    go(target, mapper, (2, 15, 2), polls=2, status="S 8:50")
+    mapper.resume()
+    go(target, mapper, (9, 0, 2), polls=3, status="S 8:50")
+    go(target, mapper, (9, 1, 2), polls=1, status="S 8:50")
+    go(target, mapper, (9, 8, 2), polls=3, status="S 8:50")
+    assert (mapper.state.x, mapper.state.y) == (9, 1)
