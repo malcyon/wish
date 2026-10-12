@@ -56,7 +56,8 @@ PC speaker. Other launch paths must establish their own silence controls.
   `flatpak run --nosocket=pulseaudio` for the stock Flatpak, and
   `ALSOFT_DRIVERS=null` for a native 3.x build with OpenAL.
   `tools/amiga/acceptance.py --emulator fsuae` runs the Amiga routes there in
-  an instance-pool slot, sets the last two itself and takes no `--audio-proof`.
+  an instance-pool slot, sets `SDL_AUDIODRIVER=dummy` and `ALSOFT_DRIVERS=null`
+  itself, checks them in the emulator's environment, and takes no `--audio-proof`.
 * **WinUAE**: it runs on the Windows VM, whose audio reaches the host, and
   `sound_output=none` is **not** available -- it deadlocks Silver Blades on its
   second turn, which is why `tools/amiga/goldbox-a500.uae` sets
@@ -117,8 +118,10 @@ purpose. Amiga: under WinUAE, `tools/amiga/amigadrive.py` has `snapshot`,
 calls. The state records each drive's image path, not its contents, so a game
 save made between a snapshot and its restore stays on the disk image while
 memory goes back; a run that saved in between treats that image as changed.
-FS-UAE has no usable machine-state save in this build, because its savestate
-crashes. DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
+FS-UAE has no machine snapshot in the drivers (`FsuaeGuest.can_snapshot` is
+False, and `tools/amiga/acceptance.py` stops a run that needs one before it
+claims a slot); its F12 state save needs the NULL guard that `tools/amiga/installfsuae.py` applies
+([the FS-UAE patch notes](../../docs/239-fs-uae-patches.md)). DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
 `tools/dos/dossnapshot.py`'s `SnapshotSession`, which works on DOSBox-X only,
 because DOSBox 0.74 has no save states and the driver stops the run there; a
 restore lists the `SAVE` files changed since the snapshot, since a game save
