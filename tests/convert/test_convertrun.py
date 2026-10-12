@@ -401,3 +401,60 @@ def test_no_encounters_is_blocked_for_a_dos_destination(tmp_path):
         convertrun.main(["--source", str(tmp_path / "S.D64"), "--to", "dos",
                          "--out", str(tmp_path / "out"), "--no-encounters"])
     assert not (tmp_path / "out").exists()
+
+
+# ---------------------------------------------------------------------------
+# An Amiga destination
+# ---------------------------------------------------------------------------
+
+@needs_disks
+def test_an_amiga_destination_is_written_by_the_editors_save_as(
+        tmp_path, monkeypatch):
+    """`--to amiga` goes through `prepare_save_as` and `publish` with the
+    named disk 2, and the slot it writes reads back as an Amiga Pool of
+    Radiance party."""
+    import gamedata
+    from support.toamigapor import _por_disk_2
+
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    root = gamedata.specimen_root()
+    source = (root / "por-dos" / "WISH-SPEC-por-item-granted"
+              if root else None)
+    if source is None or not source.is_dir():
+        pytest.skip("needs the specimen WISH-SPEC-por-item-granted")
+    disk = _por_disk_2(tmp_path)
+    called = []
+    real_prepare, real_publish = saveplan.prepare_save_as, saveplan.publish
+
+    def prepare(*args, **kwargs):
+        called.append("prepare_save_as")
+        return real_prepare(*args, **kwargs)
+
+    def publish(*args, **kwargs):
+        called.append("publish")
+        return real_publish(*args, **kwargs)
+
+    monkeypatch.setattr(saveplan, "prepare_save_as", prepare)
+    monkeypatch.setattr(saveplan, "publish", publish)
+    out = tmp_path / "out"
+
+    rc = convertrun.main(["--source", str(source), "--source-slot", "D",
+                          "--to", "amiga", "--amiga-disk", str(disk),
+                          "--out", str(out)])
+
+    assert rc == 0
+    assert called == ["prepare_save_as", "publish"]
+    written = [p for p in out.rglob("*.ADF")]
+    assert len(written) == 1
+    party, _save = amiga_savegame.read_por_slot(
+        AmigaDisk.open(str(written[0])), "D")
+    assert party
+
+
+def test_an_amiga_destination_needs_a_disk_2(tmp_path):
+    with pytest.raises(SystemExit):
+        convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
+                         "--out", str(tmp_path / "out")])
+    assert not (tmp_path / "out").exists()
