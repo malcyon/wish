@@ -70,6 +70,7 @@ __all__ = [
     "STATUS_BITS",
     "STATUS_BY_BITS",
     "status_from_byte",
+    "ANIMATED_STATUS_TITLES",
     "OUT_OF_PLAY",
     "NO_C64_STATUS",
 ]
@@ -409,19 +410,20 @@ DELTAS_BY_KEY: dict[str, C64Deltas] = {
                        SILVER_BLADES_RECORD)}
 
 
-def status_from_byte(raw: int, *, pool_of_radiance: bool
+def status_from_byte(raw: int, *, animated_title: bool
                      ) -> tuple[str | None, bool | None]:
     """The neutral status name and in-play flag a roster status byte holds.
 
     The low three bits index the game's seven status words; bit 7 is the
-    independent out-of-play flag. Pool of Radiance writes `$03` with bit 7
-    clear only for Animate Dead's zombie, so that one byte reads "animated"
-    there. Low bits of 0 are an empty roster slot and give `(None, None)`.
+    independent out-of-play flag. `animated_title` is true for a title in
+    :data:`ANIMATED_STATUS_TITLES`, whose `$03` with bit 7 clear is Animate
+    Dead's zombie and reads "animated". Low bits of 0 are an empty roster
+    slot and give `(None, None)`.
     """
     name = STATUS_BY_BITS.get(raw & 0x07)
     if name is None:
         return None, None
-    if pool_of_radiance and raw == ZOMBIE_STATUS:
+    if animated_title and raw == ZOMBIE_STATUS:
         name = "animated"
     return name, not raw & OUT_OF_PLAY
 
@@ -643,7 +645,8 @@ NO_SPELL_SLOTS = (
 #: value.  `SPELLE04 $AA11` writes `$03` beside creature type 4, undead, for
 #: Animate Dead -- but `$03` is DEAD with bit 7 clear, written on a thing the
 #: same routine marks as not a player character, so it is the nearest thing
-#: rather than the same thing.
+#: rather than the same thing. The titles in :data:`ANIMATED_STATUS_TITLES`
+#: run that byte as the zombie, so there `animated` is written as `$03`.
 STATUS_BITS: dict[str, int] = {
     "okay": 1, "gone": 2, "dead": 3, "dying": 4, "unconscious": 5,
     "running": 6, "stoned": 7,
@@ -702,6 +705,16 @@ class DispelledZombieNode(bytes):
 #: The roster status a Pool of Radiance camp Animate Dead writes over the
 #: raised character (`SPELLE04 $AA11`): dead, bit 7 clear.
 ZOMBIE_STATUS = 0x03
+
+#: The titles whose C64 engine runs a member at :data:`ZOMBIE_STATUS` as
+#: Animate Dead's zombie. Curse has no cast that writes the byte, but it
+#: keeps Pool's readers of it: `COM.PREP $0E93` places any member whose
+#: status is not zero and has bit 7 clear, `CAMP $1558` closes the casting
+#: entries to `$03` alone as Pool's `CAMP $13E5` does, and `POST.COM $1559`
+#: leaves `$03` as it is at the end of a fight. A companion's `0x0B8` and
+#: `0x10C` bit 7 then give him to the computer as they do any companion.
+ANIMATED_STATUS_TITLES = frozenset({"pool-of-radiance",
+                                   "curse-of-the-azure-bonds"})
 
 def roster_status(rec, roster=None):
     """The roster status byte `read` reads: the roster block's when the save
@@ -1374,6 +1387,14 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # (`SPELLE04 $A9E9`-`$AA30`); the same three writes apply here.
     pool_animated = bool(deltas is POOL_OF_RADIANCE_RECORD
                          and status_value == "animated")
+    # Curse's zombie companion is the same status byte with no cast behind
+    # it: C64 Curse has no Animate Dead and its id 32 is another handler
+    # (`COMBAT2 $EE2A` sends 32 where it sends 55), so no row or trait. A
+    # zombie player character never gets here: `living_player` has already
+    # made him living.
+    curse_animated = bool(deltas is CURSE_RECORD and is_npc
+                          and status_value == "animated"
+                          and control_value != DOS_PC_TAKEN_OVER)
     zombie_node_side: int | None = None
     charm_row_written = False
     # A later charm row, kept apart from Pool's: its `0x10C` and 0x0B8 arms
@@ -2826,7 +2847,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # Animate Dead on a thing the same routine marks as not a player
     # character.
     status, active = use("status"), use("active")
-    zombie_status = pool_animated and status is not None
+    zombie_status = (pool_animated or curse_animated) and status is not None
     bits = STATUS_BITS["okay"]
     where = ["1 (OK), the state a character with no source for one is in"]
     if status is not None:
@@ -2835,8 +2856,12 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             # `SPELLE04 $AA11` writes $03 whatever the character was.
             bits = ZOMBIE_STATUS
             where = [f"${ZOMBIE_STATUS:02X} (dead, bit 7 clear) <- "
-                     f"{status.origin}: Animate Dead's own write "
-                     "(SPELLE04 $AA11)"]
+                     f"{status.origin}: " + (
+                         "Animate Dead's own write (SPELLE04 $AA11)"
+                         if pool_animated else
+                         "the byte Curse places and runs in a fight "
+                         "(COM.PREP $0E93) and keeps from casting in camp "
+                         "(CAMP $1558)")]
         elif found is None:
             rep.dropped.append(
                 NO_C64_STATUS.get(
@@ -4097,14 +4122,14 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # converts to DOS alive, because the reader never reads the four bytes
     # past 0x100).
     if raw is not None:
-        pool = deltas is POOL_OF_RADIANCE_RECORD
-        name, active = status_from_byte(raw, pool_of_radiance=pool)
-        zombie_byte = pool and raw == ZOMBIE_STATUS
+        animated_title = deltas.key in ANIMATED_STATUS_TITLES
+        name, active = status_from_byte(raw, animated_title=animated_title)
+        zombie_byte = animated_title and raw == ZOMBIE_STATUS
         if name is not None:
             out.set("status", name,
-                    (f"{roster_in_use_origin}, ${raw:02X}: Pool of Radiance "
-                     f"writes $03 with bit 7 clear only for Animate Dead's "
-                     f"zombie") if zombie_byte else
+                    (f"{roster_in_use_origin}, ${raw:02X}: $03 with bit 7 "
+                     f"clear is Animate Dead's zombie, which the engine "
+                     f"still runs") if zombie_byte else
                     (f"the low three bits of {roster_in_use_origin}, "
                      f"${raw:02X}, indexed into the game's own seven status "
                      f"words"),

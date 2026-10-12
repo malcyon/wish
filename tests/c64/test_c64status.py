@@ -699,4 +699,4 @@ def test_the_control_byte_lands_at_each_titles_own_index(key, size, index):
 def test_status_from_byte_unpacks_the_two_things_the_byte_holds(
         raw, pool, expected):
     assert c64_codec.status_from_byte(
-        raw, pool_of_radiance=pool) == expected
+        raw, animated_title=pool) == expected

@@ -423,10 +423,14 @@ def test_a_pool_death_with_bit_seven_set_still_reads_dead():
     assert char.get("status") == "dead"
 
 
-def test_a_curse_roster_status_of_three_still_reads_dead():
-    char = c64_codec.read(_pool_c64(0xFF, 0x03),
-                          game=c64_port.CURSE_OF_THE_AZURE_BONDS)
-    assert char.get("status") == "dead"
+@pytest.mark.parametrize("game, status", [
+    (c64_port.CURSE_OF_THE_AZURE_BONDS, "animated"),
+    (c64_port.SECRET_OF_THE_SILVER_BLADES, "dead"),
+])
+def test_a_later_roster_status_of_three_reads_as_its_engine_runs_it(
+        game, status):
+    char = c64_codec.read(_pool_c64(0xFF, 0x03), game=game)
+    assert char.get("status") == status
 
 
 def _zombie_source(magnitude, side=1, row=True):
@@ -1402,6 +1406,49 @@ def test_a_later_zombie_companion_is_left_alone(key):
     companion = dos_codec.to_neutral(_later_zombie(key, control=0xB2))
     assert not c64_codec.zombie_player(companion)
     assert c64_codec.living_player(companion) is companion
+
+
+def test_a_curse_zombie_companion_keeps_the_status_c64_curse_runs():
+    companion = dos_codec.to_neutral(_later_zombie(_LATER_CURSE, control=0xB2))
+    rec, rep = c64_codec.write(companion)
+    assert rec.get("roster_in_use") == c64_codec.ZOMBIE_STATUS
+    assert (rec.get("flags_0b8"), rec.get("combat_side")) == (0xB2, 0x80)
+    assert not [d for d in rep.dropped if d.startswith("Animated by a spell")]
+    back = c64_codec.read(rec, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert (back.get("status"), back.get("active"), back.get("npc"),
+            back.get("npc_control_byte")) == ("animated", True, True, 0xB2)
+
+
+def test_the_amiga_curse_zombie_companion_writes_as_a_c64_zombie():
+    from editor.convert import Source
+    from goldbox import amiga_savegame
+
+    adf = (gamedata.specimen("wish-plane-303-curse-evoker-add", "amiga")
+           / "fetched-save.adf")
+    save = amiga_savegame.read_slot(Source.detect(adf).amiga_disk(), "D",
+                                    _LATER_CURSE)
+    party = [c64_codec.living_player(amiga_later.to_neutral_later(c))
+             for c in save.characters]
+    evoker = next(c for c in party if c.get("name") == "EVOKER")
+    rec, rep = c64_codec.write(evoker)
+    assert (rec.get("roster_in_use"), rec.get("flags_0b8")) == (0x03, 0xB2)
+    assert not [d for d in rep.dropped if d.startswith("Animated by a spell")]
+    back = c64_codec.read(rec, game=c64_port.CURSE_OF_THE_AZURE_BONDS)
+    assert (back.get("status"), back.get("npc_control_byte")) == (
+        "animated", 0xB2)
+
+
+@pytest.mark.parametrize("raw, title, expected", [
+    (0x03, _LATER_CURSE, "animated"),
+    (0x03, "pool-of-radiance", "animated"),
+    (0x03, _LATER_SSB, "dead"),
+    (0x83, _LATER_CURSE, "dead"),
+])
+def test_only_titles_that_run_the_zombie_byte_read_it_as_animated(
+        raw, title, expected):
+    animated = title in c64_codec.ANIMATED_STATUS_TITLES
+    assert c64_codec.status_from_byte(raw, animated_title=animated)[0] == (
+        expected)
 
 
 def test_living_player_keeps_silver_blades_effect_32():

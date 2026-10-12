@@ -442,8 +442,8 @@ class Party:
                     member.hp_max = record.hp_max
                     member.condition = c64_codec.status_from_byte(
                         block.roster_in_use,
-                        pool_of_radiance=(c64_codec.deltas_for(self.game)
-                                          is c64_codec.POOL_OF_RADIANCE_RECORD))
+                        animated_title=(c64_codec.deltas_for(self.game).key
+                                        in c64_codec.ANIMATED_STATUS_TITLES))
                     member.roster_tail = block.raw[
                         ROSTER_TAIL_AT:ROSTER_TAIL_END]
             self.members.append(member)
@@ -633,8 +633,8 @@ class Party:
             return None
         return c64_codec.status_from_byte(
             record.get("roster_in_use"),
-            pool_of_radiance=(c64_codec.deltas_for(game)
-                              is c64_codec.POOL_OF_RADIANCE_RECORD))
+            animated_title=(c64_codec.deltas_for(game).key
+                            in c64_codec.ANIMATED_STATUS_TITLES))
 
     # -- what the window asks ---------------------------------------------
 
