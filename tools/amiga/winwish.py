@@ -86,7 +86,12 @@ SHA = re.compile(r"^[0-9a-fA-F]{7,40}$")
 #: Seconds for one guest call; a download or an unzip is the slow one.
 CALL_SECONDS = 60.0
 COPY_SECONDS = 300.0
-START_SECONDS = 45
+#: Seconds for Wish's window to appear.  Wish took 6 s to start with one emulator
+#: on the guest and 29 s and over 60 s with three or four, and each window probe
+#: then starts PowerShell and compiles its C# on the same busy processors.
+START_SECONDS = 120
+#: Seconds the failure report gives one last window probe.
+PROBE_REPORT_SECONDS = 20
 #: Seconds for a display change, which waits for the new mode to settle twice.
 DISPLAY_SECONDS = 60.0
 
@@ -423,8 +428,8 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         "  if ($info.LastTaskResult -eq 267011) { $why = ' -- nobody is logged on at the console, so an Interactive task cannot run' }",
         "  $procs = @(Get-Process -Name wish -ErrorAction SilentlyContinue | ForEach-Object { \"  wish pid=$($_.Id) session=$($_.SessionId) path=$($_.Path)\" })",
         "  if ($procs.Count -eq 0) { $procs = @('  no wish process') }",
-        # Diagnostics only, after the budget: a fixed 5 s, not part of `wait`.
-        "  $seen = @(Get-WishWindows 5 | ForEach-Object { \"  window $_\" })",
+        # Diagnostics only, after the budget: PROBE_REPORT_SECONDS, not part of `wait`.
+        f"  $seen = @(Get-WishWindows {PROBE_REPORT_SECONDS} | ForEach-Object {{ \"  window $_\" }})",
         "  if ($seen.Count -eq 0) { $seen = @('  no top-level window belongs to a wish process') }",
         f"  \"fail no wish.exe window titled Wish after {int(wait)}s; lastResult=0x\" + ('{{0:X}}' -f $info.LastTaskResult) + $why",
         "  $procs",
@@ -1599,7 +1604,7 @@ def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, .
         return guest.ps(start_script(holder, environment(flag, holder, features, pipe), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
-                        timeout=START_SECONDS + 30)
+                        timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30)
     except WinwishError:
         _quietly(guest.ps, probe_close_script(holder))
         raise

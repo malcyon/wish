@@ -1118,6 +1118,26 @@ def test_the_probe_loop_never_runs_past_the_wait():
     assert "Get-WishWindows ([Math]::Min(10, $left))" in script
 
 
+def test_the_start_call_outlasts_the_wait_and_its_failure_report():
+    """The ssh call must not end before the guest has waited and reported what it saw."""
+    timeouts = []
+
+    def run(argv, timeout):
+        if argv[:2] == ["winvm", "ps"] and "Get-WishWindows" in argv[2]:
+            timeouts.append((timeout, argv[2]))
+        if argv[:2] == ["winvm", "lane"]:
+            return 0, "1: held by h"
+        return 0, "ok"
+
+    winwish.start_wish(winwish.Guest(run), "h", flag=False)
+    [(timeout, script)] = timeouts
+    assert f"$deadline = (Get-Date).AddSeconds({winwish.START_SECONDS})" in script
+    assert f"Get-WishWindows {winwish.PROBE_REPORT_SECONDS} |" in script
+    assert timeout > winwish.START_SECONDS + winwish.PROBE_REPORT_SECONDS
+    # Wish took over 60 s to show its window with four emulators on the guest.
+    assert winwish.START_SECONDS >= 90
+
+
 def test_every_title_wish_shows_starts_with_wish():
     root = pathlib.Path(winwish.__file__).parents[2] / "wish"
     window = (root / "window.py").read_text(encoding="utf-8")
