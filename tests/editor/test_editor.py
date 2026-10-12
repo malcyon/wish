@@ -5259,7 +5259,7 @@ def _converted_dos_disk(folder, slot, key):
 
 def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
                           levels=None, race=None, former_levels=None,
-                          level=None):
+                          level=None, figures=None):
     """A DOS save folder written from filled neutral characters, no game data.
     `numbers` are the `CHRDAT<slot><n>` file numbers that exist.  `class_bits`
     overrides `_filled`'s own arbitrary byte -- needed wherever the writer
@@ -5270,7 +5270,9 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
     override `_filled`'s own race and (unset) dual-class pair, for a test of
     a dual-classed human's regain rule. `level` overrides `_filled`'s own
     made-up aggregate `level` of 20, for a test whose class levels need to
-    look like a real save's rather than avoid `_filled`'s default."""
+    look like a real save's rather than avoid `_filled`'s default.
+    `figures` maps a file number to the `(icon_head, icon_body, icon_colours)`
+    its member is written with."""
     from support.neutralrecords import _filled
 
     from goldbox import c64_port, dos_codec
@@ -5289,6 +5291,11 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
             char.set("former_levels", former_levels, "made up, chosen for the test")
         if level is not None:
             char.set("level", level, "made up, chosen for the test")
+        if figures is not None and n in figures:
+            head, body, colours = figures[n]
+            char.set("icon_head", head, "made up, chosen for the test")
+            char.set("icon_body", body, "made up, chosen for the test")
+            char.set("icon_colours", colours, "made up, chosen for the test")
         record, itm, spc, _rep = dos_codec.write(char, deltas=deltas)
         (tmp_path / f"CHRDATA{n}.SAV").write_bytes(record)
         # The title names its own item and effect files (`.SWG`/`.FX` on Curse),
@@ -7127,10 +7134,8 @@ def _amiga_pod_editor(tmp_path):
     return window
 
 
-@pytest.mark.parametrize("make", ["_dos_pool_editor", "_dos_curse_editor",
-                                  "_dos_silver_blades_editor",
-                                  "_amiga_curse_editor", "_amiga_pod_editor"])
-def test_no_other_party_gets_a_figure_even_when_the_art_is_there(
+@pytest.mark.parametrize("make", ["_amiga_curse_editor", "_amiga_pod_editor"])
+def test_no_other_amiga_party_gets_a_figure_even_when_the_art_is_there(
         app, tmp_path, monkeypatch, make):
     monkeypatch.setattr("editor.amigafigure.load", lambda folders:
                         _generated_figure_art())
@@ -7139,6 +7144,371 @@ def test_no_other_party_gets_a_figure_even_when_the_art_is_there(
     assert w.figure_art is None
     w.roster.selectRow(0)
     assert w._widgets["icon"].preview.figure is None
+
+
+# ---------------------------------------------------------------------------
+# A DOS Pool of Radiance, Curse or Silver Blades character's combat figure
+# ---------------------------------------------------------------------------
+
+#: Heads 1 and 2, bodies 3 and 4, each recoloured by its own six bytes.
+_DOS_FIGURES = {1: (1, 3, bytes([0x3A, 0, 0, 0x0C, 0, 0])),
+                2: (2, 4, bytes([0x4B, 0, 0, 0x0D, 0, 0]))}
+_DOS_TITLES = ["POOL_OF_RADIANCE", "CURSE_OF_THE_AZURE_BONDS",
+               "SECRET_OF_THE_SILVER_BLADES"]
+
+
+def _generated_dos_art(title="pool-of-radiance", drop_head=None):
+    """Art for the two members `_dos_figure_editor` writes: size 2, so the
+    heads are blocks 65 and 66 and the bodies 67 and 68, each with a second
+    pose 128 higher.  A head stores part 4 and a body part 1 (ready) or 9
+    (action), the values the colour bytes recolour."""
+    from editor.dosfigure import FigureArt
+    from goldbox import dos_icons as di
+
+    def block(height, y, x, value):
+        rows = [[0] * 24 for _ in range(height)]
+        rows[y][x] = value
+        return di.ArtBlock(height, 24, tuple(tuple(r) for r in rows))
+
+    heads, bodies = {}, {}
+    for option in (1, 2):
+        heads[64 + option] = block(8, 0, 5, 4)
+        heads[192 + option] = block(8, 0, 6, 4)
+    for option in (3, 4):
+        bodies[64 + option] = block(24, 10, 3, 1)
+        bodies[192 + option] = block(24, 10, 4, 9)
+    if drop_head is not None:
+        del heads[64 + drop_head], heads[192 + drop_head]
+    frame = di.ArtBlock(24, 24, ((7,) * 24,) * 24)
+    return FigureArt(di.GameArt(heads, bodies, (frame, frame)), title,
+                     di.icon_palette(title))
+
+
+def _patch_dos_art(monkeypatch, art_for=_generated_dos_art):
+    monkeypatch.setattr("editor.dosfigure.load",
+                        lambda folders, title: art_for(title))
+
+
+def _dos_figure_editor(tmp_path, deltas, settle=True):
+    """A DOS party of two who differ only in their figure's fields."""
+    from editor.window import EditorBinding
+    folder = tmp_path / "save"
+    folder.mkdir()
+    _synthetic_dos_folder(folder, deltas, numbers=(1, 2), figures=_DOS_FIGURES)
+    window = EditorBinding(make_root(), str(folder / "SAVGAMA.DAT"))
+    if settle:
+        _settle(window)
+    return window, folder
+
+
+def _folder_hashes(folder):
+    import hashlib
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(folder.iterdir())}
+
+
+@pytest.mark.parametrize("title", _DOS_TITLES)
+def test_a_dos_member_shows_his_two_poses_in_the_figure_box(
+        app, tmp_path, monkeypatch, title):
+    from goldbox import dos_icons as di
+    from goldbox import dos_port
+    deltas = getattr(dos_port, title)
+    _patch_dos_art(monkeypatch)
+    w, _folder = _dos_figure_editor(tmp_path, deltas)
+    icon = w._widgets["icon"]
+    palette = di.icon_palette(deltas.key)
+    seen = []
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        figure = icon.preview.figure
+        assert figure is not None
+        seen.append(figure)
+    first, second = seen
+    ready, action = first.poses
+    assert ready[0][5] == palette[12] and ready[10][3] == palette[10]
+    assert action[0][6] == palette[12] and action[10][4] == palette[3]
+    assert ready[0][0] == palette[7]                # the box shows around him
+    ready, action = second.poses
+    assert ready[0][5] == palette[13] and ready[10][3] == palette[11]
+    assert action[10][4] == palette[4]
+    assert first.poses != second.poses
+    assert first.background == second.background == palette[0]
+    assert icon.preview.figure is second
+
+
+def test_the_dos_figure_box_draws_pixels_and_two_members_differ(
+        app, tmp_path, monkeypatch):
+    from PyQt6.QtGui import QColor
+
+    from goldbox import dos_icons as di
+    from goldbox import dos_port
+    _patch_dos_art(monkeypatch)
+    w, _folder = _dos_figure_editor(tmp_path, dos_port.POOL_OF_RADIANCE)
+    preview = w._widgets["icon"].preview
+    palette = di.icon_palette("pool-of-radiance")
+    shots = []
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        preview.grab()                  # the first grab settles the size
+        scale, x0, y0 = preview._geometry()
+        shot = preview.grab().toImage()
+        shots.append(shot)
+
+        def at(x, y):
+            return shot.pixelColor(x0 + x * scale + scale // 2,
+                                   y0 + y * scale + scale // 2)
+        assert at(5, 0) == QColor(*palette[12 + row])   # ready: the head
+        assert at(24 + 4, 10) == QColor(*palette[3 + row])  # action: the body
+    assert shots[0] != shots[1]
+    blank = QColor("#ffffff")
+    assert any(shots[0].pixelColor(x, y) != blank
+               for x in range(shots[0].width())
+               for y in range(shots[0].height()))
+
+
+@pytest.mark.parametrize("title", _DOS_TITLES)
+def test_the_dos_figure_changes_no_byte_and_leaves_the_controls_greyed(
+        app, tmp_path, monkeypatch, title):
+    from goldbox import dos_port
+    _patch_dos_art(monkeypatch)
+    w, folder = _dos_figure_editor(tmp_path, getattr(dos_port, title))
+    before = _folder_hashes(folder)
+    icon = w._widgets["icon"]
+    for row in (0, 1, 0):
+        w.roster.selectRow(row)
+        assert icon.preview.figure is not None
+        assert not icon.isEnabled()
+        assert not icon.btn_change.isEnabled()
+        assert not icon.group_box.isEnabled()
+        assert icon.icon is None
+        assert w.party.member(row).icon is None
+        assert icon.toolTip() == icon.btn_change.toolTip() == ""
+        assert icon.preview.cursor().shape() == Qt.CursorShape.ArrowCursor
+    assert _folder_hashes(folder) == before
+    assert not w.dirty
+
+
+@pytest.mark.parametrize("title", _DOS_TITLES)
+def test_missing_dos_art_leaves_the_figure_box_empty(
+        app, tmp_path, monkeypatch, title):
+    from PyQt6.QtGui import QColor
+
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+    # Only the save's own folder, whatever Preferences or the Game directory
+    # name on the machine running this.
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [tmp_path])
+    w, folder = _dos_figure_editor(tmp_path, getattr(dos_port, title))
+    before = _folder_hashes(folder)
+    assert w.figure_art is None
+    preview = w._widgets["icon"].preview
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        assert preview.figure is None
+    shot = preview.grab().toImage()
+    assert shot.pixelColor(shot.width() // 2, shot.height() // 2) == QColor(
+        "#ffffff")
+    assert _folder_hashes(folder) == before
+
+
+def test_a_dos_art_load_that_fails_leaves_the_figure_box_empty(
+        app, tmp_path, monkeypatch):
+    from goldbox import dos_port
+
+    def broken(folders, title):
+        raise OSError("the disk went away")
+    monkeypatch.setattr("editor.dosfigure.load", broken)
+    w, _folder = _dos_figure_editor(tmp_path, dos_port.POOL_OF_RADIANCE)
+    assert w.figure_art is None
+    w.roster.selectRow(1)
+    assert w._widgets["icon"].preview.figure is None
+
+
+def test_art_that_does_not_hold_the_dos_members_blocks_leaves_the_box_empty(
+        app, tmp_path, monkeypatch):
+    from goldbox import dos_port
+    _patch_dos_art(monkeypatch, lambda title: _generated_dos_art(title, 2))
+    w, _folder = _dos_figure_editor(tmp_path, dos_port.POOL_OF_RADIANCE)
+    preview = w._widgets["icon"].preview
+    w.roster.selectRow(0)
+    assert preview.figure is not None
+    w.roster.selectRow(1)
+    assert preview.figure is None
+
+
+def test_opening_a_dos_save_does_not_wait_for_the_art(
+        app, tmp_path, monkeypatch):
+    import threading
+
+    from goldbox import dos_port
+    release, started = threading.Event(), threading.Event()
+
+    def slow(folders, title):
+        started.set()
+        release.wait(5)
+        return _generated_dos_art(title)
+    monkeypatch.setattr("editor.dosfigure.load", slow)
+    try:
+        w, _folder = _dos_figure_editor(tmp_path, dos_port.POOL_OF_RADIANCE,
+                                        settle=False)
+        assert not release.is_set()
+        assert len(w.party) == 2 and w.roster.currentIndex().row() == 0
+        assert w.figure_art is None
+        assert w._widgets["icon"].preview.figure is None
+        assert started.wait(5)
+    finally:
+        release.set()
+    _settle(w)
+    assert w._widgets["icon"].preview.figure is not None
+
+
+def test_dos_art_from_an_earlier_open_is_not_drawn(app, tmp_path, monkeypatch):
+    from goldbox import dos_port
+    monkeypatch.setattr("editor.dosfigure.load", lambda folders, title: None)
+    w, _folder = _dos_figure_editor(tmp_path, dos_port.POOL_OF_RADIANCE)
+    w._figure_loaded(w._figure_serial - 1, _generated_dos_art())
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+    w._figure_loaded(w._figure_serial, _generated_dos_art())
+    assert w._widgets["icon"].preview.figure is not None
+
+
+def _title_files(folder, deltas):
+    """The launcher and configuration file `titles.dos_folder_title` reads
+    a game folder by; empty files stand for them."""
+    from goldbox import titles
+    launcher, config, _stem = titles.DOS_FOLDER_FILES[deltas.key]
+    folder.mkdir(exist_ok=True)
+    (folder / launcher).write_bytes(b"")
+    (folder / config).write_bytes(b"")
+
+
+def test_the_dos_art_is_looked_for_in_the_game_folder_above_the_save(
+        app, tmp_path, monkeypatch):
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+    deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
+    game = tmp_path / "game"
+    _title_files(game, deltas)
+    asked = []
+
+    def record(folders, title):
+        asked.append((list(folders), title))
+        return None
+    monkeypatch.setattr("editor.dosfigure.load", record)
+    monkeypatch.setattr(EditorBinding, "_own_disk_folder",
+                        lambda self, game: None)
+    _dos_figure_editor(game, deltas)
+    assert asked == [([game], deltas.key)]
+
+
+def test_a_folder_of_another_title_is_not_searched_for_dos_art(
+        app, tmp_path, monkeypatch):
+    from editor.window import EditorBinding
+    from goldbox import dos_port
+    game = tmp_path / "game"
+    _title_files(game, dos_port.CURSE_OF_THE_AZURE_BONDS)
+    asked = []
+
+    def record(folders, title):
+        asked.append(list(folders))
+        return None
+    monkeypatch.setattr("editor.dosfigure.load", record)
+    monkeypatch.setattr(EditorBinding, "_own_disk_folder",
+                        lambda self, game: None)
+    _dos_figure_editor(game, dos_port.POOL_OF_RADIANCE)
+    assert asked == [[]]
+
+
+def test_the_dos_reader_takes_the_first_folder_that_holds_the_art(
+        tmp_path, monkeypatch):
+    from editor import dosfigure
+    seen = []
+
+    def read(folder):
+        seen.append(folder.name)
+        if folder.name == "first":
+            raise OSError("no such file")
+        return _generated_dos_art().game
+    monkeypatch.setattr("editor.dosfigure.art.read_game", read)
+    found = dosfigure.load([tmp_path / "first", tmp_path / "second",
+                            tmp_path / "third"], "pool-of-radiance")
+    assert found is not None and seen == ["first", "second"]
+    assert dosfigure.load([tmp_path / "first"], "pool-of-radiance") is None
+    assert dosfigure.load([], "pool-of-radiance") is None
+
+
+def test_no_dos_art_reaches_a_pools_of_darkness_party(
+        app, tmp_path, monkeypatch):
+    from test_podwindow import _open_synthetic
+    _patch_dos_art(monkeypatch)
+    w, _folder = _open_synthetic(monkeypatch, tmp_path, names=False)
+    _settle(w)
+    assert w.party.port == "dos" and w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+
+
+@pytest.mark.parametrize("make", ["_amiga_pool_party_editor",
+                                  "_amiga_curse_editor", "_amiga_pod_editor"])
+def test_dos_art_does_not_reach_an_amiga_party(
+        app, tmp_path, monkeypatch, make):
+    _patch_dos_art(monkeypatch)
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders: None)
+    w = globals()[make](tmp_path)
+    w = w[0] if isinstance(w, tuple) else w
+    _settle(w)
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+
+
+def test_donalds_pool_party_shows_the_figure_the_composer_makes(
+        app, monkeypatch):
+    gamedisks = pytest.importorskip("automap.gamedisks")
+    from editor.window import EditorBinding
+    from goldbox import dos_icons as di
+    folder = gamedisks.find("por-dos-play")
+    if folder is None:
+        pytest.skip("needs Donald's DOS Pool of Radiance; set $POR_DOS_GAME")
+    save = folder / "SAVE"
+    if not (save / "CHRDATA1.SAV").is_file():
+        pytest.skip("por-dos-play has no slot A party")
+    try:
+        game = di.read_game(folder)
+    except di.DosArtError as exc:
+        pytest.skip(f"por-dos-play holds no figure art: {exc}")
+    before = _folder_hashes(save)
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [folder])
+    w = EditorBinding(make_root())
+    w._adopt(Party(str(save)), str(save))
+    _settle(w)
+    names = [m.name.strip() for m in w.party.members]
+    if "BRUTUS" not in names:
+        pytest.skip("slot A of por-dos-play has no BRUTUS")
+    palette = di.icon_palette("pool-of-radiance")
+    for name in ("BRUTUS", "ROLAND"):
+        if name not in names:
+            continue
+        row = names.index(name)
+        member = w.party.member(row)
+        w.roster.selectRow(row)
+        native = member.native
+        poses = di.compose(game.heads, game.bodies, native.get("icon_head"),
+                           native.get("icon_body"), native.get("size"),
+                           bytes(native.get("icon_colours")))
+        want = tuple(tuple(tuple(palette[v] for v in line)
+                           for line in di.on_frame(di.frame_for(game, n),
+                                                   pose))
+                     for n, pose in enumerate(poses))
+        figure = w._widgets["icon"].preview.figure
+        assert figure is not None and figure.poses == want, name
+        assert figure.background == palette[0]
+        assert member.icon is None
+    assert _folder_hashes(save) == before
 
 
 def test_the_figure_art_is_gathered_from_every_disk_in_the_folder(tmp_path):

@@ -42,6 +42,7 @@ from goldbox import (
     c64_codec,
     classcode,
     dos_codec,
+    dos_icons,
     dos_savegame,
     stonecracker,
     titles,
@@ -66,7 +67,16 @@ from goldbox.savegame import SaveGame0, SaveGame1, store_save, tail_damage
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
-from . import activeeffects, amigafigure, changes, files, inventory, podsheet, saveplan
+from . import (
+    activeeffects,
+    amigafigure,
+    changes,
+    dosfigure,
+    files,
+    inventory,
+    podsheet,
+    saveplan,
+)
 from . import effects as trait_effects
 from .binding import (
     COMBAT_FIELDS,
@@ -956,7 +966,8 @@ class EditorBinding(QObject):
         self.game_disk_found: str | None = None
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
-        self.figure_art: amigafigure.FigureArt | None = None
+        self.figure_art: (amigafigure.FigureArt | dosfigure.FigureArt
+                          | None) = None
         self._figure_serial = 0
         self._figure_carrier = amigafigure.Loaded(self)
         self._figure_carrier.done.connect(self._figure_loaded)
@@ -2162,14 +2173,20 @@ class EditorBinding(QObject):
     def _holds_title(folder, game) -> bool:
         """Whether `folder`, or the game folder above a `SAVE` directory,
         holds `game`'s DOS title."""
+        return EditorBinding._title_folder(folder, game) is not None
+
+    @staticmethod
+    def _title_folder(folder, game) -> "pathlib.Path | None":
+        """`folder`, or the game folder above a `SAVE` directory, whichever
+        holds `game`'s DOS title; None when neither does."""
         for where in (folder, folder.parent):
             try:
                 if titles.dos_folder_title(where) == game.key:
-                    return True
+                    return where
             except (OSError, RuntimeError) as exc:
                 _log.debug("%s cannot be identified as a game folder: %s",
                            where, exc)
-        return False
+        return None
 
     def _port_folders(self, game, source=None) -> list[pathlib.Path]:
         """The folders a DOS game or Amiga disks may be in, in the order
@@ -2672,17 +2689,26 @@ class EditorBinding(QObject):
         self._apply_spell_table()
 
     def _load_figure_art(self) -> None:
-        """Start reading the Amiga Pool of Radiance combat-figure art off the
-        player's disks, for that party only. The figure box stays empty until
-        `_figure_loaded` has it, and when the disks are not found."""
+        """Start reading the party's combat-figure art off the player's disks
+        or game folder: Amiga Pool of Radiance, or a DOS Pool of Radiance,
+        Curse or Silver Blades. The figure box stays empty until
+        `_figure_loaded` has it, and when the art is not found."""
         self._figure_serial += 1
         self.figure_art = None
         party = self.party
-        if (party is None or party.port != "amiga"
-                or party.game.key != por_games.POOL_OF_RADIANCE.key):
+        if party is None:
             return
-        amigafigure.start(self._figure_serial, self._port_folders(party.game),
-                          self._figure_carrier)
+        if (party.port == "amiga"
+                and party.game.key == por_games.POOL_OF_RADIANCE.key):
+            amigafigure.start(self._figure_serial,
+                              self._port_folders(party.game),
+                              self._figure_carrier)
+        elif party.port == "dos" and party.game.key in dos_icons.ICON_SCREENS:
+            found = (self._title_folder(f, party.game)
+                     for f in self._port_folders(party.game))
+            folders = list(dict.fromkeys(f for f in found if f is not None))
+            dosfigure.start(self._figure_serial, folders, party.game.key,
+                            self._figure_carrier)
 
     def _figure_loaded(self, serial: int, art) -> None:
         """The art a background load found, unless another party or folder
@@ -2697,9 +2723,10 @@ class EditorBinding(QObject):
                 self._figure_of(self.party.member(self.current_row)))
 
     def _figure_of(self, member) -> "amigafigure.Figure | None":
-        """`member`'s combat figure drawn from the Amiga disks, or None."""
+        """`member`'s combat figure drawn from the art found, or None."""
         if (self.figure_art is None
-                or not isinstance(member.native, amiga_por.AmigaPorCharacter)):
+                or not isinstance(member.native, (amiga_por.AmigaPorCharacter,
+                                                  dos_codec.DosCharacter))):
             return None
         return self.figure_art.figure(member.native)
 

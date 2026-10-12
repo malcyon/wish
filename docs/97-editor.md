@@ -480,9 +480,14 @@ the same box, drawn from the player's own game disks as the game's ICON screen
 draws them (`editor/amigafigure.py`, `goldbox/amiga_por_icons.py`). The disks
 are looked for where `_port_names` looks for Amiga disks, on a worker thread:
 the box is empty until the art arrives, and stays empty when the disks do not
-hold it. The controls stay greyed and `Member.icon`
-stays `None`, since nothing edits a native figure. DOS saves, the later Amiga
-titles and Pools of Darkness keep the empty box.
+hold it. A DOS Pool of Radiance, Curse or Silver Blades party shows its members'
+poses the same way, drawn from `CHEAD.DAX`, `CBODY.DAX` and `COMSPR.DAX`
+(`editor/dosfigure.py`, `goldbox/dos_icons.py`); the game folder is looked for in
+the folders `_port_names` uses for a DOS game, each checked with
+`_holds_title`, and each member is composed from his own record's head, body,
+size and six colour bytes. The controls stay greyed and `Member.icon`
+stays `None`, since nothing edits a native figure and no record byte changes.
+The later Amiga titles and Pools of Darkness keep the empty box.
 
 ### What is known
 
