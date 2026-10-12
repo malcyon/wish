@@ -326,12 +326,13 @@ def test_the_written_record_is_the_amiga_record(shipped_adf, tmp_path):
         differing = {_field_at(i) for i in range(len(got))
                      if want[i] != got[i]}
         # A figure part the Amiga draws under another number than DOS arrives
-        # as the DOS number of the identical drawing, so its byte differs.
+        # as the DOS number of the identical or nearest drawing, so its byte
+        # may differ.
         renumbered = {
             f"icon_{part}" for part in ("head", "body")
-            if amiga_por_icons.dos_option(
-                part, char.get(f"icon_{part}"), char.get("size")) not in (
-                None, char.get(f"icon_{part}"))}
+            if amiga_por_icons.dos_drawing(
+                part, char.get(f"icon_{part}"), char.get("size"))[0]
+            != char.get(f"icon_{part}")}
         assert differing <= allowed | renumbered, (
             char.name, sorted(differing - allowed - renumbered))
 
@@ -375,15 +376,14 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
             (tmp_path / "out" / f"CHRDATA{n}.SAV").read_bytes())
         size = char.get("size")
         # The Amiga's numbers name other drawings than DOS's, so each part
-        # arrives as the DOS number of the identical drawing, and keeps its
-        # number only where DOS has no identical one.
+        # arrives as the DOS number of the identical drawing, or of the
+        # nearest one where DOS has no identical drawing.
         for part in ("head", "body"):
             amiga = char.get(f"icon_{part}")
-            want = amiga_por_icons.dos_option(part, amiga, size)
-            assert record.get(f"icon_{part}") == (
-                amiga if want is None else want), (char.name, part)
+            want = amiga_por_icons.dos_drawing(part, amiga, size)[0]
+            assert record.get(f"icon_{part}") == want, (char.name, part)
         if char.name == "GARWAN":
-            assert record.get("icon_head") == 8
+            assert (record.get("icon_head"), record.get("icon_body")) == (8, 20)
         # Colours still copy across: converting them waits on the Amiga
         # palette being settled.
         assert record.raw("icon_colours") == char.raw("icon_colours"), char.name

@@ -17,6 +17,12 @@ Radiance's `CHEAD.DAX` and `CBODY.DAX`, pixel for pixel through
     option that DOS number converts to through `tools/icons/iconproposal.yaml`.
     Markdown, for a ticket.
 
+``--nearest``
+    The two tables `goldbox.amiga_por_icons.NEAREST_DOS` and `NEAREST_AMIGA`
+    hold, as Python source: for each option with no identical drawing on the
+    other port, the option there with the fewest differing pixels over both
+    poses (the lowest number on a tie) and that count.
+
 ``--code``
     The two tables the preparer reads out of `/program`: the size letters and
     the six recoloured pairs, against the constants the module holds.
@@ -39,6 +45,7 @@ Radiance's `CHEAD.DAX` and `CBODY.DAX`, pixel for pixel through
 
     tools/icons/amigaporicons.py --art
     tools/icons/amigaporicons.py --table
+    tools/icons/amigaporicons.py --nearest
     tools/icons/amigaporicons.py --code --sweep --palette
     tools/icons/amigaporicons.py --capture LAURANN laurann-icon-crop.png
 
@@ -195,6 +202,39 @@ def option_table(amiga, dos, kind: str, size: int) -> list[tuple]:
     return rows
 
 
+def _score(amiga, dos, kind: str, size: int, a: int, d: int) -> int:
+    """Pixels differing between Amiga option `a` and DOS option `d`, both poses."""
+    total = 0
+    for x, y in zip(art.block_ids(kind, a, size), art.block_ids(kind, d, size)):
+        n = difference(amiga[kind][x].rows, dos[kind][y])
+        total += 10_000 if n is None else n
+    return total
+
+
+def nearest_tables(amiga, dos) -> tuple[dict, dict]:
+    """`(NEAREST_DOS, NEAREST_AMIGA)` as `art` holds them, measured.
+
+    `{(kind, size): {option: (other port's option, pixels differing)}}`, only
+    for options with no identical drawing; `min` over `(pixels, option)`
+    breaks a tie towards the lower option number.
+    """
+    to_dos, to_amiga = {}, {}
+    for kind, limit in (("head", HEAD_OPTIONS), ("body", BODY_OPTIONS)):
+        for size in (1, 2):
+            forward, back = {}, {}
+            for one in range(limit):
+                pixels, other = min((_score(amiga, dos, kind, size, one, d), d)
+                                    for d in range(limit))
+                if pixels:
+                    forward[one] = (other, pixels)
+                pixels, other = min((_score(amiga, dos, kind, size, a, one), a)
+                                    for a in range(limit))
+                if pixels:
+                    back[one] = (other, pixels)
+            to_dos[kind, size], to_amiga[kind, size] = forward, back
+    return to_dos, to_amiga
+
+
 def c64_tables():
     from goldbox.iconparts import dos_icon_tables
     return {size: dos_icon_tables(title="pool-of-radiance", size=name)
@@ -243,6 +283,20 @@ def report_table(out) -> int:
                     out(f"| {option} | none | none | {nearest}, {pixels} |")
                 else:
                     out(f"| {option} | {same} | {table.get(same, '?')} | |")
+    return 0
+
+
+def report_nearest(out) -> int:
+    amiga, dos = amiga_art(), dos_art()
+    if amiga is None or dos is None:
+        out("need POOLDATA's chead.dax and cbody.dax and DOS POOLRAD")
+        return 1
+    for name, table in zip(("NEAREST_DOS", "NEAREST_AMIGA"),
+                           nearest_tables(amiga, dos)):
+        out(f"{name}: dict[tuple[str, int], dict[int, tuple[int, int]]] = {{")
+        for key, rows in table.items():
+            out(f"    {key!r}: {rows!r},")
+        out("}")
     return 0
 
 
@@ -442,6 +496,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="every Amiga block against the DOS blocks")
     parser.add_argument("--table", action="store_true",
                         help="Amiga option to DOS and C64 option, Markdown")
+    parser.add_argument("--nearest", action="store_true",
+                        help="the nearest-drawing tables, as Python source")
     parser.add_argument("--code", action="store_true",
                         help="the preparer's two tables out of /program")
     parser.add_argument("--sweep", action="store_true",
@@ -451,15 +507,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--capture", nargs=2, metavar=("NAME", "PNG"),
                         help="NAME's composed figure against an ICON crop")
     args = parser.parse_args(argv)
-    if not (args.art or args.table or args.code or args.sweep
+    if not (args.art or args.table or args.nearest or args.code or args.sweep
             or args.palette or args.capture):
-        parser.error("say which: --art, --table, --code, --sweep, "
+        parser.error("say which: --art, --table, --nearest, --code, --sweep, "
                      "--palette or --capture")
     problems = 0
     if args.art:
         problems += report_art(print)
     if args.table:
         problems += report_table(print)
+    if args.nearest:
+        problems += report_nearest(print)
     if args.code:
         problems += report_code(print)
     if args.sweep:

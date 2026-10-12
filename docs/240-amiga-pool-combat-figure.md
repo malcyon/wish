@@ -236,8 +236,11 @@ match pixel for pixel, so a converted GARWAN arrives with DOS head 8 and the
 C64 composes from the same number. The Amiga reader, the Amiga writer and the
 in-place rewrite keep the Amiga's own numbers, because the table is not
 defined for every option. A part with no identical drawing on the other port
-keeps its number, which draws a different picture there: GARWAN's body 30 is
-63 pixels from DOS body 20. The colour bytes are copied unchanged and do not
+becomes the option there with the fewest differing pixels over both poses, the
+lowest number on a tie (`NEAREST_DOS` and `NEAREST_AMIGA`, printed by
+`tools/icons/amigaporicons.py --nearest`): GARWAN's body 30 becomes DOS body
+20, 63 pixels away. Every option of both kinds and both sizes has a mapping
+each way, the worst being 145 pixels (small Amiga body 22). The colour bytes are copied unchanged and do not
 mean the same thing either: in DOS terms the Amiga's body, arm, leg and weapon
 pairs hold the main colour in the high nibble and the highlight in the low
 one, the reverse of DOS, while hair and shield keep DOS's order; and the

@@ -326,3 +326,66 @@ def amiga_option(kind: str, option: int, size: int) -> int | None:
         if dos == option:
             return amiga
     return None
+
+
+#: For an option with no identical drawing: the option on the other port with
+#: the fewest pixels differing over both poses, and that count, as
+#: `{(kind, size): {option: (other option, pixels)}}`; the lowest number
+#: wins a tie.  `NEAREST_DOS` is keyed by Amiga option, `NEAREST_AMIGA` by DOS
+#: option.  Measured by `tools/icons/amigaporicons.py --nearest` against the
+#: files `SAME_DRAWING` names plus DOS `POOLRAD` `CHEAD.DAX` (SHA-256
+#: aecd2ebb...) and `CBODY.DAX` (9928778c...); a test recomputes both.
+NEAREST_DOS: dict[tuple[str, int], dict[int, tuple[int, int]]] = {
+    ('head', 1): {0: (10, 32), 1: (10, 34), 2: (10, 36), 3: (0, 10), 4: (10, 36),
+                  5: (2, 12), 6: (9, 30), 7: (9, 56), 8: (9, 50), 9: (9, 60),
+                  10: (10, 38), 11: (4, 36), 12: (1, 2), 13: (8, 26)},
+    ('head', 2): {3: (0, 14), 7: (2, 16), 9: (6, 2)},
+    ('body', 1): {1: (1, 1), 2: (2, 1), 3: (3, 3), 4: (27, 1), 5: (28, 2), 6: (29, 2),
+                  7: (30, 1), 8: (4, 5), 11: (31, 6), 12: (7, 3), 13: (7, 40),
+                  14: (9, 1), 15: (10, 2), 16: (11, 5), 17: (12, 2), 18: (13, 2),
+                  19: (14, 2), 20: (15, 2), 22: (7, 145), 23: (8, 140), 24: (17, 1),
+                  25: (18, 1), 26: (19, 3), 27: (20, 7), 29: (22, 6), 30: (23, 7),
+                  31: (24, 6)},
+    ('body', 2): {3: (3, 4), 4: (27, 1), 5: (28, 2), 6: (29, 2), 7: (30, 1), 8: (4, 5),
+                  9: (5, 4), 12: (8, 5), 13: (9, 1), 14: (10, 1), 15: (11, 6),
+                  16: (12, 1), 17: (13, 1), 18: (14, 1), 19: (15, 1), 21: (7, 144),
+                  22: (8, 125), 24: (18, 2), 25: (19, 2), 29: (23, 1), 30: (20, 63),
+                  31: (22, 75)},
+}
+NEAREST_AMIGA: dict[tuple[str, int], dict[int, tuple[int, int]]] = {
+    ('head', 1): {0: (3, 10), 1: (12, 2), 2: (5, 12), 3: (5, 30), 4: (3, 20),
+                  5: (3, 24), 6: (3, 46), 7: (3, 26), 8: (12, 14), 9: (12, 24),
+                  10: (5, 14), 11: (3, 10), 12: (12, 2), 13: (5, 12)},
+    ('head', 2): {2: (7, 16), 5: (5, 28), 6: (9, 2)},
+    ('body', 1): {1: (1, 1), 2: (2, 1), 3: (3, 3), 4: (8, 5), 7: (12, 3), 8: (13, 43),
+                  9: (14, 1), 10: (15, 2), 11: (16, 5), 12: (17, 2), 13: (18, 2),
+                  14: (19, 2), 15: (20, 2), 17: (24, 1), 18: (25, 1), 19: (26, 3),
+                  20: (27, 7), 22: (29, 6), 23: (30, 7), 24: (31, 6), 25: (31, 52),
+                  26: (30, 46), 27: (4, 1), 28: (5, 2), 29: (6, 2), 30: (7, 1),
+                  31: (11, 6)},
+    ('body', 2): {3: (3, 4), 4: (8, 5), 5: (9, 4), 8: (12, 5), 9: (13, 1), 10: (14, 1),
+                  11: (15, 6), 12: (16, 1), 13: (17, 1), 14: (18, 1), 15: (19, 1),
+                  18: (24, 2), 19: (25, 2), 23: (29, 1), 24: (11, 64), 25: (28, 58),
+                  26: (29, 13), 27: (4, 1), 28: (5, 2), 29: (6, 2), 30: (7, 1),
+                  31: (4, 135)},
+}
+
+
+def dos_drawing(kind: str, option: int, size: int) -> tuple[int, int] | None:
+    """`(DOS option, pixels differing)` for this Amiga option, or None.
+
+    The identical drawing where there is one (0 pixels), else the nearest.
+    None for a size or option outside the tables.
+    """
+    same = dos_option(kind, option, size)
+    if same is not None:
+        return same, 0
+    return NEAREST_DOS.get((kind, size), {}).get(option)
+
+
+def amiga_drawing(kind: str, option: int, size: int) -> tuple[int, int] | None:
+    """`(Amiga option, pixels differing)` for this DOS option, or None."""
+    same = amiga_option(kind, option, size)
+    if same is not None:
+        return same, 0
+    return NEAREST_AMIGA.get((kind, size), {}).get(option)

@@ -187,15 +187,12 @@ def test_dos_to_amiga_direction_carries_the_sources_own_combat_icon(
     assert expected != [(0, 0)] * len(expected), \
         "the specimen itself carries no combat icon -- pick a different one"
     # The Amiga draws other pictures under DOS's numbers, so each part
-    # arrives as the Amiga number of the identical drawing, and keeps its
-    # number only where the Amiga has none.
+    # arrives as the Amiga number of the identical drawing, or of the nearest
+    # one where the Amiga has no identical drawing.
     expected = [
-        tuple(number if mapped is None else mapped
-              for number, mapped in (
-                  (c.get(f"icon_{part}"),
-                   amiga_por_icons.amiga_option(part, c.get(f"icon_{part}"),
-                                                c.get("size")))
-                  for part in ("head", "body")))
+        tuple(amiga_por_icons.amiga_drawing(
+            part, c.get(f"icon_{part}"), c.get("size"))[0]
+            for part in ("head", "body"))
         for c in raw_party]
 
     rehearsal = direction.rehearse(source, "A", disk2)
@@ -245,6 +242,20 @@ def test_dos_to_amiga_direction_writes_the_amiga_number_of_the_same_drawing(
         (10, 28)]
 
 
+def test_a_dos_part_with_no_identical_drawing_becomes_the_nearest_amiga_one():
+    from goldbox.iconparts import amiga_por_icon_from_dos
+
+    icon = DosIcon(head=2, body=24, colours=bytes(6),
+                   figure_source="the source's own figure",
+                   colours_source="test colours")
+    back = amiga_por_icon_from_dos(icon, 2)
+    assert (back.head, back.body) == (7, 11)
+    assert "head 2 became 7, the nearest drawing, 16 pixels differ" \
+        in back.figure_source
+    assert "body 24 became 11, the nearest drawing, 64 pixels differ" \
+        in back.figure_source
+
+
 def test_the_figure_source_says_what_happened_to_each_part():
     """The line quoted beside `icon_head` and `icon_body` in the byte
     accounting must not call a renumbered part copied unchanged."""
@@ -254,15 +265,16 @@ def test_the_figure_source_says_what_happened_to_each_part():
                    figure_source="the source's own figure",
                    colours_source="test colours")
     to_dos = amiga_por_icon_to_dos(icon, 2)
-    assert (to_dos.head, to_dos.body) == (8, 30)
+    assert (to_dos.head, to_dos.body) == (8, 20)
     assert "head 10 became 8, the number of the identical drawing" \
         in to_dos.figure_source
-    assert "body 30 kept its number because no identical drawing exists" \
+    assert "body 30 became 20, the nearest drawing, 63 pixels differ" \
         in to_dos.figure_source
     assert "unchanged" not in to_dos.figure_source
 
     back = amiga_por_icon_from_dos(to_dos, 2)
-    assert (back.head, back.body) == (10, 30)
+    assert (back.head, back.body) == (10, 26)
     assert "head 8 became 10" in back.figure_source
-    assert "body 30 kept its number" in back.figure_source
+    assert "body 20 became 26, the number of the identical drawing" \
+        in back.figure_source
     assert back.figure_source.startswith(to_dos.figure_source)

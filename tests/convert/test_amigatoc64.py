@@ -499,7 +499,8 @@ def test_garwan_arrives_on_the_c64_wearing_dos_head_8(
     """GARWAN's Amiga large head 10 draws what DOS stores as large head 8
     (`goldbox.amiga_por_icons.SAME_DRAWING`), so the C64 figure is composed
     from head 8, not from DOS head 10, which is another face.  His Amiga
-    body 30 has no identical DOS drawing and keeps its number.
+    body 30 has no identical DOS drawing, so it becomes DOS body 20, the
+    nearest.
 
     Fails when `AmigaToC64.rehearse` hands the Amiga numbers to the C64
     composer unchanged.
@@ -548,5 +549,6 @@ def test_garwan_arrives_on_the_c64_wearing_dos_head_8(
     got = taken["save0"][at:at + dos_codec.ICON_SIZE]
     colours = bytes(garwan.get("icon_colours"))
     tables = dos_icon_tables(title=c64_port.POOL_OF_RADIANCE.key, size="large")
-    assert got == parts.dos_icon(8, 30, "large", colours, tables=tables)
+    assert got == parts.dos_icon(8, 20, "large", colours, tables=tables)
     assert got != parts.dos_icon(10, 30, "large", colours, tables=tables)
+    assert got != parts.dos_icon(8, 30, "large", colours, tables=tables)

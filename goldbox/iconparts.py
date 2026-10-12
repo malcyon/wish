@@ -484,19 +484,27 @@ def amiga_combat_icon(char: Any) -> DosIcon:
 def _translate(icon: DosIcon, size: int, lookup, base: str) -> DosIcon:
     """`icon` with each part `lookup` has a row for renumbered; colours kept.
 
-    `figure_source` becomes `base` followed by what happened to each part.
+    `lookup(kind, number, size)` gives `(new number, pixels differing)`, 0
+    pixels for an identical drawing, or None.  `figure_source` becomes `base`
+    followed by what happened to each part.
     """
     parts = []
     numbers = {}
     for name, old in (("head", icon.head), ("body", icon.body)):
-        new = lookup(name, old, size)
-        numbers[name] = old if new is None else new
-        if new is None:
-            parts.append(f"{name} {old} kept its number because no identical "
-                         f"drawing exists there")
-        else:
+        found = lookup(name, old, size)
+        if found is None:
+            numbers[name] = old
+            parts.append(f"{name} {old} kept its number because the size is "
+                         f"not one the tables cover")
+            continue
+        new, pixels = found
+        numbers[name] = new
+        if pixels == 0:
             parts.append(f"{name} {old} became {new}, the number of the "
                          f"identical drawing")
+        else:
+            parts.append(f"{name} {old} became {new}, the nearest drawing, "
+                         f"{pixels} pixels differ")
     return dataclasses.replace(
         icon, head=numbers["head"], body=numbers["body"],
         figure_source=f"{base}: {'; '.join(parts)}")
@@ -505,20 +513,20 @@ def _translate(icon: DosIcon, size: int, lookup, base: str) -> DosIcon:
 def amiga_por_icon_to_dos(icon: DosIcon, size: int) -> DosIcon:
     """An Amiga Pool of Radiance figure as the DOS (and C64) numbers drawing it.
 
-    A part with no identical DOS drawing keeps its number.  Colours are
+    A part with no identical DOS drawing becomes the nearest one.  Colours are
     unchanged.
     """
-    return _translate(icon, size, amiga_por_icons.dos_option,
+    return _translate(icon, size, amiga_por_icons.dos_drawing,
                       "the Amiga source record's own combat icon")
 
 
 def amiga_por_icon_from_dos(icon: DosIcon, size: int) -> DosIcon:
     """A DOS Pool of Radiance figure as the Amiga numbers drawing it.
 
-    A part with no identical Amiga drawing keeps its number.  Colours are
-    unchanged.
+    A part with no identical Amiga drawing becomes the nearest one.  Colours
+    are unchanged.
     """
-    return _translate(icon, size, amiga_por_icons.amiga_option,
+    return _translate(icon, size, amiga_por_icons.amiga_drawing,
                       f"{icon.figure_source}, in the Amiga's numbers")
 
 

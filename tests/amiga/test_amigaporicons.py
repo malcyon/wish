@@ -458,3 +458,31 @@ def test_the_exact_drawing_table_is_what_the_disks_measure():
             measured = {option: same for option, same, _n, _p in rows
                         if same is not None}
             assert measured == art.SAME_DRAWING[kind, size], (kind, size)
+
+
+def test_every_option_maps_to_a_drawing_in_both_directions():
+    """An option has an identical drawing (0 pixels) or a nearest one, never
+    neither, and a nearest one is not also an identical one."""
+    for kind, limit in (("head", 14), ("body", 32)):
+        for size in (1, 2):
+            for option in range(limit):
+                for lookup, other in ((art.dos_drawing, art.dos_option),
+                                      (art.amiga_drawing, art.amiga_option)):
+                    number, pixels = lookup(kind, option, size)
+                    assert 0 <= number < limit
+                    assert (pixels == 0) == (
+                        other(kind, option, size) is not None)
+    assert art.dos_drawing("body", 30, 2) == (20, 63)
+    assert art.dos_drawing("head", 10, 2) == (8, 0)
+    assert art.amiga_drawing("body", 24, 2) == (11, 64)
+    for size in (0, 3, None):
+        assert art.dos_drawing("head", 10, size) is None
+        assert art.amiga_drawing("head", 8, size) is None
+
+
+def test_the_nearest_tables_are_what_the_disks_measure():
+    """Fails if a row, a pixel count or a tie-break is wrong against the art."""
+    tool, amiga, dos = _measured()
+    to_dos, to_amiga = tool.nearest_tables(amiga, dos)
+    assert to_dos == art.NEAREST_DOS
+    assert to_amiga == art.NEAREST_AMIGA
