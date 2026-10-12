@@ -153,16 +153,19 @@ _DIGEST_COLLIDES = {
 }
 
 
-def _gold_moves(deltas, dos_only: bool = False) -> set[str]:
+def _gold_moves(deltas, dos_only: bool = False,
+                identity: int | None = None) -> set[str]:
     """What a gold edit is expected to move, and why each one.
 
     `encumbrance` is money plus item weight times quantity, which the DOS
-    engine itself rebuilds, so a coin edit moves it; `unnamed_0ab` is
-    `goldbox.dos_codec.identity_byte`, a digest of every other byte of the
-    record, so an edit moves it unless the digests before and after agree
-    (`_DIGEST_COLLIDES`) -- on the two later titles, which are the ones that
-    write it.  Pool of Radiance declares the field and drops it, writing
-    zero, so no edit moves it there.
+    engine itself rebuilds, so a coin edit moves it.  `unnamed_0ab`, on the
+    two later titles, comes back through the C64 record as the record's own
+    byte (`identity`), so an edit leaves it -- unless that byte is 0, which
+    the C64 reader takes for the value its GEN leaves and so returns
+    nothing, and the record gets `goldbox.dos_codec.identity_byte`'s digest
+    of every other byte, which an edit moves unless the digests before and
+    after agree (`_DIGEST_COLLIDES`).  Pool of Radiance declares the field
+    and drops it, writing zero, so no edit moves it there.
 
     **That the identity byte moves is a choice rather than a proof.**  The
     engine drew its byte at random when the character was made and reads it
@@ -176,7 +179,8 @@ def _gold_moves(deltas, dos_only: bool = False) -> set[str]:
     # DOS Curse and Pool rebuild current movement from weight carried, so a gold
     # edit that crosses a movement step moves that byte.
     curse = deltas.key in dos_codec._COMBAT_REBUILD_TITLES and dos_only
-    return ({"gold", "encumbrance"} | ({"unnamed_0ab"} if later else set())
+    digested = later and identity in (None, 0)
+    return ({"gold", "encumbrance"} | ({"unnamed_0ab"} if digested else set())
             | ({"movement_current"} if curse else set()))
 
 
@@ -355,7 +359,8 @@ def test_an_edited_field_reaches_the_dos_record_and_nothing_else(deltas):
     assert dos_codec.to_neutral(written).get("gold") == 4321
 
     spans, _unplaced = rewrite.dos_spans(deltas)
-    assert _moved(char.to_bytes(), out.record, spans) == _gold_moves(deltas, dos_only=True)
+    assert _moved(char.to_bytes(), out.record, spans) == _gold_moves(
+        deltas, dos_only=True, identity=char.get("unnamed_0ab"))
 
 
 def test_an_edited_field_reaches_an_amiga_pool_record_and_nothing_else():
@@ -383,7 +388,8 @@ def test_an_edited_field_reaches_an_amiga_later_record_and_nothing_else(
     assert written.get("gold") == 4321
     assert amiga_later.to_neutral_later(written).get("gold") == 4321
     spans, _unplaced = rewrite.amiga_later_spans(deltas)
-    assert _moved(char.raw, written.raw, spans) == _gold_moves(deltas.dos)
+    assert _moved(char.raw, written.raw, spans) == _gold_moves(
+        deltas.dos, identity=char.get("unnamed_0ab"))
 
 
 @pytest.mark.parametrize("deltas", DOS_TITLES, ids=lambda d: d.key)
@@ -681,9 +687,18 @@ def test_a_rewrite_with_no_game_renders_through_the_titles_own_tables(port):
 
 
 def test_another_titles_tables_would_render_a_different_record():
-    """What the default above is for: the container is not decoration."""
+    """What the default above is for: the container is not decoration.
+
+    The record's identity byte is 0, which Curse's reader takes for what
+    its GEN leaves and Pool of Radiance's reads as a draw, so the two
+    renders differ there."""
     deltas = dos_port.CURSE_OF_THE_AZURE_BONDS
-    char, before = _synthetic_dos(deltas)
+    char, _ = _synthetic_dos(deltas)
+    raw = bytearray(char.to_bytes())
+    raw[dos_port.FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"].offset] = 0
+    char = dos_codec.DosCharacter(bytes(raw), items=char.items,
+                                  effects=char.effects, deltas=deltas)
+    before, _ = dos_codec.to_c64_record(char)
     after = _edited(before, gold=4321)
     assert rewrite.rewrite_dos(char, before, after).record != \
         rewrite.rewrite_dos(char, before, after,
@@ -860,7 +875,8 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
             after = _edited(before, gold=char.get("gold") ^ 0x1234)
             out = rewrite.rewrite_dos(char, before, after, game)
             spans, _unplaced = rewrite.dos_spans(char.deltas)
-            expected = _gold_moves(char.deltas, dos_only=True)
+            expected = _gold_moves(char.deltas, dos_only=True,
+                                   identity=char.get("unnamed_0ab"))
             if dos_codec.holds_companion_picture(char.to_bytes(),
                                                  char.deltas):
                 # A later-title companion's byte is his combat picture, which

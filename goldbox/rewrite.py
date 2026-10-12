@@ -231,8 +231,9 @@ def _carry_picture(char: Any, original: bytes, deltas: Any,
 
     A later-title member whose control byte has bit 7 set is drawn from
     `CPIC` by `unnamed_0ab` (`goldbox.dos_codec.holds_companion_picture`),
-    but the C64 record the sheet binds to keeps that byte only for a
-    companion, so a player the engine has taken over would get a digest.
+    but the C64 record the sheet binds to returns no byte that is its fill
+    -- a player's 0, a companion's $FF -- so such a member would get a
+    digest in place of his picture.
     `at` maps a DOS offset to the record's own; the identity for DOS.
     """
     at = (lambda offset: offset) if at is None else at

@@ -177,22 +177,24 @@ def _c64(control: int, picture: int) -> CharacterRecord:
 @pytest.mark.parametrize("control, pair, want", [
     (0xB2, WORG, WORG),
     (0xB2, 0xFF, None),
-    (0x00, WORG, None),
-], ids=["converted-companion", "joined-on-the-c64", "player"])
-def test_the_c64_curse_reader_takes_only_a_converted_companion_s_picture(
+    (0x00, WORG, WORG),
+    (0x00, 0x00, None),
+], ids=["converted-companion", "joined-on-the-c64", "converted-player",
+        "player-made-on-the-c64"])
+def test_the_c64_curse_reader_takes_only_what_a_conversion_wrote(
         control, pair, want):
     char = c64_codec.read(_c64(control, pair), game="curse-of-the-azure-bonds")
     assert char.get("unnamed_0ab") == want
 
 
 @pytest.mark.parametrize("pair, want", [
-    (WORG, WORG), (0x00, None), (0xFF, None),
-], ids=["converted", "made-on-the-c64", "fill"])
+    (WORG, WORG), (0x00, None), (0xFF, 0xFF),
+], ids=["converted", "made-on-the-c64", "a-draw-of-ff"])
 def test_the_c64_curse_reader_returns_a_raised_player_s_byte(pair, want):
     """A player at status $03: DOS and the Amiga hold him taken over (0xB3).
 
-    0 is what Curse's GEN leaves and $FF the MON files' fill; the reader
-    takes neither.
+    $FF is the MON files' fill, which only a companion carries, so for a
+    player it is a draw like any other; 0 is what Curse's GEN leaves.
     """
     rec = _c64(0x00, pair)
     rec.set("roster_in_use", c64_codec.ZOMBIE_STATUS)
@@ -201,12 +203,18 @@ def test_the_c64_curse_reader_returns_a_raised_player_s_byte(pair, want):
     assert char.get("unnamed_0ab") == want
 
 
-@pytest.mark.parametrize("control", [0x00, 0xB2])
-def test_silver_blades_on_the_c64_returns_no_byte(control):
-    """Its MON files fill 0x0E6 with 0, so nothing there tells a draw apart."""
-    char = c64_codec.read(_c64(control, WORG),
+@pytest.mark.parametrize("control, pair, want", [
+    (0x00, WORG, WORG), (0xB2, WORG, WORG), (0x00, 0x00, None),
+    (0xB2, 0x00, None),
+], ids=["converted-player", "converted-companion", "player-made-on-the-c64",
+        "joined-on-the-c64"])
+def test_silver_blades_on_the_c64_returns_what_a_conversion_wrote(
+        control, pair, want):
+    """Its MON files and its GEN both leave 0 at 0x0E6, and no C64 code of
+    the title reads the byte, so anything else is what a conversion wrote."""
+    char = c64_codec.read(_c64(control, pair),
                           game="secret-of-the-silver-blades")
-    assert char.get("unnamed_0ab") is None
+    assert char.get("unnamed_0ab") == want
 
 
 # --- BRUTUS: a player Animate Dead raised, control 0xB3 ---------------------
@@ -249,6 +257,53 @@ def test_the_c64_route_makes_a_raised_player_living():
     assert not dos_codec.holds_companion_picture(
         dos_codec.write(c64_codec.read(rec, game=neutral.game),
                         deltas=CURSE)[0])
+
+
+# --- A living player's own draw through the C64 -----------------------------
+# The C64 Curse engine never reads 0x0E6, and the conversion writes the
+# player's draw there so that a conversion back returns his own number
+# (`.claude/rules/conversions.md`, the identity byte's worked example).
+
+def _via_c64_to_dos(record: bytes) -> int:
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(record))
+    rec, _ = c64_codec.write(char)
+    back, _, _, _ = dos_codec.write(c64_codec.read(rec, game=char.game),
+                                    deltas=CURSE)
+    return back[PICTURE.offset]
+
+
+def test_a_dos_player_comes_back_from_the_c64_with_his_own_draw():
+    assert _via_c64_to_dos(_dos_curse(0x00, 0x42)) == 0x42
+
+
+def test_a_dos_player_drawn_zero_still_gets_the_digest():
+    """0 is what a player made on the C64 holds, so it cannot be his draw."""
+    record = _dos_curse(0x00, 0x00)
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(record))
+    rec, _ = c64_codec.write(char)
+    back, _, _, _ = dos_codec.write(c64_codec.read(rec, game=char.game),
+                                    deltas=CURSE)
+    assert back[PICTURE.offset] == dos_codec.identity_byte(back, CURSE)
+
+
+def test_an_amiga_player_comes_back_from_the_c64_with_his_own_draw():
+    """Every member of EVOKER's party but him is a player with a real draw."""
+    players = [m for m in _evoker_party() if m.raw[0xF7] < 0x80]
+    assert len(players) == 4
+    for char in players:
+        assert _via_c64(char) == char.raw[AMIGA_PICTURE], char.name
+
+
+def test_the_party_tie_break_still_moves_a_returned_duplicate():
+    """Two same-named players back from the C64 with one draw: one moves."""
+    record = _dos_curse(0x00, 0x42, b"DUPLICO")
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(record))
+    rec, _ = c64_codec.write(char)
+    back, _, _, _ = dos_codec.write(c64_codec.read(rec, game=char.game),
+                                    deltas=CURSE)
+    out = dos_codec._deduplicate_party_identities(
+        [(None, back, b"", b"", None), (None, back, b"", b"", None)], CURSE)
+    assert len({r[PICTURE.offset] for _, r, *_ in out}) == 2
 
 
 # --- The editor's rewrite keeps a raised player's picture -------------------

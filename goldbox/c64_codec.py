@@ -722,6 +722,22 @@ ANIMATED_STATUS_TITLES = frozenset({"pool-of-radiance",
 #: joined on the C64 keeps the fill, and no picture id is `$FF`.
 CURSE_NO_PICTURE = 0xFF
 
+#: What a Curse or Silver Blades player made on the C64 holds at `0x0E6`:
+#: neither GEN writes the pair, and every player holds `00` in the 16 Curse
+#: and 13 Silver Blades saves here with no converted member.  A conversion
+#: writes the player's own draw there, and the C64 games' own saves keep it
+#: (50 Curse and 19 Silver Blades saves here hold a converted party's draws,
+#: game resaves among them).  A draw of 0 is read as absent and gets the
+#: digest, which also keeps a DOS party's 0 from colliding.
+NO_PLAYER_DRAW = 0x00
+
+#: What a companion who joined on the C64 holds at `0x0E6`, per title: the
+#: `MON` file's fill, `$FF` in 70 of 70 Curse files and `00` in 71 of 71
+#: Silver Blades files.  No C64 code of either title reads or writes
+#: `0x0E6`, so any other value is the picture a conversion wrote there.
+NO_COMPANION_PICTURE = {"curse-of-the-azure-bonds": CURSE_NO_PICTURE,
+                        "secret-of-the-silver-blades": 0x00}
+
 def roster_status(rec, roster=None):
     """The roster status byte `read` reads: the roster block's when the save
     has one, else the one stored in the character record, else `None`.
@@ -3622,9 +3638,10 @@ READ_TARGETS: dict[str, str] = (
        "identity_pair": "the first byte read as neutral unnamed_0ab, in "
                         "Pool of Radiance; Curse of the Azure Bonds "
                         "and Secret of the Silver Blades never draw it "
-                        "(#258), and Curse reads it only for a companion "
-                        "whose byte is not the MON files' $FF fill, as the "
-                        "combat picture a conversion wrote there",
+                        "(#258); both read back what a conversion wrote "
+                        "there -- a companion's combat picture unless it is "
+                        "the title's MON fill, a player's own draw unless "
+                        "it is the 0 GEN leaves",
        "dual_class_slot": "with dual_class_level, read as neutral "
                           "former_levels -- named by the class the slot "
                           "belongs to -- in a title whose layout has "
@@ -4376,30 +4393,22 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
                 "the C64's identity pair @0x0E6, the first byte",
                 grade("identity_pair"))
-    elif (deltas is CURSE_RECORD and is_npc
+    elif (deltas.key in NO_COMPANION_PICTURE
           and rec.is_stored("identity_pair")
-          and rec.get_raw("identity_pair")[0] != CURSE_NO_PICTURE):
-        # A Curse companion's DOS and Amiga combat picture.  Nothing on the
-        # C64 reads 0x0E6, and every Curse MON file fills it with $FF, so any
-        # other value is the picture a conversion wrote here.
+          and rec.get_raw("identity_pair")[0] != (
+              NO_COMPANION_PICTURE[deltas.key] if is_npc
+              else NO_PLAYER_DRAW)):
+        # The byte a conversion wrote here.  For a companion it is his DOS
+        # and Amiga combat picture.  For a player it is his own draw, or the
+        # digest DOS gave him when his source had none, so that a conversion
+        # back returns it; DOS and the Amiga read it as a picture while the
+        # engine has him taken over.  Neither title's C64 code reads 0x0E6,
+        # and the value the title itself leaves there is read as absent.
+        what = ("a companion's combat picture" if is_npc
+                else "the player's own draw")
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
-                "the C64's identity pair @0x0E6, the first byte: a Curse "
-                "companion's combat picture, as a conversion wrote it",
-                grade("identity_pair"))
-    elif (deltas is CURSE_RECORD and not is_npc
-          and out.get("npc_control_byte") == DOS_PC_TAKEN_OVER
-          and rec.is_stored("identity_pair")
-          and rec.get_raw("identity_pair")[0] not in (0x00,
-                                                      CURSE_NO_PICTURE)):
-        # A player DOS and the Amiga hold as taken over, whose loaders draw
-        # him from `CPIC` by this byte.  A converted player holds what the
-        # writer put here, his own draw or DOS's digest of him; one made on
-        # the C64 holds 0, which Curse's GEN leaves, and keeps the digest.
-        out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
-                "the C64's identity pair @0x0E6, the first byte: the "
-                "combat picture DOS and the Amiga read for a player they "
-                "hold as taken over, as a conversion wrote it",
-                grade("identity_pair"))
+                f"the C64's identity pair @0x0E6, the first byte: {what}, "
+                "as a conversion wrote it", grade("identity_pair"))
 
     # A name in `READ_DROPPED` is reported **only where
     # `READ_DROPPED_PLAYER_TEXT` has a sentence for it**, the same rule
