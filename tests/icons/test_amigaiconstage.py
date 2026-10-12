@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from goldbox import amiga_pod, amiga_por, amiga_port, amiga_savegame
-from goldbox.amiga_adf import AmigaDisk
+from goldbox.amiga_adf import BLOCK_SIZE, AmigaDisk, block_checksum
 from tests.support import amigasavegame as synthetic
 from tools.amiga import staging
 from tools.icons import amigaiconstage as tool
@@ -112,6 +112,37 @@ def test_a_byte_outside_the_figure_fields_or_another_file_is_blocked():
         tool.check_staged(source, disk.to_bytes(), "pool", "A", 2, ICON)
     with pytest.raises(IconStageError, match="does not read back"):
         tool.check_staged(source, staged, "pool", "A", 2, (6,) + ICON[1:])
+
+
+def test_a_changed_header_block_is_blocked_though_every_file_reads_the_same():
+    source = _pool().to_bytes()
+    staged, _ = tool.stage(source, "pool", "A", 2, ICON)
+    disk = AmigaDisk(bytearray(staged))
+    header = disk.lookup("/CHRDATA1.sav").block
+    raw = bytearray(staged)
+    start = header * BLOCK_SIZE
+    raw[start + 0x1A4] ^= 1                      # the file's days stamp
+    raw[start + 20:start + 24] = block_checksum(
+        bytes(raw[start:start + BLOCK_SIZE]), 20).to_bytes(4, "big")
+    stray = AmigaDisk(bytearray(raw))
+    assert stray.verify() == []
+    assert all(stray.read_file(p) == disk.read_file(p)
+               for p, e in disk.walk() if not e.is_dir)
+    with pytest.raises(IconStageError, match=f"block {header} changed"):
+        tool.check_staged(source, bytes(raw), "pool", "A", 2, ICON)
+
+
+def test_a_disk_that_is_not_an_adf_ends_in_one_line(tmp_path, capsys):
+    junk = tmp_path / "junk.adf"
+    junk.write_bytes(b"not a disk")
+    assert tool.main(["stage", "--title", "pool", "--disk", str(junk), "--out",
+                      str(tmp_path / "out.adf"), "--slot", "A", "--member", "1",
+                      "--icon", "7:30:2:5a413b7644ef"]) == 2
+    assert tool.main(["check", "--title", "pool", "--disk", str(junk), "--slot", "A",
+                      "--member", "1", "--capture", str(tmp_path / "crop.png")]) == 2
+    err = capsys.readouterr().err.splitlines()
+    assert len(err) == 2 and all(line.startswith("amigaiconstage: ") for line in err)
+    assert not (tmp_path / "out.adf").exists()
 
 
 def test_a_member_the_slot_lacks_is_blocked():

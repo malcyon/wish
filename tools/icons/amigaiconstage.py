@@ -41,7 +41,7 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
 from goldbox import amiga_pod, amiga_savegame, dos_port  # noqa: E402
-from goldbox.amiga_adf import AmigaDisk, AmigaDiskError  # noqa: E402
+from goldbox.amiga_adf import BLOCK_SIZE, AmigaDisk, AmigaDiskError  # noqa: E402
 
 TITLES = ("pool", "curse", "ssb", "darkness")
 FIELDS = ("icon_head", "icon_body", "size", "icon_colours")
@@ -232,6 +232,16 @@ def check_staged(source: bytes, staged: bytes, title: str, slot: str,
                 a != b and i not in allowed
                 for i, (a, b) in enumerate(zip(was, now))):
             raise IconStageError(f"{path} changed outside the figure fields")
+    # The files can read the same while a header, a drawer, the root or the
+    # bitmap changed: only the member's file's own data blocks may differ.
+    if len(source) != len(staged):
+        raise IconStageError("the staged disk is not the source's size")
+    data_blocks = set(before._file_blocks(before.lookup(old.path).block)[:-1])
+    for block in range(len(source) // BLOCK_SIZE):
+        span = slice(block * BLOCK_SIZE, (block + 1) * BLOCK_SIZE)
+        if source[span] != staged[span] and block not in data_blocks:
+            raise IconStageError(f"block {block} changed, outside the data "
+                                 f"blocks of {old.path}")
 
 
 def stage_file(source: pathlib.Path | None, registered: str | None,
@@ -341,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--capture", type=pathlib.Path, required=True,
                            help="a canonical crop of the ICON screen")
     args = parser.parse_args(argv)
+    from tools.amiga.staging import StageError
     try:
         if args.command == "stage":
             report = stage_file(args.disk, args.registered, args.out,
@@ -353,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if check(AmigaDisk(bytearray(args.disk.read_bytes())),
                           args.title, args.slot, args.member,
                           args.capture) else 0
-    except (IconStageError, OSError) as exc:
+    except (IconStageError, AmigaDiskError, StageError, OSError) as exc:
         print(f"amigaiconstage: {exc}", file=sys.stderr)
         return 2
 
