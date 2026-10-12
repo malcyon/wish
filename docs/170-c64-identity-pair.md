@@ -180,7 +180,10 @@ attribute them to.
 The specification `#258 (The C64 side of 0x0AB is unnamed, so the conversion drops it with no issue behind it)` asks for, in a form a `junior-dev` can build:
 
 * **DOS to C64:** write neutral `unnamed_0ab` into C64 `0x0E6`; `0x0E7` gets
-  zero. Both values are measured harmless -- no reader -- and the field stops
+  zero, except beside a Curse or Silver Blades byte equal to the title's fill
+  (0, or `FF` for a Curse companion), where it gets the mark `01`: the
+  reader treats those values as "no picture", so without the mark a player's
+  own draw of 0 would come back as absent. Both values are measured harmless -- no reader -- and the field stops
   being a drop. The layout names `0x0E6`-`0x0E7` (one field, two bytes: the
   identity pair) and `0x0E3` (the strength flag), leaving `0x0E4`-`0x0E5`
   in `region_0e3` as unattributed.

@@ -742,8 +742,10 @@ NO_COMPANION_PICTURE = {"curse-of-the-azure-bonds": CURSE_NO_PICTURE,
 #: draw of 0, or a companion's own picture equal to the fill, reads back as
 #: his and not as absent.  Every Curse `MON` file holds `FF FF` at
 #: `0x0E6`-`0x0E7`, every Silver Blades one `00 00`, and each title's GEN
-#: leaves `00 00`; no C64 code of either title reads or writes `0x0E7`
-#: (docs/170-c64-identity-pair.md), so neither game changes it.
+#: leaves `00 00`.  A static sweep of reads and writes
+#: (docs/170-c64-identity-pair.md) finds no C64 code of either title that
+#: touches `0x0E7`, so neither game probably changes it; a C64 Curse load,
+#: sheet view and fight with a marked record would confirm it.
 CONVERTED_FILL_MARK = 0x01
 
 def roster_status(rec, roster=None):
@@ -3088,8 +3090,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     identity = use("unnamed_0ab")
     if identity is not None:
         value = int(identity.value) & 0xFF
-        # A value equal to a fill the title itself leaves at 0x0E6 gets
-        # `CONVERTED_FILL_MARK` beside it, so `read` returns it.
+        # Curse and Silver Blades: any value in (NO_PLAYER_DRAW, the title's
+        # companion fill) gets `CONVERTED_FILL_MARK` beside it, player or
+        # companion alike.  Some of those the reader would return anyway; the
+        # mark keeps a round trip identical.
         mark = (CONVERTED_FILL_MARK if deltas.key in NO_COMPANION_PICTURE
                 and value in (NO_PLAYER_DRAW, NO_COMPANION_PICTURE[deltas.key])
                 else 0)

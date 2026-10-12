@@ -2688,8 +2688,8 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "the C64 keeps in bit 0 of its own control byte"),
     ("unnamed_0ab", "the identity draw the C64's add screen never needs, "
                     "given a home instead of a digest: written into the "
-                    "C64's identity_pair at 0x0E6, with 0x0E7 left zero "
-                    "(#258, The C64 side of 0x0AB is unnamed, so the "
+                    "C64's identity_pair at 0x0E6, with 0x0E7 zero except "
+                    "for the mark beside a fill value (#258, The C64 side of 0x0AB is unnamed, so the "
                     "conversion drops it with no issue behind it)"),
     # #130 (A converted DOS party arrives with six identical combat figures,
     # not its own): the composition and the tables are in
@@ -3272,7 +3272,8 @@ def to_neutral(dos: DosCharacter,
 
     # -- the identity draw: no longer a drop, now that it has a C64 home -----
     # `to_c64_record` writes this into the C64's identity_pair at 0x0E6, with
-    # 0x0E7 left zero (#258, docs/170-c64-identity-pair.md).  A DOS
+    # 0x0E7 zero, except for the mark beside a byte equal to a fill (#258,
+    # docs/170-c64-identity-pair.md).  A DOS
     # player's byte is still replaced by `identity_byte`'s digest on the way
     # back -- see `write`'s own comment on the point -- and a later-title
     # companion's, which is his combat picture, is kept
