@@ -2226,6 +2226,9 @@ graph LR
   c64_port --> titles
   c64_save --> titles
   classcode --> titles
+  companions --> d64
+  companions --> iconparts
+  companions --> layout
   curse_worldmap --> amiga_hunks
   derive --> items
   derive -.->|deferred| levels
