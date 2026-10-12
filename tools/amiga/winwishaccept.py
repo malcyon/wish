@@ -83,6 +83,8 @@ DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
 WHEEL_SCREENS = {"curse": "curse_wheel"}
 #: Seconds `amigacursewheel.answer` waits after each of its two keys.
 WHEEL_SETTLE = 2.0
+#: Seconds to recognize the screen again before each wheel key and each typed key.
+KEY_GUARD_WAIT = 30
 #: The most one checkpoint read fetches, as for `acceptance.py --read-at`.
 READ_LIMIT = 4096
 #: Party nodes this close are dumped as one span, so the batch stays a few dump commands.
@@ -296,6 +298,10 @@ def _check_steps(route: Any) -> None:
             keys = tuple(getattr(step, "keys", ()) or ())
             if step.kind == "type" and (not keys or step.key is not None):
                 raise AcceptanceStop(f"{phase.name}: a type step needs its keys and no single key")
+            if step.kind == "type" and not getattr(step, "screen", None):
+                raise AcceptanceStop(f"{phase.name}: a type step needs the screen its keys go to")
+            if (step.kind == "type" or getattr(step, "relaunch", False)) and not step.state:
+                raise AcceptanceStop(f"{phase.name}: a {step.kind} step needs a screen to wait for")
             if step.kind != "type" and keys:
                 raise AcceptanceStop(f"{phase.name}: only a type step has a key list")
             if getattr(step, "relaunch", False) and step.kind not in ("key", "type"):
@@ -840,8 +846,9 @@ class Controller:
         if self.encounters_on:
             raise AcceptanceStop(f"{screen} appeared while encounters were controlled")
         try:
-            answered = amigacursewheel.answer(self.args.holder, WHEEL_SETTLE)
-        except SystemExit as exc:
+            answered = amigacursewheel.answer(self.args.holder, WHEEL_SETTLE,
+                                              guard=lambda: self._still_on(screen))
+        except (SystemExit, amigacursewheel.ScreenChanged) as exc:
             raise AcceptanceStop(f"{screen}: {exc}") from exc
         if not answered:
             raise AcceptanceStop(f"{screen} was recognized but no wheel challenge was read")
@@ -857,9 +864,17 @@ class Controller:
         names = set(getattr(phase, "pages", ()) or ())
         return tuple(row for row in self.route.amiga_title.interstitials if row[0] in names)
 
+    def _still_on(self, screen: str) -> bool:
+        """Whether a fresh frame shows `screen`; no key is pressed."""
+        return self._await_first((screen,), limit=KEY_GUARD_WAIT)[0] is not None
+
     def _type(self, step: Any, *, action: bool) -> None:
-        """A `type` step's keys in order, each counted, with no guard between them."""
-        for key in step.keys:
+        """A `type` step's keys in order, each counted and each sent only once a fresh
+        frame shows the step's `screen`."""
+        for number, key in enumerate(step.keys, 1):
+            if not self._still_on(step.screen):
+                raise AcceptanceStop(f"{step.screen} was not recognized before typed key "
+                                     f"{number} of {len(step.keys)}")
             self._press(key, action=action)
 
     def _relaunch_ready(self, step: Any) -> None:
@@ -1250,12 +1265,13 @@ class Controller:
                 action_context.setdefault("selections", []).append(selected)
             elif kind != "observe":
                 raise AcceptanceStop(f"unknown route step kind {kind}")
+            if relaunch:
+                # The old program's addresses are stale from the key on, whatever the wait finds.
+                self._relaunched()
             frame = self._await(step.state, limit=self.route.amiga_title.wait_limits.get(
                 step.state, 90), interstitials=pages)
             last_frame = frame
             before_state = step.state
-            if relaunch:
-                self._relaunched()
             if step.checkpoint:
                 expected = step.expected
                 if namespace and expected and expected.compare_to:

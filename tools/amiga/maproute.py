@@ -58,8 +58,10 @@ class Step:
     encounters: bool | None = None
     checkpoint: str | None = None
     expected: Expected | None = None
-    #: A `type` step's keys, sent in order with one guarded wait after the last.
+    #: A `type` step's keys, each sent once `screen` is recognized, then one wait for `state`.
     keys: tuple[str, ...] = ()
+    #: The screen a `type` step's keys go to, recognized again before every key.
+    screen: str | None = None
     #: The step starts the game program again, so memory read before it is stale.
     relaunch: bool = False
     #: Read-only bytes recorded with the step's checkpoint.

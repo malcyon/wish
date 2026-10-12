@@ -128,3 +128,28 @@ def test_a_tile_crossed_by_its_rune_is_still_one_tile_after_scaling(tmp_path):
     _tiles_png(shot, 2.0, gap_row=11)
     grids = screen.find_runes(amigacursewheel._to_reader_scale(shot, screen))
     assert [(g[2], g[3]) for g in grids] == [(2.0, 4.0), (2.0, 4.0)]
+
+
+@pytest.mark.parametrize("checks,sent", [((True, True), ["X", "RET"]), ((True, False), ["X"]),
+                                         ((False,), [])])
+def test_each_answer_key_waits_for_the_guard(monkeypatch, checks, sent):
+    # A stand-in reader and character: nothing here is a real challenge or answer.
+    from types import SimpleNamespace
+
+    reader = SimpleNamespace(read_challenge=lambda image: {
+        "box": 0, "pattern": 0, "espruar": 0, "dethek": 0})
+    arithmetic = SimpleNamespace(answer_from_screen=lambda *args: "X")
+    monkeypatch.setattr(amigacursewheel, "_wheel_modules", lambda: (reader, arithmetic))
+    monkeypatch.setattr(amigacursewheel.amigadrive, "shot", lambda holder, out: {})
+    monkeypatch.setattr(amigacursewheel.screens, "canonical_file", lambda source, out: None)
+    monkeypatch.setattr(amigacursewheel, "_to_reader_scale", lambda path, screen=None: None)
+    pressed = []
+    monkeypatch.setattr(amigacursewheel.amigadrive, "press",
+                        lambda holder, key, settle: pressed.append(key))
+    answers = iter(checks)
+    if all(checks):
+        assert amigacursewheel.answer("h", 0.0, guard=lambda: next(answers)) is True
+    else:
+        with pytest.raises(amigacursewheel.ScreenChanged):
+            amigacursewheel.answer("h", 0.0, guard=lambda: next(answers))
+    assert pressed == sent

@@ -31,6 +31,7 @@ import argparse
 import pathlib
 import sys
 import tempfile
+from collections.abc import Callable
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
@@ -114,9 +115,17 @@ def _to_reader_scale(path: pathlib.Path, screen=None):
     return np.array(image).astype(int)
 
 
-def answer(holder: str, settle: float, shot: pathlib.Path | None = None
-           ) -> bool:
-    """Read the prompt on screen and type its answer.  True when it did."""
+class ScreenChanged(RuntimeError):
+    """The wheel screen was not recognized before one of the answer's keys; that key was not sent."""
+
+
+def answer(holder: str, settle: float, shot: pathlib.Path | None = None,
+           *, guard: Callable[[], bool] | None = None) -> bool:
+    """Read the prompt on screen and type its answer.  True when it did.
+
+    With `guard`, each of the two keys is sent only after `guard()` returns True, so a
+    caller can check the wheel screen again before the character and before RETURN.
+    """
     screen, wheel = _wheel_modules()
     tidy = shot is None
     if shot is None:
@@ -145,8 +154,10 @@ def answer(holder: str, settle: float, shot: pathlib.Path | None = None
     finally:
         if tidy and shot.exists():
             shot.unlink()
-    amigadrive.press(holder, character, settle)
-    amigadrive.press(holder, "RET", settle)
+    for key in (character, "RET"):
+        if guard is not None and not guard():
+            raise ScreenChanged("the code-wheel screen changed before its answer was typed")
+        amigadrive.press(holder, key, settle)
     print("answered")
     return True
 

@@ -3717,7 +3717,8 @@ def test_the_curse_wheel_is_answered_only_where_its_guard_is_measured(tmp_path, 
         tmp_path, "curse", route_curse.CURSE.interstitials, "curse_wheel", guards=Guards())
     answered = []
 
-    def answer(holder, settle):
+    def answer(holder, settle, *, guard):
+        assert guard() and guard()
         answered.append((holder, settle))
         screen["show"] = "title"
         return True
@@ -3811,7 +3812,8 @@ def _relaunch_phase():
     from tools.amiga import maproute
 
     return maproute.Phase("reload", "cli", (maproute.Step(
-        "type", "wheel", keys=("P", "R", "O", "G", "R", "A", "M", "RET"), relaunch=True),))
+        "type", "wheel", keys=("P", "R", "O", "G", "R", "A", "M", "RET"), screen="cli",
+        relaunch=True),))
 
 
 def test_a_relaunch_clears_the_party_nodes_and_the_encounter_target(tmp_path):
@@ -3839,26 +3841,73 @@ def test_a_relaunch_with_suppression_outstanding_sends_no_key(tmp_path, outstand
     assert controller.party_nodes == [(0xC60000, 340)]
 
 
-def test_a_type_step_sends_its_keys_and_awaits_once(tmp_path, monkeypatch):
-    from tools.amiga import maproute
-
+def test_a_relaunch_whose_wait_fails_still_forgets_the_old_program(tmp_path):
     controller, game, screen = _screen_controller(tmp_path, "pool", (), "cli")
-    waits = []
-    real_await = controller._await
+    game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
+        show="mystery" if key == "RET" else "cli"))
+    controller.party_nodes = [(0xC60000, 340)]
+    controller.encounters = SimpleNamespace(state=SimpleNamespace(
+        load=lambda: {"on": False, "rows": []}))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="wheel screen was not recognized"):
+        controller.run_phase(_relaunch_phase())
+    assert game.keys[-1] == "RET"
+    assert controller.party_nodes == []
+    assert controller.encounters is None
+
+
+def _type_controller(tmp_path, monkeypatch, changes_after=None):
+    """A CLI that shows `mystery` once `changes_after` is typed, with every guard check logged."""
+    controller, game, screen = _screen_controller(tmp_path, "pool", (), "cli")
+    waits, guards = [], []
+    real_await, real_first = controller._await, controller._await_first
     monkeypatch.setattr(controller, "_await", lambda state, **kwargs: (
         waits.append((state, list(game.keys))), real_await(state, **kwargs))[1])
+    monkeypatch.setattr(controller, "_await_first", lambda states, **kwargs: (
+        guards.append((states, list(game.keys))), real_first(states, **kwargs))[1])
     game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
-        show="wheel" if key == "RET" else "cli"))
-    phase = maproute.Phase("reload", "cli", (maproute.Step(
-        "type", "wheel", keys=("P", "R", "O", "G", "R", "A", "M", "RET")),))
-    controller.run_phase(phase)
-    typed = ["P", "R", "O", "G", "R", "A", "M", "RET"]
-    assert game.keys == typed
-    assert waits == [("cli", []), ("wheel", typed)]
+        show="wheel" if key == "RET" else "mystery" if key == changes_after else screen["show"]))
+    return controller, game, waits, guards
+
+
+_TYPED = ("P", "R", "O", "G", "R", "A", "M", "RET")
+
+
+def test_a_type_step_guards_each_key_and_awaits_its_state_once(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game, waits, guards = _type_controller(tmp_path, monkeypatch)
+    controller.run_phase(maproute.Phase("reload", "cli", (maproute.Step(
+        "type", "wheel", keys=_TYPED, screen="cli"),)))
+    assert game.keys == list(_TYPED)
+    assert guards == [(("cli",), list(_TYPED[:n])) for n in range(len(_TYPED))]
+    assert waits == [("cli", []), ("wheel", list(_TYPED))]
     assert controller.mapping_commands == 8
-    with pytest.raises(winwishaccept.AcceptanceStop, match="type step needs its keys"):
+
+
+def test_a_type_step_stops_before_the_next_key_when_its_screen_changes(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game, waits, guards = _type_controller(tmp_path, monkeypatch, changes_after="O")
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="cli was not recognized before typed key 4 of 8"):
+        controller.run_phase(maproute.Phase("reload", "cli", (maproute.Step(
+            "type", "wheel", keys=_TYPED, screen="cli"),)))
+    assert game.keys == ["P", "R", "O"]
+    assert waits == [("cli", [])]
+
+
+@pytest.mark.parametrize("step,reason", [
+    ({"kind": "type", "state": "wheel"}, "type step needs its keys"),
+    ({"kind": "type", "state": "wheel", "keys": _TYPED}, "needs the screen its keys go to"),
+    ({"kind": "type", "state": "", "keys": _TYPED, "screen": "cli"}, "type step needs a screen to wait for"),
+    ({"kind": "key", "state": "", "key": "RET", "relaunch": True}, "key step needs a screen to wait for"),
+])
+def test_a_type_or_relaunch_step_without_a_screen_stops_preflight(step, reason):
+    from tools.amiga import maproute
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match=reason):
         winwishaccept._check_steps(SimpleNamespace(phases=(maproute.Phase(
-            "reload", "cli", (maproute.Step("type", "wheel"),)),)))
+            "reload", "cli", (maproute.Step(**step),)),)))
 
 
 def test_checkpoint_reads_are_recorded_without_a_verdict(tmp_path, monkeypatch):
