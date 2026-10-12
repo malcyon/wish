@@ -691,8 +691,10 @@ class Controller:
         self._game_section()
         last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
             phase.initial_state, self.route.amiga_title.title_limit))
+        # Only the opening-scene load waits for the story's treasure screen.
         pages = (self.route.amiga_title.interstitials
-                 if phase.name == "load" and self.route.title == "ssb" else ())
+                 if phase.name == "load" and self.route.title == "ssb"
+                 and any(step.state == "treasure_bar" for step in phase.steps) else ())
         for step in phase.steps:
             kind = step.kind
             if kind in ("key", "turn", "move"):

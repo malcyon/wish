@@ -1657,6 +1657,20 @@ def test_an_unrecognised_screen_after_the_journal_gets_no_key(tmp_path, monkeypa
     assert "RET" not in game.keys
 
 
+def test_ordinary_routing_does_not_return_from_a_story_page(tmp_path, monkeypatch):
+    from tools.amiga import maproute, route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    _, answer = _story_screens(controller, game)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", answer)
+    controller.args.discover = None
+    controller.discovery = False
+    load = maproute._load("ssb", "D")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="world screen was not recognized"):
+        controller.run_phase(load)
+    assert game.keys == ["P", "L", "D", "V", "E", "B"]
+
+
 def test_a_story_page_in_a_later_phase_gets_no_key(tmp_path, monkeypatch):
     controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
     st, _ = _story_screens(controller, game)
