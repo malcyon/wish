@@ -3735,6 +3735,37 @@ def test_the_curse_wheel_is_answered_only_where_its_guard_is_measured(tmp_path, 
     assert game.keys == []
 
 
+
+def test_a_wheel_screen_that_changes_mid_answer_stops_the_run_with_no_further_key(tmp_path,
+                                                                                monkeypatch):
+    from tools.amiga import amigacursewheel, route_curse
+
+    class Guards:
+        rules = {"title": {}, "curse_wheel": {}}
+
+        def __call__(self, state, path):
+            return state in self.rules and path.read_bytes().decode() == state
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "curse", route_curse.CURSE.interstitials, "curse_wheel", guards=Guards())
+    # A stand-in reader and character: nothing here is a real challenge or answer.
+    reader = SimpleNamespace(read_challenge=lambda image: {
+        "box": 0, "pattern": 0, "espruar": 0, "dethek": 0})
+    arithmetic = SimpleNamespace(answer_from_screen=lambda *args: "X")
+    monkeypatch.setattr(amigacursewheel, "_wheel_modules", lambda: (reader, arithmetic))
+    monkeypatch.setattr(amigacursewheel.amigadrive, "shot", lambda holder, out: {})
+    monkeypatch.setattr(amigacursewheel.screens, "canonical_file", lambda source, out: None)
+    monkeypatch.setattr(amigacursewheel, "_to_reader_scale", lambda path, screen=None: None)
+    pressed = []
+    monkeypatch.setattr(amigacursewheel.amigadrive, "press", lambda holder, key, settle: (
+        pressed.append(key), screen.update(show="mystery")))
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="curse_wheel: the code-wheel screen changed"):
+        controller._await_title()
+    assert pressed == ["X"]
+    assert game.keys == []
+    assert "interstitial_keys" not in controller.summary
+
 def test_a_page_during_an_encounter_controlled_walk_goes_through_the_switch(tmp_path):
     from tools.amiga import maproute
 
