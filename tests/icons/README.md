@@ -4,6 +4,7 @@ Tests for combat icons and portraits: the option tables that compose a figure, t
 
 | file | purpose |
 |---|---|
+| `test_amigaiconstage.py` | Checks that `tools/icons/amigaiconstage.py` writes only the member's figure bytes on a copy of a generated Pool, Curse, Silver Blades and Pools of Darkness save disk, blocks any other change, an absent member, a malformed figure and an existing output, and finds both poses in a generated crop; and against the player's registered disks that each planned plume staging applies to the member it names. |
 | `test_amigapodicons.py` | Checks that `goldbox/amiga_pod_icons.py` and the shared rules in `goldbox/amiga_later_icons.py` read five-plane tiles and 32-colour palettes, find the 32-entry recolour table in the English and German executables, give both poses one head that covers the body, and take the art, boxes and palette off disk 1 and disk 3; and against the player's Amiga disks that every tile sits at the loader's ids, 110 of 156 equal DOS's block through the entry table and the rest differ in three values only, every character composes, and every captured ICON screen is the composed figure pixel for pixel. |
 | `test_dosfigures.py` | Checks that `tools/icons/dosfigures.py` takes the large-list promotion rule from `IconParts.size_for` instead of keeping its own copy. |
 | `test_dosicon.py` | Checks that a DOS character's combat figure converts to eighteen C64 cells that keep two different characters looking different and stay within figures the game's menus can make. |
