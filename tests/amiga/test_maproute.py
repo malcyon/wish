@@ -123,6 +123,22 @@ def test_silver_blades_replays_the_measured_new_verdigris_walk(tmp_path: Path):
     assert walk.steps[-1].encounters is False
 
 
+def test_an_unstarted_silver_blades_party_plays_its_opening_story_in_the_load(tmp_path: Path):
+    manifest = {**_manifest("ssb", tmp_path), "opening_scene": True}
+    route = maproute.route_for("ssb", manifest)
+    load = route.phases[0]
+
+    assert [(s.kind, s.state, s.key) for s in load.steps[5:]] == [
+        ("key", "journal", "B"), ("answer", "treasure_bar", None),
+        ("key", "treasure", "E"), ("key", "world", "N")]
+    assert load.steps[-1].checkpoint == "loaded"
+    assert route.amiga_title.wait_limits["treasure_bar"] == 300
+    pages = [row for row in route.amiga_title.interstitials if row[0] == "continue"]
+    assert [(row[1], row[3]) for row in pages] == [(("keys", "RET"), 12)]
+    plain = maproute.route_for("ssb", _manifest("ssb", tmp_path))
+    assert [s.state for s in plain.phases[0].steps[-1:]] == ["world"]
+
+
 def test_a_different_source_party_does_not_gain_the_outdoor_claim(tmp_path: Path):
     manifest = _manifest("pool", tmp_path)
     manifest["substitute"] = {"letter": "F", "sha256": "b" * 64}

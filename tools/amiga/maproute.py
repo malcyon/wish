@@ -135,7 +135,7 @@ def _missing(name: str, initial: str, reason: str) -> Phase:
     return Phase(name, initial, (), ready=False, reason=reason)
 
 
-def _load(title: str, slot: str) -> Phase:
+def _load(title: str, slot: str, opening_scene: bool = False) -> Phase:
     if title == "pool":
         return _phase(
             "load", "title",
@@ -158,17 +158,25 @@ def _load(title: str, slot: str) -> Phase:
             Step("key", "world", key="B", checkpoint="loaded"),
         )
     if title == "ssb":
-        return _phase(
-            "load", "title",
+        prefix = (
             Step("key", "party_menu", key="P"),
             Step("key", "load_picker", key="L"),
             Step("key", "loaded_menu", key=slot),
             Step("key", "sheet", key="V", checkpoint="load_sheet"),
             Step("key", "loaded_menu", key="E"),
             Step("key", "journal", key="B"),
-            Step("answer", "world", checkpoint="loaded",
-                 expected=Expected(engine={"area": 16, "x": 3, "y": 3, "facing": 2})),
         )
+        expected = Expected(engine={"area": 16, "x": 3, "y": 3, "facing": 2})
+        if opening_scene:
+            # The opening pages between these steps are the title's continue interstitials.
+            return _phase(
+                "load", "title", *prefix,
+                Step("answer", "treasure_bar"),
+                Step("key", "treasure", key="E"),
+                Step("key", "world", key="N", checkpoint="loaded", expected=expected),
+            )
+        return _phase("load", "title", *prefix,
+                      Step("answer", "world", checkpoint="loaded", expected=expected))
     return _phase(
         "load", "title",
         Step("key", "party_menu", key="P"),
@@ -185,7 +193,7 @@ def _load(title: str, slot: str) -> Phase:
     )
 
 
-def _base_title(title: str, slot: str) -> AmigaTitle:
+def _base_title(title: str, slot: str, opening_scene: bool = False) -> AmigaTitle:
     if title == "pool":
         return route_pool.POOL
     if title == "curse":
@@ -193,7 +201,7 @@ def _base_title(title: str, slot: str) -> AmigaTitle:
     if title == "ssb":
         if slot not in ("A", "D"):
             raise RouteError(f"Silver Blades prepared slot {slot} has no measured load route")
-        return route_silver_blades.published_title(slot)
+        return route_silver_blades.published_title(slot, opening_scene=opening_scene)
     return route_darkness.DARKNESS
 
 
@@ -367,9 +375,10 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
     if not isinstance(manifest, Mapping) or manifest.get("title") != title:
         raise RouteError(f"Prepared manifest is not for {title}")
     slot = _slot_from(manifest)
-    base = _base_title(title, slot)
+    opening_scene = manifest.get("opening_scene") is True
+    base = _base_title(title, slot, opening_scene)
     media = _media_for(title, manifest, base)
-    load = _load(title, slot)
+    load = _load(title, slot, opening_scene)
     phases = _phases(title, load)
     source = _source_provenance(manifest)
     specimen_gaps = _specimen_gaps(title, manifest, source, media, slot)

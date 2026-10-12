@@ -49,7 +49,7 @@ def _route(*, failed_walk=False):
               _phase("transition", "world"), _phase("reload", "world"),
               _phase("reopen_step", "world"))
     return SimpleNamespace(title="ssb", game_key="secret-of-the-silver-blades",
-                           amiga_title=SimpleNamespace(wait_limits={}, title_limit=30),
+                           amiga_title=SimpleNamespace(wait_limits={}, title_limit=30, interstitials=()),
                            phases=phases, actions=(), media=(), mounted=(),
                            unresolved=(), provenance={}, loaded_slot="B")
 
@@ -772,12 +772,15 @@ def test_identical_maps_with_two_ids_remain_ambiguous(tmp_path):
 
 
 def _discovery_route(tmp_path):
-    from tools.amiga import maproute
+    from tools.amiga import maproute, route_silver_blades
 
     route = _route()
+    route.amiga_title = SimpleNamespace(
+        wait_limits=route_silver_blades.OPENING_WAIT_LIMITS, title_limit=30,
+        interstitials=route_silver_blades.PUBLISHED_INTERSTITIALS)
     route.loaded_slot = "D"
     route.mounted = ("df0", "df1")
-    route.phases = (maproute._load("ssb", "D"), maproute._ssb_stationary(),
+    route.phases = (maproute._load("ssb", "D", opening_scene=True), maproute._ssb_stationary(),
                     maproute._ssb_walk(), *(_phase(p.name, p.initial_state,
                                                    ready=False, reason="unmeasured")
                                             for p in route.phases[3:]))
@@ -819,7 +822,8 @@ def test_discovery_preflight_only_accepts_measured_prefix(tmp_path, monkeypatch)
         (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
     monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
         rules={name: True for phase in route.phases[:3]
-               for name in (phase.initial_state, *(s.state for s in phase.steps))}))
+               for name in (phase.initial_state, *(s.state for s in phase.steps))}
+        | {"continue": True}))
     zip_path = tmp_path / "artifact.zip"
     zip_path.write_bytes(b"build")
     (tmp_path / winwishaccept.winwish.COMMIT_FILE).write_text(SHA)
@@ -1016,7 +1020,7 @@ def test_discovery_prefix_and_only_one_terminal_key_without_actions(tmp_path, mo
     assert result["completed_sequence"] == ["load", "stationary", "walk"]
     assert game.keys[-1:] == ["NP8"]
     assert game.keys.count("NP8") == 18
-    assert controller.mapping_commands == len(game.keys) == 6 + 4 + 17 + 5 + 1
+    assert controller.mapping_commands == len(game.keys) == 6 + 2 + 4 + 17 + 5 + 1
     assert result["challenge_key_count"] is None
     assert result["challenge_key_count_verified"] is False
     assert snapshots == ["ssb_new_verdigris", "ssb_leave_terminal"]
@@ -1276,7 +1280,8 @@ def test_discovery_failed_encounter_enable_checks_persistent_state_and_off(tmp_p
     assert "enable failed" in result["failure"]
     assert result["cleanup"]["encounters_before"] == {"on": True, "rows": [1]}
     assert ("off",) in calls
-    assert game.keys == ["P", "L", "D", "V", "E", "B", "NP4", "NP6", "NP6", "NP4"]
+    assert game.keys == ["P", "L", "D", "V", "E", "B", "E", "N",
+                         "NP4", "NP6", "NP6", "NP4"]
     assert ("down",) in calls
 
 
@@ -1579,26 +1584,87 @@ def test_opening_real_checkpoint_pairs_last_exact_frame_and_requires_fix(tmp_pat
     assert game.keys == ["P", "L", "D", "V", "E", "B", "RET"]
 
 
-@pytest.mark.parametrize("mode", [None, "ssb-leave"])
-def test_existing_modes_do_not_return_from_the_first_opening_page(tmp_path, monkeypatch, mode):
+def _story_screens(controller, game, *, first_pages=9, after_pages=3, hold=None):
+    """Drive the fake guest through the opening story as the measured run showed it."""
+    st = {"show": "title", "pages": 0, "after": False}
+    controller.guards = lambda state, path: path.read_bytes().decode() == state
+
+    def grab(state, raw, crop, timeout):
+        pathlib.Path(raw).write_bytes(b"raw")
+        shown = state if state.startswith("ssb_leave") else st["show"]
+        pathlib.Path(crop).write_bytes(shown.encode())
+        game.last_shot = {"source": "winuae-pipe", "pid": 12,
+                          "counter": game.last_shot.get("counter", 3) + 1}
+        return True
+
+    def press(holder, key, timeout):
+        game.keys.append(key)
+        show = st["show"]
+        if key == "RET" and show == "continue":
+            st["pages"] -= 1
+            if st["pages"] <= 0:
+                st["show"] = "world" if st["after"] else "treasure_bar"
+        elif key == "E" and show == "treasure_bar":
+            st["show"] = "treasure"
+        elif key == "N" and show == "treasure":
+            st["show"], st["pages"], st["after"] = "continue", after_pages, True
+        elif key in ("P", "L", "D", "V", "E", "B"):
+            st["show"] = {"P": "party_menu", "L": "load_picker", "D": "loaded_menu",
+                          "V": "sheet", "E": "loaded_menu", "B": "journal"}[key]
+
+    def answer(*args):
+        st["show"], st["pages"] = hold or "continue", first_pages
+        return 0, "answered"
+
+    game.grab, game.press = grab, press
+    return st, answer
+
+
+def test_discovery_plays_the_opening_story_in_one_boot(tmp_path, monkeypatch):
     from tools.amiga import route_silver_blades
 
-    controller, game, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
-    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "ok"))
-    controller.guards = lambda state, crop: state != "world"
-    if mode is None:
-        # Ordinary routing reaches the unchanged answer -> world step, not the new method.
-        controller.args.discover = None
-        controller.discovery = False
-        with pytest.raises(winwishaccept.AcceptanceStop, match="world screen was not recognized"):
-            controller.run_phase(controller.route.phases[0])
-        assert game.keys == ["P", "L", "D", "V", "E", "B"]
-    else:
-        result = controller.run_discovery()
-        assert "world screen was not recognized" in result["failure"]
-        assert game.keys == ["P", "L", "D", "V", "E", "B"]
-        assert ("down",) in calls
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    _, answer = _story_screens(controller, game)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", answer)
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[:6] == ["P", "L", "D", "V", "E", "B"]
+    assert game.keys[6:] [:14] == ["RET"] * 9 + ["E", "N"] + ["RET"] * 3
+    assert controller.mapping_commands == 6 + 2 + 4 + 17 + 5 + 1
+    assert result["interstitial_keys"] == 12
+    assert "loaded" in controller.checkpoints
+
+
+def test_a_thirteenth_story_page_gets_no_key(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    _, answer = _story_screens(controller, game, first_pages=13)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", answer)
+    result = controller.run_discovery()
+    assert "treasure_bar screen was not recognized" in result["failure"]
+    assert game.keys.count("RET") == 12
+
+
+def test_an_unrecognised_screen_after_the_journal_gets_no_key(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    _, answer = _story_screens(controller, game, hold="mystery")
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", answer)
+    result = controller.run_discovery()
+    assert "treasure_bar screen was not recognized" in result["failure"]
     assert "RET" not in game.keys
+
+
+def test_a_story_page_in_a_later_phase_gets_no_key(tmp_path, monkeypatch):
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    st, _ = _story_screens(controller, game)
+    st["show"] = "continue"
+    stationary = controller.route.phases[1]
+    with pytest.raises(winwishaccept.AcceptanceStop, match="world screen was not recognized"):
+        controller.run_phase(stationary)
+    assert game.keys == []
 
 
 @pytest.mark.parametrize("fault", ["none", "scene", "actions", "prefix", "guard_primary",

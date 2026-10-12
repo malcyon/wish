@@ -62,7 +62,7 @@ OPENING_MODES = ("ssb-opening-first", "ssb-opening-second", "ssb-opening-after-s
 def _opening_first_phase(route: Any) -> Any:
     from tools.amiga import maproute  # noqa: PLC0415
 
-    load = maproute._load("ssb", "D")
+    load = maproute._load("ssb", "D", opening_scene=True)
     if (route.title != "ssb" or route.loaded_slot != "D"
             or route.mounted != ("df0", "df1")
             or not route.phases or route.phases[0] != load
@@ -86,8 +86,9 @@ def _discovery_phases(route: Any) -> dict[str, Any]:
     if any(action.enabled for action in route.actions):
         raise AcceptanceStop("discovery cannot enable actions")
     load, stationary, walk = (phases[name] for name in ("load", "stationary", "walk"))
-    if ([s.kind for s in load.steps] != ["key"] * 6 + ["answer"]
+    if ([s.kind for s in load.steps] != ["key"] * 6 + ["answer", "key", "key"]
             or [s.key for s in load.steps[:6]] != ["P", "L", "D", "V", "E", "B"]
+            or [s.key for s in load.steps[7:]] != ["E", "N"]
             or [s.key for s in stationary.steps] != ["NP4", "NP6", "NP6", "NP4"]
             or any(s.kind != "turn" for s in stationary.steps)
             or [s.kind for s in walk.steps].count("move") != 17
@@ -119,7 +120,7 @@ def _discovery_phases(route: Any) -> dict[str, Any]:
     if (walk.steps[-2].checkpoint != "ssb_facing_exit" or final is None
             or dict(final.engine or {}) != {"area": 16, "x": 15, "y": 8, "facing": 1}):
         raise AcceptanceStop("discovery terminal square is not 15,8,E")
-    if (load, stationary, walk) != (maproute._load("ssb", "D"),
+    if (load, stationary, walk) != (maproute._load("ssb", "D", opening_scene=True),
                                     maproute._ssb_stationary(), maproute._ssb_walk()):
         raise AcceptanceStop("discovery prefix differs from the guarded measured route")
     return {name: phases[name] for name in ("load", "stationary", "walk")}
@@ -201,6 +202,14 @@ def _phase_map(route: Any) -> dict[str, Any]:
     return phases
 
 
+def _page_states(route: Any) -> set[str]:
+    """The screens the load phase presses a key on, which need a guard like any other."""
+    if route.title != "ssb" or not route.phases or route.phases[0].name != "load":
+        return set()
+    return {row[0] for row in route.amiga_title.interstitials if row[1][0] == "keys"
+            and row[2] is None}
+
+
 def _states(route: Any) -> set[str]:
     phases = [*route.phases]
     for action in route.actions:
@@ -210,8 +219,9 @@ def _states(route: Any) -> set[str]:
             if not action.show.ready or not action.back.ready:
                 raise AcceptanceStop(f"{action.kind} has an unready game-display route")
             phases.extend((action.show, action.back))
-    return {state for phase in phases for state in
-            (phase.initial_state, *(step.state for step in phase.steps))}
+    states = {state for phase in phases for state in
+              (phase.initial_state, *(step.state for step in phase.steps))}
+    return states | _page_states(route)
 
 
 def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
@@ -290,8 +300,9 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         if mode == "ssb-opening-after-third":
             states.add("ssb_opening_third")
     elif discovery:
-        states = {"title"} | {state for phase in _discovery_phases(route).values()
-                              for state in (phase.initial_state, *(s.state for s in phase.steps))}
+        states = {"title"} | _page_states(route) | {
+            state for phase in _discovery_phases(route).values()
+            for state in (phase.initial_state, *(s.state for s in phase.steps))}
     else:
         states = _states(route)
     missing = states - guards.rules.keys()
@@ -424,15 +435,35 @@ class Controller:
             raise AcceptanceStop(f"{state} screen was not recognized; kept {raw}")
         return evidence
 
-    def _await(self, state: str, *, limit: float = 90) -> dict[str, Any]:
+    def _await(self, state: str, *, limit: float = 90,
+               interstitials: tuple = ()) -> dict[str, Any]:
         end = self.clock() + self.left(limit)
         last = None
+        counts = [0] * len(interstitials)
         while self.clock() < end:
             last = self._capture(state, check=False)
-            if last["crop"] is not None and self.guards(state, pathlib.Path(last["crop"])):
-                return last
+            if last["crop"] is not None:
+                crop = pathlib.Path(last["crop"])
+                if self.guards(state, crop):
+                    return last
+                for at, (name, action, waiting_for, row_limit) in enumerate(interstitials):
+                    if (action[0] == "keys" and counts[at] < row_limit
+                            and (waiting_for is None or state in waiting_for)
+                            and self.guards(name, crop)):
+                        counts[at] += 1
+                        self._press_interstitial(name, action[1])
+                        # The limit measures waiting for the screen, not acting on a page.
+                        end = self.clock() + self.left(limit)
+                        break
             self.sleep(min(1.0, max(0, end - self.clock())))
         raise AcceptanceStop(f"{state} screen was not recognized before its deadline; last {last}")
+
+    def _press_interstitial(self, screen: str, key: str) -> None:
+        if self.encounters_on:
+            raise AcceptanceStop(f"interstitial {screen} appeared while encounters were controlled")
+        self.game.press(self.args.holder, key, self.left(30))
+        self.summary["interstitial_keys"] = self.summary.get("interstitial_keys", 0) + 1
+        self.log("interstitial", screen=screen, key=key)
 
     def _press(self, key: str, *, action: bool = False) -> None:
         self._count(action)
@@ -660,6 +691,8 @@ class Controller:
         self._game_section()
         last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
             phase.initial_state, self.route.amiga_title.title_limit))
+        pages = (self.route.amiga_title.interstitials
+                 if phase.name == "load" and self.route.title == "ssb" else ())
         for step in phase.steps:
             kind = step.kind
             if kind in ("key", "turn", "move"):
@@ -702,7 +735,7 @@ class Controller:
             elif kind != "observe":
                 raise AcceptanceStop(f"unknown route step kind {kind}")
             frame = self._await(step.state, limit=self.route.amiga_title.wait_limits.get(
-                step.state, 90))
+                step.state, 90), interstitials=pages)
             last_frame = frame
             if step.checkpoint:
                 expected = step.expected
