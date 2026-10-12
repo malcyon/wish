@@ -2,19 +2,24 @@
 
 `goldbox/amiga_por_icons.py` decodes `/chead.dax` and `/cbody.dax`; the
 write-up is `docs/240-amiga-pool-combat-figure.md`.  The first group builds
-its blocks here from the documented layout and holds none of the game's
-bytes.  The second reads the player's own disks through `gamedisks.yaml` and
-skips when they are absent; what it asserts are counts and ids.
+its blocks, figures and executable here from the documented layout and holds
+none of the game's bytes or colours.  The second reads the player's own disks
+through `gamedisks.yaml` and skips when they are absent; what it asserts are
+counts, ids, offsets and where a figure matches a capture of the game's own
+ICON screen, which `scratch.cache_dir` holds and nothing commits.
 """
 
 from __future__ import annotations
 
 import functools
+import hashlib
 
 import pytest
 
 from automap import gamedisks
+from goldbox import amiga_hunks
 from goldbox import amiga_por_icons as art
+from tests.support.hunks import hunk_file
 
 # ---------------------------------------------------------------------------
 # Generated blocks
@@ -63,15 +68,28 @@ def test_the_unused_eight_pixels_of_each_row_are_not_drawn():
     assert art.decode_block(bytes(raw)).rows == PATTERN
 
 
-@pytest.mark.parametrize("damage", ["short", "long", "rows"])
+def _header(height, eights, plane):
+    return b"".join(v.to_bytes(2, "big")
+                    for v in (height, eights, 0, 0, 1, plane))
+
+
+@pytest.mark.parametrize("damage", ["short", "long", "rows", "no header",
+                                    "no width", "narrow rows"])
 def test_a_header_that_does_not_describe_its_bytes_is_rejected(damage):
     raw = bytearray(_encode(PATTERN))
     if damage == "short":
         raw = raw[:-1]
     elif damage == "long":
         raw += b"\0"
-    else:
+    elif damage == "rows":
         raw[1] = 5
+    elif damage == "no header":
+        raw = raw[:11]
+    elif damage == "no width":
+        raw = bytearray(_header(3, 0, 12) + bytes(48))
+    else:
+        # Two bytes a row cannot hold the 24 pixels the header asks for.
+        raw = bytearray(_header(3, 3, 6) + bytes(24))
     with pytest.raises(art.PorArtError):
         art.decode_block(bytes(raw))
 
@@ -98,6 +116,149 @@ def test_each_nibble_replaces_the_value_in_the_same_nibble_of_its_pair():
     assert (table[1], table[9]) == (4, 12)
     assert [table[v] for v in range(16) if v not in (1, 9)] == [
         v for v in range(16) if v not in (1, 9)]
+
+
+def _block(rows):
+    return art.ArtBlock(len(rows), len(rows[0]),
+                        tuple(tuple(r) for r in rows))
+
+
+def _art(head_ids=(3, 67), body_ids=(5, 133, 69, 197)):
+    """Generated heads and bodies, 8 wide; a head is 2 rows, a body 4.
+
+    Each head draws value 1 in column `id % 8` of row 0; each body draws 9
+    in column `id % 8` of row 3, 6 in column 0 of row 1 and 12 in its last
+    column of row 2.  So which block a pose used, and whether the head went
+    in, can be read off the pixels.
+    """
+    heads = {}
+    for hid in head_ids:
+        rows = [[0] * 8 for _ in range(2)]
+        rows[0][hid % 8] = 1
+        heads[hid] = _block(rows)
+    bodies = {}
+    for bid in body_ids:
+        rows = [[0] * 8 for _ in range(4)]
+        rows[3][bid % 8] = 9
+        rows[1][0] = 6
+        rows[2][7] = 12
+        bodies[bid] = _block(rows)
+    return heads, bodies
+
+
+def test_a_pose_is_its_body_with_the_head_ored_in_from_row_0():
+    heads, bodies = _art()
+    ready, action = art.compose(heads, bodies, 3, 5, 1, art.SOURCE_PAIRS)
+    assert ready[0][3] == 1 and ready[3][5] == 9
+    assert action[0][3] == 1 and action[3][133 % 8] == 9
+    assert ready[1][0] == 6 and ready[2][7] == 12
+
+
+def test_size_2_takes_the_large_blocks_for_both_poses():
+    heads, bodies = _art()
+    ready, action = art.compose(heads, bodies, 3, 5, 2, art.SOURCE_PAIRS)
+    assert ready[0][67 % 8] == 1 and ready[3][69 % 8] == 9
+    assert action[3][197 % 8] == 9
+
+
+def test_overlapping_head_and_body_values_are_ored():
+    heads = {0: _block([[3, 0], [0, 0]])}
+    bodies = {0: _block([[4, 0], [0, 0], [0, 0]]),
+              128: _block([[0, 0], [0, 0], [0, 0]])}
+    ready, _ = art.compose(heads, bodies, 0, 0, 0, art.SOURCE_PAIRS)
+    assert ready[0][0] == 7
+
+
+def test_the_record_colours_recolour_both_poses_and_leave_12_alone():
+    heads, bodies = _art()
+    colours = bytes([0x4C]) + art.SOURCE_PAIRS[1:3] + bytes([0x7D]) \
+        + art.SOURCE_PAIRS[4:]
+    ready, action = art.compose(heads, bodies, 3, 5, 1, colours)
+    for pose in (ready, action):
+        assert pose[0][3] == 4          # head value 1 -> the pair 19's high
+        assert pose[1][0] == 13         # body 6 -> the pair 76's low
+        assert pose[2][7] == 12         # no pair holds 12
+    assert ready[3][5] == 12            # body 9 -> the pair 19's low
+
+
+def test_empty_pixels_stay_empty_and_a_zero_nibble_draws_colour_0():
+    heads, bodies = _art()
+    colours = bytes([0x10]) + art.SOURCE_PAIRS[1:]
+    ready, _ = art.compose(heads, bodies, 3, 5, 1, colours)
+    assert ready[0][0] is None and ready[3][0] is None
+    assert ready[3][5] == 0
+
+
+def test_a_missing_block_is_an_error_not_a_blank_pose():
+    heads, bodies = _art()
+    with pytest.raises(art.PorArtError):
+        art.compose(heads, bodies, 4, 5, 1, art.SOURCE_PAIRS)
+    with pytest.raises(art.PorArtError):
+        art.compose(heads, bodies, 3, 6, 1, art.SOURCE_PAIRS)
+
+
+def test_the_box_shows_through_only_where_the_pose_is_empty():
+    frame = _block([[15, 15], [13, 4]])
+    assert art.on_frame(frame, ((None, 2), (0, None))) == ((15, 2), (0, 4))
+    with pytest.raises(art.PorArtError):
+        art.on_frame(frame, ((None,),))
+
+
+def _program(bar=art.ICON_MENU_BAR):
+    """A two-hunk executable whose ICON menu installs the second table.
+
+    CODE: the menu loads `bar`'s address, calls a stub to a routine that
+    loads a table without copying it, then a stub to a setter that does copy.
+    DATA: the bar, the installed table, and a table nothing installs.
+    """
+    def word(n):
+        return n.to_bytes(2, "big")
+
+    def long(n):
+        return n.to_bytes(4, "big")
+
+    nop = word(0x4E71)
+    code = bytearray(nop * 0x48)
+    code[0x00:0x06] = word(0x41F9) + long(0x00)          # lea bar, a0
+    code[0x08:0x0C] = word(0x4EBA) + word(0x20 - 0x0A)   # jsr decoy stub
+    code[0x0C:0x10] = word(0x4EBA) + word(0x26 - 0x0E)   # jsr setter stub
+    code[0x10:0x12] = word(0x4E75)
+    code[0x20:0x26] = word(0x4EF9) + long(0x40)          # jmp decoy
+    code[0x26:0x2C] = word(0x4EF9) + long(0x60)          # jmp setter
+    code[0x40:0x46] = word(0x41F9) + long(0x40)          # lea other, a0
+    code[0x46:0x48] = word(0x4E75)
+    code[0x60:0x64] = bytes.fromhex("4E55FFE0")          # link a5, #-32
+    code[0x64:0x6A] = word(0x41F9) + long(0x20)          # lea table, a0
+    code[0x6A:0x76] = bytes.fromhex("43EDFFE0 7007 22D8 51C8FFFC")
+    code[0x76:0x7A] = bytes.fromhex("4E5D4E75")
+    data = bytearray(0x60)
+    data[0:len(bar)] = bar
+    for i in range(16):
+        data[0x20 + 2 * i:0x22 + 2 * i] = word(0x111 * (i % 16))
+        data[0x40 + 2 * i:0x42 + 2 * i] = word(0xF00)
+    return hunk_file([
+        (amiga_hunks.HUNK_CODE, bytes(code),
+         [(1, [0x02, 0x42, 0x66]), (0, [0x22, 0x28])]),
+        (amiga_hunks.HUNK_DATA, bytes(data), []),
+    ])
+
+
+def test_the_palette_is_the_table_the_icon_menu_installs():
+    program = _program()
+    assert art.icon_palette(program) == tuple(
+        (17 * i, 17 * i, 17 * i) for i in range(16))
+    lea, call, setter, table = art.icon_palette_chain(program)
+    assert program[lea:lea + 2] == b"\x41\xf9"
+    assert program[call:call + 2] == b"\x4e\xba"
+    assert program[setter:setter + 4] == bytes.fromhex("4E55FFE0")
+    assert program[table:table + 4] == bytes.fromhex("00000111")
+
+
+def test_an_executable_without_the_icon_menu_has_no_icon_palette():
+    with pytest.raises(art.PorArtError):
+        art.icon_palette(_program(bar=b"Parts colour-1 colour-2 Size Exit"))
+    with pytest.raises(art.PorArtError):
+        art.icon_palette(b"not a hunk file at all")
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +330,57 @@ def test_most_amiga_options_with_a_dos_drawing_have_another_number():
     assert large_heads[10][1] == 8
 
 
+def _program_of_record(tool):
+    code = tool.program()
+    if code is None:
+        pytest.skip("no Amiga Pool /program here")
+    if hashlib.sha256(code).hexdigest() != tool.PROGRAM_SHA256:
+        pytest.skip("not the /program build the offsets were read from")
+    return code
+
+
+def test_the_icon_menu_installs_the_table_at_0x03b260():
+    tool, _amiga, _dos = _measured()
+    code = _program_of_record(tool)
+    assert art.icon_palette_chain(code) == (0x019C64, 0x019C96, 0x03499E,
+                                            0x03B260)
+
+
+def test_the_icon_box_is_comspr_block_12():
+    _tool, amiga, _dos = _measured()
+    frame = amiga["frame"][art.FRAME_BLOCK]
+    assert (frame.width, frame.height) == (24, 24)
+
+
+#: Where stage 2's capture shows each pose, in Amiga pixels: OLD on the
+#: first row of boxes, NEW on the second, and the two the same.
+CAPTURE_PLACES = {"ready": [(59, 73), (59, 121)],
+                  "action": [(131, 73), (131, 121)]}
+
+
+@pytest.mark.parametrize("name", ["GARWAN", "STONEBEARD", "LAURANN"])
+def test_the_composed_figure_is_the_game_s_own_pixel_for_pixel(name):
+    """LAURANN is the control: nothing was derived from her capture."""
+    from tools.registry import scratch
+    tool, _amiga, _dos = _measured()
+    _program_of_record(tool)
+    crop = scratch.cache_dir("acceptance", "WISH-378", "shots",
+                             f"{name.lower()}-icon-crop.png")
+    if not crop.exists():
+        pytest.skip(f"no ICON-screen capture of {name} here")
+    found = tool.compare_capture(name, crop)
+    if found is None:
+        pytest.skip(f"no Amiga Pool record called {name} here")
+    assert {pose: places for pose, (places, _fewest) in found.items()} \
+        == CAPTURE_PLACES
+
+
 def test_the_preparer_reads_the_tables_the_module_holds():
     tool, _amiga, _dos = _measured()
     found = tool.find_files(("program",))
+    if found is not None and hashlib.sha256(found[1]["program"]).hexdigest(
+            ) != tool.PROGRAM_SHA256:
+        pytest.skip("not the /program build the offsets were read from")
     if found is None:
         pytest.skip("no Amiga Pool /program here")
     lines = []

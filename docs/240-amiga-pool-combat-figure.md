@@ -89,10 +89,9 @@ table[S >> 4]  = C >> 4
 The six source bytes are `19 2A 3B 76 85 EF`. The remapper at `0x048774` then
 replaces every pixel value `v` of both body poses with `table[v]`, across 96
 bytes a plane (24 rows of 4). Nothing translates the nibble between the record
-and the plane: **a colour nibble is stored as the pixel's new bitplane value**.
-Whether the screen the figure is drawn on maps bitplane value `n` to colour
-register `n` is PROBABLE and not read here; stage 3 of WISH-378 proves the
-palette from captures of the game's own ICON screen.
+and the plane: **a colour nibble is stored as the pixel's new bitplane value**,
+and the ICON screen draws bitplane value `n` in its colour register `n`
+(CONFIRMED below, three captures pixel for pixel).
 
 A record holding the six source bytes draws the art unchanged, and that is
 what a fresh Amiga character holds: 6 of the 20 distinct Amiga Pool records on
@@ -112,8 +111,11 @@ The table is a measurement, not a reading of code: it is the assignment under
 which the 61 blocks below match exactly, and the six pairs it gives the
 recoloured parts are exactly the preparer's source pairs. It is not one-to-one -- DOS's plume, 5
 and 13, is stored as the body pair 9 and 1, so a body colour choice probably
-recolours an Amiga plume where DOS keeps it magenta (SPECULATIVE until stage
-3's capture of a plumed head).
+recolours an Amiga plume where DOS keeps it magenta. SPECULATIVE: none of the
+three captured heads (74, 3, 69) holds a 1 or a 9; only heads 7, 8, 9 and
+71-73 do. The experiment: on the ICON screen of a member whose first colour
+byte is not `19`, choose Parts and head 7, and compare the plume with the
+body's colour.
 
 | | blocks | a DOS block pixel for pixel | at the same id | no exact DOS block |
 |---|---|---|---|---|
@@ -125,8 +127,10 @@ without an exact match are mostly near ones: 52 of the 78 bodies differ from
 the nearest DOS body by 1 or 2 pixels (46 by one), most often a single pixel
 of value 12 where DOS has none. The heads are further apart: 2 of the 17 are
 within one pixel and the rest 5 to 30. Value 12 is the Amiga art's own: no DOS value maps to it, no colour
-choice replaces it, and it appears 103 times in 60 body blocks. What colour it
-draws is stage 3's question.
+choice replaces it, and it appears 103 times in 60 body blocks. It draws
+register 12, `#555555`, a dark grey: STONEBEARD's two poses carry 5 and 1 such
+pixels and LAURANN's 1 and 4, and every one of them is that grey in the
+captures below. No head block holds a 12.
 
 ### By menu option
 
@@ -149,6 +153,75 @@ are DOS 27-30, 8-10 and 12 are DOS 4-7, 11 is
 DOS 31, 14-21 are DOS 9-16 and 24-31 are DOS 17-24, each within 7 pixels of
 its DOS option over both poses, while Amiga 13, 22 and 23 are 40 to 145 pixels
 from anything DOS draws.
+
+## The ICON screen: box, colours and the whole figure -- CONFIRMED
+
+A player who opens camp, chooses Alter and then Icon sees each pose in a
+24-pixel box: grey, lit white along the top and left, black along the bottom
+and right. The figure is drawn over it, and the box shows wherever the
+figure's pixel is empty.
+
+**The box is art on disk 2, read at run time.** It is block 12 of
+`/comspr.dax`, the same 24x24 four-plane format as the figures. `/program`
+loads it into figure slot 25 at `0x03CF20` (`COMSPR`, id 12, slot `0x19`),
+and the placement helper at `0x0199E8` draws slot 25 at each pose's place
+and then slot 12 (the figure being edited) over it.
+`goldbox.amiga_por_icons.on_frame` is that overlay.
+
+**The palette is installed by the ICON menu itself.** The menu routine at
+`0x019C52` loads the bar `Parts color-1 color-2 Size Exit` (`lea` at
+`0x019C64`) and at `0x019C96` calls, through the stub `jmp` at `0x01D102`,
+the setter at `0x03499E`. That setter copies sixteen words from `0x03B260`
+and passes them to `0x034936`, which writes them into the screen's colour
+table and calls `0x03A22C`. The words are `0RGB`, a nibble a component:
+
+| value | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| seen in a capture | | yes | | yes | yes | yes | yes | yes | | yes | yes | yes | yes | yes (box) | yes | yes (box) |
+
+The colours themselves are not reproduced here; `tools/icons/amigaporicons.py
+--palette` prints them off the player's disk, and
+`goldbox.amiga_por_icons.icon_palette` finds the table by that chain of code,
+not by its offset. Data hunk 23 holds five such sixteen-word tables, at
+`0x03B240`, `0x03B260`, `0x03B280`, `0x03B2A0` and `0x03B2C0`, each with its
+own setter (`0x034974`, `0x03499E`, `0x0349CA`, `0x0349F6`, `0x034A22`); the
+first, second and fourth differ only in entry 0, so a figure, which never
+draws value 0, has the same colours under any of the three.
+`0x03B280`'s first sixteen are the portrait palette at `0x008AB0`.
+
+**How the palette was derived, and how LAURANN was kept out of it.**
+WinUAE's crops double each Amiga pixel exactly (every 2x2 block one colour,
+every channel a multiple of 17). Composing GARWAN and STONEBEARD with the
+rules above and finding them in their crops gave twelve register values:
+1, 3, 4, 5, 6, 7, 9, 11, 12 and 14 from the figures, 13 and 15 from the box.
+Exactly three tables in `/program` hold all twelve -- the three above -- and
+the code chain picks `0x03B260`. Only then was LAURANN composed, from her
+record and the disk alone; her value 10, which neither GARWAN nor
+STONEBEARD draws, came from that table. (A first search for the table also used
+her value 10, read off her capture; repeated without it, it finds the same
+three tables, so nothing in the table choice rests on her.)
+
+| member | record: head, body, size, colours | ready | action |
+|---|---|---|---|
+| GARWAN | 10, 30, 2, `1C 41 3B 76 44 EF` | pixel for pixel at (59, 73) and (59, 121) | pixel for pixel at (131, 73) and (131, 121) |
+| STONEBEARD | 3, 30, 1, `55 55 11 7C 94 EF` | the same | the same |
+| LAURANN, the control | 5, 8, 2, `1A 41 A1 76 F9 44` | the same | the same |
+
+Places are Amiga pixels in the 360x284 frame of WISH-378's stage-2 crops;
+the first row of boxes is OLD and the second NEW. Each comparison is all 576
+pixels of a pose drawn over the box, 0 differing. `tools/icons/amigaporicons.py
+--capture NAME PNG` re-takes it, and `tests/amiga/test_amigaporicons.py`
+pins it where the captures are on the machine.
+
+**Empty is decided before the recolour.** `compose` treats a pixel as empty
+where head and body are both 0 in the art, so a colour nibble of 0 draws
+register 0 (black on this screen) rather than letting the box through. The
+composite at `0x0261E0` builds its mask from the blocks before the remapper
+runs, which is why; nothing in the three captures tests it, because none
+of their colour bytes holds a 0 nibble (PROBABLE). The experiment: stage a
+member whose first colour byte is `10`, which sends the body's 9 to 0, open
+the ICON screen, and look at those pixels: black confirms, the box's grey
+refutes.
 
 ## What this means for a conversion -- PROBABLE
 
@@ -175,10 +248,13 @@ refutes.
 
 ## What is not settled here
 
-* **The colours.** Which RGB each bitplane value draws on the ICON screen and
-  in combat, and the background behind the figure. Stage 3 of WISH-378 reads
-  them from captures of the game's ICON screen and finds the palette in
-  `/program`.
+* **The colours in combat.** The ICON screen's are settled above. Which of
+  the five tables combat installs is not read; the three that agree on
+  entries 1-15 are the likely ones (SPECULATIVE). The experiment: in
+  WinUAE, break on the five setters while a fight starts, or compare a
+  combat capture's figure with `--palette`'s colours.
+* **A colour nibble of 0** and **the plume's colour**: the two experiments
+  are above.
 * **Header bytes 8-9.** 1 in all 156 blocks, and nothing on this page reads
   them.
 * **The loader's file read** (`0x03A36A`). The ids above are what it is asked

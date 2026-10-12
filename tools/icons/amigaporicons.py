@@ -25,9 +25,22 @@ Radiance's `CHEAD.DAX` and `CBODY.DAX`, pixel for pixel through
     The icon fields of every Amiga Pool character file on the player's disks,
     and the blocks each names.
 
+``--palette``
+    The ICON screen's sixteen colours, found in `/program` by
+    `goldbox.amiga_por_icons.icon_palette_chain`, with the four offsets of
+    the chain that installs them.
+
+``--capture NAME PNG``
+    Compose NAME's two poses from the record on the player's disks, draw each
+    over the ICON screen's box in the ICON palette, and look for it in PNG, a
+    720x568 crop of the game's own ICON screen (`tools.amiga.screens`
+    canonical, each Amiga pixel doubled).  Prints where each pose matches
+    pixel for pixel, or the fewest pixels any place differs by.
+
     tools/icons/amigaporicons.py --art
     tools/icons/amigaporicons.py --table
-    tools/icons/amigaporicons.py --code --sweep
+    tools/icons/amigaporicons.py --code --sweep --palette
+    tools/icons/amigaporicons.py --capture LAURANN laurann-icon-crop.png
 
 Every disk is opened read-only and nothing is written.  The write-up is
 `docs/240-amiga-pool-combat-figure.md`.
@@ -51,8 +64,14 @@ from tools.icons.amigaicons import dos_directory, dos_tiles  # noqa: E402
 HEAD_OPTIONS, BODY_OPTIONS = 14, 32
 
 #: `/program` file offsets of the size letters and the six source pairs, in
-#: the one build on the player's disks (SHA-256 `b1cbbecc...`).
+#: the one build on the player's disks, whose SHA-256 is `PROGRAM_SHA256`.
+#: Another build may keep them elsewhere, so `--code` reads them only there.
 LETTERS_AT, PAIRS_AT = 0x02C713, 0x06DD4F
+PROGRAM_SHA256 = ("b1cbbecc01889c16fe0b6048b6f70126"
+                  "97d2bf0b7b5e0408971d758a0def91d1")
+
+#: A figure block is this many Amiga pixels square.
+FIGURE = 24
 
 
 def _images():
@@ -78,13 +97,24 @@ def find_files(wanted: tuple[str, ...]) -> tuple[str, dict[str, bytes]] | None:
 
 
 def amiga_art() -> dict[str, dict[int, art.ArtBlock]] | None:
-    """`{"head": blocks, "body": blocks}` off the player's disk 2, or None."""
-    found = find_files((art.HEAD_FILE, art.BODY_FILE))
+    """`{"head": blocks, "body": blocks, "frame": blocks}` off disk 2, or None.
+
+    `"frame"` is `comspr.dax`, whose block `art.FRAME_BLOCK` is the ICON
+    screen's box.
+    """
+    found = find_files((art.HEAD_FILE, art.BODY_FILE, art.FRAME_FILE))
     if found is None:
         return None
     files = found[1]
     return {"head": art.read_art(files[art.HEAD_FILE], art.HEAD_FILE),
-            "body": art.read_art(files[art.BODY_FILE], art.BODY_FILE)}
+            "body": art.read_art(files[art.BODY_FILE], art.BODY_FILE),
+            "frame": art.read_art(files[art.FRAME_FILE], art.FRAME_FILE)}
+
+
+def program() -> bytes | None:
+    """`/program` off the player's disk 1, or None."""
+    found = find_files(("program",))
+    return None if found is None else found[1]["program"]
 
 
 def dos_art(translate: bool = True) -> dict[str, dict[int, tuple]] | None:
@@ -219,9 +249,13 @@ def report_code(out) -> int:
         return 1
     program = found[1]["program"]
     digest = hashlib.sha256(program).hexdigest()
+    out(f"/program sha256 {digest[:16]}...")
+    if digest != PROGRAM_SHA256:
+        out(f"  not the build the offsets were read from "
+            f"({PROGRAM_SHA256[:16]}...); nothing compared")
+        return 1
     letters = program[LETTERS_AT:LETTERS_AT + 3]
     pairs = program[PAIRS_AT:PAIRS_AT + 6]
-    out(f"/program sha256 {digest[:16]}...")
     out(f"  size letters at 0x{LETTERS_AT:06X}: {letters!r}")
     out(f"  source pairs at 0x{PAIRS_AT:06X}: {pairs.hex(' ')}")
     problems = 0
@@ -271,6 +305,119 @@ def report_sweep(out) -> int:
     return problems
 
 
+def report_palette(out) -> int:
+    code = program()
+    if code is None:
+        out("no /program on any Amiga disk here")
+        return 1
+    try:
+        bar, call, setter, table = art.icon_palette_chain(code)
+    except art.PorArtError as exc:
+        out(str(exc))
+        return 1
+    out(f"ICON bar loaded at 0x{bar:06X}, setter called at 0x{call:06X}, "
+        f"setter 0x{setter:06X}, table 0x{table:06X}")
+    for value, rgb in enumerate(art.icon_palette(code)):
+        out(f"  {value:2d}  #{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}")
+    return 0
+
+
+def find_record(name: str):
+    """The first Amiga Pool character called `name` on the player's disks."""
+    from goldbox.amiga_por import AmigaPorCharacter
+    from tools.amiga import amigasaves
+    for _label, _volume, _file, files in amigasaves.specimens():
+        record = next((v for k, v in files.items() if len(v) == 288
+                       and not k.lower().endswith((".itm", ".spc"))), None)
+        if record is None:
+            continue
+        char = AmigaPorCharacter.from_bytes(record)
+        if char.name == name:
+            return char
+    return None
+
+
+def drawn_poses(char, amiga, code) -> tuple[tuple, tuple]:
+    """`char`'s ready and action poses over the ICON box, as rows of RGB."""
+    palette = art.icon_palette(code)
+    frame = amiga["frame"][art.FRAME_BLOCK]
+    poses = art.compose(amiga["head"], amiga["body"], char.get("icon_head"),
+                        char.get("icon_body"), char.get("size"),
+                        bytes(char.get("icon_colours")))
+    return tuple(tuple(tuple(palette[v] for v in row)
+                       for row in art.on_frame(frame, pose))
+                 for pose in poses)
+
+
+def capture_pixels(path):
+    """A canonical crop's Amiga pixels, `(rows, columns)` of packed RGB.
+
+    Raises `ValueError` unless every 2x2 block of the crop is one colour,
+    which a resampled or filtered frame would not be.
+    """
+    import numpy
+    from PIL import Image
+    with Image.open(path) as image:
+        rgb = numpy.asarray(image.convert("RGB"), dtype=numpy.int32)
+    if rgb.shape[0] % 2 or rgb.shape[1] % 2:
+        raise ValueError(f"{path}: {rgb.shape[1]}x{rgb.shape[0]} is not "
+                         f"a doubled frame")
+    packed = rgb[..., 0] << 16 | rgb[..., 1] << 8 | rgb[..., 2]
+    small = packed[::2, ::2]
+    for dy in (0, 1):
+        for dx in (0, 1):
+            if not numpy.array_equal(packed[dy::2, dx::2], small):
+                raise ValueError(f"{path}: not every Amiga pixel is a "
+                                 f"single-colour 2x2 block")
+    return small
+
+
+def find_pose(screen, pose) -> tuple[list[tuple[int, int]], int]:
+    """`(places matching pixel for pixel, fewest pixels differing anywhere)`.
+
+    Places are the `(x, y)` of the pose's top-left corner in Amiga pixels.
+    """
+    import numpy
+    from numpy.lib.stride_tricks import sliding_window_view
+    want = numpy.array([[r << 16 | g << 8 | b for r, g, b in row]
+                        for row in pose], dtype=numpy.int32)
+    windows = sliding_window_view(screen, want.shape)
+    differ = (windows != want).sum(axis=(2, 3))
+    ys, xs = numpy.nonzero(differ == 0)
+    return sorted(zip(xs.tolist(), ys.tolist())), int(differ.min())
+
+
+def compare_capture(name: str, path) -> dict[str, tuple] | None:
+    """`{"ready": find_pose(...), "action": ...}` for `name` in `path`.
+
+    None when the art, `/program` or the record is not on this machine.
+    """
+    amiga, code, char = amiga_art(), program(), find_record(name)
+    if amiga is None or code is None or char is None:
+        return None
+    screen = capture_pixels(path)
+    ready, action = drawn_poses(char, amiga, code)
+    return {"ready": find_pose(screen, ready),
+            "action": find_pose(screen, action)}
+
+
+def report_capture(out, name: str, path) -> int:
+    found = compare_capture(name, path)
+    if found is None:
+        out(f"need POOLDATA's art, /program and a record called {name}")
+        return 1
+    problems = 0
+    for pose, (places, fewest) in found.items():
+        if places:
+            out(f"{name} {pose}: pixel for pixel at "
+                + ", ".join(f"({x}, {y})" for x, y in places))
+        else:
+            out(f"{name} {pose}: nowhere; the closest place differs in "
+                f"{fewest} of {FIGURE * FIGURE} pixels")
+            problems += 1
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -283,9 +430,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="the preparer's two tables out of /program")
     parser.add_argument("--sweep", action="store_true",
                         help="every Amiga Pool character's icon fields")
+    parser.add_argument("--palette", action="store_true",
+                        help="the ICON screen's colours out of /program")
+    parser.add_argument("--capture", nargs=2, metavar=("NAME", "PNG"),
+                        help="NAME's composed figure against an ICON crop")
     args = parser.parse_args(argv)
-    if not (args.art or args.table or args.code or args.sweep):
-        parser.error("say which: --art, --table, --code or --sweep")
+    if not (args.art or args.table or args.code or args.sweep
+            or args.palette or args.capture):
+        parser.error("say which: --art, --table, --code, --sweep, "
+                     "--palette or --capture")
     problems = 0
     if args.art:
         problems += report_art(print)
@@ -295,6 +448,10 @@ def main(argv: list[str] | None = None) -> int:
         problems += report_code(print)
     if args.sweep:
         problems += report_sweep(print)
+    if args.palette:
+        problems += report_palette(print)
+    if args.capture:
+        problems += report_capture(print, *args.capture)
     return 1 if problems else 0
 
 

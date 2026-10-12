@@ -158,9 +158,9 @@ same argument [`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.m
 makes for the three DOS titles. It does not show that Amiga Pool of Radiance
 numbers its art the same way: it does not, and Curse's import of a Pool
 record probably changes the figure
-([`240-amiga-pool-combat-figure.md`](240-amiga-pool-combat-figure.md)). This
-paragraph used to take the importer as evidence that no Amiga title had
-renumbered its art; measuring Pool's own art refuted that.
+([`240-amiga-pool-combat-figure.md`](240-amiga-pool-combat-figure.md)). The
+importer is not evidence that no Amiga title renumbered its art: Pool's own
+art, measured, is renumbered.
 
 **And to the C64 through the machinery that already exists.**
 `goldbox.iconparts.IconParts.dos_icon(head, body, size, colours)` composes a
@@ -183,9 +183,9 @@ for the later two titles. It was written for Amiga Pool of Radiance first, on
 the belief that Pool is the same case, and it is not: Amiga Pool numbers and
 draws its figures differently from DOS, so copying its `icon_head`,
 `icon_body` and colour bytes changes most figures
-([`240-amiga-pool-combat-figure.md`](240-amiga-pool-combat-figure.md)). This
-paragraph used to say Pool was the same case; the measurement of Pool's own
-`chead.dax` and `cbody.dax` is why it no longer does.
+([`240-amiga-pool-combat-figure.md`](240-amiga-pool-combat-figure.md)). Pool is a
+different case because its own `chead.dax` and `cbody.dax`, measured, are
+renumbered.
 
 ## The specimens
 
