@@ -363,15 +363,12 @@ def _later_readback(char):
 
 #: What comes back different from what was set, and why, by neutral field.  The
 #: reader either has nowhere to put the value or the DOS writer works out the
-#: byte itself.  The bytes for `hostile` and `quickfight` are asserted by
-#: `test_later_every_field_the_record_holds_arrives_unchanged`.
+#: byte itself.
 _LATER_NOT_READ_BACK = {
     "portrait_head": "neither title draws a sheet portrait (#300)",
     "portrait_body": "neither title draws a sheet portrait (#300)",
     "innate_effects": "the reader cannot tell innate effects from an item's "
                       "grants, so all of them read back as granted",
-    "hostile": "the last two bytes of field_10c_10f are not read",
-    "quickfight": "the last two bytes of field_10c_10f are not read",
     "unnamed_0ab": "the identity byte the DOS writer digests from the record",
 }
 

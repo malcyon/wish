@@ -740,8 +740,8 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("attack_forms", "copied as a block"),
     ("roster_tail", "copied as a block"),
     ("field_10c_10f", "its first byte becomes the neutral status, by name, "
-                      "and its second the active flag; the last two are not "
-                      "converted"),
+                      "its second the active flag, its third the neutral "
+                      "hostile and its fourth the neutral quickfight"),
     ("field_83_87", "the control byte becomes neutral npc and "
                       "npc_control_byte, and the next byte becomes the raw "
                       "neutral treasure_share"),
@@ -1188,6 +1188,18 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             f"Amiga @{at + AMIGA_LATER_STATUS_GATE:#05x}: the flag the engine "
             f"clears whenever the status leaves okay or animated",
             Confidence.PROBABLE)
+    # The last two bytes are the combat side and the quickfight flag, which
+    # the save and load copy one for one with DOS's (`/Curse 0xB4A0`,
+    # `0x2739E`).  Quickfight alone decides whether a member gets a command
+    # bar (`/Curse 0x2C24`, DOS `GAME.OVR 0xA8DD`), and Animate Dead sets it
+    # (`/Curse 0x31BC8`), so it is how a zombie companion is run by the game.
+    out.set("hostile", bool(tail[2]),
+            f"Amiga @{at + 2:#05x}: the combat side, 1 for the enemy's",
+            Confidence.CONFIRMED)
+    out.set("quickfight", bool(tail[3]),
+            f"Amiga @{at + 3:#05x}: the quickfight flag the turn routine "
+            f"tests before it offers a command bar",
+            Confidence.CONFIRMED)
 
     recut = [amiga_por_effect_to_dos(e) for e in char.effects]
     granted = [e for e in recut if int.from_bytes(e[1:3], "little") == 0]
