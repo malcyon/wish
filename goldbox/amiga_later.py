@@ -89,13 +89,14 @@ AMIGA_SSB_SPELLBOOK_AT = 0x071
 #: The DOS field whose first byte is the status the party panel draws.
 AMIGA_LATER_STATUS_FIELD = "field_10c_10f"
 
-#: The byte after the status, and **it is not DOS Pool of Radiance's `active`
-#: flag on the evidence there is.**  Where it is non-zero the panel draws
-#: `(Helpless)` or `(Casting)` in place of the status word, which is combat
-#: state rather than "the game has taken this character out of the party".
-#: UNKNOWN, and not converted.  What would settle it: knock a character down in
-#: an Amiga Curse fight, save, and read the byte; and put a character in the
-#: state that draws the name red and read it again.
+#: The byte after the status, which the reader converts to the neutral
+#: `active` flag at PROBABLE grade.  Whether it means what DOS Pool of
+#: Radiance's `active` flag means is not established: where it is non-zero the
+#: panel draws `(Helpless)` or `(Casting)` in place of the status word, which
+#: is combat state rather than "the game has taken this character out of the
+#: party".  What would settle it: knock a character down in an Amiga Curse
+#: fight, save, and read the byte; and put a character in the state that
+#: draws the name red and read it again.
 AMIGA_LATER_STATUS_GATE = 1
 
 #: The Amiga's own HEAL id, Curse and Silver Blades alike -- DOS Silver
@@ -1191,8 +1192,13 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
     # The last two bytes are the combat side and the quickfight flag, which
     # the save and load copy one for one with DOS's (`/Curse 0xB4A0`,
     # `0x2739E`).  Quickfight alone decides whether a member gets a command
-    # bar (`/Curse 0x2C24`, DOS `GAME.OVR 0xA8DD`), and Animate Dead sets it
-    # (`/Curse 0x31BC8`), so it is how a zombie companion is run by the game.
+    # bar (`/Curse 0x2C24`, DOS `GAME.OVR 0xA8DD`).  QUICK sets it
+    # (`/Curse 0x3874`) and SPACE never clears it for a companion or a zombie
+    # (`0x2DBA`, `0x6720`), so once set it is how the game keeps running him.
+    # Every `/Curse` store to the side byte writes 0 or 1: a constant, bit 0
+    # toggled on another combatant's side (`0x12618`), a quotient of 0 or 1
+    # (`0x1050E`, `0x1054C`, `0x109D8`), or a copy of a stored side
+    # (`0x12636`, `0x257D4`, `0x31BC2`); so a nonzero byte reads as 1.
     out.set("hostile", bool(tail[2]),
             f"Amiga @{at + 2:#05x}: the combat side, 1 for the enemy's",
             Confidence.CONFIRMED)
