@@ -2278,6 +2278,14 @@ def test_wish_without_the_travel_flag_leaves_it_unset(
     assert fsuaegdb.winwish.FAST_TRAVEL_FLAG not in os.environ
 
 
+def test_wish_without_the_travel_flag_drops_one_the_shell_exported(
+        wished, tmp_path, monkeypatch):
+    monkeypatch.setenv(fsuaegdb.winwish.FAST_TRAVEL_FLAG, "1")
+    run_wish(tmp_path, [], no_travel_flag=True)
+    assert wished["travel"] == [None]
+    assert os.environ[fsuaegdb.winwish.FAST_TRAVEL_FLAG] == "1"
+
+
 def test_wish_writes_the_travel_targets_where_preferences_keeps_them(
         wished, tmp_path, monkeypatch):
     from automap.config import Settings
