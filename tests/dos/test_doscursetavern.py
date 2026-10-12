@@ -8,8 +8,9 @@ planned over the area's map to the tavern, and bans an edge it could not
 cross; it is planned only with the party confirmed in Tilverton, by the live
 area byte or, when that does not read, by the loaded save with nothing since
 the load able to have moved the party; the tavern's bar is answered with `PUNCH BARKEEP` only once its text has been
-read, with `LEAVE` once a fight has been met; and a bar whose text is
-anything else is never answered and stops the step.
+read, with `LEAVE` once a fight has been met; the bartender's question a
+save whose brawl was already fought shows first is answered `IGNORE THEM`;
+and a bar whose text is anything else is never answered and stops the step.
 """
 
 from __future__ import annotations
@@ -28,9 +29,12 @@ _WHITE, _GREEN = b"\xff\xff\xff", b"\x55\xff\x55"
 
 MAP_BAR = "AREA CAST VIEW ENCAMP SEARCH LOOK"
 TAVERN_BAR = "PUNCH BARKEEP HAVE A DRINK LEAVE"
+#: The bar a save whose brawl was already fought shows on the step onto 6,10,
+#: word for word as the captured DOS screen reads in the title's own font.
+INJURIES_BAR = "ASK ABOUT INJURIES IGNORE THEM"
 #: What `GAME.OVR` draws after the brawl begins, in the fake: some bar the
 #: driver has no answer for.
-AFTER_BAR = "ASK ABOUT INJURIES IGNORE THEM"
+AFTER_BAR = "WATCH THE FIGHT"
 STEP = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
 
 
@@ -57,12 +61,15 @@ class OpenGeo:
 class FakeTavern:
     """Tilverton from 3,14 facing east: arrows turn, `Up` steps unless the
     edge is in `doors` (a locked door the map draws open), and the step onto
-    6,10 shows the tavern's bar.  `p` there starts what follows (`after`);
-    `l` returns to the map.  `bar` replaces the tavern's text."""
+    6,10 shows the tavern's bar, or with `injuries` the bartender's question,
+    whose `i` brings the tavern's bar.  `p` there starts what follows
+    (`after`); `l` returns to the map.  `bar` replaces the tavern's text."""
 
-    def __init__(self, tmp_path, doors=(), bar=TAVERN_BAR, after=AFTER_BAR):
+    def __init__(self, tmp_path, doors=(), bar=TAVERN_BAR, after=AFTER_BAR,
+                 injuries=False):
         self.x, self.y, self.f = 3, 14, 1
         self.doors = set(doors)
+        self.injuries = injuries
         self.state = "map"
         self.tavern_bar, self.after_bar = bar, after
         self.keys: list[str] = []
@@ -72,7 +79,7 @@ class FakeTavern:
 
     def frame(self) -> dosbox.Screen:
         px = bytearray(W * H * 3)
-        bar = {"map": MAP_BAR, "tavern": self.tavern_bar,
+        bar = {"map": MAP_BAR, "tavern": self.tavern_bar, "injuries": INJURIES_BAR,
                "after": self.after_bar}[self.state]
         _draw(px, da.BAR_ROW, 0, bar, _GREEN if self.state == "map" else _WHITE)
         _draw(px, da.STATUS_ROW, da.STATUS_CELLS[0] + 1,
@@ -113,7 +120,9 @@ class FakeTavern:
                 dx, dy = STEP[self.f]
                 self.x, self.y = self.x + dx, self.y + dy
                 if (self.x, self.y) == da.CURSE_TAVERN:
-                    self.state = "tavern"
+                    self.state = "injuries" if self.injuries else "tavern"
+            elif self.state == "injuries" and k == "i":
+                self.state = "tavern"
             elif self.state == "tavern" and k == "p":
                 self.state = "after"
             elif self.state == "tavern" and k == "l":
@@ -281,8 +290,34 @@ def test_after_a_fight_the_tavern_bar_is_left(tmp_path, monkeypatch, font):
     assert _events(d, "tavern")[0]["answer"] == "leave"
 
 
+def test_a_fought_brawl_is_fought_again_after_the_bartenders_question(
+        tmp_path, monkeypatch, font, clock):
+    game = FakeTavern(tmp_path, injuries=True)
+    d = _driver(game, monkeypatch, OpenGeo())
+    with pytest.raises(da.StepFailed, match="stayed 60 s"):
+        d.fight(600)
+    assert game.keys[-2:] == ["i", "p"] and game.state == "after"
+    assert [(e["answer"], e["bar"]) for e in _events(d, "tavern")] == [
+        ("ignore", INJURIES_BAR), ("punch", TAVERN_BAR)]
+
+
+@pytest.mark.parametrize("met", [False, True])
+def test_the_bartenders_question_is_answered_ignore_them(tmp_path, monkeypatch,
+                                                         font, met):
+    game = FakeTavern(tmp_path)
+    d = _driver(game, monkeypatch)
+    game.state = "injuries"
+    assert d._tavern_kind(game.frame()) == "tavern"
+    state, tick = _tick_at(game, d)
+    state["met"] = met
+    tick()
+    assert game.keys == ["i"] and game.state == "tavern"
+    assert _events(d, "tavern")[0]["answer"] == "ignore"
+
+
 @pytest.mark.parametrize("bar", [
-    AFTER_BAR,                          # the bar after a won brawl, in the fake
+    AFTER_BAR,                          # the bar after the brawl begins, in the fake
+    "ASK ABOUT INJURIES",               # the question's words, but not all of them
     "PUNCH BARKEEP HAVE A DRINK",       # the tavern's words, but not all of them
     "PUNCH BARKEEP HAVE A DRINK LEAVE NOW",
 ])
