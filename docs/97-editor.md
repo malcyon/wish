@@ -490,9 +490,13 @@ poses the same way, drawn from `CHEAD.DAX`, `CBODY.DAX` and `COMSPR.DAX`
 (`editor/dosfigure.py`, `goldbox/dos_icons.py`); the game folder is looked for in
 the folders `_port_names` uses for a DOS game, each checked with
 `_holds_title`, and each member is composed from his own record's head, body,
-size and six colour bytes. The controls stay greyed and `Member.icon`
-stays `None`, since nothing edits a native figure and no record byte changes.
-Amiga Pools of Darkness keeps the empty box.
+size and six colour bytes. A DOS Pools of Darkness party does the same from
+`CHEAD.DAX`, `CBODY.DAX` and `COMSPR.DAX` in its own game folder
+(`editor/dospodfigure.py`, `goldbox/dos_pod_icons.py`): each pose is drawn over
+the ICON screen's box in that screen's palette, and the poses are the game's
+own, pixel for pixel (`tools/icons/dospodicons.py`). The controls stay greyed
+and `Member.icon` stays `None`, since nothing edits a native figure and no
+record byte changes. Amiga Pools of Darkness keeps the empty box.
 
 ### What is known
 

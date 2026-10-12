@@ -300,13 +300,162 @@ def test_the_fields_the_title_has_no_byte_for_are_greyed_without_a_tooltip(
     assert not window._child("button_trait_add").isEnabled()
 
 
-def test_the_icon_box_stays_empty(app, monkeypatch, tmp_path, fake_names):
-    window, _folder = _open_synthetic(monkeypatch, tmp_path, names=True)
+def _settle():
+    """Wait for the background art load and deliver what it sends back."""
+    from PyQt6.QtCore import QThreadPool
+    from PyQt6.QtWidgets import QApplication
+    assert QThreadPool.globalInstance().waitForDone(10000)
+    QApplication.processEvents()
+
+
+#: The figure bytes of the two members `_figured_folder` writes: the head,
+#: the body and the six colour bytes, with the size byte 2 (a large figure).
+FIGURES = {1: (1, 3, bytes([0x3A, 0, 0, 0x0C, 0, 0])),
+           2: (2, 4, bytes([0x4B, 0, 0, 0x0D, 0, 0]))}
+SIZE_LARGE = 2
+
+
+def _figured_folder(root: pathlib.Path) -> pathlib.Path:
+    """`_synthetic_folder` with a second member, both given figure bytes."""
+    folder = _synthetic_folder(root)
+    first = bytearray((folder / "CHRDATA1.SAV").read_bytes())
+    second = bytearray(first)
+    for number, raw in ((1, first), (2, second)):
+        head, body, colours = FIGURES[number]
+        record = dos_codec.DosCharacter(bytes(raw), deltas=podsheet.DELTAS)
+        at = {name: record.fields[name].offset
+              for name in ("icon_head", "icon_body", "size", "icon_colours")}
+        raw[at["icon_head"]], raw[at["icon_body"]] = head, body
+        raw[at["size"]] = SIZE_LARGE
+        raw[at["icon_colours"]:at["icon_colours"] + 6] = colours
+    (folder / "CHRDATA1.SAV").write_bytes(bytes(first))
+    (folder / "CHRDATA2.SAV").write_bytes(bytes(second))
+    (folder / "CHRDATA2.THG").write_bytes(
+        (folder / "CHRDATA1.THG").read_bytes())
+    return folder
+
+
+def _generated_pod_art():
+    """Art for the two members `_figured_folder` writes: size 2, so the heads
+    are blocks 65 and 66 and the bodies 67 and 68, the action body 128
+    higher; a head stores part 4 and a body part 1 (ready) or 9 (action),
+    the values the colour bytes recolour. Everything else is see-through."""
+    from editor.dospodfigure import FigureArt
+    from goldbox import dos_pod_icons as pod
+
+    def block(height, y, x, value):
+        rows = [[pod.KEY] * 24 for _ in range(height)]
+        rows[y][x] = value
+        return pod.PodBlock(height, 24, tuple(map(tuple, rows)), 0, (), ())
+
+    heads, bodies = {}, {}
+    for option in (1, 2):
+        heads[64 + option] = block(8, 0, 5, 4)
+    for option in (3, 4):
+        bodies[64 + option] = block(24, 10, 3, 1)
+        bodies[192 + option] = block(24, 10, 4, 9)
+    box = pod.PodBlock(24, 24, ((7,) * 24,) * 24, 0, (), ())
+    game = pod.PodGameArt(heads, bodies, box)
+    return FigureArt(game, pod.icon_palette(game))
+
+
+def _open_figured(monkeypatch, tmp_path, art):
+    """The two-member party open on a game folder, `art` standing in for the
+    files the folder would hold, and the art load settled."""
+    from editor.window import EditorBinding
+    monkeypatch.setattr("editor.dospodfigure.load", lambda folders: art)
+    _no_box(monkeypatch)
+    folder = _figured_folder(tmp_path)
+    window = _window(_synthetic_game_folder(tmp_path))
+    assert isinstance(window, EditorBinding)
+    window.load(str(folder))
+    _settle()
+    return window, folder
+
+
+def _hashes(folder: pathlib.Path) -> dict[str, str]:
+    import hashlib
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(folder.iterdir())}
+
+
+def test_the_icon_box_shows_each_members_two_poses(
+        app, monkeypatch, tmp_path, fake_names):
+    art = _generated_pod_art()
+    window, _folder = _open_figured(monkeypatch, tmp_path, art)
+    palette = art.palette
+    seen = []
+    for row in (0, 1):
+        window.roster.selectRow(row)
+        figure = window._widgets["icon"].preview.figure
+        assert figure is not None
+        seen.append(figure)
+    first, second = seen
+    ready, action = first.poses
+    assert ready[0][5] == palette[12] and ready[10][3] == palette[10]
+    assert action[0][5] == palette[12] and action[10][4] == palette[3]
+    assert ready[0][0] == palette[7]            # the box shows around him
+    ready, action = second.poses
+    assert ready[0][5] == palette[13] and ready[10][3] == palette[11]
+    assert action[10][4] == palette[4]
+    assert first.poses != second.poses
+    assert first.background == second.background == palette[0]
+
+
+def test_the_figure_changes_no_byte_and_leaves_the_controls_greyed(
+        app, monkeypatch, tmp_path, fake_names):
+    from PyQt6.QtCore import Qt
+    window, folder = _open_figured(monkeypatch, tmp_path, _generated_pod_art())
+    before = _hashes(folder)
     icon = window._widgets["icon"]
-    assert icon.icon is None
-    assert not icon.isEnabled()
-    assert window.charset == b""
-    assert window.icon_parts is None
+    for row in (0, 1, 0):
+        window.roster.selectRow(row)
+        assert icon.preview.figure is not None
+        assert not icon.isEnabled()
+        assert not icon.btn_change.isEnabled()
+        assert not icon.group_box.isEnabled()
+        assert icon.icon is None
+        assert window.party.member(row).icon is None
+        assert icon.toolTip() == icon.btn_change.toolTip() == ""
+        assert icon.preview.cursor().shape() == Qt.CursorShape.ArrowCursor
+    assert window.charset == b"" and window.icon_parts is None
+    assert _hashes(folder) == before
+    assert not window.dirty
+
+
+@pytest.mark.parametrize("art", ["no folder", "no art", "garbage art"])
+def test_the_icon_box_stays_empty_when_the_art_is_absent_or_unreadable(
+        app, monkeypatch, tmp_path, fake_names, art):
+    """No game folder, a folder without the three files, and one whose files
+    are not DAX archives: the box is empty and nothing opens a dialog."""
+    folder = _figured_folder(tmp_path)
+    game = None if art == "no folder" else _synthetic_game_folder(tmp_path)
+    if art == "garbage art":
+        for name in ("CHEAD.DAX", "CBODY.DAX", "COMSPR.DAX"):
+            (game / name).write_bytes(b"not a DAX archive")
+    _no_box(monkeypatch)
+    window = _window(game)
+    window.load(str(folder))
+    _settle()
+    for row in (0, 1):
+        window.roster.selectRow(row)
+        icon = window._widgets["icon"]
+        assert icon.preview.figure is None
+        assert icon.icon is None
+        assert not icon.isEnabled()
+    assert window.figure_art is None
+    assert window.charset == b"" and window.icon_parts is None
+
+
+def test_a_member_whose_blocks_the_art_lacks_gets_the_empty_box(
+        app, monkeypatch, tmp_path, fake_names):
+    art = _generated_pod_art()
+    del art.game.heads[66]
+    window, _folder = _open_figured(monkeypatch, tmp_path, art)
+    window.roster.selectRow(0)
+    assert window._widgets["icon"].preview.figure is not None
+    window.roster.selectRow(1)
+    assert window._widgets["icon"].preview.figure is None
 
 
 def test_items_are_named_from_the_title_s_own_files(
@@ -709,3 +858,64 @@ def test_a_pools_of_darkness_scroll_shows_its_spells_not_charges(
     window.traits.set_item(Item(bytes(raw)))
     labels = [label for label, _value in window.traits.rows]
     assert "Spells" in labels and "Charges" not in labels
+
+
+def _slot_a_copy(game: pathlib.Path, tmp_path: pathlib.Path) -> pathlib.Path:
+    """The game folder's `SAVE` slot A, copied so the registered original is
+    never opened for writing; None of slot B's files come with it."""
+    import shutil
+
+    source = game / "SAVE"
+    members = sorted(source.glob("CHRDATA[1-8].SAV"))
+    if not members or not (source / "SAVGAMA.PTY").is_file():
+        pytest.skip("the game folder's SAVE holds no slot A party")
+    copy = tmp_path / "SAVE"
+    copy.mkdir()
+    for path in [source / "SAVGAMA.PTY", *members,
+                 *source.glob("CHRDATA[1-8].THG"),
+                 *source.glob("CHRDATA[1-8].EFX")]:
+        shutil.copyfile(path, copy / path.name)
+    return copy
+
+
+def test_the_registered_save_shows_each_members_figure_the_composer_makes(
+        app, monkeypatch, tmp_path):
+    """The DARKNESS folder under the registry's dos-archives entry: every slot
+    A member's two poses are the pixels `goldbox/dos_pod_icons.py` composes
+    from that folder's own `CHEAD.DAX`, `CBODY.DAX` and `COMSPR.DAX`, which
+    `tools/icons/dospodicons.py --run` shows are the game's ICON screens."""
+    from goldbox import dos_pod_icons as pod
+
+    game_folder = _dos_game_folder()
+    try:
+        game = pod.read_game(game_folder)
+    except pod.DosArtError as exc:
+        pytest.skip(f"{game_folder} holds no figure art: {exc}")
+    palette = pod.icon_palette(game)
+    copy = _slot_a_copy(game_folder, tmp_path)
+    before = _hashes(copy)
+    _no_box(monkeypatch)
+    window = _window(game_folder)
+    window.load(str(copy))
+    _settle()
+    assert len(window.party) >= 1
+    seen = []
+    for row in range(len(window.party)):
+        window.roster.selectRow(row)
+        member = window.party.member(row)
+        native = member.native
+        poses = pod.compose(game.heads, game.bodies, native.get("icon_head"),
+                            native.get("icon_body"), native.get("size"),
+                            bytes(native.get("icon_colours")))
+        want = tuple(tuple(tuple(palette[v] for v in line)
+                           for line in pod.on_box(game.box, pose))
+                     for pose in poses)
+        figure = window._widgets["icon"].preview.figure
+        assert figure is not None and figure.poses == want, member.name
+        assert figure.background == palette[0]
+        assert member.icon is None
+        assert not window._widgets["icon"].isEnabled()
+        seen.append(figure.poses)
+    assert len(set(seen)) > 1                   # the members are not all alike
+    assert _hashes(copy) == before
+    assert not window.dirty
