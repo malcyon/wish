@@ -99,6 +99,7 @@ ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 DESCRIPTION_PATTERN = re.compile(r"^wish-tests (\S+)$")
 COUNT = re.compile(r"(\d+) (passed|failed|skipped|errors?|xfailed|xpassed|deselected|warnings?)")
 COLLECTED = re.compile(r"collected (\d+) items?(?: / \d+ deselected)?(?: / (\d+) selected)?")
+XDIST_ITEMS = re.compile(r"\d+ workers? \[(\d+) items?\]")
 RESULT_WORDS = ("passed", "failed", "skipped", "error", "errors", "xfailed", "xpassed")
 
 
@@ -1216,17 +1217,20 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
             seen_internalerror = False
             collected = None
             held = ""
+            counts_results = not {"--collect-only", "--co"} & set(check["argv"])
             while True:
                 chunk = proc.stdout.read1(65536)
                 text = decoder.decode(chunk, final=not chunk)
                 if text:
-                    # Scanned as it streams: the kept tail is too short to hold a
-                    # long traceback, and a marker may straddle two chunks.
-                    scan = held + text
-                    held = scan[-200:]
-                    seen_internalerror = seen_internalerror or "INTERNALERROR>" in scan
-                    if collected is None and (found := COLLECTED.search(scan)):
-                        collected = int(found.group(2) or found.group(1))
+                    # Scanned a line at a time as it streams: the kept tail is too
+                    # short to hold a long traceback, and a chunk can end mid-line.
+                    *lines, held = (held + text).split("\n")
+                    held = held[-2000:]
+                    for line in lines:
+                        seen_internalerror = seen_internalerror or "INTERNALERROR>" in line
+                        if counts_results and collected is None and (
+                                found := COLLECTED.search(line) or XDIST_ITEMS.search(line)):
+                            collected = int(found.group(found.lastindex))
                     kept = (kept + text)[-20000:]
                     if out:
                         out.write(text)
@@ -1236,6 +1240,7 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
                         sys.stdout.flush()
                 if not chunk:
                     break
+            seen_internalerror = seen_internalerror or "INTERNALERROR>" in held
             code = proc.wait()
             if timer:
                 timer.cancel()

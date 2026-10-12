@@ -1438,6 +1438,7 @@ def test_the_wrapper_reads_the_collected_count_and_no_internalerror_from_clean_o
 
 def test_xdist_losing_a_failure_to_a_lone_surrogate_is_recorded_as_unmet(tmp_path, policy):
     pytest.importorskip("xdist")
+    # xdist cannot send a report holding a lone surrogate and raises INTERNALERROR.
     work = tmp_path / "surrogate"
     work.mkdir()
     (work / "test_lone.py").write_text(
@@ -1453,3 +1454,56 @@ def test_xdist_losing_a_failure_to_a_lone_surrogate_is_recorded_as_unmet(tmp_pat
     testrun.wrap(str(path))
     report = json.loads(checks_file.read_text())
     assert _unmet_for(report) == ["pytest reported an INTERNALERROR"]
+
+
+def test_the_wrapper_reads_the_collected_count_from_xdists_own_line(tmp_path, policy, repo):
+    found = _wrapped_pytest(
+        tmp_path, repo, "print('2 workers [3 items]')\nprint('3 passed in 0.01s')")
+    assert found["collected"] == 3
+
+
+def test_a_collected_line_split_across_chunks_still_gives_the_selected_count(
+        tmp_path, policy, repo):
+    script = ("import sys, time\n"
+              "sys.stdout.write('collected 3 items / 1 dese'); sys.stdout.flush()\n"
+              "time.sleep(0.3)\n"
+              "print('lected / 2 selected')\n")
+    assert _wrapped_pytest(tmp_path, repo, script)["collected"] == 2
+
+
+def test_a_marker_split_across_chunks_is_still_found(tmp_path, policy, repo):
+    script = ("import sys, time\n"
+              "sys.stdout.write('INTERNAL'); sys.stdout.flush()\n"
+              "time.sleep(0.3)\n"
+              "print('ERROR> x')\n")
+    assert _wrapped_pytest(tmp_path, repo, script)["internalerror"] is True
+
+
+def test_a_collect_only_run_has_no_collected_count_to_compare(tmp_path, policy, repo):
+    checks_file = tmp_path / "checks.json"
+    script = "print('collected 3 items'); print('3 tests collected in 0.01s')"
+    argv = [sys.executable, "-c", script, "--collect-only"]
+    request = {"workdir": str(repo), "pytest_args": [], "env": {},
+               "checks": [{"name": "pytest", "argv": argv}]}
+    path = tmp_path / "r1.json"
+    path.write_text(json.dumps({"id": "r1", "checks_file": str(checks_file),
+                                "request": request}))
+    testrun.wrap(str(path))
+    assert json.loads(checks_file.read_text())["checks"]["pytest"]["collected"] is None
+
+
+def test_xdist_prints_its_item_count_in_the_line_the_launcher_reads(tmp_path, policy):
+    pytest.importorskip("xdist")
+    work = tmp_path / "three"
+    work.mkdir()
+    (work / "test_three.py").write_text(
+        "def test_a():\n    pass\n\n\ndef test_b():\n    pass\n\n\ndef test_c():\n    pass\n")
+    checks_file = tmp_path / "checks.json"
+    argv = [sys.executable, "-m", "pytest", "-n2", "-p", "no:cacheprovider", "test_three.py"]
+    request = {"workdir": str(work), "pytest_args": [], "env": {},
+               "checks": [{"name": "pytest", "argv": argv}]}
+    path = tmp_path / "r1.json"
+    path.write_text(json.dumps({"id": "r1", "checks_file": str(checks_file),
+                                "request": request}))
+    testrun.wrap(str(path))
+    assert json.loads(checks_file.read_text())["checks"]["pytest"]["collected"] == 3
