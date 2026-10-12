@@ -1175,7 +1175,9 @@ ICON_TITLES = frozenset({"pool", "curse", "ssb", "darkness"})
 #: titles' `1ST-COLOR 2ND-COLOR` (`START.EXE`; Pools of Darkness `GAME.EXE`,
 #: whose Alter and ICON bars are Silver Blades' words).  Pools of Darkness'
 #: camp bar is `SAVE VIEW MAGIC ALTER EXIT`, with no `REST`.
-ICON_CAMP_WORDS = frozenset({"SAVE", "VIEW", "MAGIC", "ALTER"})
+ICON_CAMP_WORDS = {title: frozenset({"SAVE", "VIEW", "MAGIC", "REST", "ALTER"})
+                   for title in ICON_TITLES}
+ICON_CAMP_WORDS["darkness"] = frozenset({"SAVE", "VIEW", "MAGIC", "ALTER"})
 ICON_ALTER_WORDS = frozenset({"ORDER", "DROP", "SPEED", "ICON"})
 ICON_BAR_WORDS = frozenset({"PARTS", "SIZE"})
 ICON_COLOUR_WORDS = frozenset({"COLOR-1", "1ST-COLOR"})
@@ -1215,9 +1217,9 @@ def bar_word_list(text: str) -> list[str]:
     return [w for w in re.split(r"[\s:]+", text.upper()) if w]
 
 
-def icon_screen_kind(rows: list[str]) -> str | None:
+def icon_screen_kind(rows: list[str], title: str) -> str | None:
     """Which screen of the `icon N` route `rows` (a frame's 25 text rows,
-    read with the title's font) is: `camp`, `alter`, `icon` or `question`,
+    read with the font of title key `title`) is: `camp`, `alter`, `icon` or `question`,
     or None for any other.  Each is judged by the bar row's words alone,
     and the question also by its text on some row."""
     if len(rows) <= BAR_ROW:
@@ -1234,7 +1236,7 @@ def icon_screen_kind(rows: list[str]) -> str | None:
         return "icon"
     if ICON_ALTER_WORDS <= have:
         return "alter"
-    if ICON_CAMP_WORDS <= have:
+    if ICON_CAMP_WORDS[title] <= have:
         return "camp"
     return None
 
@@ -7290,7 +7292,7 @@ class Driver:
         seen = None
         screen = self.s.capture()
         while True:
-            kind = icon_screen_kind(self.icon_rows(screen))
+            kind = icon_screen_kind(self.icon_rows(screen), self.title.key)
             if kind in want and kind == seen:
                 return kind, screen
             seen = kind
@@ -7304,7 +7306,7 @@ class Driver:
         one of `want`; the kind reached and its capture.  Any other screen,
         before or after, stops the run with nothing more pressed."""
         rows = self.icon_rows(self.s.capture())
-        if icon_screen_kind(rows) != at:
+        if icon_screen_kind(rows, self.title.key) != at:
             raise self.fail(label, f"the {at} bar is not showing, so {key!r} is "
                             f"not pressed (bar reads {rows[BAR_ROW]!r})")
         self.s.key(key)

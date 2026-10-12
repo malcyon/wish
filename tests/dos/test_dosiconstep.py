@@ -280,9 +280,9 @@ def _rows(bar: str, *, extra: str = "") -> list[str]:
 @pytest.mark.parametrize("title", sorted(BARS))
 def test_each_bar_of_the_route_is_read_as_its_own_screen(title):
     for kind, bar in BARS[title].items():
-        assert da.icon_screen_kind(_rows(bar)) == kind
-    assert da.icon_screen_kind(_rows(QUESTION)) == "question"
-    assert da.icon_screen_kind(_rows("YES NO", extra="IS THIS ICON OK?")) == "question"
+        assert da.icon_screen_kind(_rows(bar), title) == kind
+    assert da.icon_screen_kind(_rows(QUESTION), title) == "question"
+    assert da.icon_screen_kind(_rows("YES NO", extra="IS THIS ICON OK?"), title) == "question"
 
 
 @pytest.mark.parametrize("bar", (
@@ -296,7 +296,18 @@ def test_each_bar_of_the_route_is_read_as_its_own_screen(title):
     "?A?E VIEW MAGIC REST ALTER EXIT",                  # unreadable cells
 ))
 def test_any_other_bar_is_no_screen_of_the_route(bar):
-    assert da.icon_screen_kind(_rows(bar)) is None
+    assert da.icon_screen_kind(_rows(bar), "pool") is None
+
+
+@pytest.mark.parametrize("title", ("pool", "curse", "ssb"))
+def test_a_camp_bar_without_rest_is_no_camp_where_the_game_has_rest(title):
+    assert da.icon_screen_kind(_rows("SAVE VIEW MAGIC ALTER EXIT"), title) is None
+
+
+def test_pools_of_darkness_camp_bar_has_no_rest():
+    bar = "SAVE VIEW MAGIC ALTER EXIT"
+    assert da.icon_screen_kind(_rows(bar), "darkness") == "camp"
+    assert da.icon_screen_kind(_rows("SAVE VIEW MAGIC REST ALTER EXIT"), "darkness") == "camp"
 
 
 # -- steps and staging ---------------------------------------------------------
