@@ -2305,6 +2305,7 @@ graph LR
   rewrite --> dos_codec
   rewrite --> dos_port
   rewrite --> iconparts
+  rewrite --> layout
   rewrite --> record
   savegame --> c64_port
   savegame --> d64

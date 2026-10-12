@@ -32,7 +32,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .d64 import D64, split_load_address
+from .d64 import D64, D64Error, split_load_address
 from .iconparts import IconParts
 from .layout import NAME_SIZE
 
@@ -47,6 +47,8 @@ MON_SIZE = 480
 REGION_OFFSET = 0x0E4
 REGION_SIZE = 4
 STORY_OFFSET = 0x0E5
+
+HEX_DIGITS = b"0123456789ABCDEFabcdef"
 
 #: The `MON` ids each title's `ADDNPC` statements name, from a control-flow
 #: walk of every area script on the C64 sides; the DOS scripts name the same.
@@ -66,23 +68,23 @@ def _key(name: str | bytes) -> str:
     return text.strip().upper()
 
 
-def _open(disk: D64 | str | os.PathLike) -> D64 | None:
+def _open(disk: D64 | str | os.PathLike) -> D64:
     if isinstance(disk, D64):
         return disk
     try:
         return D64.open(disk)
-    except Exception:
-        return None                      # an unreadable image is not a side
+    except (OSError, D64Error) as exc:
+        raise ValueError(f"{os.fspath(disk)} is not a readable disk image") from exc
 
 
 def _mon_id(entry_name: bytes) -> int | None:
     name = entry_name.rstrip(b"\xa0 ")
     if len(name) != 5 or not name.startswith(b"MON"):
         return None
-    try:
-        return int(name[3:].decode("latin-1"), 16)
-    except ValueError:
+    digits = name[3:]
+    if not all(c in HEX_DIGITS for c in digits):
         return None
+    return int(digits.decode("ascii"), 16)
 
 
 @dataclass(frozen=True)
@@ -129,15 +131,14 @@ class Companions:
         """Read every `MON` file and the icon tables off one title's sides.
 
         A `MON` file found on two sides must hold the same bytes on both;
-        disks that disagree are two different releases and raise.
+        disks that disagree are two different releases and raise, as does a
+        path that is not a readable disk image.
         """
         monsters: dict[int, Monster] = {}
         payloads: dict[int, bytes] = {}
         icon: bytes | None = None
         for disk in disks:
             image = _open(disk)
-            if image is None:
-                continue
             for entry in image.iter_directory():
                 mon_id = _mon_id(entry.name)
                 if mon_id is None or not entry.is_prg:
@@ -192,4 +193,6 @@ class Companions:
 
     def story_byte(self, mon_id: int) -> int:
         """`0x0E5` as `MON<mon_id>` holds it: what a join leaves there."""
+        if mon_id not in self.monsters:
+            raise KeyError(f"no MON{mon_id:02X} on these disks")
         return self.monsters[mon_id].story_byte

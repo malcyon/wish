@@ -14,6 +14,7 @@ import gamedata
 import pytest
 from support import silverblades
 
+from goldbox import companions
 from goldbox.companions import (
     CURSE_KEY,
     JOINABLE,
@@ -23,6 +24,21 @@ from goldbox.companions import (
     Monster,
 )
 from goldbox.d64 import D64, split_load_address
+from goldbox.iconparts import (
+    CLASSES_SIZE,
+    COUNTS_OFFSET,
+    DEFAULT_BACKGROUND,
+    DEFAULT_PART_COLOURS,
+    FILLERS_OFFSET,
+    MULTICOLOUR,
+    NOT_A_PART,
+    PART_CLASSES,
+    POINTERS_OFFSET,
+    PRIMARY,
+    SPACE,
+    START_CELL,
+    TABLE_STRIDE,
+)
 
 ADDNPC = 0x36
 
@@ -149,7 +165,7 @@ def test_no_two_joinable_files_share_a_name(title, table):
 
 
 def test_the_joinable_set_is_every_addnpc_the_scripts_reach(title):
-    """A control-flow walk of every C64 area script, as stage 1 read it."""
+    """A control-flow walk of every C64 area script."""
     from automap import gamedisks
     if not gamedisks.find(title):
         pytest.skip(f"needs the {title} C64 disks")
@@ -217,9 +233,28 @@ def test_a_title_with_no_companions_raises():
         Companions("pool-of-radiance", {}, bytes(36))
 
 
-def test_a_picture_for_a_missing_file_raises():
-    with pytest.raises(KeyError):
+def test_a_missing_file_has_no_picture_or_story_byte():
+    with pytest.raises(KeyError, match="MON01"):
         _table().picture_for(0x01)
+    with pytest.raises(KeyError, match="MON01"):
+        _table().story_byte(0x01)
+
+
+@pytest.mark.parametrize("name", [b"MON_1", b"MON+1", b"MON 1", b"MONXY", b"MON1", b"MON123"])
+def test_only_mon_and_two_hex_digits_names_a_monster_file(name):
+    assert companions._mon_id(name) is None
+
+
+def test_a_monster_file_name_is_read_as_hex():
+    assert companions._mon_id(b"MON4d") == 0x4D
+    assert companions._mon_id(b"MON3B\xa0\xa0") == 0x3B
+
+
+def test_a_path_that_is_not_a_disk_image_raises_naming_it(tmp_path):
+    bad = tmp_path / "SIDE.D64"
+    bad.write_bytes(b"not a disk")
+    with pytest.raises(ValueError, match="SIDE.D64"):
+        Companions.load(SILVER_BLADES_KEY, [str(bad)])
 
 
 def _mon_prg(name: bytes, fill: int = 0) -> bytes:
@@ -246,3 +281,70 @@ def test_disks_without_the_icon_editor_raise():
     disk = D64.from_bytes(gamedata._disk_with([(b"MON01", _mon_prg(b"A"))]))
     with pytest.raises(ValueError, match="SPELLE64"):
         Companions.load(SILVER_BLADES_KEY, [disk])
+
+
+# -- a whole load, on a disk built from made-up bytes -------------------------
+
+#: Where the stub icon editor says its four option tables are: a page-aligned
+#: base, then one table every $D0 bytes, clear of the filler strings.
+STUB_BASE = 0x8E00
+WEAPON_GLYPH, HAIR_GLYPH = 0x41, 0x42
+
+
+def _stub_icon_files() -> tuple[bytes, bytes]:
+    """`SPELLE64` and `SPELLN64` with two parts in them: large weapon 0 puts
+    an arm glyph in cell 4 of each pose, large head 1 a hair glyph in cell 1."""
+    parts = bytearray(FILLERS_OFFSET + 1)
+    parts[:CLASSES_SIZE] = bytes([NOT_A_PART]) * CLASSES_SIZE
+    parts[WEAPON_GLYPH] = PART_CLASSES.index("arm")
+    parts[HAIR_GLYPH] = PART_CLASSES.index("hair")
+    tables = [STUB_BASE + CLASSES_SIZE + n * 0xD0 for n in range(4)]
+    for start, glyph, option, cell in ((tables[2] - STUB_BASE, WEAPON_GLYPH, 0, 4),
+                                       (tables[3] - STUB_BASE, HAIR_GLYPH, 1, 1)):
+        for pose in range(2):
+            at = start + pose * TABLE_STRIDE
+            parts[at + PRIMARY + option] = glyph
+            parts[at + START_CELL + option] = cell
+    editor = bytearray(POINTERS_OFFSET + 8)
+    editor[COUNTS_OFFSET:COUNTS_OFFSET + 4] = bytes([2, 2, 2, 2])
+    for n, address in enumerate(tables):
+        editor[POINTERS_OFFSET + n * 2:POINTERS_OFFSET + n * 2 + 2] = (
+            address.to_bytes(2, "little"))
+    return bytes(parts), bytes(editor)
+
+
+def _synthetic_mon(name: bytes, story: int) -> bytes:
+    payload = bytearray(_mon_prg(name, fill=0xFF))
+    payload[2 + companions.STORY_OFFSET] = story
+    return bytes(payload)
+
+
+def test_a_whole_load_reads_monsters_names_and_the_default_icon():
+    parts, editor = _stub_icon_files()
+    monsters = [(f"MON{m:02X}".encode(), _synthetic_mon(f"JOINER {m:02X}".encode(), m))
+                for m in sorted(JOINABLE[SILVER_BLADES_KEY])]
+    extra = [(b"MON01", _synthetic_mon(b"LONER", 0xFF)),
+             (b"MONEY", _synthetic_mon(b"NOT A MONSTER", 0x00))]
+    one = D64.from_bytes(gamedata._disk_with(monsters[:3] + extra))
+    two = D64.from_bytes(gamedata._disk_with(
+        monsters[2:] + [(b"SPELLE64", b"\x00\x8e" + parts),
+                        (b"SPELLN64", b"\x00\x96" + editor)]))
+    table = Companions.load(SILVER_BLADES_KEY, [one, two])
+
+    assert sorted(table.monsters) == sorted(JOINABLE[SILVER_BLADES_KEY] | {0x01})
+    assert table.match("loner") == 0x01
+    assert table.name_matches(0x01, b"LONER\0")
+    assert not table.name_matches(0x01, "JOINER 32")
+    assert not table.name_matches(0x02, "LONER")
+    for mon_id in JOINABLE[SILVER_BLADES_KEY]:
+        assert table.match(f"JOINER {mon_id:02X}") == mon_id
+        assert table.story_byte(mon_id) == mon_id
+    assert not table.monsters[0x01].is_story
+
+    figure = [SPACE] * 18
+    figure[4] = figure[13] = WEAPON_GLYPH
+    figure[1] = figure[10] = HAIR_GLYPH
+    colours = [DEFAULT_BACKGROUND | MULTICOLOUR] * 18
+    colours[4] = colours[13] = DEFAULT_PART_COLOURS[PART_CLASSES.index("arm")]
+    colours[1] = colours[10] = DEFAULT_PART_COLOURS[PART_CLASSES.index("hair")]
+    assert table.default_icon == bytes(figure + colours)
