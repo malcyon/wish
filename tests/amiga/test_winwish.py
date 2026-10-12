@@ -1415,7 +1415,6 @@ def test_a_tab_is_selected_and_read_back_before_anything_would_invoke_it():
 def test_a_walk_that_meets_an_element_going_away_is_walked_again_and_does_not_end_the_click():
     inner = winwish.ui_inner(r"C:\b", "click", ("Automapper",), "TabItem", r"C:\o.txt")
     gone = inner[inner.index("function Test-Gone"):inner.index("function Get-Controls")]
-    assert "MethodInvocationException" in gone and "InnerException" in gone
     assert "ElementNotAvailableException" in gone
     walk = inner[inner.index("function Get-Controls"):inner.index("function Read-Controls")]
     assert "@(Read-Controls)" in walk
@@ -2191,3 +2190,32 @@ def test_shot_after_and_expand_do_not_go_together(tmp_path, capsys):
     rc = winwish.main(["click", "--holder", "h", "Save", "--expand",
                        "--shot-after", str(tmp_path / "x.png")], guest=winwish.Guest(FakeRun()))
     assert rc == 1
+
+
+def test_a_gone_element_is_found_at_any_depth_of_the_exception_chain():
+    inner = winwish.ui_inner(r"C:\b", "click", ("Automapper",), "TabItem", r"C:\o.txt")
+    gone = inner[inner.index("function Test-Gone"):inner.index("function Get-Controls")]
+    # A property read wraps the exception differently from a method call, so the chain is walked to its end.
+    walk = gone.index("while ($null -ne $x) {")
+    assert walk < gone.index("-is [System.Windows.Automation.ElementNotAvailableException]) { return $true }")
+    assert gone.index("$x = $x.InnerException") < gone.index("return $false")
+    assert "MethodInvocationException" not in gone
+
+
+def test_a_control_that_kept_going_away_is_failed_with_the_last_message_that_said_so():
+    inner = winwish.ui_inner(r"C:\b", "click", ("Automapper",), "TabItem", r"C:\o.txt")
+    loop = "\n".join(_click_loop(inner))
+    assert "$gone = $_.Exception.Message" in loop[loop.index("} catch {"):]
+    after = inner[inner.index("      if ($null -eq $used -and $null -ne $gone)"):]
+    assert "$gone" in after.splitlines()[1] or "$gone" in after.splitlines()[0]
+    assert after.index("$gone") < after.index("no control named $name\" }")
+    assert "      $gone = $null" in inner[:inner.index("while ($true) {", inner.index("$gone = $null"))]
+
+
+def test_a_tab_that_never_reads_selected_is_not_called_unclickable():
+    inner = winwish.ui_inner(r"C:\b", "click", ("Automapper",), "TabItem", r"C:\o.txt")
+    bare = inner[inner.index("if ($null -eq $used -and $null -ne $bare) {"):]
+    bare = bare[:bare.index("\n      }")]
+    tab = bare.index("never read back as selected")
+    assert bare.index("(Get-Kind $bare) -eq 'TabItem'") < tab < bare.index("offers no way to be clicked")
+    assert "SelectionItem" in bare[:tab]

@@ -540,12 +540,30 @@ class Controller:
         try:
             self._game_section()
             return None
-        except Exception as exc:  # noqa: BLE001
-            winwish.stop_wish(self.guest, self.args.holder)
-            self.wish_closed = True
+        except winwish.WinwishError as exc:
+            # Suppression is switched off afterwards whether or not Wish could be closed.
             self.pipe_released = True
+            try:
+                winwish.stop_wish(self.guest, self.args.holder)
+            except Exception as stop:  # noqa: BLE001
+                self.log("pipe_released", closed_wish=False, stop_failed=str(stop))
+                return f"the editor tab could not be shown ({exc}), and closing Wish failed ({stop})"
+            self.wish_closed = True
             self.log("pipe_released", closed_wish=str(exc))
             return f"the editor tab could not be shown ({exc}), so Wish was closed to free the pipe"
+
+    def _encounters_off(self, failures: list[str]) -> None:
+        """Free the pipe and switch encounter suppression off; each step's failure is recorded and the next still runs."""
+        try:
+            closed = self._free_pipe()
+            if closed:
+                failures.append(f"encounters: {closed}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"encounters: {exc}")
+        try:
+            self._switch(False)
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"encounters: {exc}")
 
     def _map_section(self) -> None:
         if not self.pipe_released:
@@ -1399,13 +1417,7 @@ class Controller:
             return
         failures = []
         if self.encounters_on:
-            try:
-                closed = self._free_pipe()
-                if closed:
-                    failures.append(f"encounters: {closed}")
-                self._switch(False)
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"encounters: {exc}")
+            self._encounters_off(failures)
         if self.booted:
             try:
                 self._game_section()
@@ -1466,10 +1478,7 @@ class Controller:
                 persistent = self.encounters.state.load()
                 cleanup["encounters_before"] = persistent
                 if persistent["on"] or persistent["rows"] or self.encounters_on:
-                    closed = self._free_pipe()
-                    if closed:
-                        failures.append(f"encounters: {closed}")
-                    self._switch(False)
+                    self._encounters_off(failures)
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"encounters: {exc}")
         if self.discovery_snapshot and self.summary["failure"]:

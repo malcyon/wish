@@ -3216,3 +3216,74 @@ def test_camp_load_preflight_requires_the_load_anyway_guard(tmp_path, monkeypatc
                        match=r"route has no measured guards for load_anyway\Z"):
         winwishaccept.preflight(args, guest=SimpleNamespace(gh=lambda *a: pytest.fail("guest")),
                                 route_for=lambda *unused: route, driver_sha=SHA)
+
+
+def _failing_tab(controller, monkeypatch, calls, stop_wish):
+    def show_tab(guest, holder, name):
+        calls.append(("tab", name))
+        raise winwishaccept.winwish.WinwishError(f"fail no control named {name}")
+
+    monkeypatch.setattr(controller, "_game_section",
+                        winwishaccept.Controller._game_section.__get__(controller))
+    monkeypatch.setattr(winwishaccept.winwish, "show_tab", show_tab)
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish", stop_wish)
+
+
+def test_encounters_are_still_turned_off_when_closing_wish_fails(tmp_path, monkeypatch):
+    controller, _, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
+
+    def stop_wish(guest, holder):
+        calls.append(("stop_wish",))
+        raise winwishaccept.winwish.WinwishError("ssh: connection lost")
+
+    _failing_tab(controller, monkeypatch, calls, stop_wish)
+    controller._switch(True)
+    reason = controller._free_pipe()
+    assert "closing Wish failed (ssh: connection lost)" in reason
+    assert not controller.wish_closed
+    controller._switch(False)
+    assert calls.index(("stop_wish",)) < calls.index(("switch", False))
+    assert controller.encounters.state.load() == {"on": False, "rows": []}
+
+
+def test_a_failure_unrelated_to_the_tab_does_not_close_wish(tmp_path, monkeypatch):
+    controller, _, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_game_section",
+                        lambda: (_ for _ in ()).throw(OSError("ssh dropped")))
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish",
+                        lambda guest, holder: calls.append(("stop_wish",)))
+    with pytest.raises(OSError):
+        controller._free_pipe()
+    assert ("stop_wish",) not in calls
+
+
+def test_the_ordinary_cleanup_closes_wish_when_the_editor_tab_cannot_be_shown_and_turns_encounters_off(
+        tmp_path, monkeypatch):
+    controller, _, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    _failing_tab(controller, monkeypatch, calls,
+                 lambda guest, holder: calls.append(("stop_wish",)) or "ok closed")
+    controller.discovery = False
+    controller.booted = False
+    controller._switch(True)
+    controller._cleanup()
+    errors = controller.summary["cleanup"]["errors"]
+    assert calls.index(("stop_wish",)) < calls.index(("switch", False))
+    assert controller.encounters.state.load() == {"on": False, "rows": []}
+    assert any(error.startswith("encounters: the editor tab could not be shown") for error in errors)
+
+
+def test_encounters_are_switched_off_and_wish_kept_when_the_tab_step_fails_for_another_reason(
+        tmp_path, monkeypatch):
+    controller, _, _, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_game_section",
+                        lambda: (_ for _ in ()).throw(OSError("ssh dropped")))
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish",
+                        lambda guest, holder: calls.append(("stop_wish",)))
+    controller.discovery = False
+    controller.booted = False
+    controller._switch(True)
+    controller._cleanup()
+    errors = controller.summary["cleanup"]["errors"]
+    assert ("switch", False) in calls and ("stop_wish",) not in calls
+    assert controller.encounters.state.load() == {"on": False, "rows": []}
+    assert any("encounters: ssh dropped" in error for error in errors)
