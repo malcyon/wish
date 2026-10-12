@@ -86,6 +86,7 @@ a source whose title does not match `--title`:
 | `press KEY` | one X keysym (`Down`, `Return`, `t`), then a settle and a PNG; capture only, so only `press`, `shot`, `read`, `snapshot` and `restore` (and in darkness `map`, `continue` and `exit`) may come after it, and none of the last two after a `prayer-watch` |
 | `walk MI`, `walk I`, `walk 1` | Pool and Curse (`MI`): turn right twice at the map bar and step one square.  Pool (`I`): step one square forward without turning.  Silver Blades and Pools of Darkness (`1`): press MOVE, step one square turning right past a wall, and leave move mode (`e` in Silver Blades, `Escape` in Pools of Darkness) back to the map bar.  On the Pools of Darkness overland, which draws no roster and no status line, the step is judged by the cell of the party's white ring (`pod_overland_cell`) and the arrows `Up`, `Right`, `Down`, `Left` are tried in turn until one moves it a neighbouring cell; `turn` is not driven there.  In Pool and Curse a `PRESS <ENTER>/<RETURN> TO CONTINUE` story box the step lands on is answered with `Return`, `WALK_CONTINUE_ROUNDS` boxes at most, each logged as `press_continue`; combat or any other screen still stops the walk.  A step is believed only when the `x,y` on the status line changes (never the clock beside it), a blank line is never the starting reading; in Pool, where a turn can leave the line as `S 03:59` with no `x,y`, such a turn or step is judged by the square the DOSBox-X debugger reads at `POOL_PLACE` (x, y, facing doubled), which every reading logs as `place`, so a Pool walk or turn boots DOSBox-X, and a run with a walk fails unless `read` shows the last saved slot's place differs from the installed one |
 | `walk KKIIJI` | Pool: a run of `I` (step forward), `J` (turn left) and `K` (turn right), each move judged by the place the DOSBox-X debugger reads at `POOL_PLACE` and the area byte `POOL_AREA`, both logged as `place`: a step must change the square or the area and a turn must leave both alone, so the area changes only on the step that crosses into the next one (`crossings` lists them).  A story box a step lands on gets `Return`.  The last step may end on a screen that is not the map, whose text is kept as `arrival` (the temple's `DO YOU SEEK HEALING?` for `temple raise`); on any earlier move such a screen stops the run |
+| `answer PARLAY p`, `answer CONTINUE Return map` | Curse, straight after a `walk` (which then may end on the bar of the script its step ran, `walk-script` in `run.jsonl`) or after another `answer`: the bar read as text with the title's font, waited for until it shows WORD (`ANSWER_WAIT`), then KEY (one X keysym) pressed and believed when the text window or the bar changes; a bar without WORD stops the run with nothing pressed.  With a third word `map` the map bar must come back (`ANSWER_MAP_WAIT`), the map's roster is counted again so a joined member's line can be picked, and `camp`, `save X`, `sheet N` and `read` may follow; without it only another `answer`, `shot` and `read` may |
 | `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight first-bar` | Pool, Curse and Silver Blades, from the map: walk into a fight as `fight` does, log `placement` (judged from each square, as a dead member reads off the map but its fallen figure is drawn) and who acts at the first command bar, shoot it (`first_bar_shot`), and stop there with nothing pressed at it; no fight is fought out, so only `shot` and `read` may come after it |
@@ -215,7 +216,11 @@ quickfight byte after it (`stage_side`); `--stage-record
 LINE:OFFSET=VALUE` sets one byte of line N's `CHRDAT` record below its length; `--stage-var
 ADDRESS=VALUE` sets one script-variable word of `SAVGAM`, or in Pools of
 Darkness one byte of `SAVGAM<L>.PTY` by the scripts' own 1-based index (`read`
-reports it as the last saved slot holds it); `--stage-place
+reports it as the last saved slot holds it); `--stage-area AREA` (Curse,
+hex, before `--stage-var`) moves the installed `SAVGAM` into that area with
+`dos_savegame.move_to_area`: the area's own `ECL` block in the script buffer,
+its `DAX` number, and the `GEO` and wallset triple its script's `LOADFILES`
+and `LOADPIECES` name (`area_pieces`), indoors; `--stage-place
 X,Y,FACING` puts the party on a square of an indoor `SAVGAM`, or of a
 Pools of Darkness save made in a dungeon, facing 0 to 3 (N E S W);
 `--stage-icon LINE=HEAD:BODY:COLOURS` writes line N's combat figure (head,
@@ -293,6 +298,7 @@ from collections.abc import Callable
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
+from goldbox import areas as area_table  # noqa: E402
 from goldbox import dos_codec, dos_savegame, effects, world_state  # noqa: E402
 from tools.dos import (  # noqa: E402
     dosbox,
@@ -2527,6 +2533,25 @@ WALKS = {"pool": ("MI", "I"), "curse": ("MI",), "ssb": ("1",), "darkness": ("1",
 POOL_WALK_LETTERS = re.compile(r"[IJK]+")
 #: The titles whose `turn N` control is driven: those with a walk to check.
 TURNS = frozenset(WALKS)
+#: The titles whose `answer WORD KEY` reads a script's menu bar with the
+#: title's font: Curse, whose scripted joins it was written for.
+ANSWER_TITLES = frozenset({"curse"})
+#: `answer WORD KEY map`: the answer must bring the map bar back.
+ANSWER_MAP = "map"
+#: Seconds `answer` waits for its word to be drawn on the bar, for the screen
+#: to change after the key, and for the map bar after `answer ... map`.
+ANSWER_WAIT = 20.0
+ANSWER_MAP_WAIT = 30.0
+#: The titles `--stage-area` moves a save for: Curse, where every saved
+#: game's wallset triple is its area script's `LOADPIECES` operands (area 1
+#: `1,2,3` in 50 saves, area 2 `1,2,4` in 12, of the `coab-dos` specimens).
+STAGE_AREA_TITLES = frozenset({"curse"})
+#: The script opcodes `area_pieces` reads, in their all-immediate form (each
+#: operand's kind byte 0): `LOADFILES GEO,_,_` and `LOADPIECES A,B,C`.
+LOADFILES_OP = 0x21
+LOADPIECES_OP = 0x37
+#: A `LOADPIECES` operand that loads nothing; the save holds `EMPTY` there.
+NO_PIECE = 0xFF
 #: The titles whose party menu `view N` opens a sheet from.  Pool's party
 #: menu is reached by `add`, since its load puts the party on the map.
 VIEWS = frozenset({"curse", "ssb", "darkness", "pool"})
@@ -2735,6 +2760,7 @@ class Step:
     seconds: int = 0
     node: int = 0
     to: int = 0
+    then: str = ""
 
 
 _DURATION = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?$")
@@ -2771,7 +2797,8 @@ STEP_HELP = ("load, begin, vault, move-on, 'walk MI', 'walk I', 'walk 1', 'turn 
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
              "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
-             "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, continue, exit, read; "
+             "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, continue, exit, "
+             "'answer PARLAY p', 'answer CONTINUE Return map', read; "
              "'press e' and 'press Escape' are blocked everywhere: after a press nobody "
              "knows the screen, and E is exit to DOS at a party menu")
 #: The class names `change N CLASS` takes: Curse's own (`START.EXE` data
@@ -2791,6 +2818,8 @@ def parse_step(text: str) -> Step:
     deposit = parse_deposit(words, text)
     if deposit is not None:
         return deposit
+    if kind == "answer":
+        return parse_answer(words, text)
     if kind == "rest" and len(words) == 2:
         minutes = parse_duration(words[1])
         rest_presses(minutes)
@@ -2892,7 +2921,8 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
     a `map`, which finds the map the presses left the party on, a `continue`
     or an `exit`, and after
     `fight first-bar`, which ends the run at a fight's first command bar,
-    only `shot` and `read`.
+    only `shot` and `read`.  An `answer` follows a `walk` or another
+    `answer`, and after one not ending `map` only `answer`, `shot` and `read`.
     """
     t = TITLES[title]
     where = "boot"
@@ -2915,6 +2945,10 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         if where == "first-bar":
             raise ValueError(f"only shot and read may come after fight "
                              f"{FIRST_BAR}: {step.text!r}")
+        if where == "script" and k != "answer":
+            raise ValueError(f"only answer, shot and read may come after an answer "
+                             f"that leaves a script's bar showing; end the last "
+                             f"answer with {ANSWER_MAP}: {step.text!r}")
         if (where == "pressed" and k not in ("press", "snapshot", "restore")
                 and not (k in ("map", "continue", "exit") and title == "darkness")):
             raise ValueError(f"only press, shot and read, a snapshot or restore, or "
@@ -3007,6 +3041,11 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
                 raise ValueError(f"{title}'s walk is {routes}, not {step.text!r}{more}")
             if where != "map":
                 raise ValueError(f"walk needs the map: {step.text!r}")
+        elif k == "answer":
+            why = answer_rejection(title, where, previous, step)
+            if why:
+                raise ValueError(why)
+            where = "map" if step.then == ANSWER_MAP else "script"
         elif k == "turn":
             if title not in TURNS:
                 raise ValueError(f"turn is not driven in {title}")
@@ -3155,6 +3194,20 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
             if where != "party":
                 raise ValueError(f"train needs the party menu, before begin: "
                                  f"{step.text!r}")
+
+
+def answer_rejection(title: str, where: str, previous: str | None,
+                     step: Step) -> str | None:
+    """Why `answer` cannot come here, or None: it is driven in
+    `ANSWER_TITLES`, straight after a `walk` (which then may end on the
+    script's first bar) or after another answer that left a bar showing."""
+    if title not in ANSWER_TITLES:
+        return (f"answer is driven in {', '.join(sorted(ANSWER_TITLES))} only, "
+                f"not {title}")
+    if where != "script" and previous != "walk":
+        return (f"answer follows a walk onto a scripted square, or another "
+                f"answer that left the script's bar showing: {step.text!r}")
+    return None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -3307,8 +3360,8 @@ def temple_staging_rejection(args, steps: list[Step]) -> str | None:
     that stays above the minimum after the raise's one-point loss."""
     if not any(s.kind == "temple" for s in steps):
         return None
-    for option in ("xp", "add_node", "stage_control", "stage_side", "stage_var",
-                   "stage_place", "stage_icon"):
+    for option in ("xp", "add_node", "stage_control", "stage_side", "stage_area",
+                   "stage_var", "stage_place", "stage_icon"):
         if getattr(args, option, None):
             return (f"a run with temple raise stages only gold and constitution "
                     f"with --stage-record, not --{option.replace('_', '-')}")
@@ -3346,6 +3399,137 @@ def parse_place(text: str) -> tuple[int, int, int]:
     if not (0 <= x <= 15 and 0 <= y <= 15 and 0 <= facing <= 3):
         raise ValueError(f"{text!r}: x and y are 0 to 15, facing 0 to 3 (N E S W)")
     return x, y, facing
+
+
+_ANSWER_WORD = re.compile(r"[A-Za-z0-9'<>/-]+")
+
+
+def parse_answer(words: list[str], text: str) -> Step:
+    """`answer WORD KEY [map]`: WORD must be on the bar before KEY, one X
+    keysym (`p`, `Return`), is pressed; `map` requires the map bar after it."""
+    if len(words) not in (3, 4) or not _ANSWER_WORD.fullmatch(words[1]) \
+            or not re.fullmatch(r"\w+", words[2]):
+        raise ValueError(f"{text!r}: an answer is 'answer WORD KEY' or "
+                         "'answer WORD KEY map', WORD one word of the bar and KEY "
+                         "one X keysym such as p or Return")
+    if words[2].lower() in ("e", "escape"):
+        raise ValueError(f"answer {words[2]} is blocked: E is exit to DOS at "
+                         "Curse's party menu and Escape backs out of a prompt")
+    then = ""
+    if len(words) == 4:
+        if words[3].lower() != ANSWER_MAP:
+            raise ValueError(f"{text!r}: the only screen an answer can require "
+                             f"after it is {ANSWER_MAP}")
+        then = ANSWER_MAP
+    return Step("answer", text, name=words[1].upper(), key=words[2], then=then)
+
+
+def answer_follows(steps: list[Step], index: int) -> bool:
+    """Whether the next step after `index` that is not a `shot` is an `answer`,
+    so the walk at `index` may end on a script's bar rather than the map."""
+    for step in steps[index + 1:]:
+        if step.kind != "shot":
+            return step.kind == "answer"
+    return False
+
+
+def parse_area(text: str) -> int:
+    """`--stage-area AREA`: an area id, hex with or without `$` or `0x`."""
+    raw = text.strip().removeprefix("$").removeprefix("0x").removeprefix("0X")
+    if not re.fullmatch(r"[0-9A-Fa-f]{1,2}", raw):
+        raise ValueError(f"{text!r}: an area is its hex id, 1 to FF (11 is the "
+                         "Pit of Moander)")
+    area = int(raw, 16)
+    if area == 0:
+        raise ValueError(f"{text!r}: area 0 is no area of the title's own")
+    return area
+
+
+def area_pieces(script: bytes) -> tuple[int, tuple[int, int, int]]:
+    """The resident `GEO` and wallset triple an area script loads: the first
+    operand of its all-immediate `LOADFILES` and the three of its
+    `LOADPIECES`, a `NO_PIECE` operand read as `EMPTY`.
+
+    Every such statement of the script must agree, so a script that loads
+    different pieces on different paths, or none statically, is a
+    `ValueError` rather than a guess.
+    """
+    body = script[dos_savegame.ECL_HEADER:]
+    geos, pieces = set(), set()
+    for i in range(len(body) - 6):
+        if body[i] not in (LOADFILES_OP, LOADPIECES_OP) or any(
+                body[i + k] for k in (1, 3, 5)):
+            continue
+        a, b, c = body[i + 2], body[i + 4], body[i + 6]
+        if body[i] == LOADFILES_OP:
+            geos.add(a)
+        else:
+            pieces.add(tuple(dos_savegame.EMPTY if v == NO_PIECE else v
+                             for v in (a, b, c)))
+    if len(geos) != 1 or len(pieces) != 1:
+        raise ValueError(f"the area script loads GEO {sorted(geos) or 'none'} and "
+                         f"pieces {sorted(pieces) or 'none'}; one of each is wanted")
+    return geos.pop(), pieces.pop()
+
+
+def area_script(game: pathlib.Path, area: int) -> tuple[area_table.Area, bytes]:
+    """Curse area `area`'s row of the area table and its `ECL` block, from
+    the `ECL<disk>.DAX` of the game directory `game`."""
+    where = area_table.area_in(area, area_table.CURSE_OF_THE_AZURE_BONDS)
+    if where is None or where.disk is None:
+        raise ValueError(f"area {area:#04x} is no Curse area with a script side")
+    if where.saves_outdoors or not where.geos:
+        raise ValueError(f"area {area:#04x} has no map of its own to stand on; "
+                         "--stage-area moves the party indoors only")
+    dax = next((p for p in game.iterdir()
+                if p.name.upper() == f"ECL{where.disk}.DAX"), None)
+    if dax is None:
+        raise ValueError(f"{game} holds no ECL{where.disk}.DAX for area {area:#04x}")
+    try:
+        return where, dos_savegame.dax_block(dax.read_bytes(), area, dax.name)
+    except (dos_savegame.DaxError, dos_savegame.DosSaveError) as e:
+        raise ValueError(f"area {area:#04x}: {e}") from e
+
+
+def stage_area(save_dir: pathlib.Path, letter: str, area: int,
+               game: pathlib.Path) -> dict:
+    """Move the installed `SAVGAM<letter>.DAT` into `area` with
+    `dos_savegame.move_to_area`, indoors, keeping the square for
+    `--stage-place` to set: the area's own script in the buffer, its `DAX`
+    number, and the resident `GEO` and wallset its script loads
+    (`area_pieces`).  The script variables are left to `--stage-var`."""
+    where, script = area_script(game, area)
+    geo, wallset = area_pieces(script)
+    if geo not in _geo_numbers(where.geos):
+        raise ValueError(f"area {area:#04x}'s script loads GEO {geo}, not the "
+                         f"{', '.join(where.geos)} the area table names")
+    path = save_dir / f"SAVGAM{letter.upper()}.DAT"
+    data = bytearray(path.read_bytes())
+    container = dos_savegame.container_for(len(data))
+    if container.script_buffer is None or container.wall_block is None:
+        raise ValueError(f"{path.name} is a {container.title} saved game; "
+                         "--stage-area moves a Curse save")
+    before = {"area": dos_savegame.current_area(bytes(data)),
+              "geo": dos_savegame.geo_block(bytes(data)),
+              "dax": data[container.head],
+              "wallset": list(dos_savegame.wall_block(bytes(data), container)[0])}
+    start, end = container.script_buffer
+    data[start:end] = bytes(end - start)
+    dos_savegame.move_to_area(data, area=area, dax=where.disk, geo=geo,
+                              wallset=wallset, script=script, container=container)
+    dos_savegame.put_word(data, dos_savegame.INDOORS, 1, container)
+    dos_savegame.put_tail_state(data, indoors=True, container=container)
+    path.write_bytes(bytes(data))
+    return {"stage": "area", "file": path.name, "before": before,
+            "after": {"area": area, "geo": geo, "dax": where.disk,
+                      "wallset": list(wallset)},
+            "script_bytes": len(script) - dos_savegame.ECL_HEADER}
+
+
+def _geo_numbers(names) -> set[int]:
+    """The `GEO` numbers the area table's `GEOnn` names stand for."""
+    return {n for n in (area_table.geo_number(name) for name in names)
+            if n is not None}
 
 
 def parse_node(text: str) -> tuple[int, bytes]:
@@ -5182,8 +5366,12 @@ class Driver:
             return screen
         return self.press_continue_screens(screen, bar, label, WALK_CONTINUE_ROUNDS)
 
-    def walk(self, route: str) -> dict:
+    def walk(self, route: str, onto_script: bool = False) -> dict:
         """From the loaded Pool or Curse map, turn around and step one square.
+
+        With `onto_script` (an `answer` comes next), a Curse step that lands on
+        a script's bar rather than the map ends the walk there
+        (`walked_onto_script`) instead of stopping the run.
 
         A step is believed only when the `x,y` on the status line changes:
         the clock on the same line ticks on a wall's bump, and a line drawn
@@ -5238,6 +5426,8 @@ class Driver:
         stepped = self.game.step()
         screen = self.press_walk_stories("walk-step")
         if not stepped and not self.on_world(screen):
+            if onto_script and self.title.key in ANSWER_TITLES:
+                return self.walked_onto_script(screen, route, before, origin)
             raise self.fail("walk-step", "the map bar did not return after the "
                             "step (combat or an unknown screen)")
         after, square = record("walk-step")
@@ -5259,6 +5449,91 @@ class Driver:
                 "place_before": origin_place,
                 "place_after": screens[-1].get("place"),
                 "screens": screens}
+
+    def walked_onto_script(self, screen, route: str, before, origin) -> dict:
+        """The end of a walk whose step ran a script: the first bar that is not
+        a continue box, waited for while the script prints (`ANSWER_WAIT` a
+        box, `WALK_CONTINUE_ROUNDS` boxes at most, each given `Return`), read
+        as text and shot, and the party left on it (`where` = `script`) for
+        `answer`."""
+        font = self.display_font()
+        continues = WALK_CONTINUE_BARS[self.title.key]
+        for _ in range(WALK_CONTINUE_ROUNDS):
+            self.s.wait_for(lambda sc: text_row(sc, BAR_ROW, font).strip(),
+                            self.bounded(ANSWER_WAIT, "walk-script"))
+            screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, "walk-script"))
+            if screen.glyphs(dosbox.BAR) != continues:
+                break
+            text = screen.digest(TEXT_WINDOW)
+            self.shot("continue-walk-script")
+            self.s.key(POD_CONTINUE)
+            self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != text,
+                            self.bounded(ANSWER_WAIT, "walk-script"))
+            self.events.append({"kind": "press_continue", "step": "walk-script",
+                                "bar": continues, "answered": POD_CONTINUE})
+        shot = self.shot("walk-script")
+        bar = self.bar_text(screen)
+        self.where = "script"
+        self.note(event="walk-script", bar=bar, shot=f"{shot}.png")
+        return {"route": route, "map_bar": self.world_sig, "status_before": before,
+                "square_before": origin, "script_bar": bar, "shot": f"{shot}.png"}
+
+    def answer(self, word: str, key: str, then: str = "") -> dict:
+        """Answer a script's menu: `word` must be read on the bar (with the
+        title's font, waited for up to `ANSWER_WAIT`) before `key` is pressed;
+        a bar without it stops the run with nothing pressed.  The key is
+        believed when the text window or the bar changes.  With `then` =
+        `ANSWER_MAP` the map bar must come back, the roster is counted again
+        (a join adds lines) and the party is on the map; otherwise it stays on
+        the script's next screen for another `answer`."""
+        label = f"answer-{word}"
+        if self.title.key not in ANSWER_TITLES or self.where != "script":
+            raise StepFailed(f"answer needs a script's bar in "
+                             f"{', '.join(sorted(ANSWER_TITLES))}, after a walk "
+                             f"onto a scripted square (the party is at {self.where})")
+        font = self.display_font()
+        self.s.wait_for(lambda sc: word in bar_word_list(text_row(sc, BAR_ROW, font)),
+                        self.bounded(ANSWER_WAIT, label))
+        screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, label))
+        bar = bar_word_list(text_row(screen, BAR_ROW, font))
+        shot = self.shot(label)
+        if word not in bar:
+            raise self.fail(label, f"{word} is not on the bar: {self.bar_named(screen)}")
+        text, ink = screen.digest(TEXT_WINDOW), screen.ink(dosbox.BAR)
+        self.s.key(key)
+        if not self.s.wait_for(lambda sc: sc.digest(TEXT_WINDOW) != text
+                               or sc.ink(dosbox.BAR) != ink,
+                               self.bounded(ANSWER_WAIT, label)):
+            raise self.fail(label, f"{key} changed nothing: {self.bar_named(screen)}")
+        result = {"word": word, "key": key, "bar": bar, "shot": f"{shot}.png"}
+        if then == ANSWER_MAP:
+            if not self.s.wait_for(self.on_world, self.bounded(ANSWER_MAP_WAIT, label)):
+                raise self.fail(f"{label}-map", "the map bar did not come back "
+                                f"after {key}: {self.bar_named(self.s.capture())}")
+            screen = self.s.settle(quiet=1.0, timeout=self.bounded(30.0, label))
+            roster = self.map_roster(screen)
+            if len(roster) > self.party_size:
+                self.party_size = len(roster)
+            self.where = "map"
+            result.update(roster=roster, party_size=self.party_size,
+                          map_shot=f"{self.shot(f'{label}-map')}.png")
+        else:
+            screen = self.s.settle(quiet=0.6, timeout=self.bounded(30.0, label))
+            result["next_bar"] = self.bar_text(screen)
+        self.note(event="answer", **result)
+        return result
+
+    def map_roster(self, screen) -> list[str]:
+        """The names drawn on the map's roster, top down, to the first blank
+        line, read with the title's font where camp draws them."""
+        font = self.display_font()
+        names = []
+        for line in range(1, PARTY_ROSTER_LINES + 1):
+            name = roster_text(screen, line, font)
+            if not name:
+                break
+            names.append(name)
+        return names
 
     def _walk_letters(self, route: str) -> dict:
         """Pool: `I` steps forward, `J` turns left and `K` turns right, in turn.
@@ -8882,7 +9157,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 d.place_reader = None
             summary["events"] = getattr(d, "events", [])
             results = []
-            for step in steps:
+            for index, step in enumerate(steps):
                 deadline.check(step.text)
                 note(event="step", step=step.text)
                 d.step_begins(step.kind)
@@ -8912,7 +9187,10 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                 elif step.kind == "leave":
                     r = d.leave()
                 elif step.kind == "walk":
-                    r = d.walk(step.key)
+                    r = (d.walk(step.key, onto_script=True)
+                         if answer_follows(steps, index) else d.walk(step.key))
+                elif step.kind == "answer":
+                    r = d.answer(step.name, step.key, step.then)
                 elif step.kind == "turn":
                     r = d.turn(step.line)
                 elif step.kind == "rest":
@@ -9173,6 +9451,40 @@ def check_arrival_fights(args, save: pathlib.Path, from_slot: str | None) -> Non
                 f"{variable:X}={held | mask} (POD_ARRIVAL_FIGHTS)")
 
 
+def check_stage_area(args, save: pathlib.Path, from_slot: str | None) -> None:
+    """Block a `--stage-area` the title or the installed save cannot take, or
+    whose area script names no single map and wallset, before a slot is
+    claimed."""
+    text = getattr(args, "stage_area", None)
+    if not text:
+        return
+    area = parse_area(text)
+    if args.title not in STAGE_AREA_TITLES:
+        raise ValueError(f"--stage-area is driven in "
+                         f"{', '.join(sorted(STAGE_AREA_TITLES))} only, not {args.title}")
+    savgam = save / f"SAVGAM{from_slot}.DAT"
+    if not savgam.is_file():
+        raise ValueError(f"--stage-area needs a SAVGAM{from_slot}.DAT to move; "
+                         "there is none here")
+    try:
+        container = dos_savegame.container_for(savgam.stat().st_size)
+    except dos_savegame.DosSaveError as e:
+        raise ValueError(f"--stage-area: {savgam.name} is not a known saved-game "
+                         f"size ({e})") from e
+    if container is not dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS:
+        raise ValueError(f"--stage-area: {savgam.name} is a {container.title} "
+                         "saved game, not Curse of the Azure Bonds")
+    try:
+        game = TITLES[args.title].find_game()
+    except FileNotFoundError as e:
+        raise ValueError(f"--stage-area reads the area script from the game: {e}") from e
+    where, script = area_script(game, area)
+    geo, _ = area_pieces(script)
+    if geo not in _geo_numbers(where.geos):
+        raise ValueError(f"--stage-area: area {area:#04x}'s script loads GEO {geo}, "
+                         f"not the {', '.join(where.geos)} the area table names")
+
+
 def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     """Block a stage the installed save cannot take, before a slot is claimed.
 
@@ -9193,6 +9505,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
     check_vault(args, save, from_slot)
     check_move_on(args, save, from_slot)
     check_arrival_fights(args, save, from_slot)
+    check_stage_area(args, save, from_slot)
     if getattr(args, "stage_place", None) and args.title == "darkness":
         parse_place(args.stage_place)
         pty = save / f"SAVGAM{from_slot}.PTY"
@@ -9214,7 +9527,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
         except dos_savegame.DosSaveError as e:
             raise ValueError(f"--stage-place: {savgam.name} is not a known saved-game "
                              f"size ({e})") from e
-        if dos_savegame.outdoors(data):
+        if dos_savegame.outdoors(data) and not getattr(args, "stage_area", None):
             raise ValueError(f"--stage-place: {savgam.name} was saved outdoors, where "
                              "the square is not read")
     names = {p.name.upper() for p in save.iterdir()}
@@ -9287,8 +9600,8 @@ def stage_exports(save_dir: pathlib.Path, folder: pathlib.Path) -> dict:
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
     """The `--hall`, `--xp`, `--add-node`, `--stage-control`, `--stage-side`,
-    `--stage-record`, `--stage-var`, `--stage-place` and `--stage-icon` stages,
-    in that order."""
+    `--stage-record`, `--stage-area`, `--stage-var`, `--stage-place` and
+    `--stage-icon` stages, in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -9303,6 +9616,9 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
     for line, offset, value in parse_record_bytes(getattr(args, "stage_record", []) or []):
         done.append(stage_record(save_dir, letter, line, offset, value))
     pod = getattr(args, "title", None) == "darkness"
+    if getattr(args, "stage_area", None):
+        done.append(stage_area(save_dir, letter, parse_area(args.stage_area),
+                               TITLES[args.title].find_game()))
     for text in getattr(args, "stage_var", []) or []:
         done.append((stage_pod_var if pod else stage_var)(save_dir, letter,
                                                           *parse_var(text)))
@@ -9761,6 +10077,12 @@ def main(argv: list[str] | None = None) -> int:
                          "of SAVGAM<L>.PTY by its 1-based hex index (A2=0 puts "
                          "STORAGE on Elminster's menu); a Silver Blades fight in "
                          "area 16 needs 4C2D=1")
+    ap.add_argument("--stage-area", default=None, metavar="AREA",
+                    help="move the installed SAVGAM into area AREA (hex, curse "
+                         "only) with its script, map and wallset, after "
+                         "--stage-record and before --stage-var and "
+                         "--stage-place, which set the story variables and "
+                         "the square")
     ap.add_argument("--stage-place", default=None, metavar="X,Y,FACING",
                     help="stage the party's square and facing (0 to 15, facing 0 "
                          "to 3 = N E S W) in an indoor SAVGAM, or a dungeon "
@@ -9823,6 +10145,8 @@ def main(argv: list[str] | None = None) -> int:
         parse_record_bytes(args.stage_record)
         for v in args.stage_var:
             parse_var(v)
+        if getattr(args, "stage_area", None):
+            parse_area(args.stage_area)
         if getattr(args, "stage_place", None):
             parse_place(args.stage_place)
         for t in args.stage_icon:
@@ -9838,8 +10162,8 @@ def main(argv: list[str] | None = None) -> int:
                                  "--convert is required, except by a run that "
                                  "begins with add")
             staging = ("hall", "xp", "add_node", "stage_control", "stage_side",
-                       "stage_record", "stage_var", "stage_place", "stage_icon",
-                       "expect")
+                       "stage_record", "stage_area", "stage_var", "stage_place",
+                       "stage_icon", "expect")
             if any(getattr(args, a, None) for a in staging):
                 raise ValueError("a run with no save has nothing to stage or expect")
             if args.from_slot or args.first_bar_key is not None:
