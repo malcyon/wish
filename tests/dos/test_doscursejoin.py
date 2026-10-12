@@ -13,6 +13,7 @@ on built saves and on the player's own Curse archives and specimens.
 
 from __future__ import annotations
 
+import math
 import pathlib
 import shutil
 
@@ -314,6 +315,14 @@ def test_a_walk_onto_a_screen_that_is_no_scripts_menu_still_stops(
     assert game.keys == [] and d.where == "map"
 
 
+def test_a_walk_answers_exactly_the_last_round_of_boxes_and_reaches_the_menu(
+        tmp_path, monkeypatch, font):
+    game, d = _walk_onto(tmp_path, monkeypatch, [BOX] * da.WALK_CONTINUE_ROUNDS + SCRIPT)
+    got = d.walked_onto_script(game.frame(), "MI", "status", "1,3")
+    assert game.keys == ["Return"] * da.WALK_CONTINUE_ROUNDS
+    assert got["script_bar"] == SCRIPT[0][0].split() and d.where == "script"
+
+
 def test_a_walk_whose_continue_boxes_outlast_the_rounds_stops(
         tmp_path, monkeypatch, font):
     game, d = _walk_onto(tmp_path, monkeypatch,
@@ -352,7 +361,9 @@ class FakeLoading(FakeBegin):
         return super().frame()
 
     def wait_for(self, pred, timeout=30.0):
-        return any(pred(self.frame()) for _ in range(20))
+        """Poll every quarter second of `timeout`, as `Session.wait_for` does,
+        with each poll one frame."""
+        return any(pred(self.frame()) for _ in range(max(1, math.ceil(timeout / 0.25))))
 
 
 def test_curse_begin_waits_out_the_loading_bar_before_the_boxes(
@@ -370,9 +381,9 @@ def test_curse_begin_waits_out_the_loading_bar_before_the_boxes(
 
 def test_curse_begin_does_not_take_one_passing_frame_for_the_loaded_screen(
         tmp_path, monkeypatch, font):
-    # Boot 3 (`02f07922bb-pit-join-init3`): `LOADING...PLEASE`, then `WAIT`
-    # alone on a still frame; a frame caught mid-redraw (`...PLEASE` here)
-    # reads as neither and must not end the wait.
+    # BEGIN into the Pit draws `LOADING...PLEASE`, then `WAIT` alone on a
+    # still frame; a frame caught mid-redraw (`...PLEASE` here) reads as
+    # neither and must not end the wait.
     game = FakeLoading(tmp_path, 5, (("LOADING...PLEASE", 3), ("...PLEASE", 1),
                                      ("     WAIT", 6), ("", 3)))
     monkeypatch.setattr(da, "CURSE_CONTINUE_BAR", game.frame_at(5).glyphs(dosbox.BAR))
@@ -383,6 +394,19 @@ def test_curse_begin_does_not_take_one_passing_frame_for_the_loaded_screen(
     d.begin()
     assert game.keys == [da.PARTY_BEGIN] + ["Return"] * 5
     assert game.at is None and d.where == "map"
+
+
+def test_curse_begin_stops_when_the_bar_stays_on_wait(tmp_path, monkeypatch, font):
+    game = FakeLoading(tmp_path, 5, (("LOADING...PLEASE", 3), ("     WAIT", 10 ** 6)))
+    monkeypatch.setattr(da, "CURSE_LOAD_SECONDS", 2.0)
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=len(PARTY))
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    d.where = "party"
+    with pytest.raises(da.StepFailed, match="still blank, LOADING or WAIT") as got:
+        d.begin()
+    assert "lost-begin-loading" in str(got.value)
+    assert game.keys == [da.PARTY_BEGIN] and d.where == "party"
 
 
 def test_curse_begin_answers_the_pits_five_arrival_boxes(tmp_path, monkeypatch, font):

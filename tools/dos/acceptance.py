@@ -5522,7 +5522,9 @@ class Driver:
         words (`script_bar_rejection`) stops the run as the walk did before."""
         font = self.display_font()
         continues = WALK_CONTINUE_BARS[self.title.key]
-        for _ in range(WALK_CONTINUE_ROUNDS):
+        # One more reading than answers: the screen after the last box's
+        # Return is read before a box still up there stops the walk.
+        for answered in range(WALK_CONTINUE_ROUNDS + 1):
             if not self.s.wait_for(lambda sc: text_row(sc, BAR_ROW, font).strip(),
                                    self.bounded(ANSWER_WAIT, "walk-script")):
                 raise self.fail("walk-step", f"the bar stayed blank {ANSWER_WAIT:.0f} s "
@@ -5530,6 +5532,9 @@ class Driver:
             screen = self.s.settle(quiet=0.6, timeout=self.bounded(10.0, "walk-script"))
             if screen.glyphs(dosbox.BAR) != continues:
                 break
+            if answered == WALK_CONTINUE_ROUNDS:
+                raise self.fail("walk-step", f"a continue box is still showing after "
+                                f"{WALK_CONTINUE_ROUNDS} were answered")
             text = screen.digest(TEXT_WINDOW)
             self.shot("continue-walk-script")
             self.s.key(POD_CONTINUE)
@@ -5539,9 +5544,6 @@ class Driver:
                                 "continue box the step reached")
             self.events.append({"kind": "press_continue", "step": "walk-script",
                                 "bar": continues, "answered": POD_CONTINUE})
-        else:
-            raise self.fail("walk-step", f"a continue box is still showing after "
-                            f"{WALK_CONTINUE_ROUNDS} were answered")
         why = script_bar_rejection(screen, text_row(screen, BAR_ROW, font))
         if why:
             raise self.fail("walk-step", why)
