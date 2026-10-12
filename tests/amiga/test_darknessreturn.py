@@ -2249,6 +2249,107 @@ def test_origin_observer_reports_different_live_origin_without_travelling(tmp_pa
                for e in events if e[0] == "key")
 
 
+@pytest.mark.parametrize("log_error,fault", [
+    (True, None), (True, "fetch-disk2"), (True, "stop"), (True, "release"),
+    (False, None),
+])
+def test_origin_boot_log_failure_recovers_only_this_boots_disks_before_release(
+        tmp_path, monkeypatch, log_error, fault):
+    real_halt = driver.acceptance.halt_lane
+    args, guest, events, original, disks = _origin_observer_coordinator(tmp_path, monkeypatch)
+    boot = driver._boot
+    monkeypatch.setattr(driver.acceptance, "halt_lane", real_halt)
+    remotes = {key: f"current-boot-{key}" for key in disks}
+    stale = {key: f"old-boot-{key}" for key in disks}
+    (args.manifest.parent / "lanes.jsonl").write_text(json.dumps({
+        "event": "boot", "holder": args.holder, "remotes": stale}) + "\n")
+
+    def current_boot(*a, **kw):
+        result = boot(*a, **kw)
+        result["remotes"] = remotes
+        if log_error:
+            result["log_error"] = "injected boot log write failure"
+        return result
+
+    def stop(holder, timeout):
+        events.append(("stop", holder))
+        if fault == "stop":
+            raise RouteError("injected stop failure")
+        return "stopped"
+
+    def get(remote, local, timeout):
+        assert remote in remotes.values(), "A stale lane's remote was fetched"
+        key = next(key for key, value in remotes.items() if value == remote)
+        events.append(("fetch", key))
+        local.write_bytes(f"Generated fetched {key} marker".encode())
+        if fault == "fetch-disk2" and key == "disk2":
+            raise RouteError("injected disk2 fetch failure")
+        return "fetched"
+
+    def release(holder, timeout):
+        events.append(("release", holder))
+        if fault == "release":
+            raise RouteError("injected release failure")
+        return "released"
+
+    monkeypatch.setattr(driver, "_boot", current_boot)
+    monkeypatch.setattr(guest, "stop", stop, raising=False)
+    monkeypatch.setattr(guest, "get", get, raising=False)
+    monkeypatch.setattr(guest, "release", release, raising=False)
+    originals = {path: sha256(path) for path in
+                 (original, *(pathlib.Path(item["path"]) for item in disks.values()))}
+
+    if log_error or fault:
+        with pytest.raises(RouteError, match=(
+                "injected boot log write failure" if log_error else f"injected {fault} failure")):
+            driver.run_origin_observe(args, guest=guest)
+    else:
+        assert driver.run_origin_observe(args, guest=guest)["success"] is True
+    receipt = json.loads((args.out / "origin-observe-receipt.json").read_text())
+    assert receipt["success"] is (not log_error and fault is None)
+    assert receipt["checks"]["source_unchanged"] is True
+    assert receipt["checks"]["prepared_unchanged"] is True
+    assert {path: sha256(path) for path in originals} == originals
+    assert receipt["independently_authenticated"] is False
+    assert receipt["preservation_established"] is False
+    assert "raw_hex" not in json.dumps(receipt)
+    if log_error:
+        assert "injected boot log write failure" in receipt["error"]
+        assert not [event for event in events if event[0] in {"screen", "key", "observe"}]
+        assert "screens" not in receipt
+    else:
+        assert events.count(("key", "B")) == 2
+        assert len([event for event in events if event[0] == "observe"]) == 1
+
+    operations = [event for event in events if event[0] in {"stop", "fetch", "release"}]
+    assert operations == ([("stop", args.holder)] +
+                          ([] if fault == "stop" else
+                           [("fetch", key) for key in disks]) +
+                          [("release", args.holder)])
+    for key in disks:
+        files = list(args.manifest.parent.glob(f"**/fetched-{key}.adf"))
+        assert len(files) == (0 if fault == "stop" else 1)
+        if files:
+            assert files[0].resolve().is_relative_to(args.manifest.parent.resolve())
+            assert files[0].stat().st_mode & 0o777 == 0o600
+            assert sha256(files[0]) == hashlib.sha256(
+                f"Generated fetched {key} marker".encode()).hexdigest()
+    if fault == "stop":
+        assert any("stop: injected stop failure" in item for item in receipt["cleanup"])
+    elif fault == "fetch-disk2":
+        assert any("fetch disk2: injected disk2 fetch failure" in item
+                   for item in receipt["cleanup"])
+    elif fault == "release":
+        assert any("release: injected release failure" in item for item in receipt["cleanup"])
+    else:
+        assert receipt["cleanup"] == []
+        fetched = receipt["halt"]["fetched"]
+        assert set(fetched) == set(disks)
+        for key, entry in fetched.items():
+            assert entry["sha256"] == hashlib.sha256(
+                f"Generated fetched {key} marker".encode()).hexdigest()
+
+
 def test_origin_observer_cli_is_opt_in_and_does_not_invoke_p2(tmp_path, monkeypatch, capsys):
     output = tmp_path / "origin-output"
     called = []

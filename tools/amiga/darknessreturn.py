@@ -1445,6 +1445,42 @@ class SourceBootGuest:
         return self.guest.release(holder, timeout=self._cleanup_limit(timeout))
 
 
+class OriginFetchGuest:
+    """Fetch this boot's media after a successful stop and before lane release."""
+
+    def __init__(self, guest: SourceBootGuest, root: pathlib.Path, remotes: dict):
+        self.guest, self.root, self.remotes = guest, root, remotes
+        self.fetched: dict[str, dict[str, str]] = {}
+        self.partial: dict[str, dict[str, str]] = {}
+        self.errors: list[str] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.guest, name)
+
+    def stop(self, holder: str, timeout: float) -> str:
+        response = self.guest.stop(holder, timeout=timeout)
+        folder = self.root / "origin-fetched"
+        try:
+            folder.mkdir(mode=0o700)
+        except Exception as exc:  # noqa: BLE001 - release still needs to run
+            self.errors.append(f"fetch folder: {exc}")
+            return response
+        for key in ("disk1", "disk2", "disk3"):
+            local = folder / f"fetched-{key}.adf"
+            try:
+                self.guest.get(self.remotes[key], local,
+                               timeout=self.guest._cleanup_limit(timeout))
+                self.fetched[key] = {"path": str(local), "sha256": sha256(local)}
+            except Exception as exc:  # noqa: BLE001 - remaining disks still need fetching
+                self.errors.append(f"fetch {key}: {exc}")
+                if local.exists():
+                    try:
+                        self.partial[key] = {"path": str(local), "sha256": sha256(local)}
+                    except Exception as hash_exc:  # noqa: BLE001 - retain the fetch error
+                        self.errors.append(f"partial {key} hash: {hash_exc}")
+        return response
+
+
 def _source_fetched(guest: SourcePrivateGuest, remote: str, out: pathlib.Path,
                     limit: float) -> tuple[amiga_adf.AmigaDisk, str]:
     """Read the game-written F twice, before G, with independent identical ADF copies."""
@@ -1740,6 +1776,7 @@ def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = Non
     command = [str(pathlib.Path(__file__)), "origin-observe", "--run-id", args.run_id,
                "--holder", args.holder]
     booted = False
+    boot = None
     run = None
     manifest = None
     source = None
@@ -1768,6 +1805,8 @@ def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = Non
                      time.monotonic() + action_left(1200), command)
         booted = True
         receipt["boot"] = {key: boot[key] for key in ("holder", "claim", "start")}
+        if boot.get("log_error"):
+            raise RouteError(f"origin_boot_log: {boot['log_error']}")
         run = SourceGuardedRun(guest, args.holder, args.out / "screens", guards, action_end,
                                identity=identity)
         run.title()
@@ -1802,16 +1841,22 @@ def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = Non
                                   .relative_to(root).as_posix()} if "crop" in event else {})}
                                   for event in run.events]
         if booted:
+            fetching = OriginFetchGuest(SourceBootGuest(guest, action_end, deadline),
+                                        root, boot["remotes"])
             try:
                 left = min(30.0, max(1.0, deadline - time.monotonic()))
                 if deadline - time.monotonic() <= 0:
                     receipt["cleanup"].append("origin_deadline: cleanup allowance expired")
                 receipt["halt"] = acceptance.halt_lane(
-                    guest, args.holder, timeout=left, manifest_path=args.manifest,
-                    command=command)
+                    fetching, args.holder, timeout=left)
                 receipt["checks"]["halt"] = True
             except Exception as exc:  # noqa: BLE001 - retain cleanup failure
                 receipt["cleanup"].append(f"halt: {exc}")
+            finally:
+                receipt.setdefault("halt", {}).setdefault("fetched", fetching.fetched)
+                if fetching.partial:
+                    receipt["halt"]["partial"] = fetching.partial
+                receipt["cleanup"].extend(fetching.errors)
         try:
             _require(sha256(_origin_source()) == ORIGIN_IMAGE_SHA256,
                      "origin_source: preserved original changed")
@@ -1830,14 +1875,16 @@ def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = Non
             except Exception as exc:  # noqa: BLE001
                 receipt["cleanup"].append(f"prepared hash: {exc}")
         if "halt" in receipt:
-            for file in receipt["halt"].get("fetched", {}).values():
-                if "path" in file:
-                    path = pathlib.Path(file["path"])
-                    if not path.resolve().is_relative_to(root.resolve()):
-                        receipt["cleanup"].append("origin_privacy: fetched path escapes private run")
-                        file.pop("path")
-                    else:
-                        file["path"] = path.relative_to(root).as_posix()
+            for group in ("fetched", "partial"):
+                for file in receipt["halt"].get(group, {}).values():
+                    if "path" in file:
+                        path = pathlib.Path(file["path"])
+                        if not path.resolve().is_relative_to(root.resolve()):
+                            receipt["cleanup"].append(
+                                "origin_privacy: fetched path escapes private run")
+                            file.pop("path")
+                        else:
+                            file["path"] = path.relative_to(root).as_posix()
         receipt["success"] = ("error" not in receipt and not receipt["cleanup"] and
                               all(receipt["checks"].get(key) is True for key in
                                   ("preflight", "world_guarded", "seven_members",
