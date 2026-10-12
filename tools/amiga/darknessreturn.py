@@ -85,7 +85,6 @@ ORIGIN_PREPARED_SHA256 = "de70cca6e178026d60f406c9e64bee3cd87a1da5d8bd2da2e06745
 # The live area byte a load of source-01 G reads (Kalistes' Parlor); the save's place reads 5.
 ORIGIN_LIVE_AREA = 82
 ORIGIN_TARGET_AREA = 22
-RETURN_SNAPSHOT = "return7-before-trip"
 # Comparison labels: each binds one save letter, so a source G, the Return run's
 # game-written F and the reload's reference cannot stand in for one another.
 SOURCE_ROLES = ("selected-source", "same-run-F", "same-run-G",
@@ -1936,12 +1935,19 @@ def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = Non
 ORIGIN_REFERENCE = {"source_disk_sha256": ORIGIN_IMAGE_SHA256,
                     "source_g_sha256": ORIGIN_G_SHA256}
 RETURN_CHECKS = ("preflight", "world_guarded", "start", "pre_travel_coverage", "legs",
-                 "returned", "post_return_coverage", "pre_f_coverage",
+                 "returned", "return_square", "post_return_coverage", "pre_f_coverage",
                  "save_f_ui_acknowledged", "same_run_f_verified", "post_f_alignment",
                  "halt", "final_f_verified", "source_unchanged", "prepared_unchanged")
-RELOAD_CHECKS = ("preflight", "world_guarded", "reloaded", "reload_coverage",
+RELOAD_CHECKS = ("preflight", "world_guarded", "reloaded", "reloaded_square", "reload_coverage",
                  "item_sheet_coverage", "halt", "no_save_written", "sources_unchanged",
                  "prepared_unchanged")
+
+
+def _failure(receipt: dict, required: tuple[str, ...]) -> str:
+    """The error, the cleanup failures, or else the required checks that did not pass."""
+    return (receipt.get("error") or "; ".join(receipt["cleanup"]) or
+            "failed checks: " + ", ".join(key for key in required
+                                          if receipt["checks"].get(key) is not True))
 
 
 def _origin_start(target: amiga.AmigaTarget, disks: pathlib.Path) -> dict:
@@ -2030,7 +2036,6 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
     manifest = None
     disk_hash = None
     manifest_hash = None
-    snapshots: list[str] = []
 
     def action_left(cap: float) -> float:
         left = min(cap, action_end - time.monotonic())
@@ -2087,8 +2092,6 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
         _require(receipt["pre_travel_comparison"]["all_payloads_match_reference"],
                  "return7_payload: the loaded party differs from source G before travel")
         receipt["checks"]["pre_travel_coverage"] = True
-        guest.snapshot(RETURN_SNAPSHOT, args.holder)
-        snapshots.append(RETURN_SNAPSHOT)
         receipt["legs"] = _origin_legs(_run_trip(args.holder, args.manifest.parent,
                                                  args.out / "trip", action_left(2000)))
         receipt["checks"]["legs"] = True
@@ -2097,6 +2100,9 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
         receipt["returned"] = _origin_place(target, "return7")
         receipt["return_square_matches_start"] = (
             receipt["returned"]["square"] == receipt["start"]["square"])
+        # Return puts the party on the square and facing it left; a miss fails the
+        # run but the save and comparisons still go ahead, so the item evidence is kept.
+        receipt["checks"]["return_square"] = receipt["return_square_matches_start"]
         receipt["checks"]["returned"] = True
         receipt["post_return"], returned = checkpoint(target, "post-return", "world")
         receipt["post_return_comparison"] = _source_compare(
@@ -2147,11 +2153,6 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
                                   .relative_to(root).as_posix()} if "crop" in event else {})}
                                   for event in run.events]
         if booted:
-            for name in snapshots:
-                try:
-                    guest.discard(name, args.holder)
-                except Exception as exc:  # noqa: BLE001 - halt and release still run
-                    receipt["cleanup"].append(f"discard {name}: {exc}")
             fetching = OriginFetchGuest(SourceBootGuest(guest, action_end, deadline),
                                         root, boot["remotes"], folder=f"{args.out.name}/fetched")
             try:
@@ -2207,7 +2208,7 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
                               all(receipt["checks"].get(key) is True for key in RETURN_CHECKS))
         _write_source_receipt(args.out / "origin-return-receipt.json", receipt)
     if not receipt["success"]:
-        raise RouteError(receipt.get("error") or "; ".join(receipt["cleanup"]))
+        raise RouteError(_failure(receipt, RETURN_CHECKS))
     return receipt
 
 
@@ -2219,6 +2220,9 @@ def _return_seed(path: pathlib.Path) -> dict:
              "reload7_receipt: the Return receipt is missing or not owner/0600")
     receipt = json.loads(path.read_text())
     checks = receipt.get("checks", {})
+    _require(receipt.get("source_g_sha256") == ORIGIN_G_SHA256
+             and receipt.get("source_image_sha256") == ORIGIN_IMAGE_SHA256,
+             "reload7_receipt: the Return receipt names another source G or image")
     _require(receipt.get("phase") == "origin-return" and receipt.get("success") is True
              and not receipt.get("cleanup")
              and all(checks.get(key) is True for key in RETURN_CHECKS),
@@ -2376,6 +2380,7 @@ def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None
         receipt["party"] = _origin_party(target)
         receipt["reloaded"] = _origin_place(target, "reload7")
         receipt["reloaded_square_matches_saved"] = receipt["reloaded"]["square"] == seed["square"]
+        receipt["checks"]["reloaded_square"] = receipt["reloaded_square_matches_saved"]
         receipt["checks"]["reloaded"] = True
         receipt["reload_world"] = _source_checkpoint(
             target, nodes, "reload-world", receipt, run, disk_hash,
@@ -2430,9 +2435,12 @@ def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None
                     receipt["halt"]["partial"] = fetching.partial
                 receipt["cleanup"].extend(fetching.errors)
             try:
-                final = amiga_adf.AmigaDisk.open(fetching.fetched["disk3"]["path"])
-                _require(not {"F", "G"} & set(route_darkness.DARKNESS.slot_letters(final)),
-                         "reload7_save: the reload wrote slot F or G")
+                # A load without a save leaves disk 3 byte-identical to the uploaded copy
+                # (the origin observer's fetched disk 3 equals its prepared one).
+                final = fetching.fetched["disk3"]
+                _require(disk_hash is not None and final["sha256"] == disk_hash
+                         and sha256(pathlib.Path(final["path"])) == disk_hash,
+                         "reload7_save: the disk 3 the game ran differs from the prepared disk 3")
                 receipt["checks"]["no_save_written"] = True
             except Exception as exc:  # noqa: BLE001
                 receipt["cleanup"].append(f"reload disk: {exc}")
@@ -2460,7 +2468,7 @@ def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None
                               all(receipt["checks"].get(key) is True for key in RELOAD_CHECKS))
         _write_source_receipt(args.out / "origin-reload-receipt.json", receipt)
     if not receipt["success"]:
-        raise RouteError(receipt.get("error") or "; ".join(receipt["cleanup"]))
+        raise RouteError(_failure(receipt, RELOAD_CHECKS))
     return receipt
 
 
