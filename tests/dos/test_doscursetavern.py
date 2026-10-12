@@ -12,7 +12,9 @@ read, with `LEAVE` once a fight has been met; the bartender's question a
 save whose brawl was already fought shows first is answered `IGNORE THEM`;
 and a bar whose text is anything else is never answered and stops the step;
 and a brawl fought with every member on QUICK, which shows no command bar and
-no encounter menu, ends the step on the map once `CONTINUE BATTLE` has shown.
+no encounter menu, ends the step on the map, `PUNCH BARKEEP` pressed once,
+whether or not `CONTINUE BATTLE` showed, while a bar nobody has classified
+held during it stops the step with nothing pressed.
 """
 
 from __future__ import annotations
@@ -361,19 +363,31 @@ BRAWL = (("MOVE/ATTACK, MOVE LEFT = 2", 3, None), ("", 1, None),
          ("YES NO", 0, "n"))
 
 
-class FakeBrawl(FakeTavern):
-    """`FakeTavern` whose `p` plays `BRAWL` from its start: a screen with a
-    count shows for that many frames, one with a key until that key, and the
-    last leaves the party on the map at 6,10 facing west."""
+#: A brawl lost or fled on QUICK: the computer's moves and a blank bar, then
+#: the map, with no `CONTINUE BATTLE`, continue, or treasure bar.
+BRAWL_NO_CONTINUE = (("MOVE/ATTACK, MOVE LEFT = 2", 3, None), ("", 1, None))
+#: A brawl whose computer-move bar never changes.
+BRAWL_STUCK = (("MOVE/ATTACK, MOVE LEFT = 2", 0, None),)
 
-    def __init__(self, tmp_path, **kw):
+
+class FakeBrawl(FakeTavern):
+    """`FakeTavern` whose `p` plays `brawl` (`BRAWL` unless given) from its
+    start: a screen with a count shows for that many frames, one with a key
+    until that key, and the last leaves the party on the map at 6,10 facing
+    west."""
+
+    def __init__(self, tmp_path, brawl=BRAWL, **kw):
         super().__init__(tmp_path, **kw)
+        self.brawl = brawl
         self.screen, self.frames = 0, 0
 
     def frame(self) -> dosbox.Screen:
         if self.state != "after":
             return super().frame()
-        text, hold, _ = BRAWL[self.screen]
+        if self.screen == len(self.brawl):
+            self.state, self.f = "map", 3
+            return super().frame()
+        text, hold, _ = self.brawl[self.screen]
         if hold:
             self.frames += 1
             if self.frames >= hold:
@@ -388,10 +402,8 @@ class FakeBrawl(FakeTavern):
         for k in keys:
             if self.state == "after":
                 self.keys.append(k)
-                if k == BRAWL[self.screen][2]:
+                if k == self.brawl[self.screen][2]:
                     self.screen += 1
-                    if self.screen == len(BRAWL):
-                        self.state, self.f = "map", 3
             else:
                 super().key(k, gap=gap)
                 if self.state == "after":
@@ -415,3 +427,23 @@ def test_a_brawl_fought_on_quick_ends_the_step_once_continue_battle_shows(
     kinds = [e["kind"] for e in _events(d, "fight-screen")]
     assert kinds[2:] == [None, "blank", "continue_battle", "continue",
                          "treasure", "yes_no"]
+
+
+def test_a_brawl_lost_without_continue_battle_ends_the_step_and_is_punched_once(
+        tmp_path, monkeypatch, font, clock):
+    game = FakeBrawl(tmp_path, brawl=BRAWL_NO_CONTINUE, injuries=True)
+    d = _driver(game, monkeypatch, OpenGeo())
+    result = d.fight(600)
+    assert game.keys.count("p") == 1 and game.keys[-1] == "p"
+    assert game.state == "map" and d.where == "map"
+    assert result["bars"] == 0 and result["walked_before_fight"] is not None
+    assert [e["answer"] for e in _events(d, "tavern")] == ["ignore", "punch"]
+
+
+def test_an_unclassified_bar_held_in_the_brawl_stops_the_step_with_nothing_pressed(
+        tmp_path, monkeypatch, font, clock):
+    game = FakeBrawl(tmp_path, brawl=BRAWL_STUCK)
+    d = _driver(game, monkeypatch, OpenGeo())
+    with pytest.raises(da.StepFailed, match=f"stayed {da.FIGHT_PATIENCE:.0f} s"):
+        d.fight(600)
+    assert game.keys[game.keys.index("p"):] == ["p"] and game.state == "after"
