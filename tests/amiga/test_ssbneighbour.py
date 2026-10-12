@@ -1,6 +1,7 @@
 """The guarded neighbour wrapper must stop and clean up on an unknown load screen."""
 
 import argparse
+import contextlib
 import hashlib
 import json
 import pathlib
@@ -1089,7 +1090,7 @@ def test_a_different_known_screen_after_a_key_still_stops_at_once(tmp_path, monk
 
 def test_journal_match_ends_the_wait_past_the_loaded_menu(tmp_path, monkeypatch):
     # B goes out on the loaded menu; once the journal is recognised, a return to the
-    # loaded menu while waiting for the world stops at once instead of polling 90 s.
+    # loaded menu while waiting for the world stops at once instead of being polled past.
     source = tmp_path / "inputs"
     source.mkdir()
     inputs = {}
@@ -1109,6 +1110,12 @@ def test_journal_match_ends_the_wait_past_the_loaded_menu(tmp_path, monkeypatch)
     original.write_text(json.dumps(manifest))
 
     class Guest(_ScriptedGuest):
+        def grab(self, state, raw, crop, timeout):
+            # Two grabs bound the wait for the world: one is enough to stop on the loaded menu.
+            if state == "world" and len(list(crop.parent.glob("*-world.png"))) >= 2:
+                raise AssertionError("the wait for the world polled past the loaded menu")
+            return super().grab(state, raw, crop, timeout)
+
         def _run(self, *args, **kwargs):
             return '{"muted": true}'
 
@@ -1134,12 +1141,14 @@ def test_journal_match_ends_the_wait_past_the_loaded_menu(tmp_path, monkeypatch)
     monkeypatch.setattr(neighbour.route_silver_blades, "journal_preflight", lambda interpreter: None)
     monkeypatch.setattr(neighbour.amigabladesjournal, "tables", lambda adf: [object()])
     monkeypatch.setattr(neighbour.amigabladesjournal, "answer", lambda *a, **k: True)
+    monkeypatch.setattr(neighbour, "bounded_answer", lambda seconds: contextlib.nullcontext())
+    monkeypatch.setattr(neighbour.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(neighbour.acceptance, "boot_lane", lambda *a, **k: {})
     monkeypatch.setattr(neighbour.acceptance, "halt_lane", lambda *a, **k: {})
     monkeypatch.setattr(neighbour.noencounters, "WinuaeState", lambda path: State())
     monkeypatch.setattr(neighbour.noencounters, "winuae_state_path", lambda holder: tmp_path / "gate.json")
     args = argparse.Namespace(manifest=original, holder="fake-holder", out=tmp_path / "result",
-                              budget=5, wait_lane=0, retry_of=None)
+                              budget=60, wait_lane=0, retry_of=None)
     with pytest.raises(RouteError, match="expected world, saw loaded_menu"):
         neighbour.run(args, guest=guest, guards=Guards(),
                       reader=lambda holder: pytest.fail("the world was never shown"))
