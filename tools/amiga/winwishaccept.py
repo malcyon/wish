@@ -33,6 +33,11 @@ STATUSES = ("passed", "failed", "unproven", "awaiting image review")
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
+#: The camp reload adds Y, the slot letter, B, E and N to the 38 keys before them.
+CAMP_LOAD_MAPPING_COMMANDS = 43
+#: Seconds to wait for each guarded camp LOAD screen, and for the disk load after the slot.
+CAMP_LOAD_WAIT = 30
+CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
 #: The leave-town route checkpoints 13 times before its terminal key; 1800 s of route.
 LEAVE_DISCOVERY_SECONDS = 2100
@@ -332,7 +337,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
 
         prefix = [*_discovery_phases(route).values(),
                   *((_transition_phase(route),) if mode in YES_MODES else ()),
-                  *((maproute._ssb_camp(),) if mode == "ssb-camp-load" else ())]
+                  *((maproute._ssb_camp(), maproute._ssb_camp_load(),
+                     maproute._ssb_camp_reload()) if mode == "ssb-camp-load" else ())]
         states = {"title"} | _page_states(route) | {
             state for phase in prefix
             for state in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -509,7 +515,9 @@ class Controller:
 
     def _count(self, action: bool = False) -> None:
         name = "action_commands" if action else "mapping_commands"
-        cap = self.action_limit if action else MAX_MAPPING_COMMANDS
+        cap = (self.action_limit if action
+               else CAMP_LOAD_MAPPING_COMMANDS if getattr(self.args, "discover", None) == "ssb-camp-load"
+               else MAX_MAPPING_COMMANDS)
         if getattr(self, name) >= cap:
             raise AcceptanceStop(f"the {cap}-command {'action' if action else 'mapping'} cap is reached")
         setattr(self, name, getattr(self, name) + 1)
@@ -590,6 +598,73 @@ class Controller:
             raise ShotTimedOut(f"{state} screen was not recognized before its deadline; "
                                f"last {last}; the last shot timed out: {timed_out}") from timed_out
         raise AcceptanceStop(f"{state} screen was not recognized before its deadline; last {last}")
+
+    def _await_first(self, states: tuple[str, ...], *, limit: float
+                     ) -> tuple[str | None, dict[str, Any] | None]:
+        """The first of `states` a fresh frame matches, with that frame.
+
+        No key is pressed here. When none matches within `limit`, give None and the last
+        exact frame (None if no grab was exact), so the caller can stop on it."""
+        label = "/".join(states)
+        end = self.clock() + self.left(limit)
+        last = None
+        while self.clock() < end:
+            try:
+                frame = self._capture(label, check=False)
+            except ShotTimedOut as exc:
+                self.summary.setdefault("shot_timeouts", []).append(
+                    {"state": label, "error": str(exc)})
+                self.log("shot_retry", state=label, error=str(exc))
+                self.sleep(min(1.0, max(0, end - self.clock())))
+                continue
+            if frame["crop"] is not None:
+                last = frame
+                crop = pathlib.Path(frame["crop"])
+                for state in states:
+                    if self.guards(state, crop):
+                        return state, frame
+            self.sleep(min(1.0, max(0, end - self.clock())))
+        return None, last
+
+    def _camp_reload(self) -> dict[str, Any]:
+        """Camp L, Y on the guarded question, the slot on the guarded picker, then the reload.
+
+        An unmeasured screen ends the run on its frame with a fix and Wish pair, and no
+        further key."""
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        discovery = self.summary["discovery"]
+        discovery["status"] = "awaiting image review"
+
+        def unmeasured(name: str, frame: dict[str, Any] | None, reason: str) -> dict[str, Any]:
+            if frame is None:
+                raise AcceptanceStop(f"{reason}; no exact crop was taken")
+            self._checkpoint(name, None, frame)
+            discovery["reason"] = reason
+            return self.summary
+
+        for step in maproute._ssb_camp_load().steps:
+            self._press(step.key)
+            state, frame = self._await_first((step.state,), limit=CAMP_LOAD_WAIT)
+            if state is None:
+                return unmeasured(f"ssb_camp_after_{step.key.lower()}", frame,
+                                  f"The screen after camp {step.key} is not measured")
+        self.summary["completed_sequence"].append("camp_load")
+        reload = maproute._ssb_camp_reload()
+        self._press(self.route.loaded_slot)
+        state, frame = self._await_first(("loaded_menu", "world"), limit=CAMP_SLOT_WAIT)
+        if state is None:
+            return unmeasured("ssb_camp_after_slot", frame,
+                              f"The screen after slot {self.route.loaded_slot} is not measured")
+        if state == "world":
+            final = reload.steps[-1]
+            self._checkpoint(final.checkpoint, final.expected, frame)
+            self.summary["completed_sequence"].append(reload.name)
+        else:
+            self.run_phase(reload)
+        self.summary["mapping"]["reload"] = row("awaiting image review")
+        discovery["reason"] = "The camp reload pair awaits image review"
+        return self.summary
 
     def _press_interstitial(self, screen: str, key: str) -> None:
         if self.encounters_on:
@@ -850,9 +925,10 @@ class Controller:
         self._game_section()
         last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
             phase.initial_state, self.route.amiga_title.title_limit))
-        # Only the opening-scene load waits for the story's treasure screen.
+        # Only the opening-scene load, first or after camp LOAD, waits for the story's
+        # treasure screen.
         pages = (self.route.amiga_title.interstitials
-                 if phase.name == "load" and self.route.title == "ssb"
+                 if phase.name in ("load", "camp_reload") and self.route.title == "ssb"
                  and any(step.state == "treasure_bar" for step in phase.steps) else ())
         for step in phase.steps:
             kind = step.kind
@@ -1656,7 +1732,8 @@ class Controller:
     def run_discovery(self) -> dict[str, Any]:
         """Walk to the east gate; `ssb-leave` observes the leave-town question,
         `ssb-leave-yes` answers it YES and checks the arrival in The Ruins, and
-        `ssb-camp-load` then encamps and observes the screen camp LOAD opens."""
+        `ssb-camp-load` then encamps, answers camp LOAD's question, picks the prepared
+        slot and checks the reloaded party, stopping on the first unmeasured screen."""
         self.summary["discovery"] = row()
         self.summary["challenge_key_count"] = None
         self.summary["challenge_key_count_verified"] = False
@@ -1690,17 +1767,11 @@ class Controller:
                     self.summary["discovery"]["status"] = "awaiting image review"
                     self.summary["discovery"]["reason"] = "The Ruins arrival pair awaits image review"
                     return self.summary
-                # E after a fresh `world` match; L only after `camp` matches, and the
-                # screen it opens is observed with no further key.
+                # E after a fresh `world` match; L only after `camp` matches, then each
+                # later key only on its guarded screen.
                 self.run_phase(camp)
                 self.game.snapshot("ssb_camp_load_terminal", self.args.holder)
-                self._press("L")
-                end = min(self.clock() + 5, self.route_end)
-                frame = self._capture_unknown_frames("ssb_camp_load_unknown", "campload", end)
-                self._checkpoint("ssb_camp_load_unknown", None, frame)
-                self.summary["discovery"]["status"] = "awaiting image review"
-                self.summary["discovery"]["reason"] = "The camp LOAD screen remains unidentified"
-                return self.summary
+                return self._camp_reload()
             self.game.snapshot("ssb_leave_terminal", self.args.holder)
             self._press("NP8")
             # The five seconds count from the key, as in the opening modes, not from before

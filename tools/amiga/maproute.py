@@ -305,9 +305,32 @@ def _ssb_transition() -> Phase:
 
 def _ssb_camp() -> Phase:
     # E after a fresh `world` match, and the camp bar is checked as its result: the first
-    # key of a reload through camp LOAD, whose later screens are not measured, so it is
-    # not part of the route's reload phase.
+    # key of a reload through camp LOAD, which is not yet part of the route's reload phase.
     return _phase("camp", "world", Step("key", "camp", key="E"))
+
+
+def _ssb_camp_load() -> Phase:
+    # Camp L asks GAME NOT SAVED. LOAD ANYWAY? (guard `load_anyway`); Y goes only on that
+    # question, and the screen after it must be the load picker the title route measured.
+    return _phase(
+        "camp_load", "camp",
+        Step("key", "load_anyway", key="L"),
+        Step("key", "load_picker", key="Y"),
+    )
+
+
+def _ssb_camp_reload() -> Phase:
+    # From the loaded party's menu, the title route's B and opening story back into New
+    # Verdigris at the prepared slot's square, compared with the Ruins arrival it left.
+    return _phase(
+        "camp_reload", "loaded_menu",
+        Step("key", "journal", key="B"),
+        Step("answer", "treasure_bar"),
+        Step("key", "treasure", key="E"),
+        Step("key", "world", key="N", checkpoint="ssb_camp_reloaded",
+             expected=Expected(engine={"area": 16, "x": 3, "y": 3, "facing": 2},
+                               compare_to="ssb_ruins_arrival", relation="area_changed")),
+    )
 
 
 def _phases(title: str, load: Phase) -> tuple[Phase, ...]:

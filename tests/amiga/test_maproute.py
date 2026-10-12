@@ -198,3 +198,37 @@ def test_silver_blades_camp_step_encamps_from_the_ruins_on_the_camp_guard(tmp_pa
     assert "camp" in guards
     assert "camp" not in [phase.name for phase in route.phases]
     assert not {phase.name: phase for phase in route.phases}["reload"].ready
+
+
+def test_silver_blades_camp_load_answers_only_the_guarded_question(tmp_path: Path):
+    route = maproute.route_for("ssb", _manifest("ssb", tmp_path))
+    camp_load = maproute._ssb_camp_load()
+    guards = json.loads(route.guard_path.read_text())["guards"]
+
+    assert camp_load.ready and camp_load.initial_state == "camp"
+    assert [(s.kind, s.key, s.state, s.checkpoint) for s in camp_load.steps] == [
+        ("key", "L", "load_anyway", None),
+        ("key", "Y", "load_picker", None)]
+    assert {"load_anyway", "load_picker"} <= guards.keys()
+    # The box covers the bar's question text, not only its YES/NO buttons, so the
+    # treasure screen's YES/NO bar cannot match it.
+    assert guards["load_anyway"]["box"] == [72, 404, 686, 426]
+    assert guards["load_anyway"]["sha256"] != guards["camp"]["sha256"]
+    assert "camp_load" not in [phase.name for phase in route.phases]
+
+
+def test_silver_blades_camp_reload_replays_the_title_load_tail(tmp_path: Path):
+    route = maproute.route_for("ssb", _manifest("ssb", tmp_path))
+    reload = maproute._ssb_camp_reload()
+    load = maproute._load("ssb", "D", opening_scene=True)
+
+    assert reload.ready and reload.initial_state == "loaded_menu"
+    assert [(s.kind, s.key, s.state) for s in reload.steps] == [
+        (s.kind, s.key, s.state) for s in load.steps[5:]]
+    final = reload.steps[-1]
+    assert final.checkpoint == "ssb_camp_reloaded"
+    assert dict(final.expected.engine) == {"area": 16, "x": 3, "y": 3, "facing": 2}
+    assert (final.expected.compare_to, final.expected.relation) == (
+        "ssb_ruins_arrival", "area_changed")
+    assert "camp_reload" not in [phase.name for phase in route.phases]
+    assert not {phase.name: phase for phase in route.phases}["reload"].ready

@@ -2943,18 +2943,24 @@ def test_camp_load_discovery_presses_load_only_on_the_guarded_camp(tmp_path, mon
     controller.args.discover = "ssb-camp-load"
     result = controller.run_discovery()
     assert result["failure"] is None
-    assert game.keys[-4:] == ["NP8", "Y", "E", "L"]
-    assert game.keys[game.keys.index("Y"):].count("L") == 1
+    assert game.keys[-9:] == ["NP8", "Y", "E", "L", "Y", "D", "B", "E", "N"]
     assert seen.index("camp") > seen.index("leave_town")
-    assert controller.mapping_commands == 6 + 2 + 4 + 17 + 5 + 1 + 1 + 2
-    assert result["completed_sequence"] == ["load", "stationary", "walk", "transition", "camp"]
+    assert seen.index("load_anyway") > seen.index("camp")
+    assert seen.index("load_picker", seen.index("load_anyway")) > seen.index("load_anyway")
+    assert controller.mapping_commands == winwishaccept.CAMP_LOAD_MAPPING_COMMANDS == (
+        6 + 2 + 4 + 17 + 5 + 1 + 1 + 2 + 5)
+    assert result["completed_sequence"] == [
+        "load", "stationary", "walk", "transition", "camp", "camp_load", "camp_reload"]
     assert ("checkpoint", "ssb_ruins_arrival") in calls
-    assert ("checkpoint", "ssb_camp_load_unknown") in calls
+    assert ("checkpoint", "ssb_camp_reloaded") in calls
+    taken = [call[1] for call in calls if call[0] == "checkpoint"]
+    assert not any(name.startswith("ssb_camp_after") for name in taken)
+    assert "ssb_camp_load_unknown" not in taken
     assert snapshots[-1] == "ssb_camp_load_terminal"
-    assert 1 <= len(result["discovery"]["evidence"]) <= 3
     assert result["mapping"]["transition"]["status"] == "awaiting image review"
-    assert result["mapping"]["reload"]["status"] == "unproven"
+    assert result["mapping"]["reload"]["status"] == "awaiting image review"
     assert result["discovery"]["status"] == "awaiting image review"
+    assert result["discovery"]["reason"] == "The camp reload pair awaits image review"
     assert ("down",) in calls
 
 
@@ -2965,7 +2971,7 @@ def test_camp_load_discovery_sends_no_load_when_camp_is_not_recognized(tmp_path,
     result = controller.run_discovery()
     assert "camp screen was not recognized" in result["failure"]
     assert game.keys[-3:] == ["NP8", "Y", "E"]
-    assert ("checkpoint", "ssb_camp_load_unknown") not in calls
+    assert ("checkpoint", "ssb_camp_reloaded") not in calls
     assert ("down",) in calls
 
 
@@ -3036,3 +3042,132 @@ def test_camp_load_encamps_on_a_world_frame_taken_after_the_arrival_pair(tmp_pat
     assert ("grab", "world") in order[arrival:encamp]
     load = order.index(("key", "L"), encamp)
     assert ("grab", "camp") in order[encamp:load]
+
+
+def _camp_load_controller(tmp_path, monkeypatch, *, after_camp):
+    """A camp-load run whose guards answer `after_camp(state)` once camp has matched."""
+    armed = []
+
+    def guards(state, path):
+        if armed:
+            return after_camp(state)
+        if state == "camp":
+            armed.append(True)
+        return True
+
+    controller, game, snapshots, calls = _leave_yes_controller(tmp_path, monkeypatch, guards=guards)
+    controller.args.discover = "ssb-camp-load"
+    return controller, game, calls
+
+
+def _checkpoints(calls):
+    return [call[1] for call in calls if call[0] == "checkpoint"]
+
+
+def test_camp_load_sends_no_yes_when_the_question_is_not_recognized(tmp_path, monkeypatch):
+    controller, game, calls = _camp_load_controller(
+        tmp_path, monkeypatch, after_camp=lambda state: state != "load_anyway")
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[-3:] == ["Y", "E", "L"]
+    assert _checkpoints(calls)[-1] == "ssb_camp_after_l"
+    assert result["discovery"]["status"] == "awaiting image review"
+    assert result["discovery"]["reason"] == "The screen after camp L is not measured"
+    assert result["mapping"]["reload"]["status"] == "unproven"
+    assert "camp_load" not in result["completed_sequence"]
+    assert ("down",) in calls
+
+
+def test_camp_load_sends_no_slot_when_the_picker_is_not_recognized(tmp_path, monkeypatch):
+    controller, game, calls = _camp_load_controller(
+        tmp_path, monkeypatch, after_camp=lambda state: state != "load_picker")
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[-2:] == ["L", "Y"]
+    assert _checkpoints(calls)[-1] == "ssb_camp_after_y"
+    assert result["discovery"]["reason"] == "The screen after camp Y is not measured"
+    assert result["mapping"]["reload"]["status"] == "unproven"
+
+
+def test_camp_load_stops_on_an_unmeasured_screen_after_the_slot(tmp_path, monkeypatch):
+    controller, game, calls = _camp_load_controller(
+        tmp_path, monkeypatch,
+        after_camp=lambda state: state not in ("loaded_menu", "world"))
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[-3:] == ["L", "Y", "D"]
+    assert _checkpoints(calls)[-1] == "ssb_camp_after_slot"
+    assert result["discovery"]["reason"] == "The screen after slot D is not measured"
+    assert result["completed_sequence"][-1] == "camp_load"
+    assert result["mapping"]["reload"]["status"] == "unproven"
+
+
+def test_camp_load_checks_a_slot_that_returns_straight_to_the_world(tmp_path, monkeypatch):
+    controller, game, calls = _camp_load_controller(
+        tmp_path, monkeypatch, after_camp=lambda state: state != "loaded_menu")
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[-3:] == ["L", "Y", "D"]
+    assert _checkpoints(calls)[-1] == "ssb_camp_reloaded"
+    assert result["completed_sequence"][-2:] == ["camp_load", "camp_reload"]
+    assert result["mapping"]["reload"]["status"] == "awaiting image review"
+
+
+def test_camp_load_without_an_exact_frame_stops_without_a_key(tmp_path, monkeypatch):
+    controller, game, calls = _camp_load_controller(
+        tmp_path, monkeypatch, after_camp=lambda state: state != "load_anyway")
+    original = controller._capture
+    monkeypatch.setattr(controller, "_capture", lambda state, check=True: (
+        {**original(state, check=check), "crop": None} if state == "load_anyway"
+        else original(state, check=check)))
+    result = controller.run_discovery()
+    assert "no exact crop was taken" in result["failure"]
+    assert game.keys[-1] == "L"
+    assert "ssb_camp_after_l" not in _checkpoints(calls)
+
+
+def test_camp_load_key_cap_is_its_own(tmp_path, monkeypatch):
+    controller, *_ = _discovery_controller(tmp_path, monkeypatch)
+    controller.args.discover = "ssb-camp-load"
+    controller.mapping_commands = winwishaccept.CAMP_LOAD_MAPPING_COMMANDS - 1
+    controller._count()
+    with pytest.raises(winwishaccept.AcceptanceStop, match="43-command mapping cap"):
+        controller._count()
+    controller.args.discover = "ssb-leave-yes"
+    controller.mapping_commands = winwishaccept.MAX_MAPPING_COMMANDS
+    with pytest.raises(winwishaccept.AcceptanceStop, match="40-command mapping cap"):
+        controller._count()
+
+
+def test_camp_load_preflight_requires_the_load_anyway_guard(tmp_path, monkeypatch):
+    from tools.amiga import maproute, route_silver_blades
+
+    args = _discovery_args(tmp_path)
+    args.discover = "ssb-camp-load"
+    args.deadline = 2100
+    args.manifest.write_text('{"title":"ssb","substitute":{"letter":"A"},'
+                             '"state_a":{"area":16,"x":3,"y":3,"facing":2}}')
+    for key in ("df0", "df1"):
+        (tmp_path / f"{key}.adf").write_bytes(key.encode())
+    route = _discovery_route(tmp_path)
+    route.phases = (*route.phases[:3], maproute._ssb_transition(), *route.phases[4:])
+    pinned = {"df0": winwishaccept.DISCOVERY_DF0_SHA256,
+              "df1": route_silver_blades.DISK_B_SHA256}
+    route.media = tuple(SimpleNamespace(key=m.key, path=m.path, sha256=pinned[m.key])
+                        for m in route.media)
+    original_digest = winwishaccept.digest
+    monkeypatch.setattr(winwishaccept, "digest", lambda path: pinned[path.stem]
+                        if path.suffix == ".adf" else original_digest(path))
+    route.guard_path.write_text("{}")
+    monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
+        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
+        rules={name: True for phase in route.phases[:4]
+               for name in (phase.initial_state, *(s.state for s in phase.steps))}
+        | {"continue": True, "title": True, "camp": True}))
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match=r"route has no measured guards for load_anyway\Z"):
+        winwishaccept.preflight(args, guest=SimpleNamespace(gh=lambda *a: pytest.fail("guest")),
+                                route_for=lambda *unused: route, driver_sha=SHA)

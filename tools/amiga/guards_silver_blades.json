@@ -1643,6 +1643,12 @@
       "example": "amiga-grab-crops/wish1-ssb-leave4__leave-0.png",
       "sha256": "d6577e728c31ab55994fd895d70b26de54d9ac7d22e76ed165c863bfccac3986"
     },
+    "load_anyway": {
+      "also": [],
+      "box": [72, 404, 686, 426],
+      "example": "amiga-grab-crops/wish1-ssb-campload4__campload-0.png",
+      "sha256": "417b8e92fdcb5e3439016238b3237f0f9a0a9acb6dcec357121a26dca50c353e"
+    },
     "load_picker": {
       "also": [],
       "box": [
@@ -2739,6 +2745,12 @@
     }
   },
   "labels": {
+    "amiga-grab-crops/wish1-ssb-campload4__campload-0.png": [
+      "load_anyway"
+    ],
+    "amiga-grab-crops/wish1-ssb-campload4__game-098.png": [
+      "camp"
+    ],
     "amiga-grab-crops/wish1-ssb-leave4__game-111.png": [
       "world"
     ],
