@@ -301,3 +301,30 @@ def test_a_clash_found_while_preparing_a_save_as_is_shown_like_the_open_one(
     assert [title for title, _body in shown] == ["Cannot save"]
     assert shown[0][1] == (text or ew.SAVE_AS_FAILED)
     assert not (tmp_path.parent / "out").exists()
+
+
+def test_a_clash_found_while_reading_the_open_save_for_save_as_is_shown(
+        tmp_path, monkeypatch):
+    from support.editorwindow import make_root
+
+    import editor.window as ew
+    from editor import convert
+    from goldbox import dos_savegame
+
+    _ = QApplication.instance() or QApplication([])
+    _slot(tmp_path)
+    shown = _boxes(monkeypatch)
+    window = ew.EditorBinding(make_root())
+    window.load(str(tmp_path))
+    assert window.party is not None and shown == []
+    before = _snapshot(tmp_path)
+
+    def clash(*_args, **_kwargs):
+        raise dos_savegame.DosNameClashError(
+            tmp_path, ["CHRDATD1.ITM", "chrdatd1.itm"])
+    monkeypatch.setattr(convert.Source, "detect", clash)
+    window.begin_save_as("dos")
+
+    assert shown == [("Cannot save",
+                      _clash_text("CHRDATD1.ITM", "chrdatd1.itm"))]
+    assert _snapshot(tmp_path) == before

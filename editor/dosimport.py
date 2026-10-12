@@ -15,7 +15,7 @@ pattern this module is kept narrow to prevent.
 
 `goldbox.dos_codec.NOT_SET_OUT` and `C64SaveReport.messages` stay in
 `goldbox/dos_codec.py`: `dos_codec.convert_save` converts a never-set-out Pool
-of Radiance party to the start of the story and says so in `report.messages`,
+of Radiance party to the start of the story and records that in `report.messages`,
 while a Curse or Silver Blades one is written as the C64's own pre-adventure
 save and adds no message. `tests/convert/test_dosconvert.py` and
 `tests/convert/test_curseconvert.py` pin that against real specimens, and
