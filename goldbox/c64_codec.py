@@ -737,6 +737,15 @@ NO_PLAYER_DRAW = 0x00
 NO_COMPANION_PICTURE = {"curse-of-the-azure-bonds": CURSE_NO_PICTURE,
                         "secret-of-the-silver-blades": 0x00}
 
+#: What a conversion writes at `0x0E7` beside a Curse or Silver Blades byte
+#: at `0x0E6` that equals one of the title's fills, so that a player's own
+#: draw of 0, or a companion's own picture equal to the fill, reads back as
+#: his and not as absent.  Every Curse `MON` file holds `FF FF` at
+#: `0x0E6`-`0x0E7`, every Silver Blades one `00 00`, and each title's GEN
+#: leaves `00 00`; no C64 code of either title reads or writes `0x0E7`
+#: (docs/170-c64-identity-pair.md), so neither game changes it.
+CONVERTED_FILL_MARK = 0x01
+
 def roster_status(rec, roster=None):
     """The roster status byte `read` reads: the roster block's when the save
     has one, else the one stored in the character record, else `None`.
@@ -3078,10 +3087,17 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # instead of inventing one.
     identity = use("unnamed_0ab")
     if identity is not None:
-        rec.set_raw("identity_pair", bytes([int(identity.value) & 0xFF, 0]))
+        value = int(identity.value) & 0xFF
+        # A value equal to a fill the title itself leaves at 0x0E6 gets
+        # `CONVERTED_FILL_MARK` beside it, so `read` returns it.
+        mark = (CONVERTED_FILL_MARK if deltas.key in NO_COMPANION_PICTURE
+                and value in (NO_PLAYER_DRAW, NO_COMPANION_PICTURE[deltas.key])
+                else 0)
+        rec.set_raw("identity_pair", bytes([value, mark]))
         emit(identity, "identity_pair", 0x0E6, 2,
              "; 0x0E7 is the pair's second byte, which nothing on the C64 "
-             "reads back")
+             "reads back" + (f", marked {mark:#04x} because the first equals "
+                             "the title's own fill" if mark else ""))
 
     # -- the closing sweep: unwritten fields, then the reader's own drops ----
     w.finish()
@@ -4394,15 +4410,17 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 grade("identity_pair"))
     elif (deltas.key in NO_COMPANION_PICTURE
           and rec.is_stored("identity_pair")
-          and rec.get_raw("identity_pair")[0] != (
+          and (rec.get_raw("identity_pair")[0] != (
               NO_COMPANION_PICTURE[deltas.key] if is_npc
-              else NO_PLAYER_DRAW)):
+              else NO_PLAYER_DRAW)
+               or rec.get_raw("identity_pair")[1] == CONVERTED_FILL_MARK)):
         # The byte a conversion wrote here.  For a companion it is his DOS
         # and Amiga combat picture.  For a player it is his own draw, or the
         # digest DOS gave him when his source had none, so that a conversion
         # back returns it; DOS and the Amiga read it as a picture while the
         # engine has him taken over.  Neither title's C64 code reads 0x0E6,
-        # and the value the title itself leaves there is read as absent.
+        # and the value the title itself leaves there is read as absent
+        # unless `CONVERTED_FILL_MARK` sits beside it at 0x0E7.
         what = ("a companion's combat picture" if is_npc
                 else "the player's own draw")
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],

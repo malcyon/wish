@@ -276,14 +276,51 @@ def test_a_dos_player_comes_back_from_the_c64_with_his_own_draw():
     assert _via_c64_to_dos(_dos_curse(0x00, 0x42)) == 0x42
 
 
-def test_a_dos_player_drawn_zero_still_gets_the_digest():
-    """0 is what a player made on the C64 holds, so it cannot be his draw."""
-    record = _dos_curse(0x00, 0x00)
+SILVER_BLADES = dos_port.SECRET_OF_THE_SILVER_BLADES
+
+
+def _round_trip(record: bytes, deltas) -> tuple[bytes, bytes]:
+    """DOS to the C64 and back to DOS: the C64 pair and the DOS record."""
     char = dos_codec.to_neutral(dos_codec.DosCharacter(record))
     rec, _ = c64_codec.write(char)
     back, _, _, _ = dos_codec.write(c64_codec.read(rec, game=char.game),
-                                    deltas=CURSE)
-    assert back[PICTURE.offset] == dos_codec.identity_byte(back, CURSE)
+                                    deltas=deltas)
+    return rec.get_raw("identity_pair"), back
+
+
+@pytest.mark.parametrize("deltas, control, own, pair", [
+    (CURSE, 0x00, 0x00, b"\x00\x01"),
+    (CURSE, 0x00, 0xFF, b"\xff\x01"),
+    (CURSE, 0xB2, 0xFF, b"\xff\x01"),
+    (CURSE, 0xB2, 0x00, b"\x00\x01"),
+    (SILVER_BLADES, 0x00, 0x00, b"\x00\x01"),
+    (SILVER_BLADES, 0xB2, 0x00, b"\x00\x01"),
+    (SILVER_BLADES, 0xB2, 0x4D, b"\x4d\x00"),
+], ids=["curse-player-0", "curse-player-ff", "curse-companion-ff",
+        "curse-companion-0", "silver-blades-player-0",
+        "silver-blades-companion-0", "silver-blades-companion-vala"])
+def test_a_byte_equal_to_the_fill_comes_back_from_the_c64(
+        deltas, control, own, pair):
+    """A byte equal to a fill the title leaves at 0x0E6 is marked at 0x0E7,
+    so the conversion back returns it rather than a digest."""
+    record = _dos_record(deltas, control, own)
+    written, back = _round_trip(record, deltas)
+    assert written == pair
+    assert back[dos_port.FIELDS_BY_NAME_FOR[deltas.key]
+                ["unnamed_0ab"].offset] == own
+
+
+def test_a_player_made_on_the_c64_still_gets_the_digest():
+    """`00 00`, what each later title's GEN leaves, is still absent."""
+    for game in ("curse-of-the-azure-bonds", "secret-of-the-silver-blades"):
+        assert c64_codec.read(_c64(0x00, 0x00),
+                              game=game).get("unnamed_0ab") is None
+
+
+def test_an_amiga_player_drawn_zero_comes_back_from_the_c64():
+    """The Amiga is a port whose own draw a conversion back keeps."""
+    player = next(m for m in _evoker_party() if m.raw[0xF7] < 0x80)
+    assert _via_c64(_with_picture(player, 0x00)) == 0x00
 
 
 def test_an_amiga_player_comes_back_from_the_c64_with_his_own_draw():
