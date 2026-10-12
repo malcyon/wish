@@ -1537,3 +1537,17 @@ def test_a_home_that_cannot_be_written_does_not_fail_the_read(
     _dump(tmp_path)
     assert "was not kept: disk full" in capsys.readouterr().err
     assert not list(tmp_path.rglob("located-*"))
+
+
+def test_the_fix_command_prints_a_grid_fix_that_has_no_facing(monkeypatch,
+                                                              capsys):
+    """Pool of Radiance's world-map grid reports a square and no facing."""
+    class Grid:
+        data_base = 0
+
+        def fix(self):
+            return Fix(3, 4, None, "memory")
+
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *a, **k: Grid())
+    assert amigatarget.main(["--holder", "wish37", "fix"]) == 0
+    assert "Party 3,4 facing ?" in capsys.readouterr().out

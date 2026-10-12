@@ -749,10 +749,14 @@ def main(argv: list[str] | None = None) -> int:
         fix = target.fix()
         reading["fix"] = None if fix is None else {
             "x": fix.x, "y": fix.y, "facing": fix.facing}
-        print("No fix: the party is not standing on a square the engine "
-              "recognises (a menu, camp, or a load in flight)" if fix is None
-              else f"Party {fix.x},{fix.y} facing {fix.facing} "
-                   f"({'NESW'[fix.facing]})")
+        if fix is None:
+            print("No fix: the party is not standing on a square the engine "
+                  "recognises (a menu, camp, or a load in flight)")
+        elif fix.facing is None:
+            print(f"Party {fix.x},{fix.y} facing ?")
+        else:
+            print(f"Party {fix.x},{fix.y} facing {fix.facing} "
+                  f"({'NESW'[fix.facing]})")
     elif args.command == "geo":
         addr = target.resident_geo_address()
         reading["geo_address"] = addr
