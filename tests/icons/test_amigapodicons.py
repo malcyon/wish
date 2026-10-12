@@ -383,5 +383,29 @@ def test_the_composed_figure_is_the_game_s_own_pixel_for_pixel(name):
     found = tool.compare_capture(record, crop, art)
     ready, action = found["ready"][0], found["action"][0]
     assert len(ready) == len(action) == 1
-    (rx, ry), (ax, ay) = ready[0], action[0]
-    assert (ax - rx, ay - ry) == (72, 0)
+    assert tool.placed_apart(ready, action)
+
+
+def test_the_places_are_one_row_72_pixels_apart():
+    from tools.icons import amigapodicons as tool
+    assert pod.PLACES == ((32, 56), (104, 56))
+    assert tool.placed_apart([(61, 72)], [(5, 5), (133, 72)])
+    assert not tool.placed_apart([(61, 72)], [(133, 73), (61, 72)])
+    assert not tool.placed_apart([], [(133, 72)])
+
+
+@pytest.mark.parametrize("contents", [None, b"not a disk image",
+                                      bytes(901120)],
+                         ids=["missing", "short", "blank"])
+def test_a_capture_against_an_unreadable_disk_3_says_so_and_fails(
+        tmp_path, contents):
+    """`--disk3` naming a file that is not there or not a readable disk is
+    one line and exit 1, not a traceback."""
+    from tools.icons import amigapodicons as tool
+    disk3 = tmp_path / "disk3.adf"
+    if contents is not None:
+        disk3.write_bytes(contents)
+    printed = []
+    assert tool.report_capture(printed.append, "goofey",
+                               tmp_path / "crop.png", disk3, "B") == 1
+    assert len(printed) == 1 and printed[0].startswith(f"{disk3}: ")

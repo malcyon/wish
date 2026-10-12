@@ -269,8 +269,12 @@ def compare_capture(record: Record, path, drawn: later.LaterArt
 
 def report_capture(out, name: str, path, disk3=None, slot=None) -> int:
     if disk3 is not None:
-        found = disk_records(AmigaDisk(pathlib.Path(disk3).read_bytes()),
-                             str(disk3), slot)
+        try:
+            found = disk_records(AmigaDisk(pathlib.Path(disk3).read_bytes()),
+                                 str(disk3), slot)
+        except (OSError, AmigaDiskError, ValueError) as exc:
+            out(f"{disk3}: {exc}")
+            return 1
         record = find_record(name, found)
     else:
         record = find_record(name)
@@ -295,7 +299,20 @@ def report_capture(out, name: str, path, disk3=None, slot=None) -> int:
             out(f"{record.name} {pose}: no exact match; the closest differs "
                 f"in {fewest} of {later.CELL * later.CELL} pixels")
             problems += 1
+    if not problems and not placed_apart(found_places["ready"][0],
+                                         found_places["action"][0]):
+        out(f"{record.name}: no action match lies where pod.PLACES puts it "
+            f"from a ready match")
+        problems += 1
     return problems
+
+
+def placed_apart(ready: list[tuple[int, int]],
+                 action: list[tuple[int, int]]) -> bool:
+    """Whether some action match sits where :data:`pod.PLACES` puts the
+    action pose relative to some ready match."""
+    (rx, ry), (ax, ay) = pod.PLACES
+    return any((x + ax - rx, y + ay - ry) in action for x, y in ready)
 
 
 def main(argv: list[str] | None = None) -> int:

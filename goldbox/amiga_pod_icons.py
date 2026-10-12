@@ -47,11 +47,13 @@ FRAME_IDS = (15, 16)
 #: (`0x1C610`, `0x1C6C4`).
 PALETTE_BLOCK = 0
 
-#: The top-left pixel of each pose on the 320x200 screen: the ICON screen
-#: draws one row, at cells (1, 2) and (4, 2) (`0x0C81C` called with 1 and
-#: 2), and a cell's word is `0x1F44 + 12 * cell` (`0x36F5A`), a pixel
-#: `2 * (word - 0x1F40)` (`0x4A38A`).
-PLACES = {("current", 0): (32, 56), ("current", 1): (104, 56)}
+#: The top-left pixel of the ready and the action pose on the 320x200
+#: screen: the ICON screen draws one row, at cells (1, 2) and (4, 2)
+#: (`0x0C81C` called with 1 and 2), and a cell's word is
+#: `0x1F44 + 12 * cell` (`0x36F5A`), a pixel `2 * (word - 0x1F40)`
+#: (`0x4A38A`).  `tools/icons/amigapodicons.py --capture` checks a capture
+#: against the distance between them.
+PLACES = ((32, 56), (104, 56))
 
 
 def frames(comspr: dict[int, later.Tile]) -> tuple[later.Tile, later.Tile]:
