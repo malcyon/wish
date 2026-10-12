@@ -2799,3 +2799,40 @@ def test_terminal_timeout_after_a_good_frame_keeps_that_frame(tmp_path, monkeypa
     assert result["checkpoints"]["ssb_leave_terminal"]["game"] is first
     assert first["crop"] is not None
     assert game.keys[-1] == "NP8"
+
+
+class _StillClock:
+    """A clock that moves only when something sleeps, so a loop without a sleep shows."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def test_await_waits_between_shots_that_time_out_at_once(tmp_path):
+    clock, game = _StillClock(), FakeGame()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=SimpleNamespace(), game=game,
+        guards=lambda state, path: True, route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}, "build_sha": SHA}, clock=clock, sleep=clock.sleep)
+    attempts = 0
+
+    def grab(state, raw, crop, timeout):
+        nonlocal attempts
+        attempts += 1
+        assert attempts <= 50, "the wait spun without sleeping"
+        raise _timed_out("winvm ssh exceeded its 20.0s limit")
+
+    game.grab = grab
+    with pytest.raises(winuaesession.ShotTimedOut,
+                       match="world screen was not recognized before its deadline") as caught:
+        controller._await("world", limit=10)
+    assert attempts <= 11
+    assert len(controller.summary["shot_timeouts"]) == attempts
+    assert isinstance(caught.value.__cause__, winuaesession.ShotTimedOut)
+    assert "20.0s limit" in str(caught.value)

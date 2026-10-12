@@ -547,6 +547,8 @@ class Controller:
                 self.summary.setdefault("shot_timeouts", []).append(
                     {"state": state, "error": str(exc)})
                 self.log("shot_retry", state=state, error=str(exc))
+                # A grab that fails at once must not spin: at most one a second.
+                self.sleep(min(1.0, max(0, end - self.clock())))
                 continue
             timed_out = None
             if last["crop"] is not None:
@@ -564,7 +566,8 @@ class Controller:
                         break
             self.sleep(min(1.0, max(0, end - self.clock())))
         if timed_out is not None:
-            raise timed_out
+            raise ShotTimedOut(f"{state} screen was not recognized before its deadline; "
+                               f"last {last}; the last shot timed out: {timed_out}") from timed_out
         raise AcceptanceStop(f"{state} screen was not recognized before its deadline; last {last}")
 
     def _press_interstitial(self, screen: str, key: str) -> None:
@@ -1487,7 +1490,7 @@ class Controller:
                 self.summary["discovery"].setdefault("shot_timeouts", []).append(timeout)
                 self.log("terminal_shot_timeout", **timeout)
                 if number == 2 or end - self.clock() <= 0:
-                    # Frames taken before it stand; with none, stop as before.
+                    # Frames already captured are kept; with none, stop as before.
                     if not any(frame["crop"] is not None for frame in frames[start:]):
                         raise
                     spent_by_timeout = True
