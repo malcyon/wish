@@ -461,6 +461,15 @@ ROWS = (
           area="4288727a"),
     _gate("curse-of-the-azure-bonds", "*0x5006+0x8739", "9afc9873", PROBABLE,
           "ECL02 roll at $8739: IF> EXIT", area="a18965ac"),
+    _gate("curse-of-the-azure-bonds", "*0x5006+0x84BE", "dc6e4e48", PROBABLE,
+          "Yulash, area $10, step roll at $84BE on every event-0 square "
+          "while [$4C04] is not 2: IF> 10 (30 while [$7ECA] is 1) GOTO $818C "
+          "(EXIT), else $84E5 picks the fight", area="500fed63"),
+    _gate("curse-of-the-azure-bonds", "*0x5006+0x8619", "dc6e4e48", PROBABLE,
+          "Yulash, area $10, roll at $8619 on a checkpoint square (3,6, "
+          "13,15 or 11,1) whose guards were met ([$4C32]-[$4C34] = 255): "
+          "IF> 75 GOTO the guard fight at $8852, so the constant is 0",
+          changes=_TO_ZERO, area="500fed63"),
     _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "c80bfd1e", PROBABLE,
           "Tilverton, area $01: its step roll at $9952 only picks a crowd "
           "rumour or street event, because its fight arm needs [$4C05] = 1, "
@@ -548,6 +557,43 @@ EXEMPT = (
     ("curse-of-the-azure-bonds", "a18965ac", 0x8748,
      "reached only on the success side of the $8739 roll; picks which "
      "encounter it is"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x84E5,
+     "reached past the $84BE roll's fight side or from the camp entry, whose "
+     "chance is the rest row: picks which encounter it is"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x86AD,
+     "on an unmet checkpoint square, whose guards always confront a party "
+     "that did not choose to sneak: whether the sneak the player chose gets "
+     "past them"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x88D3,
+     "inside the guard fight at $8852, after it is decided: its size"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x8EBB,
+     "after event 11's once-only encounter or the $84E5 pick decides a "
+     "fight: its size"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x8F74,
+     "after a once-only square (events 13 to 16) or the $84E5 pick decides "
+     "a fight: its size"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x8F83,
+     "the same fight as $8F74: the size of its second group"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x9205,
+     "inside the $90C2 encounter, after the player chose to fight: its size"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x92AD,
+     "inside the $90C2 encounter, after the player's fourth menu answer: "
+     "whether it turns to its fight at once"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x9386,
+     "picks a party member after a menu answer; no fight"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x939B,
+     "after a menu answer and the $9386 pick: whether opcode $28 runs, with a "
+     "message naming that member; no fight on either side"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x9492,
+     "picks the rumour a menu answer asked for; no fight"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x98FC,
+     "after event 38's once-only encounter or the $84E5 pick decides a "
+     "fight: its size"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x9AA7,
+     "after the $84E5 pick's encounter decides a fight: its size"),
+    ("curse-of-the-azure-bonds", "500fed63", 0x9C18,
+     "whether a party member escapes a once-only trap square's damage; no "
+     "fight"),
     ("pool-of-radiance", "7fa45343", 0xA328,
      "square type 20: a pickpocket's ROB; no fight on its own"),
     ("pool-of-radiance", "7fa45343", 0xA340,
