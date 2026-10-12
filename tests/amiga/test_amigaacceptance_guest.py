@@ -128,6 +128,14 @@ def test_emulator_fsuae_builds_the_fsuae_lane_and_takes_no_audio_proof(tmp_path,
     assert recorded["guest"].game == "amiga-pool"
 
 
+def test_a_guarded_fsuae_run_keys_on_recognised_screens_and_has_no_first_key_age(tmp_path, recorded, monkeypatch):
+    monkeypatch.setattr(acceptance, "PixelGuards", lambda path: "guards")
+    guards = tmp_path / "guards.json"
+    guards.write_text("{}")
+    assert _measure(tmp_path, "--emulator", "fsuae", "--guards", str(guards)) == 0
+    assert recorded["guard"] == "guards" and recorded["guest"].first_key_after is None
+
+
 def test_winuae_stays_the_default_and_still_needs_its_audio_proof(tmp_path, recorded, monkeypatch, capsys):
     monkeypatch.setattr(acceptance, "WinGuest", lambda: "the windows lane")
     assert _measure(tmp_path, "--audio-proof", str(tmp_path / "mute.json")) == 0

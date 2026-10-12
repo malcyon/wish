@@ -145,10 +145,45 @@ def stop_if_helper_holds(args) -> None:
             "stopping the emulator")
 
 
+#: Seconds between the `vCont;c` and the first read, and between reads that
+#: went unanswered, so that each request reaches the server in a receive of
+#: its own.
+CONTINUE_SETTLE = 0.3
+#: Seconds `continue_machine` keeps asking for the first reply.
+FIRST_REPLY_WAIT = 10.0
+
+
+def continue_machine(gdb, wait: float = FIRST_REPLY_WAIT) -> bytes:
+    """Send `vCont;c`, then read `VHPOSR` until the running machine answers; give back its two bytes.
+
+    The server parses one packet out of each receive and drops the rest, and
+    `vCont;c` has no reply to wait for, so a read sent straight after it can
+    reach the server in the same receive and is never answered. The pause
+    before each read lets the continue arrive alone, and a read that still
+    gets no answer is sent again until `wait` runs out or the connection is lost.
+    """
+    gdb.resume()
+    end = time.monotonic() + wait
+    while True:
+        time.sleep(CONTINUE_SETTLE)
+        try:
+            return gdb.read_memory(VHPOSR, 2)
+        except amiga.FsuaeError:
+            if gdb.lost or time.monotonic() >= end:
+                raise
+
+
 def connect(args, resume: bool = True) -> amiga.FsuaeGdb:
     stop_if_helper_holds(args)
-    return amiga.FsuaeGdb(host=args.host, port=args.port,
-                          timeout=args.timeout, resume=resume)
+    gdb = amiga.FsuaeGdb(host=args.host, port=args.port,
+                         timeout=args.timeout, resume=False)
+    if resume:
+        try:
+            continue_machine(gdb)
+        except BaseException:
+            gdb.close()
+            raise
+    return gdb
 
 
 def detect_layout(gdb) -> amiga.AmigaMachine:
@@ -669,6 +704,19 @@ def expand_sequence(text: str, index: int) -> list[str]:
 #: right one depends on which disks are already in the drives, so check the
 #: first swap by screenshot and pass `--swap-sequence` when the count differs.
 DEFAULT_SWAP_SEQUENCE = "F12 Down*3 Return Down*{index} Return F12"
+
+
+def media_rows(index: int, inserted: int) -> int:
+    """How many Down presses take the drive's F12 submenu to swap list entry `index` while entry `inserted` is in the drive.
+
+    The submenu opens on the row naming the inserted disk, and the rows below it
+    that take the cursor are Eject and then the swap list, less the inserted
+    disk's own entry, which `fsemu_mainmenu_update_drive` disables. So
+    `DEFAULT_SWAP_SEQUENCE`'s `{index}` is this count, not the entry number.
+    """
+    if index == inserted:
+        raise ValueError(f"swap list entry {index} is already in the drive")
+    return index + 2 - (1 if inserted < index else 0)
 
 
 def insert_floppy(sequence: str | None, index: int, press_key, wait_still) -> list[str]:

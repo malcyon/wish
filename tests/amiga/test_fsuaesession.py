@@ -63,11 +63,25 @@ class Proc:
 
 
 class Gdb:
+    #: How many reads the next transport leaves unanswered, as the server does with a read that
+    #: reaches it in the same receive as the `vCont;c`; None leaves every read unanswered.
+    unanswered: int | None = 0
+
     def __init__(self, **kw):
-        self.kw, self.reads, self.closed = kw, [], False
+        self.kw, self.reads, self.closed, self.resumed, self.lost = kw, [], False, 0, False
+        self._unanswered = Gdb.unanswered
+
+    def resume(self):
+        self.resumed += 1
 
     def read_memory(self, address, length):
+        from automap import amiga
+
         self.reads.append((address, length))
+        if self._unanswered is None or self._unanswered > 0:
+            if self._unanswered is not None:
+                self._unanswered -= 1
+            raise amiga.FsuaeError("the emulator sent no reply in 1s")
         return b"\0" * length
 
     def close(self):
@@ -93,6 +107,7 @@ def lane(tmp_path, monkeypatch, clock):
     kickstart = tmp_path / "kick.rom"
     kickstart.write_text("")
     Proc.started = []
+    monkeypatch.setattr(Gdb, "unanswered", 0)
     state = types.SimpleNamespace(slot=slot, keys=[], claimed=[], gdbs=[], shots=[], environ=dict(SILENT),
                                   window=True, binary=binary)
 
@@ -176,8 +191,25 @@ def test_start_mounts_drives_in_order_with_a_third_drive_and_the_spare_in_the_sw
     assert emulator.kw["start_new_session"] is False and Proc.started[0].kw["start_new_session"] is False
     assert emulator.kw["env"]["FSEMU_SCREENSHOTS_DIR"] == str(guest.work / "shots")
     assert emulator.kw["env"]["DISPLAY"] == lane.slot.display
-    assert lane.gdbs[0].kw == {"port": lane.slot.port, "resume": True}
+    assert lane.gdbs[0].kw == {"port": lane.slot.port, "resume": False}
+    assert lane.gdbs[0].resumed == 1
     assert lane.gdbs[0].reads == [(fsuaegdb.VHPOSR, 2)]
+
+
+def test_a_first_read_lost_with_the_continue_is_sent_again_and_the_start_goes_on(lane, tmp_path, monkeypatch):
+    monkeypatch.setattr(Gdb, "unanswered", 1)
+    guest = _started(tmp_path, lane)
+    assert guest.emulator is not None and guest.gdb is lane.gdbs[0]
+    assert lane.gdbs[0].resumed == 1
+    assert lane.gdbs[0].reads == [(fsuaegdb.VHPOSR, 2)] * 2
+
+
+def test_a_machine_that_never_answers_after_the_continue_is_taken_down(lane, tmp_path, monkeypatch, clock):
+    monkeypatch.setattr(Gdb, "unanswered", None)
+    with pytest.raises(RouteError, match="did not answer after it was continued"):
+        _started(tmp_path, lane)
+    assert lane.gdbs[0].closed and Proc.started[1].done
+    assert len(lane.gdbs[0].reads) > 1
 
 
 def test_an_option_with_no_fs_uae_counterpart_is_a_route_error(lane, tmp_path):
@@ -215,9 +247,11 @@ def test_the_first_key_waits_for_the_titles_emulator_age_once(lane, tmp_path, cl
     clock.now += 10.0
     clock.sleeps.clear()
     assert guest.press("wish1-test", "ret", 60) == "ok RET"
-    assert clock.sleeps == [38.0] and lane.keys == ["Return"]
+    # The age counts from the launch, so the pause before the first debugger read is part of it.
+    waited = [pytest.approx(38.0 - fsuaegdb.CONTINUE_SETTLE)]
+    assert clock.sleeps == waited and lane.keys == ["Return"]
     guest.press("wish1-test", "NP8", 60)
-    assert clock.sleeps == [38.0] and lane.keys == ["Return", "KP_Up"]
+    assert clock.sleeps == waited and lane.keys == ["Return", "KP_Up"]
 
 
 def test_a_first_key_wait_longer_than_the_call_allows_sends_nothing(lane, tmp_path, clock):
@@ -278,9 +312,29 @@ def test_insert_walks_the_f12_menu_to_the_spare_and_proves_the_change_from_the_l
 
     guest._send = send
     receipt = guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
-    assert lane.keys == ["F12", "Down", "Down", "Down", "Return", "Down", "Down", "Return", "F12"]
+    # Entry 0 is in DF0, so its row is disabled: Eject, entry 1, entry 2.
+    assert lane.keys == ["F12", "Down", "Down", "Down", "Return", "Down", "Down", "Down", "Return", "F12"]
     assert receipt["index"] == 2 and receipt["staged"] == str(guest.staged[two])
     assert receipt["log"] == [f"gui_disk_image_change drive 0 name {guest.staged[two]}"]
+    one = guest.remote_path("1", "wish1-test", "one")
+    with pytest.raises(RouteError, match="already in DF0"):
+        guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
+    lane.keys.clear()
+
+    def send_back(key):
+        real_send(key)
+        if key == "F12" and lane.keys.count("F12") == 2:
+            _log_line(guest, f"gui_disk_image_change drive 0 name {guest.staged[one]}")
+
+    guest._send = send_back
+    guest.insert("wish1-test", 0, one, 30, hashlib.sha256(b"one").hexdigest())
+    # Entry 2 is in DF0 now and entry 0 sits above it: Eject, entry 0.
+    assert lane.keys == ["F12", "Down", "Down", "Down", "Return", "Down", "Down", "Return", "F12"]
+
+
+@pytest.mark.parametrize(("index", "inserted", "rows"), [(2, 0, 3), (1, 0, 2), (0, 2, 2), (2, 1, 3), (1, 2, 3)])
+def test_media_rows_skip_the_inserted_disks_own_entry(index, inserted, rows):
+    assert fsuaegdb.media_rows(index, inserted) == rows
 
 
 def test_insert_with_no_log_line_for_the_image_raises_with_the_receipt(lane, tmp_path, clock):
@@ -343,6 +397,78 @@ def test_grab_is_false_while_there_is_no_window_or_no_frame_yet_and_an_error_aft
     monkeypatch.setattr(fsuaegdb, "press", lambda display, key, settle: None)
     with pytest.raises(RouteError, match="wrote no screenshot"):
         guest.grab("title", tmp_path / "r.png", tmp_path / "c.png", 3)
+
+
+def test_grab_after_the_emulator_has_gone_is_an_error_at_once(lane, tmp_path, clock):
+    guest = _started(tmp_path, lane)
+    guest._take_down()
+    with pytest.raises(RouteError, match="no emulator is running to grab failure"):
+        guest.capture("failure", tmp_path / "r.png", tmp_path / "c.png", 90)
+    assert lane.shots == [] and clock.sleeps.count(fsuaesession.SETTLE_INTERVAL) == 0
+
+
+def test_shot_copies_the_emulators_own_screenshot_uncut(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    monkeypatch.setattr(fsuaegdb, "press", lambda display, key, settle: _doubled_frame(
+        guest.work / "shots" / "FS-UAE_Full_261004-0000_01.png"))
+    guest.shot(tmp_path / "leg.png")
+    assert (tmp_path / "leg.png").read_bytes() == (
+        guest.work / "shots" / "FS-UAE_Full_261004-0000_01.png").read_bytes()
+    monkeypatch.setattr(fsuaegdb, "press", lambda display, key, settle: None)
+    with pytest.raises(RouteError, match="wrote no screenshot within 3s"):
+        guest.shot(tmp_path / "none.png", 3)
+    guest._take_down()
+    with pytest.raises(RouteError, match="no emulator is running to shoot"):
+        guest.shot(tmp_path / "gone.png")
+
+
+def test_get_live_waits_for_the_save_then_copies_once_two_reads_agree(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    remote = guest.remote_path("1", "wish1-test", "one")
+    staged = guest.staged[remote]
+    guest.press("wish1-test", "ret", 30)
+    clock.sleeps.clear()
+    writes = iter([b"half", b"saved"])
+    real_sleep = clock.sleep
+
+    def sleep(seconds):
+        real_sleep(seconds)
+        staged.write_bytes(next(writes, b"saved"))
+
+    monkeypatch.setattr(fsuaesession.time, "sleep", sleep)
+    local = tmp_path / "live.adf"
+    assert guest.get_live(remote, local, 60) == f"ok {remote}"
+    assert local.read_bytes() == b"saved"
+    assert clock.sleeps[0] == pytest.approx(fsuaesession.SAVE_REACHES_DISK)
+    assert clock.sleeps[1:] == [fsuaesession.LIVE_COPY_INTERVAL] * 2
+
+
+def test_get_live_stops_when_the_image_keeps_changing_or_the_save_needs_longer(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    remote = guest.remote_path("1", "wish1-test", "one")
+    staged = guest.staged[remote]
+    real_sleep = clock.sleep
+
+    def sleep(seconds):
+        real_sleep(seconds)
+        staged.write_bytes(str(clock.now).encode())
+
+    monkeypatch.setattr(fsuaesession.time, "sleep", sleep)
+    with pytest.raises(RouteError, match="still changing after 5s"):
+        guest.get_live(remote, tmp_path / "torn.adf", 5)
+    assert not (tmp_path / "torn.adf").exists()
+    guest.press("wish1-test", "ret", 30)
+    with pytest.raises(RouteError, match="needs 12s more"):
+        guest.get_live(remote, tmp_path / "early.adf", 5)
+
+
+def test_get_live_after_the_stop_is_a_plain_copy(lane, tmp_path, clock):
+    guest = _started(tmp_path, lane)
+    remote = guest.remote_path("1", "wish1-test", "one")
+    guest.stop("wish1-test", 30)
+    clock.sleeps.clear()
+    assert guest.get_live(remote, tmp_path / "after.adf", 30) == f"ok {remote}"
+    assert (tmp_path / "after.adf").read_bytes() == b"one" and clock.sleeps == []
 
 
 def test_a_hires_frame_is_not_shown_yet_and_keeps_its_raw_frame_and_no_crop(lane, tmp_path, monkeypatch):

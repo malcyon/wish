@@ -253,7 +253,11 @@ def _valid_rule(rule) -> bool:
 
 def _load(maps: pathlib.Path, title: str) -> dict:
     path = _path(maps, title)
-    data = json.loads(path.read_text())
+    return _validated(path, json.loads(path.read_text()))
+
+
+def _validated(path: pathlib.Path, data) -> dict:
+    """`data`, read from `path`, if it is a whole guard map; `ValueError` naming what is wrong otherwise."""
     if not isinstance(data, dict) or set(data) != {'labels', 'guards', 'identity'}:
         raise ValueError(f'{path}: expected labels, guards and identity')
     if not isinstance(data['labels'], dict):
@@ -395,6 +399,32 @@ def _add(args, crops: list[Crop]) -> int:
     return 0
 
 
+def flat_rules(spec: dict, kind: str) -> dict:
+    """The `kind` section of a guard map as the `{state: rule}` file `PixelGuards` reads."""
+    rules = {}
+    for state, value in spec[kind].items():
+        exported = [{key: rule[key] for key in ('box', 'sha256', 'and') if key in rule}
+                    for rule in screens.rules_of(value)]
+        rules[state] = exported[0] if len(exported) == 1 else exported
+    return rules
+
+
+def pixel_guards(path: pathlib.Path, kind: str, reader=screens.PixelGuards):
+    """`reader` over `path` when it is the file `export` writes, or over the `kind` section of a whole guard map."""
+    path = pathlib.Path(path)
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return reader(path)                 # the reader names what is wrong with it
+    if not (isinstance(data, dict) and 'guards' in data and 'identity' in data):
+        return reader(path)
+    rules = flat_rules(_validated(path, data), kind)
+    with tempfile.TemporaryDirectory() as scratch_dir:
+        flat = pathlib.Path(scratch_dir) / f'{kind}.json'
+        flat.write_text(json.dumps(rules))
+        return reader(flat)
+
+
 def _export(args) -> int:
     spec = _load(args.maps, args.title)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -402,11 +432,7 @@ def _export(args) -> int:
         if (args.out / f'{kind}.json').exists():
             raise ValueError(f'{args.out / (kind + ".json")} exists')
     for kind in ('guards', 'identity'):
-        rules = {}
-        for state, value in spec[kind].items():
-            exported = [{key: rule[key] for key in ('box', 'sha256', 'and') if key in rule}
-                        for rule in screens.rules_of(value)]
-            rules[state] = exported[0] if len(exported) == 1 else exported
+        rules = flat_rules(spec, kind)
         (args.out / f'{kind}.json').write_text(json.dumps(rules, indent=2, sort_keys=True) + '\n')
     return 0
 

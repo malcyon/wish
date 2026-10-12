@@ -777,3 +777,26 @@ def test_a_guard_box_with_the_wrong_numbers_or_outside_the_image_is_blocked(
     shot = _image(tmp_path / "shot.png", (0, 51, 102))
     with pytest.raises(winuaesession.RouteError, match="invalid crop box"):
         screens.guard_rule(shot, box)
+
+
+def test_measure_takes_a_titles_guard_map_and_reads_the_section_each_option_names(monkeypatch):
+    shipped = pathlib.Path(acceptance.__file__).parent / "guards_darkness.json"
+    whole = json.loads(shipped.read_text())
+    seen = {}
+    monkeypatch.setattr(acceptance, "PixelGuards",
+                        lambda path: seen.setdefault(path.name, json.loads(path.read_text())))
+    acceptance._screen_guards(shipped, "guards")
+    acceptance._screen_guards(shipped, "identity")
+    assert set(seen) == {"guards.json", "identity.json"}
+    for kind in ("guards", "identity"):
+        assert set(seen[f"{kind}.json"]) == set(whole[kind])
+        assert all("example" not in rule for value in seen[f"{kind}.json"].values()
+                   for rule in screens.rules_of(value))
+
+
+def test_measure_help_says_which_titles_need_an_attempt_and_which_guard_files_it_takes(capsys):
+    with pytest.raises(SystemExit):
+        acceptance.main(["measure", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "required for every title but ssb" in text
+    assert "guards_*.json" in text and "guardmaps.py export" in text

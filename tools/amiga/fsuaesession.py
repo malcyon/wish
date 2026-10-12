@@ -27,6 +27,8 @@ HOLD = 0.12
 CLIENT_WAIT = 120
 #: A game save reaches the disk image about ten seconds after its key; `stop` leaves a little more.
 SAVE_REACHES_DISK = 12.0
+#: Seconds between the reads of a disk image `get_live` compares.
+LIVE_COPY_INTERVAL = 1.0
 #: Seconds between a grab and the next one while a screen settles, and between menu keys of a swap.
 SETTLE_INTERVAL = 1.0
 SWAP_STEP = 1.5
@@ -64,6 +66,8 @@ class FsuaeGuest:
         self._keyed = False
         self._screened = False
         self._mounted: list[pathlib.Path] = []
+        #: The swap list entry in DF0: the first mounted disk until an `insert` changes it.
+        self._drive_zero = 0
         self._hashes_before: dict[str, str] = {}
 
     @staticmethod
@@ -102,6 +106,38 @@ class FsuaeGuest:
             return self.staged[remote]
         except KeyError:
             raise RouteError(f"{remote} was not staged by this run") from None
+
+    def get_live(self, remote: str, local: pathlib.Path, timeout: float) -> str:
+        """Copy `remote` while the emulator runs, once a save has had time to reach the image.
+
+        Waits until `SAVE_REACHES_DISK` after the last key, then reads the image until two
+        consecutive reads are identical and writes that one to `local`. Two equal reads do not
+        prove the image complete: the emulator writes a track through a buffered file and
+        nothing flushes it, so the end of the last track written can stay in the buffer until
+        the drive writes another track or the emulator stops. A caller that needs the saved
+        image exactly compares this copy with the one `get` takes after `stop`.
+        """
+        path = self._staged(remote)
+        if self.emulator is None or self.emulator.poll() is not None:
+            return self.get(remote, local, timeout)
+        end = time.monotonic() + timeout
+        if self._last_key is not None:
+            left = self._last_key + SAVE_REACHES_DISK - time.monotonic()
+            if left >= timeout:
+                raise RouteError(f"{remote} needs {left:.0f}s more for the last save to reach it "
+                                 f"and the call has {timeout:.0f}s")
+            if left > 0:
+                time.sleep(left)
+        previous = None
+        while True:
+            data = path.read_bytes()
+            if data == previous:
+                local.write_bytes(data)
+                return f"ok {remote}"
+            if time.monotonic() >= end:
+                raise RouteError(f"{remote} was still changing after {timeout:.0f}s")
+            previous = data
+            time.sleep(LIVE_COPY_INTERVAL)
 
     def get(self, remote: str, local: pathlib.Path, timeout: float) -> str:
         path = self._staged(remote)
@@ -146,7 +182,7 @@ class FsuaeGuest:
         return f"ok pid={self.emulator.pid} display={self.slot.display} port={self.slot.port}"
 
     def _attach(self, timeout: float) -> None:
-        """Connect the debugger, which continues the machine, and read the raster as proof it runs."""
+        """Connect the debugger, continue the machine, and read the raster as proof it runs."""
         from automap import amiga  # noqa: PLC0415
 
         end = time.monotonic() + timeout
@@ -154,14 +190,14 @@ class FsuaeGuest:
             if self.emulator.poll() is not None:
                 raise RouteError("the emulator exited before the debugger connected")
             try:
-                self.gdb = amiga.FsuaeGdb(port=self.slot.port, resume=True)
+                self.gdb = amiga.FsuaeGdb(port=self.slot.port, resume=False)
                 break
             except (amiga.FsuaeError, OSError) as exc:
                 if time.monotonic() >= end:
                     raise RouteError(f"the debugger did not connect within {timeout:.0f}s: {exc}") from exc
                 time.sleep(0.5)
         try:
-            self.gdb.read_memory(fsuaegdb.VHPOSR, 2)
+            fsuaegdb.continue_machine(self.gdb)
         except (amiga.FsuaeError, OSError) as exc:
             raise RouteError(f"the machine did not answer after it was continued: {exc}") from exc
 
@@ -246,12 +282,26 @@ class FsuaeGuest:
                 return None
             time.sleep(0.2)
 
+    def _require_running(self, what: str) -> None:
+        if self.emulator is not None and self.emulator.poll() is not None:
+            raise RouteError(f"no emulator is running to {what}")
+
+    def shot(self, path: pathlib.Path, timeout: float = 30.0) -> None:
+        """Copy the emulator's own screenshot (Alt+S) to `path` uncut, as WinUAE's pipe shot is."""
+        self._need_slot("shot")
+        self._require_running("shoot")
+        found = self._shoot(timeout)
+        if found is None:
+            raise RouteError(f"FS-UAE wrote no screenshot within {timeout:.0f}s")
+        shutil.copyfile(found, path)
+
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path, timeout: float) -> bool:
         """One screenshot, cut to the Amiga screen; False while the emulator has drawn nothing yet
         or the frame is not an exact capture (hires), with `raw` kept and no crop."""
         from tools.amiga import fsuaepor  # noqa: PLC0415
 
         self._need_slot("grab")
+        self._require_running(f"grab {state} from")
         if timeout <= 0:
             raise RouteError(f"no time left to grab {state}")
         if not fsuaepor.find_windows(self.slot.display, 5):
@@ -333,15 +383,19 @@ class FsuaeGuest:
         if digest != sha256:
             raise RouteError(f"staged {remote} has SHA-256 {digest}, not the manifest's {sha256}")
         index = [*self._mounted, *(p for p in self.staged.values() if p not in self._mounted)].index(path)
+        if index == self._drive_zero:
+            raise RouteError(f"{remote} is already in DF0")
+        rows = fsuaegdb.media_rows(index, self._drive_zero)
         log = self._need_slot("insert") / "base" / "Cache" / "Logs" / "fs-uae.log.txt"
         since = log.stat().st_size if log.exists() else 0
         keys = fsuaegdb.insert_floppy(
-            fsuaegdb.DEFAULT_SWAP_SEQUENCE, index,
+            fsuaegdb.DEFAULT_SWAP_SEQUENCE, rows,
             lambda key: self._send(key), lambda label: time.sleep(SWAP_STEP))
         end = time.monotonic() + min(SWAP_LOG_WAIT, timeout)
         while True:
             lines = fsuaegdb.swap_log_lines(log, since)
             if any(_changes_drive_zero_to(line, path) for line in lines):
+                self._drive_zero = index
                 return {"index": index, "keys": keys, "log": lines, "staged": str(path), "sha256": digest}
             if time.monotonic() >= end:
                 error = RouteError(f"the emulator log shows no change to {path} after the swap keys")

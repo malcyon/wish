@@ -54,6 +54,7 @@ from goldbox import (  # noqa: E402
 from tools.amiga import (  # noqa: E402
     amigabladesjournal,
     amigatarget,
+    guardmaps,
     route_camp,
     route_curse,
     route_silver_blades,
@@ -5063,13 +5064,18 @@ EMULATORS = ("winuae", "fsuae")
 
 
 def _guest_for(args: argparse.Namespace) -> Any:
-    """The lane a command runs in: the Windows VM's WinUAE, or an FS-UAE in an instance-pool slot."""
+    """The lane a command runs in: the Windows VM's WinUAE, or an FS-UAE in an instance-pool slot.
+
+    A run with screen guards sends each key to a screen it recognised, so FS-UAE's first-key
+    age, which stands in for a recognised screen in a run without them, is left off: it would
+    stop the key the route sends to a guarded intro long before the title.
+    """
     if getattr(args, "emulator", "winuae") == "winuae":
         return WinGuest()
     from tools.amiga import fsuaesession  # noqa: PLC0415
 
-    return fsuaesession.FsuaeGuest(game=f"amiga-{args.title}",
-                                   first_key_after=fsuaesession.FIRST_KEY_AFTER.get(args.title))
+    age = None if getattr(args, "guards", None) else fsuaesession.FIRST_KEY_AFTER.get(args.title)
+    return fsuaesession.FsuaeGuest(game=f"amiga-{args.title}", first_key_after=age)
 
 
 def _check_emulator(args: argparse.Namespace) -> None:
@@ -5341,6 +5347,11 @@ def _route_title(args: argparse.Namespace, silver_blades: bool) -> tuple[Any, di
     return title, manifest, legacy
 
 
+def _screen_guards(path: pathlib.Path, kind: str) -> PixelGuards:
+    """The `--guards` or `--identity` file: a flat rule file, or a title's guard map read for its `kind` section."""
+    return guardmaps.pixel_guards(path, kind, PixelGuards)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -5356,7 +5367,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--audio-proof", type=pathlib.Path, default=None,
                        help="the Windows VM's audio mute proof; required with --emulator winuae "
                             "and not accepted with fsuae")
-        p.add_argument("--attempt")
+        p.add_argument("--attempt",
+                       help="the run's folder name beside the manifest; required for every title "
+                            "but ssb")
         p.add_argument("--holder", default=None)
         p.add_argument("--deadline", type=float, default=1800,
                        help="seconds for the whole run; the route gets this less "
@@ -5441,7 +5454,9 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("measure", help="boot and press the route up to the first save; writes nothing")
     common(m)
     m.add_argument("--guards", type=pathlib.Path, default=None,
-                   help="screen guard JSON; a route state it holds must match, and the boot waits for its title")
+                   help="screen guard JSON, either a title's tools/amiga/guards_*.json or the guards.json "
+                        "`guardmaps.py export` writes; a route state it holds must match, and the boot "
+                        "waits for its title")
     m.add_argument("--route", help="Silver Blades only: KEY:state,KEY:state; default is the built-in route")
     m.add_argument("--write-keys", help="Silver Blades only: comma-separated keys that write; default B")
     m.add_argument("--no-encounters", action="store_true", help=NO_ENCOUNTERS_HELP)
@@ -5509,7 +5524,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.audio_proof is None or args.holder is None or args.attempt is None:
             parser.error("observe-load requires --audio-proof, --holder and --attempt")
         try:
-            guard, identity = PixelGuards(args.guards), PixelGuards(args.identity)
+            guard, identity = _screen_guards(args.guards, "guards"), _screen_guards(args.identity, "identity")
             manifest = _observe_preclaim(args.manifest, guard, identity)
             title = dataclasses.replace(
                 DARKNESS, measure_route=DARKNESS.measure_route[:10],
@@ -5741,7 +5756,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_recon(
                     args.manifest, guest=WinGuest(), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
-                    guard=PixelGuards(args.guards), deadline_seconds=args.deadline,
+                    guard=_screen_guards(args.guards, "guards"), deadline_seconds=args.deadline,
                     boot_limit=args.boot_limit, diagnose=True, title=title,
                     wait_lane=args.wait_lane,
                     published_disk_one=True, published_name=args.title)
@@ -5752,7 +5767,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = run_recon(
                     args.manifest, guest=_guest_for(args), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
-                    guard=PixelGuards(args.guards) if args.guards else None,
+                    guard=_screen_guards(args.guards, "guards") if args.guards else None,
                     deadline_seconds=args.deadline, measure=True, title=title,
                     wait_lane=args.wait_lane, cli_title=args.title,
                     published_disk_one=args.published_disk_one,
@@ -5764,8 +5779,8 @@ def main(argv: list[str] | None = None) -> int:
                        if legacy else {}))
             else:
                 result = run_recon(
-                    args.manifest, guest=_guest_for(args), guard=PixelGuards(args.guards),
-                    identity=PixelGuards(args.identity), holder=holder,
+                    args.manifest, guest=_guest_for(args), guard=_screen_guards(args.guards, "guards"),
+                    identity=_screen_guards(args.identity, "identity"), holder=holder,
                     audio_proof=args.audio_proof, attempt=attempt,
                     deadline_seconds=args.deadline, title=title, wait_lane=args.wait_lane,
                     cli_title=args.title, published_disk_one=args.published_disk_one,

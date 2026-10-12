@@ -1969,8 +1969,71 @@ def test_with_no_helper_a_verb_connects_as_before(monkeypatch, tmp_path):
     monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb",
                         lambda **k: seen.append(k) or "gdb")
     assert fsuaegdb.connect(argparse.Namespace(
-        host="127.0.0.1", port=6525, timeout=None)) == "gdb"
-    assert seen[0]["port"] == 6525
+        host="127.0.0.1", port=6525, timeout=None), resume=False) == "gdb"
+    assert seen[0]["port"] == 6525 and seen[0]["resume"] is False
+
+
+class OneReceiveAmiga(FakeAmiga):
+    """The fork's server as it reads: one packet parsed out of each receive, the rest of it dropped.
+
+    Bytes the client sends wait in `inbox` until the server next reads, which
+    here is when the client next waits for a reply.
+    """
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.inbox = b""
+        self.dropped: list[str] = []
+
+    def sendall(self, data: bytes) -> None:
+        self.inbox += data
+
+    def _receive(self) -> None:
+        if not self.inbox:
+            return
+        end = self.inbox.index(b"#") + 3
+        first, rest, self.inbox = self.inbox[:end], self.inbox[end:], b""
+        if rest:
+            self.dropped.append(rest.decode("latin-1"))
+        super().sendall(first)
+
+    def recv(self, length: int) -> bytes:
+        self._receive()
+        return super().recv(length)
+
+
+def test_a_read_sent_straight_after_the_continue_shares_its_receive_and_gets_no_reply():
+    """What the first FS-UAE measure met: `vCont;c` and `m` in one receive, and only the first parsed."""
+    guest = OneReceiveAmiga({fsuaegdb.VHPOSR: b"\x2c\x51"})
+    gdb = transport(guest)
+    with pytest.raises(amiga.FsuaeError, match="no reply"):
+        gdb.read_memory(fsuaegdb.VHPOSR, 2)
+    assert guest.received == ["qSupported", "vCont;c"]
+    assert [d[1:].split("#")[0] for d in guest.dropped] == ["mdff006,2"]
+
+
+def test_connect_continues_and_reads_the_raster_through_a_receive_that_drops_the_first_read(
+        monkeypatch, tmp_path):
+    from automap import fsuaehelper
+
+    monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: tmp_path)
+    guest = OneReceiveAmiga({fsuaegdb.VHPOSR: b"\x2c\x51", 0x1000: b"PARTY"})
+    monkeypatch.setattr(amiga.FsuaeGdb, "_socket", lambda self: guest)
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda seconds: None)
+    gdb = fsuaegdb.connect(argparse.Namespace(host="127.0.0.1", port=6525, timeout=None))
+    assert guest.received == ["qSupported", "vCont;c", "mdff006,2"]
+    assert len(guest.dropped) == 1
+    assert gdb.read_memory(0x1000, 5) == b"PARTY"
+
+
+def test_continue_machine_stops_asking_once_the_connection_is_lost(monkeypatch):
+    guest = FakeAmiga()
+    gdb = transport(guest, resume=False)
+    guest.gone = True
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda seconds: None)
+    with pytest.raises(amiga.FsuaeError, match="closed the connection"):
+        fsuaegdb.continue_machine(gdb, wait=3600)
+    assert guest.received == ["qSupported", "vCont;c", "mdff006,2"]
 
 
 # wish: the real window, driven from outside

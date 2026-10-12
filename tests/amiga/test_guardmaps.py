@@ -1408,3 +1408,21 @@ def test_the_darkness_map_guards_every_strict_state_of_a_line_five_cast_and_memo
     assert 'camp_memorize_5_keep' in spec['identity']
     # A magic menu with Rest on its bar and one without are both the magic menu.
     assert len(_rules(spec['guards'][route_camp.MAGIC_MENU])) == 2
+
+
+@pytest.mark.parametrize('kind', ['guards', 'identity'])
+def test_pixel_guards_reads_one_section_of_a_whole_map_as_export_writes_it(tmp_path, kind):
+    out = tmp_path / 'export'
+    assert guardmaps.main(['export', '--title', 'darkness', '--out', str(out)]) == 0
+    shipped = guardmaps._path(guardmaps.pathlib.Path(guardmaps.__file__).parent, 'darkness')
+    assert guardmaps.pixel_guards(shipped, kind).rules == json.loads((out / f'{kind}.json').read_text())
+
+
+def test_pixel_guards_hands_a_flat_file_to_the_reader_and_checks_a_map(tmp_path):
+    flat = tmp_path / 'guards.json'
+    flat.write_text(json.dumps({'title': {'box': [0, 0, 1, 1], 'sha256': '0' * 64}}))
+    assert guardmaps.pixel_guards(flat, 'guards', reader=lambda path: path) == flat
+    broken = tmp_path / 'map.json'
+    broken.write_text(json.dumps({'guards': {}, 'identity': {}}))
+    with pytest.raises(ValueError, match='expected labels, guards and identity'):
+        guardmaps.pixel_guards(broken, 'guards')
