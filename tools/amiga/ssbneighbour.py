@@ -196,14 +196,14 @@ class GuardedRun:
         self.events.append({"from": state, "key": key})
 
 
-def read_live(holder: str) -> dict:
+def read_live(holder: str, variables=VARIABLES) -> dict:
     target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), amiga.MACHINES[TITLE])
     target.locate()
     row = amigatrip.row_for(TITLE)
     members = amigaparty.read_party(target)
     return {"area": amigatrip.area_id(target, row), "square": amigatrip.square(target, row),
             "names": None if members is None else [member.name for member in members],
-            "variables": {f"{variable:04X}": reading.value for variable in VARIABLES
+            "variables": {f"{variable:04X}": reading.value for variable in variables
                           for reading in amigavars.read_variables(target, TITLE, (variable,))},
             "target": target}
 
@@ -245,13 +245,8 @@ def answered_at_bar(log: pathlib.Path) -> bool:
             and answers[0].get("at_continue") is True)
 
 
-def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: list[str],
-         start: int, end: int) -> dict:
-    """Execute one independently logged, bounded fasttravelrun child."""
-    out.mkdir()
-    command = [sys.executable, str(pathlib.Path(fasttravelrun.__file__)),
-               "--holder", run.holder, "--disks", str(disks), "--title", TITLE,
-               "--measure-row", "--budget", "300", "--out", str(out), *arguments]
+def run_child(run: GuardedRun, out: pathlib.Path, command: list[str]) -> tuple[int, str, str]:
+    """Run one bounded fasttravelrun child, keeping its stdout and stderr in `out`."""
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout = stderr = ""
     try:
@@ -275,6 +270,18 @@ def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: lis
                 stdout, stderr = proc.communicate(timeout=10)
         (out / "stdout.txt").write_text(stdout)
         (out / "stderr.txt").write_text(stderr)
+    return proc.returncode, stdout, stderr
+
+
+def trip(run: GuardedRun, disks: pathlib.Path, out: pathlib.Path, arguments: list[str],
+         start: int, end: int) -> dict:
+    """Execute one independently logged, bounded fasttravelrun child."""
+    out.mkdir()
+    command = [sys.executable, str(pathlib.Path(fasttravelrun.__file__)),
+               "--holder", run.holder, "--disks", str(disks), "--title", TITLE,
+               "--measure-row", "--budget", "300", "--out", str(out), *arguments]
+    returncode, stdout, stderr = run_child(run, out, command)
+    proc = subprocess.CompletedProcess(command, returncode, stdout, stderr)
     if proc.returncode != 0:
         # A failing child must not conceal a diagnostic behind an expected JSON line.
         try:
