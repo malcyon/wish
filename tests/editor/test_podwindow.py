@@ -222,7 +222,8 @@ def test_native_save_without_a_matching_game_folder_warns(
     window, _folder = _open_synthetic(monkeypatch, tmp_path, names=False)
     assert window.party is not None and window.party.game is POD
     assert window.model.rowCount() == 1
-    assert capture_missing_game_disk_warning == [(
+    assert [(parent, title, body.replace("\u2060", "").replace("\u00a0", " "))
+            for parent, title, body in capture_missing_game_disk_warning] == [(
         window.root, "Missing Game Disk",
         "Set your Pools of Darkness game disk in "
         "File->Preferences->Game Disks. Without this, Wish cannot load "

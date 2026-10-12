@@ -101,6 +101,11 @@ DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
 #: The Save As picker's title.
 SAVE_AS_TITLE = "Save the disk as"
 
+#: The menu path in the Missing Game Disk box. It reads "File->Preferences->Game
+#: Disks" and draws the same, but each "-" is followed by a word joiner and the
+#: space is a no-break space, because Qt otherwise wraps after the hyphen.
+GAME_DISKS_MENU_PATH = "File-\u2060>Preferences-\u2060>Game\u00a0Disks"
+
 #: The Open button's own dialog title and file filter, and the tooltip on the
 #: button itself (D1, `#511`).
 OPEN_TITLE = "Open a saved game"
@@ -1979,7 +1984,7 @@ class EditorBinding(QObject):
             QMessageBox.warning(
                 self.root, "Missing Game Disk",
                 f"Set your {party.game.title} game disk in "
-                "File->Preferences->Game Disks. Without this, Wish cannot "
+                f"{GAME_DISKS_MENU_PATH}. Without this, Wish cannot "
                 "load item or spell names.")
 
     def _adopt(self, party: Party, path: str | None, note: str | None = None,

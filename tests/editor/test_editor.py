@@ -1381,14 +1381,67 @@ def test_missing_resources_warn_once_per_successful_open_without_changing_save(
     assert window.charset == b"" and window.item_names == {}
     assert "no game disk, so no item names and no icons" in (
         window.root.statusBar().currentMessage())
-    assert capture_missing_game_disk_warning == [(
-        window.root, "Missing Game Disk",
+    parent, title, body = capture_missing_game_disk_warning[0]
+    assert (parent, title) == (window.root, "Missing Game Disk")
+    assert _as_read(body) == (
         f"Set your {window.party.game.title} game disk in "
         "File->Preferences->Game Disks. Without this, Wish cannot load "
-        "item or spell names.")]
+        "item or spell names.")
     window.load(str(path))
     assert len(capture_missing_game_disk_warning) == 2
     assert path.read_bytes() == before
+
+
+def _as_read(body):
+    """The warning text with the invisible wrap controls taken out."""
+    return body.replace("\u2060", "").replace("\u00a0", " ")
+
+
+def _laid_out_lines(text, width, font):
+    """The lines Qt breaks `text` into at `width`."""
+    from PyQt6.QtGui import QTextDocument
+
+    doc = QTextDocument()
+    doc.setDocumentMargin(0)
+    doc.setDefaultFont(font)
+    doc.setTextWidth(width)
+    doc.setPlainText(text)
+    doc.size()
+    lines = []
+    block = doc.begin()
+    while block.isValid():
+        layout = block.layout()
+        for i in range(layout.lineCount()):
+            line = layout.lineAt(i)
+            lines.append(block.text()[line.textStart():
+                                      line.textStart() + line.textLength()])
+        block = block.next()
+    return lines
+
+
+def test_the_game_disks_menu_path_is_never_split_across_lines(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    from PyQt6.QtGui import QFontMetrics
+    from PyQt6.QtWidgets import QApplication
+
+    from editor.window import EditorBinding
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    path = synthetic_save(tmp_path)
+    EditorBinding(make_root(), str(path))
+    body = capture_missing_game_disk_warning[0][2]
+    for extra in (0, 6):
+        font = QApplication.font()
+        font.setPointSizeF(font.pointSizeF() + extra)
+        # No wrap can keep a path whole in a line narrower than the path.
+        least = QFontMetrics(font).horizontalAdvance(
+            "File->Preferences->Game Disks.") + 1
+        for width in range(least, least * 4):
+            lines = _laid_out_lines(body, width, font)
+            holding = [ln for ln in lines if "File" in ln]
+            assert len(holding) == 1 and "Disks." in _as_read(holding[0]), (
+                extra, width, lines)
+            assert "File->Preferences->Game Disks." in _as_read(holding[0])
 
 
 def test_failed_open_does_not_warn_or_replace_loaded_party(
