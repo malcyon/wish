@@ -208,7 +208,7 @@ def test_only_the_curse_pit_has_a_site():
 def test_join_parses_dungeon_moves_ending_on_a_step():
     steps = A.parse_steps(["load", "join IIIKIIKIJIIKI", "save"])
     assert steps[1] == A.Step("join", "IIIKIIKIJIIKI")
-    for bad in ("join IIK", "join 22", "join"):
+    for bad in ("join IIK", "join IIM", "join 22", "join"):
         with pytest.raises(ValueError):
             A.parse_steps(["load", bad])
 
@@ -223,19 +223,25 @@ def test_join_is_curse_only(tmp_path, capsys, title):
 
 class FakeSession:
     """A party at 1,3 facing south that a walk leaves there, whose last move
-    puts it on 1,4 and the Pit's screens up."""
+    puts it on 1,4.  The world bar stays up for WORLD_READS reads after that
+    move, as it does while the script loads its picture, before the Pit's
+    screens come up."""
 
-    def __init__(self, game: Game, area: int = 0x11):
+    def __init__(self, game: Game, area: int = 0x11, world_reads: int = 5):
         self.game = game
         self.area = area
         self.square = [1, 3, 2]
         self.moves: list[str] = []
         self.no_encounters = False
         self.held_at_move: list[bool] = []
-        self.at_world = True
+        self.moved = False
+        self.world_reads = world_reads
 
     def screen(self):
-        if self.at_world:
+        if not self.moved:
+            return screen({24: WORLD}, (24, 0, 3), panel=("WISHFTR",))
+        if self.world_reads > 0:
+            self.world_reads -= 1
             return screen({24: WORLD}, (24, 0, 3), panel=("WISHFTR",))
         return self.game.screen()
 
@@ -246,7 +252,7 @@ class FakeSession:
         self.moves.append(move)
         self.held_at_move.append(self.no_encounters)
         self.square = [1, 4, 2]
-        self.at_world = False
+        self.moved = True
         return True
 
     def stable_party_rows(self):
@@ -326,3 +332,87 @@ def test_the_join_step_stops_when_the_last_move_is_blocked(monkeypatch):
     with pytest.raises(A.StepFailed, match="last move"):
         run.join("I")
     assert game.keys == []
+
+
+# --- the review's guards ---------------------------------------------------------
+
+class Looped(RuntimeError):
+    """A fake clock ran past any bound the step has: the step never stops."""
+
+
+def test_an_unreadable_screen_stops_the_step_within_its_wait():
+    game = Game([(screen({}), {})])
+    game.screen = lambda: None
+    sleep = game.sleep
+
+    def bounded(seconds):
+        sleep(seconds)
+        if game.now > 10 * J.SCREEN_SECONDS:
+            raise Looped(game.now)
+
+    game.sleep = bounded
+    with pytest.raises(J.JoinStopped, match="could not be read"):
+        game.answerer().run(PIT)
+    assert game.keys == []
+
+
+def test_the_world_bar_lasting_past_the_grace_stops_with_nothing_pressed(
+        monkeypatch):
+    game = Game(pit_script())
+    sess = FakeSession(game, world_reads=10 ** 6)
+    run = _run(monkeypatch, sess, [])
+    with pytest.raises(A.StepFailed, match="world bar came back"):
+        run.join("I")
+    assert game.keys == [] and game.now >= J.FIRST_SCREEN_GRACE
+
+
+def test_the_list_gets_no_return_while_its_highlight_is_off_the_first_line():
+    script = pit_script()
+    listing, moves = script[12]
+    off = screen({r: listing.row(r) for r in range(17, 21)}, (19, 0, 31))
+    script[12] = (off, moves)
+    game = Game(script)
+    with pytest.raises(J.JoinStopped, match="first line"):
+        game.answerer().run(PIT)
+    assert game.keys == PIT_KEYS[:11] and game.at == 12
+
+
+def test_a_continue_bar_the_script_does_not_draw_gets_no_return():
+    script = pit_script()
+    script[1] = (screen({24: "PRESS ANY KEY TO CONTINUE"}), {R: 2})
+    game = Game(script)
+    with pytest.raises(J.JoinStopped):
+        game.answerer().run(PIT)
+    assert game.keys == []
+
+
+def test_each_continue_answered_logs_the_text_above_it():
+    script = pit_script()
+    script[1] = (screen({17: "YOU SEE A FEMALE FIGHTER", 24: CONTINUE}), {R: 2})
+    game = Game(script)
+    got = game.answerer().run(PIT)
+    first = [s for s in got["screens"] if s["screen"] == "continue"][0]
+    assert first["text"][0] == "YOU SEE A FEMALE FIGHTER"
+
+
+def test_the_speaker_pick_is_matched_only_on_a_row_of_its_own():
+    script = pit_script()
+    script[7] = (screen({18: "YOU PICK SPEAKERS WITH CARE"}), {R: 8})
+    game = Game(script)
+    with pytest.raises(J.JoinStopped):
+        game.answerer().run(PIT)
+    assert game.keys == PIT_KEYS[:6] and game.at == 7
+
+
+def test_a_stopped_join_puts_the_encounter_gates_back(monkeypatch):
+    script = pit_script()
+    script[2] = (bar("YES NO", "YES"), {R: 2})
+    game = Game(script)
+    sess = FakeSession(game)
+    run = _run(monkeypatch, sess, [])
+    run.no_encounters = True
+    restored = []
+    run.restore_gates = lambda when: restored.append(when) or {"when": when}
+    with pytest.raises(A.StepFailed):
+        run.join("I")
+    assert restored == ["join I"] and sess.no_encounters is False

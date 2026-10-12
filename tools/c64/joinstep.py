@@ -28,6 +28,11 @@ KEY_SECONDS = 8.0
 PRESSES_BETWEEN = 8
 #: Game-side disk prompts answered in one join.
 PROMPTS = 2
+#: Seconds the world bar may stand after the last move before the square's
+#: first screen is drawn; the script loads its picture and prints first.
+FIRST_SCREEN_GRACE = 15.0
+#: The one-option bar the script's continue subroutine draws (`ECL11 $96A7`).
+SCRIPT_CONTINUE = ("PRESS", "BUTTON", "OR", "RETURN", "TO", "CONTINUE.")
 POLL = 0.3
 
 
@@ -50,7 +55,8 @@ class Bar:
 @dataclasses.dataclass(frozen=True)
 class Speaker:
     """The party-member pick a `PARLAY` opens (`LIBRARY $4486`, prompt at
-    `DUNGEON $0BF0`); Return takes the highlighted member."""
+    `DUNGEON $0BF0`), matched only on a row holding the prompt alone; Return
+    takes the highlighted member."""
     prompt: str = "PICK SPEAKER"
 
 
@@ -58,7 +64,8 @@ class Speaker:
 class Listing:
     """A vertical menu (opcode `$15`): its heading and a fragment of each line.
     `LIBRARY $3DD3` draws it with the highlight on the first line, so Return
-    on a list no key has touched chooses line 0, the only line this answers."""
+    on a list no key has touched chooses line 0, the only line this answers,
+    and only once the colour RAM shows the highlight on that line alone."""
     header: str
     lines: tuple[str, ...]
 
@@ -132,10 +139,31 @@ def highlight(screen, row: int = 24, colour: int = 1) -> int | None:
 
 
 def is_press(screen) -> bool:
-    """A `PRESS ... CONTINUE` bar that is not a disk prompt."""
-    row = screen.row(24).split()
-    return ("PRESS" in row and any(w.startswith("CONTINUE") for w in row)
+    """The script's own continue bar, word for word, with no disk prompt."""
+    return (tuple(screen.row(24).split()) == SCRIPT_CONTINUE
             and not is_prompt(screen))
+
+
+def text_window(screen) -> list[str]:
+    """Rows 17-22, where the script prints, stripped: logged with every
+    continue bar answered."""
+    return [screen.row(r).strip() for r in range(17, 23)]
+
+
+def line_at(screen, fragment: str) -> int | None:
+    """The row holding FRAGMENT, or None."""
+    hit = screen.find(fragment)
+    return None if hit is None else hit[0]
+
+
+def lit(screen, fragment: str, colour: int = 1) -> bool:
+    """Whether every visible cell of FRAGMENT is drawn in the highlight."""
+    hit = screen.find(fragment)
+    if hit is None:
+        return False
+    r, c = hit
+    cells = [r * 40 + c + i for i, ch in enumerate(fragment) if ch != " "]
+    return all(screen.colours[i] == colour for i in cells)
 
 
 def is_prompt(screen) -> bool:
@@ -152,7 +180,7 @@ def matches(screen, want) -> bool:
     if isinstance(want, Bar):
         return bar_words(screen) == want.words
     if isinstance(want, Speaker):
-        return screen.find(want.prompt) is not None
+        return any(row.strip() == want.prompt for row in screen.rows())
     if isinstance(want, Listing):
         return (screen.find(want.header) is not None
                 and all(screen.find(line) is not None for line in want.lines)
@@ -227,6 +255,13 @@ class JoinAnswerer:
                           "row24": screen.row(24).strip()})
         if isinstance(want, Bar):
             self._choose(screen, want)
+        elif isinstance(want, Listing):
+            first, *rest = want.lines
+            if not lit(screen, first) or any(lit(screen, line) for line in rest):
+                raise JoinStopped(f"{describe(want)}: the highlight is not on "
+                                  f"its first line alone", screen)
+            self._key(RETURN, screen)
+            self._changed(screen, describe(want))
         else:
             self._key(RETURN, screen)
             self._changed(screen, describe(want))
@@ -235,11 +270,15 @@ class JoinAnswerer:
         """Answer SITE's screens in order, then wait for the world bar."""
         presses = 0
         queue = list(site.screens)
-        until = self.clock() + SCREEN_SECONDS
+        started = self.clock()
+        until = started + SCREEN_SECONDS
         odd_since = None
         while True:
             screen = self.screen()
             if screen is None:
+                if self.clock() >= until:
+                    raise JoinStopped(f"the screen could not be read before "
+                                      f"{self._next(queue[0] if queue else None)}")
                 self.sleep(POLL)
                 continue
             want = queue[0] if queue else None
@@ -261,7 +300,8 @@ class JoinAnswerer:
                                       f"bars before {self._next(want)}", screen)
                 presses += 1
                 self.seen.append({"screen": "continue",
-                                  "row24": screen.row(24).strip()})
+                                  "row24": screen.row(24).strip(),
+                                  "text": text_window(screen)})
                 self._key(RETURN, screen)
                 self._changed(screen, "the continue bar")
                 odd_since = None
@@ -276,6 +316,10 @@ class JoinAnswerer:
                 self.prompts += 1
                 continue
             if is_world(screen):
+                if (not self.keys
+                        and self.clock() - started < FIRST_SCREEN_GRACE):
+                    self.sleep(POLL)
+                    continue
                 raise JoinStopped(f"the world bar came back before "
                                   f"{self._next(want)}", screen)
             if screen.row(24).strip():
