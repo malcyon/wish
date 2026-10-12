@@ -2593,10 +2593,11 @@ def test_a_pool_import_permanent_strength_of_100_is_found_and_detected():
 
 
 def test_the_game_written_pool_import_is_found_by_the_scan_and_the_checker():
-    """Slot D of the WISH-303 stage 8 disk holds EVOKER, whom Amiga Curse
-    imported from Pool of Radiance and saved itself, with the strength pair
-    (100, 10) at 0x3B75: the scan finds all five blocks and the save checker
-    passes the slot.
+    """Slot D of the game-written Curse disk holding an imported zombie
+    companion (`WISH-SPEC-wish-plane-303-curse-evoker-add`) holds EVOKER,
+    whom Amiga Curse imported from Pool of Radiance and saved itself, with
+    the strength pair (100, 10) at 0x3B75: the scan finds all five blocks and
+    the save checker passes the slot.
     """
     from gamedata import specimen
 

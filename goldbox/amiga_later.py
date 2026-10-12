@@ -606,13 +606,12 @@ def read_amiga_guy(path) -> AmigaCharacter:
     return char
 
 
-#: The highest byte the game writes into either byte of the strength pair.
-#: Amiga Curse's Pool of Radiance import (`/Curse` file offset `0x25590`) loads
-#: the race and sex row of its limit table (`g0f14`), takes the exceptional
-#: strength maximum at `+4` (100 for a human man, 99, 90, 75, 50 or 0 for the
-#: others), and raises the permanent strength byte `$10` to it when it is
-#: higher, so every human man it imports has a permanent strength of 100.
-#: The recompute at `0xf5ee` seeds the score in force from that byte.
+#: The highest byte the game writes into either byte of the strength pair:
+#: Amiga Curse's Pool of Radiance import (`/Curse` file offset `0x25590`)
+#: raises the permanent strength byte `$10` to the exceptional strength
+#: maximum in its race and sex table (`g0f14` `+4`: 100 for a human man, 99,
+#: 90, 75, 50 or 0 for the others), and the recompute at `0xf5ee` seeds the
+#: score in force from that byte.
 AMIGA_STRENGTH_PAIR_MAX = 100
 
 #: The bound on both bytes of the other five ability pairs, which the import
