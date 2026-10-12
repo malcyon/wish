@@ -92,6 +92,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `walk-fight MOVES[/NO]` | Pool only: `walk`'s moves, but an encounter menu is answered COMBAT (never FLEE), the fight is fought out with `Session.melee_turn` (900 s each), and the route resumes from the square the fight left the party on, an `I` that did not complete being sent once more; the treasure screen a won fight reaches is kept as `NN-treasure.png` and `.txt` before the fight answers it; a treasure screen met on the walk after a fight (mode 5, a bar holding `EXIT`, such as `VIEW POOL EXIT`) is left with EXIT, once for each bar it shows (a `GO BACK LEAVE TREASURE` bar that EXIT opens is answered LEAVE), on the encounter path as well as after a `PRESS` bar, and listed in `treasure_screens`; an `INSERT SIDE # N` prompt (sides 2 to 4) is answered once per side, with the image attached, a key pressed and the frame kept as `sideN-before-answer`, and a repeat or a save-disk prompt fails the step; a forward move must land on the next square, else the step fails as blocked or as an exit or a teleport. A `YES NO` is answered NO only on the last key, and only when `/NO` is given; anywhere else it fails the step with nothing pressed. With a `save` after it, the summary's `drain` says whether some character's level fell by 1 or 2 with `levels_drained` equal to the fall, `hp_lost_to_drain` not zero, one class level down by the same amount and `hp_max` down by `hp_lost_to_drain`; nobody drained is recorded, not a failure; with `--cross-edge` the last forward move may cross an area edge as `walk` does (side 2 stays the encounter's) |
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
+| `join MOVES` | Curse only: in an area with a row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Pit, area 17: ALIAS and DRAGONBAIT), answers up to `JOIN_ARRIVAL_PRESSES` arrival pages, fails if a joining name is already on the panel, walks every move but the last as `walk` does, steps onto the join square with the last (`I` or `M`), and answers the square's script screens in the site's order by their text, one KERNAL key each (`$1D`/`$9D` move a bar's highlight, `$0D` chooses), with continue bars between; any other screen, a key that changes nothing or the world bar before the last answer stops the step with nothing pressed on that screen; then fails unless the panel lists every joining name; returns the screens, the keys with the row 24 each was pressed on, the square and the panel |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -239,6 +240,7 @@ from goldbox.savegame import (  # noqa: E402
 )
 from goldbox.world import PLAYABLE_X, WINDOW_STEP  # noqa: E402
 from tools.c64 import (  # noqa: E402
+    joinstep,
     route_pool,
     runlog,  # noqa: E402
     savecheck,
@@ -799,7 +801,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
          "fight-flee": "may", "snapshot": "must", "restore": "must",
          "fight-cast": "must", "memorize": "must", "site": "must",
-         "add": "must"}
+         "add": "must", "join": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -1058,6 +1060,19 @@ SNAPSHOT_NAME = S.Session.SNAPSHOT_NAME
 RESUME_SNAPSHOT = "resume-step"
 
 
+def parse_join(arg: str) -> str:
+    """`join IIKI`: dungeon moves whose last steps onto the join square."""
+    route = arg.strip().upper()
+    if not route or any(c not in TURNS for c in route):
+        raise ValueError(f"join {arg!r}: the moves are I forward, J left, "
+                         f"K right, M about-turn, the last one onto the "
+                         f"join square")
+    if route[-1] not in "IM":
+        raise ValueError(f"join {arg!r}: the last move steps onto the join "
+                         f"square, so it is I or M")
+    return route
+
+
 def parse_snapshot_name(verb: str, arg: str) -> str:
     """The name a `snapshot` or `restore` step gives: letters, digits, - and _."""
     name = arg.strip()
@@ -1306,6 +1321,8 @@ def parse_steps(texts) -> list[Step]:
                              + ", ".join(TEMPLE_PROBE_ARGS))
         elif verb == "warp":
             parse_warp(arg)
+        elif verb == "join":
+            parse_join(arg)
         elif verb in ("fight", "fight-flee") and arg and not (
                 arg.isdigit() and int(arg) > 0):
             raise ValueError(f"{verb} {arg!r}: seconds, more than zero")
@@ -1356,6 +1373,10 @@ ARRIVAL_FACING = {10: 1}
 #: and how long it waits for each to give way.
 ARRIVAL_PRESSES = 3
 ARRIVAL_PAGE_SECONDS = 8.0
+
+#: Continue pages `join` answers before its walk: the Pit's arrival (`ECL11`
+#: `$8044`-`$8214`) puts up five.
+JOIN_ARRIVAL_PRESSES = 6
 
 #: The word `walk-flee` answers an encounter menu with; the menu reads
 #: `COMBAT WAIT FLEE ADVANCE` (`tools/c64/session.py`, `ENCOUNTER_FIGHT`).
@@ -9020,6 +9041,81 @@ class CurseRun(PoolRun):
     def site(self, arg: str) -> dict:
         raise self.fail("site", "Pool of Radiance only")
 
+    def join(self, arg: str) -> dict:
+        """Walk ARG's moves but the last, step onto the join square with the
+        last, and answer the square's script screens by their text
+        (`joinstep.JoinAnswerer`) until the world bar is back with each
+        joining name on the party panel.  The area must have a row in
+        `joinstep.JOIN_SITES`.  The arrival's continue pages are answered
+        first, up to `JOIN_ARRIVAL_PRESSES`.  With `--no-encounters` the
+        gates are held for the walk and the last move, then put back."""
+        route = parse_join(arg)
+        target = SessTarget(self.sess)
+        ft = auto_actions.FastTravel(self.game)
+        area = ft.current_area(target, ft.addresses)
+        site = joinstep.site_for(self.game.key, area)
+        if site is None:
+            raise self.fail("join", f"no join site in area {area}")
+        self.leave_arrival(f"join {route}", presses=JOIN_ARRIVAL_PRESSES)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        panel = self.panel_names()
+        already = [n for n in site.joins if any(n in row for row in panel)]
+        if already:
+            raise self.fail("join", f"{', '.join(already)} already in the "
+                                    f"party")
+        walked = self.walk(route[:-1]) if len(route) > 1 else None
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        before = self.position()
+        move = route[-1]
+        held = self.no_encounters
+        if held:
+            self.sess.no_encounters = True
+        try:
+            self.sess.walk_one(move, tries=1, answer_prompts=False)
+            after = self.steady_position()
+            if after is None or after[:2] == before[:2]:
+                raise self.fail("join", f"join {route}: the last move ({move}) "
+                                        f"left {before} for {after}")
+            self.capture("join-square")
+            answerer = joinstep.JoinAnswerer(
+                self.sess.screen, self.sess.press_kernal,
+                prompt=self.sess.handle_prompt, log=self.log.say)
+            try:
+                got = answerer.run(site)
+            except joinstep.JoinStopped as e:
+                self.log.emit("join-stopped", why=str(e),
+                              keys=[f"${k:02X}" for k, _ in answerer.keys],
+                              screens=answerer.seen)
+                raise self.fail("join", f"join {route}: {e}") from e
+        finally:
+            if held:
+                self.sess.no_encounters = False
+        gates = self.restore_gates(f"join {route}") if held else None
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        panel = self.panel_names()
+        missing = [n for n in site.joins if not any(n in row for row in panel)]
+        self.capture("joined")
+        if missing:
+            raise self.fail("join", f"the panel does not list "
+                                    f"{', '.join(missing)} after the join")
+        got.update({"route": route, "walk": walked, "square": after,
+                    "panel": panel})
+        if gates is not None:
+            got["encounter_gates"] = gates
+        return got
+
+    def panel_names(self) -> list[str]:
+        """The world panel's rows, from the name column on, read once the
+        panel has settled."""
+        rows = self.sess.stable_party_rows()
+        screen = self.sess.screen()
+        if screen is None:
+            return []
+        return [screen.row(r)[S.PARTY_COLUMN:].strip() for r in rows]
+
     def walk_fight(self, arg: str) -> dict:
         raise self.fail("walk-fight", "Pool of Radiance only")
 
@@ -10391,6 +10487,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.fight_cast(step.arg, args.walk, args.walk_steps)
             elif step.verb == "warp":
                 got = pool.warp(step.arg)
+            elif step.verb == "join":
+                got = pool.join(step.arg)
             elif step.verb == "site":
                 got = pool.site(step.arg)
             elif step.verb == "walk-fight":
@@ -10787,6 +10885,8 @@ def main(argv: list[str] | None = None) -> int:
                                                                    "curse"):
         ap.error("the warp step: Pool of Radiance and Curse of the Azure "
                  "Bonds only")
+    if any(x.verb == "join" for x in steps) and args.title != "curse":
+        ap.error("the join step: Curse of the Azure Bonds only")
     if any(x.verb == "add" for x in steps) and args.title != "pool":
         ap.error("the add step: Pool of Radiance only")
     if any(x.verb == "site" for x in steps) and args.title != "pool":
