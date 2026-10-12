@@ -140,6 +140,10 @@ Pose = tuple[tuple[int | None, ...], ...]
 def block_pixels(block: bytes) -> list[list[int]]:
     """One image block's stored values as `[y][x]`, read by its own header."""
     rows, stride = block[0], block[2] * 4
+    expected = IMAGE_HEADER + rows * stride
+    if len(block) < expected:
+        raise DosArtError(f"A block of {len(block)} bytes is shorter than "
+                          f"the {expected} its header describes")
     out = []
     for y in range(rows):
         line: list[int] = []
@@ -229,7 +233,7 @@ def recolour_table(colours: bytes) -> tuple[int, ...]:
     its high nibble, `t` from :data:`PART_TABLE`.
     """
     if len(colours) != len(PART_TABLE):
-        raise ValueError(f"icon_colours is {len(PART_TABLE)} bytes, "
+        raise DosArtError(f"icon_colours is {len(PART_TABLE)} bytes, "
                          f"not {len(colours)}")
     table = list(range(16))
     for part, chosen in zip(PART_TABLE, colours):
