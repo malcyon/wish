@@ -35,17 +35,44 @@ FAKE_ITEMS = {ITEM_WORD: "Test Mace"}
 FAKE_SPELLS = {9: "Test Burning Hands", 10: "Test Charm Person"}
 
 
-@pytest.fixture(autouse=True)
-def capture_missing_game_disk_warning(monkeypatch):
-    """Record the modal without blocking the existing offscreen checks."""
+def _spy_missing_game_disk_warning(monkeypatch):
+    """Intercept this warning only; preserve every other warning handler."""
     calls = []
+    previous = QMessageBox.warning
 
     def warning(parent, title, body, *args, **kwargs):
-        calls.append((parent, title, body))
-        return QMessageBox.StandardButton.Ok
+        if title == "Missing Game Disk":
+            calls.append((parent, title, body))
+            return QMessageBox.StandardButton.Ok
+        return previous(parent, title, body, *args, **kwargs)
 
     monkeypatch.setattr(QMessageBox, "warning", warning)
     return calls
+
+
+@pytest.fixture(autouse=True)
+def capture_missing_game_disk_warning(monkeypatch):
+    """Record the approved modal without blocking the offscreen checks."""
+    return _spy_missing_game_disk_warning(monkeypatch)
+
+
+def test_unrelated_warning_reaches_the_prior_handler(app, monkeypatch):
+    from editor.window import CANNOT_SAVE_TITLE
+
+    forwarded = []
+
+    def prior(*args, **kwargs):
+        forwarded.append((args, kwargs))
+        return QMessageBox.StandardButton.Cancel
+
+    with monkeypatch.context() as local:
+        local.setattr(QMessageBox, "warning", prior)
+        captured = _spy_missing_game_disk_warning(local)
+        args = (None, CANNOT_SAVE_TITLE, "Existing warning body")
+        assert QMessageBox.warning(*args, QMessageBox.StandardButton.Ok) == (
+            QMessageBox.StandardButton.Cancel)
+        assert forwarded == [(args + (QMessageBox.StandardButton.Ok,), {})]
+        assert captured == []
 
 
 @pytest.fixture

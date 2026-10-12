@@ -2698,11 +2698,13 @@ class EditorBinding(QObject):
     def no_game_disk_suffix(self) -> str:
         """What the status line adds when the game files gave nothing.
 
-        A C64 title's answer is the icon charset. A Pools of Darkness save
-        has none, so the item and spell names stand in for it: found names
-        add nothing, and a folder with none keeps the line as it is.
+        A C64 save uses the icon charset. DOS and Amiga saves use the item
+        names they can read from their native game resources, as Pools of
+        Darkness already does.
         """
-        found = self.item_names if self._is_pod() else self.charset
+        native = (self.party is not None
+                  and self.party.port in ("dos", "amiga"))
+        found = self.item_names if native or self._is_pod() else self.charset
         return "" if found else (
             "  -- no game disk, so no item names and no icons")
 

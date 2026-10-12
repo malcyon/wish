@@ -35,17 +35,44 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exist
                                  reason="needs the save disks")
 
 
-@pytest.fixture(autouse=True)
-def capture_missing_game_disk_warning(monkeypatch):
-    """Keep the new modal from blocking existing headless editor checks."""
+def _spy_missing_game_disk_warning(monkeypatch):
+    """Intercept this warning only; preserve every other warning handler."""
     calls = []
+    previous = QMessageBox.warning
 
     def warning(parent, title, body, *args, **kwargs):
-        calls.append((parent, title, body))
-        return QMessageBox.StandardButton.Ok
+        if title == "Missing Game Disk":
+            calls.append((parent, title, body))
+            return QMessageBox.StandardButton.Ok
+        return previous(parent, title, body, *args, **kwargs)
 
     monkeypatch.setattr(QMessageBox, "warning", warning)
     return calls
+
+
+@pytest.fixture(autouse=True)
+def capture_missing_game_disk_warning(monkeypatch):
+    """Keep the approved modal from blocking existing headless editor checks."""
+    return _spy_missing_game_disk_warning(monkeypatch)
+
+
+def test_unrelated_warning_reaches_the_prior_handler(app, monkeypatch):
+    from editor.window import CANNOT_SAVE_TITLE
+
+    forwarded = []
+
+    def prior(*args, **kwargs):
+        forwarded.append((args, kwargs))
+        return QMessageBox.StandardButton.Cancel
+
+    with monkeypatch.context() as local:
+        local.setattr(QMessageBox, "warning", prior)
+        captured = _spy_missing_game_disk_warning(local)
+        args = (None, CANNOT_SAVE_TITLE, "Existing warning body")
+        assert QMessageBox.warning(*args, QMessageBox.StandardButton.Ok) == (
+            QMessageBox.StandardButton.Cancel)
+        assert forwarded == [(args + (QMessageBox.StandardButton.Ok,), {})]
+        assert captured == []
 
 
 @pytest.fixture
@@ -1351,6 +1378,9 @@ def test_missing_resources_warn_once_per_successful_open_without_changing_save(
     assert len(window.party.members) == 6
     assert window.model.rowCount() == 6
     assert window.roster.currentIndex().row() == 0
+    assert window.charset == b"" and window.item_names == {}
+    assert "no game disk, so no item names and no icons" in (
+        window.root.statusBar().currentMessage())
     assert capture_missing_game_disk_warning == [(
         window.root, "Missing Game Disk",
         f"Set your {window.party.game.title} game disk in "
@@ -1444,6 +1474,7 @@ def test_matching_title_preferences_c64_resources_need_no_warning(
     assert window.game_disk_found == str(disk)
     assert window.item_names == {1: "Item"}
     assert window.spell_names == {1: "Spell"}
+    assert window.no_game_disk_suffix() == ""
     assert capture_missing_game_disk_warning == []
 
 
@@ -5213,6 +5244,42 @@ def _synthetic_dos_folder(tmp_path, deltas, numbers=(1, 2, 3), class_bits=None,
         (tmp_path / f"CHRDATA{n}{deltas.effect_suffix}").write_bytes(spc)
     (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
     return tmp_path
+
+
+def test_native_names_suppress_the_old_no_names_status_without_c64_charset(
+        app, tmp_path, monkeypatch, capture_missing_game_disk_warning):
+    import editor.window as ew
+    from goldbox import dos_port, titles
+
+    monkeypatch.delenv("POR_GAME_DISK", raising=False)
+    save = tmp_path / "SAVE"
+    save.mkdir()
+    _synthetic_dos_folder(save, dos_port.POOL_OF_RADIANCE,
+                          numbers=(1, 2, 3, 4, 5, 6))
+    game = Party(str(save)).game
+    launcher, config, stem = titles.DOS_FOLDER_FILES[game.key]
+    game_dir = tmp_path / stem
+    game_dir.mkdir()
+    for name in (launcher, config):
+        (game_dir / name).write_bytes(b"")
+
+    def names(game_title, port, where):
+        if (game_title is game and port == "dos"
+                and pathlib.Path(where) == game_dir):
+            return {1: "Test name"}
+        raise FileNotFoundError(where)
+
+    monkeypatch.setattr(ew.port_item_names, "item_names", names)
+    monkeypatch.setattr(ew.port_spell_names, "spell_names", names)
+    window = ew.EditorBinding(make_root(), game_folders={game.key: str(game_dir)})
+    window.load(str(save))
+    assert window.party is not None and window.party.port == "dos"
+    assert window.model.rowCount() == 6
+    assert window.charset == b"" and window.item_names == {1: "Test name"}
+    assert window.spell_names == {1: "Test name"}
+    assert window.no_game_disk_suffix() == ""
+    assert window.root.statusBar().currentMessage() == window.party.describe()
+    assert capture_missing_game_disk_warning == []
 
 
 def test_a_dos_party_opens_with_no_disk_and_no_slot_window(tmp_path):
