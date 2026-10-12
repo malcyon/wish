@@ -1649,7 +1649,8 @@ class Controller:
         return self.summary
 
     def run_discovery(self) -> dict[str, Any]:
-        """Observe the first unknown leave-town frame without pressing its prompt."""
+        """Walk to the east gate; `ssb-leave` observes the leave-town question,
+        `ssb-leave-yes` answers it YES and checks the arrival in The Ruins."""
         self.summary["discovery"] = row()
         self.summary["challenge_key_count"] = None
         self.summary["challenge_key_count_verified"] = False

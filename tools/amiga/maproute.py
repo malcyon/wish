@@ -292,8 +292,8 @@ def _ssb_walk() -> Phase:
 
 
 def _ssb_transition() -> Phase:
-    # WISH-1 comments f911dc9f and 582a3174: the exit square's NP8 asks the leave-town
-    # question, and YES reached The Ruins (area 32) at 11,2,E in the recorded run.
+    # The exit square's NP8 asks whether to leave town; Y is sent only once that question
+    # is recognized, and the party is expected in The Ruins (area 32) at 11,2,E.
     return _phase(
         "transition", "world",
         Step("move", "leave_town", key="NP8"),
