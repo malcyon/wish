@@ -73,7 +73,8 @@ class FakeIcon:
     bar), `icon` (ICON does), `question` (EXIT asks nothing and goes back to
     camp), `direct` (Y returns to camp, not the Alter bar), `writes` (Y
     writes a file into the save folder), `differs` (the NEW figures are not
-    the OLD ones).
+    the OLD ones), `alter-writes` (ALTER writes a file into the save folder
+    and opens some other bar).
     """
 
     def __init__(self, tmp: pathlib.Path, title: str, failure: str = "",
@@ -96,7 +97,9 @@ class FakeIcon:
         if m == "camp" and k == NEXT_KEY[self.title]:
             self.current = self.current % len(self.names) + 1
         elif m == "camp" and k == "a":
-            self.mode = "wrong" if self.failure == "alter" else "alter"
+            if self.failure == "alter-writes":
+                (self.save_dir / "SAVGAMA.DAT").write_bytes(b"\x01")
+            self.mode = "wrong" if self.failure in ("alter", "alter-writes") else "alter"
         elif m == "alter" and k == "i":
             self.mode = "wrong" if self.failure == "icon" else "icon"
         elif m == "alter" and k == "e":
@@ -224,6 +227,27 @@ def test_a_roster_name_no_record_holds_stops_before_alter(tmp_path):
     assert "a" not in game.keys
 
 
+def test_two_members_of_one_name_stop_before_alter(tmp_path):
+    game, d = _camped(tmp_path, "pool", names=("BRUTUS", "BRUTUS", "ROLAND"))
+    with pytest.raises(da.StepFailed, match="CHRDATA1.SAV, CHRDATA2.SAV"):
+        d.icon(2)
+    assert "a" not in game.keys
+
+
+def test_a_stop_on_the_route_says_the_save_folder_is_unchanged(tmp_path):
+    game, d = _camped(tmp_path, "curse", failure="icon")
+    with pytest.raises(da.StepFailed, match="the save folder is unchanged"):
+        d.icon(1)
+
+
+def test_a_stop_on_the_route_names_the_files_that_changed(tmp_path):
+    game, d = _camped(tmp_path, "curse", failure="alter-writes")
+    with pytest.raises(da.StepFailed,
+                       match=r"the save folder changed: \['SAVGAMA.DAT'\]"):
+        d.icon(1)
+    assert game.keys[-1] == "a"
+
+
 def test_a_save_folder_that_changed_stops_the_step(tmp_path):
     game, d = _camped(tmp_path, "pool", failure="writes")
     with pytest.raises(da.StepFailed, match="save folder changed"):
@@ -319,6 +343,18 @@ def test_stage_icon_writes_nothing_into_another_titles_record(tmp_path):
     with pytest.raises(ValueError, match="not the pool-of-radiance record"):
         da.stage_icon(tmp_path, "A", "pool", 1, 0, 0, bytes(6))
     assert (tmp_path / "CHRDATA1.SAV").read_bytes() == before
+
+
+def test_a_figure_staged_into_another_titles_record_stops_before_the_boot(tmp_path):
+    import argparse
+    (tmp_path / "SAVGAMA.DAT").write_bytes(bytes(0x100))
+    (tmp_path / "CHRDATA1.SAV").write_bytes(_record("curse", "ARGORA"))
+    (tmp_path / "CHRDATA2.SAV").write_bytes(_record("pool", "BRUTUS"))
+    args = argparse.Namespace(title="pool", stage_icon=["2=0:0:91a2b3c4e6f7"])
+    da.check_staging(args, tmp_path, "A")
+    args.stage_icon.append("1=0:0:91a2b3c4e6f7")
+    with pytest.raises(ValueError, match="not the pool-of-radiance record"):
+        da.check_staging(args, tmp_path, "A")
 
 
 def test_the_layouts_agree_with_the_overlays():

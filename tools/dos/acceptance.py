@@ -1244,6 +1244,21 @@ def parse_stage_icon(text: str) -> tuple[int, int, int, bytes]:
     return int(where), int(head), int(body), bytes.fromhex(colours)
 
 
+def icon_layout_rejection(path: pathlib.Path, title: str) -> str | None:
+    """Why `--stage-icon` cannot write into the record at `path` for
+    `title`, or None: its size must name `title`'s own layout."""
+    from goldbox import dos_port
+    key = ICON_LAYOUTS[title]
+    try:
+        found = dos_port.deltas_for(path.stat().st_size).key
+    except dos_port.DosDeltasError as e:
+        return f"--stage-icon: {path.name}: {e}"
+    if found != key:
+        return (f"--stage-icon: {path.name} is a {found} record, "
+                f"not the {key} record {title} loads")
+    return None
+
+
 def stage_icon(save_dir: pathlib.Path, letter: str, title: str, line: int,
                head: int, body: int, colours: bytes) -> dict:
     """Write roster line `line`'s figure into its installed `CHRDAT` record at
@@ -1252,15 +1267,11 @@ def stage_icon(save_dir: pathlib.Path, letter: str, title: str, line: int,
     figure is never written at another title's offsets."""
     from goldbox import dos_port
     path = save_dir / f"CHRDAT{letter.upper()}{line}.SAV"
+    why = icon_layout_rejection(path, title)
+    if why:
+        raise ValueError(why)
     data = bytearray(path.read_bytes())
     key = ICON_LAYOUTS[title]
-    try:
-        found = dos_port.deltas_for(len(data)).key
-    except dos_port.DosDeltasError as e:
-        raise ValueError(f"--stage-icon: {path.name}: {e}") from None
-    if found != key:
-        raise ValueError(f"--stage-icon: {path.name} is a {found} record, "
-                         f"not the {key} record {title} loads")
     fields = dos_port.FIELDS_BY_NAME_FOR[key]
     before = {}
     for name, value in zip(ICON_FIELDS, (bytes((head,)), bytes((body,)), colours)):
@@ -1278,9 +1289,11 @@ def stage_icon(save_dir: pathlib.Path, letter: str, title: str, line: int,
                       "icon_colours": colours.hex()}}
 
 
-def icon_record(save_dir: pathlib.Path, letter: str, name: str) -> dict | None:
-    """The installed `CHRDAT` record whose name is `name`, with its figure
-    fields, or None when no record of the slot has that name."""
+def icon_records(save_dir: pathlib.Path, letter: str, name: str) -> list[dict]:
+    """Every installed `CHRDAT` record of the slot whose name is `name`, with
+    its figure fields.  The step believes a line only when this is one record:
+    two members of one name could not be told apart."""
+    found = []
     for path in sorted(save_dir.glob(f"CHRDAT{letter.upper()}?.SAV")):
         try:
             c = dos_codec.read_character(path)
@@ -1288,10 +1301,10 @@ def icon_record(save_dir: pathlib.Path, letter: str, name: str) -> dict | None:
             continue
         if c.name.strip().upper() != name.strip().upper():
             continue
-        return {"file": path.name, "icon_head": c.get("icon_head"),
-                "icon_body": c.get("icon_body"), "size": c.get("size"),
-                "icon_colours": bytes(c.get("icon_colours")).hex()}
-    return None
+        found.append({"file": path.name, "icon_head": c.get("icon_head"),
+                      "icon_body": c.get("icon_body"), "size": c.get("size"),
+                      "icon_colours": bytes(c.get("icon_colours")).hex()})
+    return found
 
 
 def folder_hashes(folder: pathlib.Path) -> dict[str, str]:
@@ -7105,7 +7118,8 @@ class Driver:
         to has been read as text; no other key is pressed, so `Parts`, the
         colours and `Size` are never opened and nothing is saved.  The NEW
         figures must equal the OLD ones on the ICON screen and at the
-        question, and the step stops if the save folder changed.
+        question, and the step stops if the save folder changed.  A step that stops
+        anywhere on the route says whether the save folder changed by then.
         """
         title = self.title.key
         if title not in ICON_TITLES:
@@ -7115,17 +7129,40 @@ class Driver:
             raise StepFailed("icon needs camp first")
         label = f"icon-{line}"
         self.ensure_camp()
-        font = self.display_font()
+        self.display_font()
         before = folder_hashes(self.s.save_dir)
+        try:
+            return self._icon(line, label, before)
+        except StepFailed as e:
+            changed = self.folder_changes(before)
+            self.note(event="icon-files", line=line, changed=changed)
+            if "the save folder changed" in str(e):
+                raise
+            state = (f"the save folder changed: {changed}" if changed
+                     else "the save folder is unchanged")
+            raise StepFailed(f"{e}; {state}") from None
+
+    def folder_changes(self, before: dict[str, str]) -> list[str]:
+        """The save folder's files that differ from `before`, by name."""
+        after = folder_hashes(self.s.save_dir)
+        return sorted(n for n in set(before) | set(after)
+                      if before.get(n) != after.get(n))
+
+    def _icon(self, line: int, label: str, before: dict[str, str]) -> dict:
+        title = self.title.key
+        font = self.display_font()
         next_key = POOL_ROSTER_NEXT if title == "pool" else CAMP_ROSTER_NEXT[title]
         moved = self.pick_line(line, "camp", f"{label}-select", next_key)
         name = text_row(self.s.capture(), ICON_ROSTER_ROW + line - 1, font,
                         range(ICON_ROSTER_COLUMN,
                               ICON_ROSTER_COLUMN + POD_NAME_CELLS)).strip()
-        record = icon_record(self.s.save_dir, self.slot, name) if name else None
-        if record is None:
+        records = icon_records(self.s.save_dir, self.slot, name) if name else []
+        if len(records) != 1:
+            which = ", ".join(r["file"] for r in records) or "no"
             raise self.fail(f"{label}-name", f"roster line {line} reads {name!r}, "
-                            f"which names no CHRDAT{self.slot} record")
+                            f"which names {which} CHRDAT{self.slot} record"
+                            f"{'s' if len(records) > 1 else ''}; one is wanted")
+        record = records[0]
         self.shot(f"{label}-line")
         self.icon_key(ICON_ALTER, "camp", ("alter",), f"{label}-alter")
         alter = self.shot(f"{label}-alter")
@@ -7147,10 +7184,8 @@ class Driver:
             raise self.fail(f"{label}-back", f"the highlight came back on line "
                             f"{here}, not {line}")
         camp = self.shot(f"{label}-camp")
-        after = folder_hashes(self.s.save_dir)
-        if after != before:
-            changed = sorted(n for n in set(before) | set(after)
-                             if before.get(n) != after.get(n))
+        changed = self.folder_changes(before)
+        if changed:
             raise self.fail(f"{label}-files", f"the save folder changed: {changed}")
         self.note(event="icon", line=line, name=name, shot=f"{shot}.png", **record)
         return {"line": line, **moved, "name": name, "record": record,
@@ -8952,6 +8987,13 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
         if offset >= record.stat().st_size:
             raise ValueError(f"--stage-record offset {offset:#x} is outside "
                              f"{record.name}, which is {record.stat().st_size} bytes")
+    for text in getattr(args, "stage_icon", []) or []:
+        line = parse_stage_icon(text)[0]
+        record = next(p for p in save.iterdir()
+                      if p.name.upper() == f"CHRDAT{from_slot}{line}.SAV")
+        why = icon_layout_rejection(record, args.title)
+        if why:
+            raise ValueError(why)
 
 
 def charlist_names(folder: pathlib.Path) -> list[str]:
