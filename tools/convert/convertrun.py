@@ -158,7 +158,7 @@ def dos_game_folder(source_key: str | None,
 
 def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
                       game: pathlib.Path | None,
-                      disks: pathlib.Path,
+                      disks: pathlib.Path | None,
                       source_slot: str | None = None,
                       names: "dict[int, str] | None" = None,
                       leave: "dict[int, set[int]] | None" = None,
@@ -187,7 +187,7 @@ def write_via_save_as(source: pathlib.Path, to: str, folder: pathlib.Path,
     app = QApplication.instance() or QApplication([])
     _ = app
     root = QWidget()
-    window = EditorBinding(root, disks=str(disks))
+    window = EditorBinding(root, disks=str(disks) if disks else None)
     folder.mkdir(parents=True, exist_ok=True)
     try:
         report = saveasdrive.save_as(
@@ -494,12 +494,16 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--no-encounters is for a C64 destination")
     if args.to == "amiga" and not args.amiga_disk:
         p.error("--to amiga needs --amiga-disk")
+    if args.to == "amiga" and not pathlib.Path(
+            args.amiga_disk).expanduser().is_file():
+        p.error(f"There is no Amiga disk at {args.amiga_disk}.")
 
     # Both destinations read C64 disks: a C64 destination for its icon and
     # `ANIMATE00` tables, and a C64 source going to DOS for the source title's
     # icon table (`saveplan.resolve_assets`).
+    # An Amiga destination reads the named disk 2 and no C64 disk.
     disks = disks_dir(args.disks)
-    if disks is None:
+    if disks is None and args.to != "amiga":
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     game = pathlib.Path(args.game) if args.game else None
     if args.to == "dos":

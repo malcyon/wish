@@ -407,6 +407,14 @@ def test_no_encounters_is_blocked_for_a_dos_destination(tmp_path):
 # An Amiga destination
 # ---------------------------------------------------------------------------
 
+def _digests(source: pathlib.Path, disk: pathlib.Path) -> dict:
+    """SHA-256 of the disk and of every file in the source save."""
+    import hashlib
+    files = [disk, *sorted(p for p in source.rglob("*") if p.is_file())]
+    return {str(p): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in files}
+
+
 @needs_disks
 def test_an_amiga_destination_is_written_by_the_editors_save_as(
         tmp_path, monkeypatch):
@@ -439,6 +447,7 @@ def test_an_amiga_destination_is_written_by_the_editors_save_as(
     monkeypatch.setattr(saveplan, "prepare_save_as", prepare)
     monkeypatch.setattr(saveplan, "publish", publish)
     out = tmp_path / "out"
+    digest = _digests(source, disk)
 
     rc = convertrun.main(["--source", str(source), "--source-slot", "D",
                           "--to", "amiga", "--amiga-disk", str(disk),
@@ -448,13 +457,58 @@ def test_an_amiga_destination_is_written_by_the_editors_save_as(
     assert called == ["prepare_save_as", "publish"]
     written = [p for p in out.rglob("*.ADF")]
     assert len(written) == 1
+    assert written[0].resolve() != disk.resolve()
+    assert _digests(source, disk) == digest
     party, _save = amiga_savegame.read_por_slot(
         AmigaDisk.open(str(written[0])), "D")
     assert party
 
 
-def test_an_amiga_destination_needs_a_disk_2(tmp_path):
+def _no_write(monkeypatch):
+    """Stand in for `write_via_save_as`, recording whether it ran."""
+    ran = []
+
+    def fake(*args, **kwargs):
+        ran.append((args, kwargs))
+        return {"written": []}
+
+    monkeypatch.setattr(convertrun, "write_via_save_as", fake)
+    return ran
+
+
+def test_an_amiga_destination_needs_a_disk_2(tmp_path, monkeypatch, capsys):
+    ran = _no_write(monkeypatch)
     with pytest.raises(SystemExit):
         convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
                          "--out", str(tmp_path / "out")])
+    assert "--to amiga needs --amiga-disk" in capsys.readouterr().err
+    assert not ran
     assert not (tmp_path / "out").exists()
+
+
+def test_a_missing_amiga_disk_stops_naming_its_path(
+        tmp_path, monkeypatch, capsys):
+    ran = _no_write(monkeypatch)
+    gone = tmp_path / "gone.adf"
+    with pytest.raises(SystemExit):
+        convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
+                         "--amiga-disk", str(gone),
+                         "--out", str(tmp_path / "out")])
+    assert f"There is no Amiga disk at {gone}." in capsys.readouterr().err
+    assert not ran
+    assert not (tmp_path / "out").exists()
+
+
+def test_an_amiga_destination_needs_no_c64_disks(tmp_path, monkeypatch):
+    ran = _no_write(monkeypatch)
+    monkeypatch.setattr(convertrun, "disks_dir", lambda named=None: None)
+    disk = tmp_path / "por2.adf"
+    disk.write_bytes(b"x")
+
+    rc = convertrun.main(["--source", str(tmp_path / "S"), "--to", "amiga",
+                          "--amiga-disk", str(disk),
+                          "--out", str(tmp_path / "out")])
+
+    assert rc == 1
+    ((args, _kwargs),) = ran
+    assert args[4] is None
