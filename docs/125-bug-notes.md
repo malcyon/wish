@@ -1039,9 +1039,11 @@ needs a fight that kills exactly one member other than the cleric, which neither
 attempt got.
 
 **Why it matters here.** The same bytes come from a zombie animated while all 64
-effect rows were taken, so Wish converts both as ordinary dead
-([`117-save-conversion.md`](117-save-conversion.md), "A C64 zombie, dispelled or
-active"). WISH-366 asks whether anything separates them.
+effect rows were taken, so no byte separates the two histories. Wish converts
+every zombie player character to a living member
+([`117-save-conversion.md`](117-save-conversion.md), "A zombie player character
+converts living; a zombie companion stays a zombie"), so the case changes no
+conversion. WISH-366 asks whether anything separates them.
 
 **Version.** Pool of Radiance, C64.
 
@@ -1065,6 +1067,36 @@ state, the cause at `00B0:013A` and whether the Amiga port does the same are all
 unread.
 
 **Version.** Pool of Radiance, DOS.
+
+## N28. Amiga Curse's ADD CHARACTER > POOL sets a human man's strength to 100
+
+**What the game does.** The Pool import copies each of the six Pool scores into
+both bytes of its ability pair, then raises the permanent strength byte (`+0x10`)
+to the exceptional-strength maximum for the character's race and sex, and leaves
+the strength in force (`+0x11`) at his real score. The code is at file offsets
+`0x25590`-`0x255ca` of the `Curse` file on disk A, reading the table at
+`g0f14 + 4` (human man 100, human woman 50, dwarf 99, elf 75, gnome 50,
+half-elf 90, half-orc 99 for a man and 75 for a woman, halfling 0). CONFIRMED
+from the code and the table (WISH-303 comment a14df1ef).
+
+**What the player sees.** Every human man added from a Pool of Radiance
+character has permanent strength 100: EVOKER, BRUTUS, GENHEERIS and CONJURER, 4
+of 4 in game-written slots. The Pool record the game imported holds no byte of
+100, so it is not Animate Dead and not a percentile written into the wrong
+field. CONFIRMED for human men.
+
+**Other races and the strength in force.** The other races get 99, 90, 75 or 50
+and a halfling keeps his score: PROBABLE, from the code and table, no imported
+non-human is among the saves we have. A Pool dwarf, elf and human woman added
+and read back would settle it. Amiga Curse's strength recompute (`0xf5ee`,
+`0xf9e2`) seeds the strength in force from the permanent byte, so a recompute
+would make his strength in force 100: PROBABLE, from the code only. Readying or
+removing an item on EVOKER and viewing him would settle it.
+
+**Our side.** Wish reads the pair at the right offsets and converts it as the
+game wrote it; the 100 is in the game's record.
+
+**Version.** Curse of the Azure Bonds, Amiga.
 
 ## Not yet confirmed
 

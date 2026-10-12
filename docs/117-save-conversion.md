@@ -2775,35 +2775,38 @@ did **not** hold for free on the reader beside it: the first real consumer of
   hit points to give; the writer blocks and reports rather than writing
   hp_max as a guess, and the party arrives at 0 hit points on the sheet.
 
-### A C64 zombie, dispelled or active
+### A zombie player character converts living; a zombie companion stays a zombie
 
-A Pool of Radiance C64 member with status `$03` and no Animate Dead row (id 32,
-duration 0) in the effect list converts to DOS and the Amiga as an ordinary dead
-character, available for resurrection at the temple. A zombie that still has his
-row stays a zombie on the other side. `goldbox.c64_codec.dispelled_pool_zombie`
-makes the call and `goldbox.dos_codec` then writes the member through
-`as_ordinary_dead`. CONFIRMED live on both ports: the dispelled member's sheet
-reads DEAD, he is not placed in the next fight and the temple raises him; the
-active one arrives animated. The trip back to the C64 is not yet played
-there: the converted return disks match the registered ones byte for byte, but
-no C64 boot has shown a dispelled member arriving dead and an active one
-arriving as a zombie.
+A player-controlled member animated by Animate Dead arrives on every port as an
+ordinary living member under the player's orders, with at least 1 hit point,
+whatever his effect rows, dispelling or remove-and-add history. Zombie-only
+state is cleared: the animated status and control byte, the combat side flags,
+Animate Dead in every effect list, and the movement, turning and creature-type
+values the cast wrote. Memorised spells are left as read, so no spell the cast
+emptied is invented. A zombie companion (NPC) stays a zombie companion, with his
+control byte, creature type and effect row. `goldbox.c64_codec.zombie_player`
+tells the two apart and `goldbox.c64_codec.living_player` makes the player
+character living before any writer sees him. Ruling 99782a93 (WISH-303)
+replaced the earlier rule that converted a dispelled Pool of Radiance zombie as
+dead, because the C64 writes the same bytes for a dispelled zombie and for one
+animated while all 64 effect rows were taken, so no byte separates the histories.
 
-**Known limitation: two histories write the same bytes.** A zombie animated while
-all 64 effect rows were taken saves byte for byte as a dispelled one. The camp
-cast stores status `$03` and trait 32 before it asks for a row and skips only the
-row stores (`SPELLE04` `$A80A`-`$A82D`); the combat cast skips its stores at
-`ECL64` `$9A2C` and writes no trait at all; Dispel Magic removes only the array
-row and runs no handler for id 32. CONFIRMED from the code (WISH-303 comments
-6eba5378, 568e3ec5, a1e74d11). The C64 runs both as zombies, so the full-list
-zombie converts as dead although he was fighting. Reaching a full list in play
-is not shown: the best run reached 19 rows, and the camp route needs about 50
-buff casts in one visit (PROBABLE).
+| Title | Kind | Route | Grade |
+|---|---|---|---|
+| Pool of Radiance | player | C64 to DOS | CONFIRMED live: sheet OKAY, walk, game save (3ba79bfa, d76a4167) |
+| Pool of Radiance | player | C64 to Amiga | CONFIRMED live: sheet OKAY, walk, game-written slot holds a living member (d61f16a3) |
+| Pool of Radiance | player | DOS to C64 | CONFIRMED live: sheet OK, roster `$01`, no row 32 (a3f3cbaa, cf4aba93) |
+| Pool of Radiance | player | Amiga to C64 | CONFIRMED offline: converts to the same character bytes as the DOS route |
+| Pool of Radiance | companion | C64 to Amiga | CONFIRMED live: game-written slot keeps `$B2`, status 1; sheet reads animated (9e91f7f5, 02c33514) |
+| Curse of the Azure Bonds | player | Amiga to DOS, Amiga to C64, DOS to Amiga | CONFIRMED live (cc956213, 57d3c040, a8092f54) |
+| Curse of the Azure Bonds | companion | Amiga to DOS | CONFIRMED live (98da46fc, f373d320) |
+| Curse of the Azure Bonds | companion | Amiga to C64 | CONFIRMED live: sheet reads DEAD, as the C64 shows a zombie; his fight is not played (32d7270e) |
 
-No player prompt is offered; the choice was ruled out, and the case stays an
-unresolved limitation. Whether any byte in the save separates the two histories
-is the open investigation, WISH-366. Do not write a test that treats the
-full-list zombie converting dead as the intended result.
+Not played in the destination game: Pool of Radiance player Amiga to DOS and DOS
+to Amiga, Pool of Radiance companion Amiga to C64, and Curse of the Azure Bonds
+companion to the Amiga from DOS or the C64. Whether a player can have a zombie
+in Silver Blades or Pools of Darkness is not established; their conversion code
+is pinned by tests only.
 
 ### The portrait, which is one menu written two ways (#57 (Convert the character portrait across ports))
 

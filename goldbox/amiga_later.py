@@ -917,8 +917,8 @@ def _later_dropped(deltas: AmigaDeltas) -> tuple[tuple[str, str], ...]:
 
 
 def _undead_read(deltas: AmigaDeltas) -> tuple[tuple[str, str], ...]:
-    """The undead-byte rows the reader copies for this title (Curse's turning
-    row); Pool of Radiance is not served by this reader."""
+    """The undead-byte rows the reader copies for this title (Curse's creature
+    type and turning row); Pool of Radiance is not served by this reader."""
     from . import dos_codec as _dos
 
     return _dos.undead_direct(deltas.key)
