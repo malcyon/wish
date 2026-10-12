@@ -98,6 +98,8 @@ DESCRIPTION = "wish-tests {}"
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 DESCRIPTION_PATTERN = re.compile(r"^wish-tests (\S+)$")
 COUNT = re.compile(r"(\d+) (passed|failed|skipped|errors?|xfailed|xpassed|deselected|warnings?)")
+COLLECTED = re.compile(r"collected (\d+) items?(?: / \d+ deselected)?(?: / (\d+) selected)?")
+RESULT_WORDS = ("passed", "failed", "skipped", "error", "errors", "xfailed", "xpassed")
 
 
 class LaunchError(Exception):
@@ -675,6 +677,23 @@ def parse_counts(text: str) -> dict[str, int]:
     return {}
 
 
+def pytest_output_problem(check: dict) -> str | None:
+    """Why a pytest check that exited 0 still cannot count as passed, or None.
+
+    xdist exits 0 when a worker hits an INTERNALERROR, and the summary line then
+    counts only the tests that did report.
+    """
+    if check.get("internalerror"):
+        return "pytest reported an INTERNALERROR"
+    collected = check.get("collected")
+    if collected is not None:
+        counts = check.get("counts") or {}
+        reported = sum(counts.get(word, 0) for word in RESULT_WORDS)
+        if reported < collected:
+            return f"pytest reported {reported} results for {collected} collected tests"
+    return None
+
+
 def unmet_conditions(state: dict, invocation_id: str | None, checks_doc: dict | None,
                      requested: list[str], cleanup_ok: bool) -> list[str]:
     """What stops a run from counting as passed; empty means it passed."""
@@ -694,6 +713,8 @@ def unmet_conditions(state: dict, invocation_id: str | None, checks_doc: dict | 
             unmet.append(f"check {name} did not report")
         elif found.get("returncode") != 0:
             unmet.append(f"check {name} exited {found.get('returncode')}")
+        elif name == "pytest" and (problem := pytest_output_problem(found)):
+            unmet.append(problem)
     if not (checks_doc or {}).get("complete"):
         unmet.append("the wrapper did not finish its report")
     if not cleanup_ok:
@@ -871,7 +892,7 @@ def _finish_locked(ctx: Context, record: dict, samples: dict | None = None,
                    for n, c in ran.items()},
         "checks_not_run": [n for n in requested if n not in ran],
         "failure_output": next((c.get("tail") for c in ran.values()
-                                if c.get("returncode") != 0), None),
+                                if c.get("returncode") != 0 or c.get("internalerror")), None),
         "cleanup": {"complete": cleanup_ok, "detail": detail},
         "oom_killed": oom_killed,
         "conditions_unmet": unmet,
@@ -1192,10 +1213,20 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
             # check is killed must still reach the log.
             decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
             kept = ""
+            seen_internalerror = False
+            collected = None
+            held = ""
             while True:
                 chunk = proc.stdout.read1(65536)
                 text = decoder.decode(chunk, final=not chunk)
                 if text:
+                    # Scanned as it streams: the kept tail is too short to hold a
+                    # long traceback, and a marker may straddle two chunks.
+                    scan = held + text
+                    held = scan[-200:]
+                    seen_internalerror = seen_internalerror or "INTERNALERROR>" in scan
+                    if collected is None and (found := COLLECTED.search(scan)):
+                        collected = int(found.group(2) or found.group(1))
                     kept = (kept + text)[-20000:]
                     if out:
                         out.write(text)
@@ -1212,7 +1243,9 @@ def _checks_in_process(record: dict, timeout: float | None, log: str | None) -> 
             done[check["name"]] = {"returncode": code,
                                    "elapsed": round(time.monotonic() - started, 1),
                                    "counts": parse_counts(text) if check["name"] == "pytest" else {},
-                                   "tail": text[-2000:] if code else ""}
+                                   "internalerror": seen_internalerror,
+                                   "collected": collected,
+                                   "tail": text[-2000:] if code or seen_internalerror else ""}
     finally:
         if out:
             out.close()

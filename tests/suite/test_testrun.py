@@ -1373,3 +1373,83 @@ def test_run_and_cancel_print_the_record_as_a_path_with_the_content_under_detail
     ran = json.loads(capsys.readouterr().out)
     assert ran["record"] == expected["r2"] and ran["details"]["status"] == "cancelled"
     assert ran["status"] == "cancelled"
+
+
+# --- an exit status of 0 is not enough for pytest --------------------------------
+
+def _pytest_report(**fields):
+    check = {"returncode": 0, "counts": {"passed": 2}}
+    check.update(fields)
+    return {"complete": True, "checks": {"pytest": check}}
+
+
+def _unmet_for(report):
+    state = {"InvocationID": "i", "Result": "success", "ExecMainCode": "1",
+             "ExecMainStatus": "0"}
+    return testrun.unmet_conditions(state, "i", report, ["pytest"], True)
+
+
+def test_a_clean_pytest_report_has_nothing_unmet():
+    assert _unmet_for(_pytest_report(internalerror=False, collected=2)) == []
+
+
+def test_an_internalerror_with_exit_status_0_is_unmet():
+    assert _unmet_for(_pytest_report(internalerror=True)) == ["pytest reported an INTERNALERROR"]
+
+
+def test_fewer_results_than_collected_tests_is_unmet():
+    unmet = _unmet_for(_pytest_report(collected=3))
+    assert unmet == ["pytest reported 2 results for 3 collected tests"]
+
+
+def test_skipped_and_failed_tests_count_as_results():
+    report = _pytest_report(collected=4, counts={"passed": 1, "skipped": 2, "failed": 1})
+    assert _unmet_for(report) == []
+
+
+def _wrapped_pytest(tmp_path, repo, script):
+    checks_file = tmp_path / "checks.json"
+    request = {"workdir": str(repo), "pytest_args": [], "env": {},
+               "checks": [{"name": "pytest", "argv": [sys.executable, "-c", script]}]}
+    path = tmp_path / "r1.json"
+    path.write_text(json.dumps({"id": "r1", "checks_file": str(checks_file),
+                                "request": request}))
+    testrun.wrap(str(path))
+    return json.loads(checks_file.read_text())["checks"]["pytest"]
+
+
+def test_the_wrapper_notes_an_internalerror_even_when_it_scrolls_out_of_the_tail(
+        tmp_path, policy, repo):
+    script = ("print('collected 3 items / 1 deselected / 2 selected')\n"
+              "print('INTERNALERROR> boom')\n"
+              "print('x' * 30000)\n"
+              "print('2 passed in 0.01s')\n")
+    found = _wrapped_pytest(tmp_path, repo, script)
+    assert found["returncode"] == 0 and found["internalerror"] is True
+    assert found["collected"] == 2
+
+
+def test_the_wrapper_reads_the_collected_count_and_no_internalerror_from_clean_output(
+        tmp_path, policy, repo):
+    found = _wrapped_pytest(
+        tmp_path, repo, "print('collected 5 items')\nprint('5 passed in 0.01s')")
+    assert found["internalerror"] is False and found["collected"] == 5
+
+
+def test_xdist_losing_a_failure_to_a_lone_surrogate_is_recorded_as_unmet(tmp_path, policy):
+    pytest.importorskip("xdist")
+    work = tmp_path / "surrogate"
+    work.mkdir()
+    (work / "test_lone.py").write_text(
+        'def test_ok():\n    pass\n\n\ndef test_surrogate():\n    assert "\\ud800" == ""\n')
+    checks_file = tmp_path / "checks.json"
+    argv = [sys.executable, "-m", "pytest", "-q", "-n2", "-p", "no:cacheprovider",
+            "test_lone.py"]
+    request = {"workdir": str(work), "pytest_args": [], "env": {},
+               "checks": [{"name": "pytest", "argv": argv}]}
+    path = tmp_path / "r1.json"
+    path.write_text(json.dumps({"id": "r1", "checks_file": str(checks_file),
+                                "request": request}))
+    testrun.wrap(str(path))
+    report = json.loads(checks_file.read_text())
+    assert _unmet_for(report) == ["pytest reported an INTERNALERROR"]
