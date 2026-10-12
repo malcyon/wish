@@ -1929,9 +1929,16 @@ def test_origin_observer_pins_the_separate_game_written_g_not_the_selected_f():
                                       "b-mismatch", "occupied-f", "working-hash"])
 def test_origin_observer_contract_reads_pinned_g_and_independent_b_without_modifying_media(
         tmp_path, monkeypatch, damage):
+    tmp_path = _synthetic_private_files(monkeypatch, tmp_path)(tmp_path)
     generated = _seven_source(tmp_path, monkeypatch)
     root = tmp_path / "private-origin"
     root.mkdir(mode=0o700)
+    config_bytes = pathlib.Path(driver.__file__).with_name("goldbox-a500.uae").read_bytes()
+    if os.name == "nt":
+        config_bytes = config_bytes.replace(b"\r\n", b"\n")
+    assert hashlib.sha256(config_bytes).hexdigest() == driver.BUNDLE_CONFIG_SHA256
+    (root / "goldbox-a500.uae").write_bytes(config_bytes)
+    monkeypatch.setattr(driver, "__file__", str(root / "darknessreturn.py"))
     source = root / "fetched-disk3.adf"
     source.write_bytes(b"Generated source disk marker")
     source.chmod(0o600)

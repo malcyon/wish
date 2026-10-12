@@ -574,7 +574,7 @@ def _switch_away_and_back(window, charset):
 
     from wish.window import EDITOR_TAB, MAP_TAB
     window.editor.party = types.SimpleNamespace(
-        describe=lambda: "a party", game=None)
+        describe=lambda: "a party", game=None, port="c64")
     window.editor.item_names = {}
     window.editor.charset = charset
     window.tabs.setCurrentIndex(MAP_TAB)

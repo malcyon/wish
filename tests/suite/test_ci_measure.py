@@ -92,6 +92,36 @@ def test_plugin_preserves_failures_and_complete_file_costs(tmp_path, workers):
         assert main["collection_seconds"] > 0
 
 
+def test_plugin_preserves_worker_crash_without_an_internal_error(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "test_crash.py").write_text(
+        "import os\ndef test_crash():\n    os._exit(17)\n", encoding="utf-8",
+    )
+    output = tmp_path / "profile"
+    env = os.environ.copy()
+    env["WISH_CI_PROFILE_DIR"] = str(output)
+    env["PYTHONPATH"] = str(REPO) + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "tools.suite.ci_profile", "-n", "1",
+         "--max-worker-restart=0", "-q", str(tmp_path)],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
+    )
+    captured = result.stdout + result.stderr
+    assert result.returncode == 1, captured
+    assert "crashed while running" in captured
+    assert "test_crash.py::test_crash" in captured
+    assert "INTERNALERROR" not in captured
+    main = json.loads((output / "pytest-main.json").read_text())
+    assert main["exit_code"] == 1
+    assert main["collected_tests"] == 1
+    assert main["selected_workers"] == ["gw0"]
+    row, = main["files"].values()
+    assert row["reports"] == 2  # Setup and the worker-crash report, with no call or teardown.
+    assert row["setup_seconds"] >= 0
+    assert row["call_seconds"] == row["teardown_seconds"] == 0
+    assert set(row) == {"reports", "setup_seconds", "call_seconds", "teardown_seconds"}
+
+
 def test_wrapper_reports_child_failure_and_keeps_explicit_worker_count(tmp_path, monkeypatch):
     class Child:
         pid = 123

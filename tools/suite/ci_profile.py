@@ -43,7 +43,9 @@ class Profile:
             "setup_seconds": 0.0, "call_seconds": 0.0, "teardown_seconds": 0.0,
             "reports": 0,
         })
-        row[f"{report.when}_seconds"] += report.duration
+        # Xdist worker-crash reports have no setup, call or teardown phase.
+        if report.when in ("setup", "call", "teardown"):
+            row[f"{report.when}_seconds"] += report.duration
         row["reports"] += 1
 
     def pytest_sessionfinish(self, session, exitstatus):

@@ -128,7 +128,8 @@ def test_inventory_uses_tracked_files_patterns_and_directory_exclusions(tmp_path
 
 
 def run_pytest(root, *args):
-    env = dict(os.environ, PYTHONPATH=str(ROOT), PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+    env = dict(os.environ, PYTHONPATH=str(ROOT), PYTEST_DISABLE_PLUGIN_AUTOLOAD='1',
+               PYTEST_ADDOPTS='')
     return subprocess.run(
         [sys.executable, '-m', 'pytest', '-p', 'xdist.plugin',
          '-p', 'tools.suite.ci_shard', '-q', *args],
