@@ -2253,6 +2253,7 @@ graph LR
   dos_codec --> traits
   dos_codec --> world_state
   dos_codec -.->|deferred| yaml_io
+  dos_icons --> dos_savegame
   dos_port --> layout
   effects --> d64
   geo --> d64

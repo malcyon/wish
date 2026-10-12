@@ -75,7 +75,7 @@ import yaml
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap import gamedisks  # noqa: E402
-from goldbox import c64_port, icons  # noqa: E402
+from goldbox import c64_port, dos_icons, icons  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.iconparts import (  # noqa: E402
     EDITOR_FILE,
@@ -241,15 +241,6 @@ def c64_part_colours(icon_colours: bytes) -> dict[int, int]:
 
 
 # -- drawing --------------------------------------------------------------------
-def dos_recoloured(pixels: list[list[int]], icon_colours: bytes) -> list[list[int]]:
-    """A DOS block's part numbers as EGA colours, the way `0x1E55C` does it."""
-    lookup = list(range(16))
-    for k in range(6):
-        lookup[k + 1 if k < 4 else k + 2] = icon_colours[k] & 0x0F
-        lookup[(k + 1 if k < 4 else k + 2) + 8] = icon_colours[k] >> 4
-    return [[lookup[v] for v in row] for row in pixels]
-
-
 def c64_figure(parts: IconParts, charset: bytes, size: str, weapon: int,
                head: int, icon_colours: bytes) -> list[list[int]]:
     """Both poses of the proposed C64 figure in the converted colours.
@@ -276,8 +267,8 @@ def dos_figure(game: pathlib.Path, size: str, body: int, head: int,
     for pose in (0, 1):
         bodies = ic.dos_options(game, "CBODY", size, pose)
         heads = ic.dos_options(game, "CHEAD", size, pose)
-        out.append(dos_recoloured(ic._composite(bodies[body], heads[head]),
-                                  icon_colours))
+        out.append(dos_icons.recolour(
+            dos_icons.composite(bodies[body], heads[head]), icon_colours))
     return out
 
 
@@ -298,10 +289,11 @@ def redrawn_sizes(game: pathlib.Path, reference: pathlib.Path, kind: str,
     body, head = (dos_index, 0) if kind == "weapon" else (0, dos_index)
     out = []
     for size in ("small", "large"):
-        mine = [ic._composite(ic.dos_options(game, "CBODY", size, pose)[body],
-                              ic.dos_options(game, "CHEAD", size, pose)[head])
-                for pose in (0, 1)]
-        theirs = [ic._composite(
+        mine = [dos_icons.composite(
+            ic.dos_options(game, "CBODY", size, pose)[body],
+            ic.dos_options(game, "CHEAD", size, pose)[head])
+            for pose in (0, 1)]
+        theirs = [dos_icons.composite(
             ic.dos_options(reference, "CBODY", size, pose)[body],
             ic.dos_options(reference, "CHEAD", size, pose)[head])
             for pose in (0, 1)]

@@ -31,7 +31,7 @@ nibble in both files, and what the engine does with each:
 
 | value | in | part |
 |---|---|---|
-| 0 | both | transparent |
+| 0 | both | transparent, decided from the stored value before any recolour (see "The ICON screen") |
 | 1 / 9 | `CBODY` | body, main / highlight |
 | 2 / 10 | `CBODY` | arm |
 | 3 / 11 | `CBODY` | leg |
@@ -50,8 +50,9 @@ at `0x31C34` with `icon_head` `@0x0BD` and buffer 11; then `CBODY`, the
 same letter, `icon_body` `@0x0BE` and the party position `@0x0BF` as the
 buffer. The block loader (`0x31CAE`) adds `0x40` to the index when the name
 ends in `T`, loads that block as the first pose and `index + 0x80` as the
-second (`0x31D03`, `0x31D3F`), then `0x1E315` composites the head buffer
-over the body from row 0, once per pose.
+second (`0x31D03`, `0x31D3F`) -- for a head as well as a body -- then
+`0x1E315` ORs each head pose's bytes into the body pose's from row 0 and ANDs
+the two transparency masks.
 
 So a DOS figure is:
 
@@ -70,6 +71,39 @@ with `t` at `ds:0x3CF5` = `0A 01 02 03 04 06 07`. That is the mechanism
 behind the running-game measurement on `#57 (Convert the character portrait
 across ports)` that `0x0C1` is the body, `0x0C2` the arm, `0x0C3` the leg,
 `0x0C4` hair and skin, `0x0C5` the shield and `0x0C6` the weapon.
+
+## The ICON screen
+
+What camp's Alter > Icon shows for a Pool of Radiance, Curse or Silver Blades
+character, read statically from the archives' `GAME.OVR` and EXEPACK-expanded
+`START.EXE` (`GAME.OVR` is byte-identical in `por-dos-play`).
+`goldbox/dos_icons.py` composes it from the player's own files and
+`tools/icons/dosicons.py --palette` re-reads every row below. All of it is
+for the EGA mode: the first line of `POOL.CFG`, `CURSE.CFG` and `BLADES.CFG`,
+in the archives and in `por-dos-play`, is `E`, which each `START.EXE` turns
+into its display-mode byte 1 (Pool of Radiance image `0x444B`, Curse
+`0x20C1`, Silver Blades `0x2972`).
+
+| rule | grade | evidence |
+|---|---|---|
+| The head is ORed into the body, not drawn over it, from row 0, both poses | CONFIRMED, all three | `or al, dl` on the pixel bytes and `and al, dl` on the masks over the head's byte count: Pool of Radiance `GAME.OVR:0x1E315`, Curse `0x1C12E`, Silver Blades `0x24224`, each called twice by its loader |
+| The second pose takes head block `id + 128` as well as body `id + 128` | CONFIRMED | the block loader `0x31C34` loads `id` and `id + 0x80` for any file; the loader passes the head and body through it alike. 28 of each title's 56 head blocks draw the same picture in both poses |
+| Transparency comes from the stored value, before the recolour | CONFIRMED that the mask is built and kept that way; PROBABLE that the draw honours it | the load helper `START.EXE` image `0x48E5` marks each pixel whose stored nibble equals its key, passed as 0 by `0x4751` (helper `0x4640`); the composite ANDs the masks; the recolour `0x649C` writes only pixel bytes. The blitter `0x53B1` reads the mask pointer at `+0x13` (`0x53D6`, `0x580B`), not traced further |
+| So a colour nibble of 0 draws colour 0, opaque | PROBABLE | follows from the row above. BRUTUS (`07 07 08 C4 48 F7`) and MAGNUS (`91 09 08 C4 E8 F7`) hold 0 nibbles in `por-dos-play` |
+| The recolour is one simultaneous substitution through the sixteen-entry table | CONFIRMED | `0x649C` copies the buffer and, for each table entry that changes, writes the new value wherever the *original* holds the old one |
+| Pool of Radiance and Curse show colour 0 as dark grey and 8 as black on the ICON screen | CONFIRMED by code | the ICON routine (Pool of Radiance `0x1D1AC`, Curse `0x23EAD`) first calls `0x3081D` / `0x4012E`, which in EGA mode sets palette register 0 to colour 8 and register 8 to colour 0 (int 10h `AX=1000h`, setter image `0x704D` / `0x43A2`), and its last act is the restore `0x3083F` / `0x4016C` |
+| Silver Blades does not exchange them; its loader turns the outline (8) into 0 instead | CONFIRMED by code | the same two calls from its ICON routine `0x21398` reach empty routines (`0x418B3`, `0x418BA`); its loader remaps through `ds:0x19A4` to `ds:0x19B4`, equal but for entry 8 which is 0, when the display-mode byte `ds:0x6816` is not 0 (`0x2437E`, `0x243D6`), before the record's recolour |
+| The other fourteen colours are the EGA 200-line palette | CONFIRMED by code | the palette setter maps colour `c` to attribute `c`, or `c + 8` from 8, which is the power-on palette; no other call sets a register on the ICON screen. The RGB values are the hardware's, not game data |
+| Behind each pose: a fill of colour 0, then `COMSPR.DAX` block 25 (ready) and block 153 (action) | CONFIRMED by code | draw helper Pool of Radiance `0x1CE5E`, Curse `0x23B63`, fills with colour 0 in EGA mode and draws figure slot 25, which `0xEB17` / `0xFB55` load with `COMSPR` block 25; Silver Blades' helper `0x2104E` draws pose 0 of slot 25 behind both poses. Block 25 is a raised box in colours 7, 8 and 15 with no empty pixel; 153 is a sunken one whose inside is empty, so the fill shows |
+| The places: OLD at row 2, NEW at row 4, ready at column 1, action at column 4, in 24-pixel cells | PROBABLE | the ICON routine calls the helper with rows 2 and 4 (`0x1D26F`, `0x1D2EE`), the helper draws columns `c` and `c + 3`, and the draw routine `0x31F68` multiplies both by three 8-pixel units. Not yet seen on a screen |
+| Slot 25 still holds `COMSPR` block 25 when the ICON screen is reached from camp | PROBABLE | the only loads into slot 25 are those three sites; nothing on the camp path frees it that has been read |
+
+**What only a capture settles.** Stage 8 of `WISH-378`'s plan photographs each
+title's ICON screen: the 0-nibble rule (BRUTUS's ready pose holds index-0
+pixels, which must show dark grey in Pool of Radiance, and MAGNUS's body
+highlight), the places, the box behind each pose, and that the EGA palette is
+what DOSBox shows. `tools/icons/dosicons.py --capture NAME PNG` compares one
+member's composed poses with a frame pixel for pixel.
 
 ## `icon_dimension` `@0x06C` -- CONFIRMED
 
@@ -162,19 +196,18 @@ reads its own record's six colour bytes after `size` and indexes a seven-byte
 part table in the resident data segment, at `ds:0x3CF5`, `ds:0x3EC2` and
 `ds:0x4CAF`.
 
-**PROBABLE, and it is the one claim here that is not CONFIRMED:** that table
-holds `01 02 03 04 06 07` in all three -- body, arm, leg, hair, shield,
-weapon, which is `DOS_PAIR_CLASSES`. The six bytes occur exactly once in each
-title's `START.EXE` and nowhere else in any `.EXE`, `.OVR` or `.COM` of the
-three game directories, in the same run of constant tables each time
-(`0A 0F 0A 0A 0B 0C 0B` before, `1E 19 14 0F` after) -- but the `ds` base
-has not been resolved. In Pool of Radiance no single base puts both that hit
-at `ds:0x3CF5` and the size-letter table `04 53 54` at `ds:0x8C5`, so
-`START.EXE`'s data is not one flat run at a fixed offset and the match here
-is by neighbourhood rather than by address. The
-experiment that settles it: boot Curse under DOSBox, break at
-`GAME.OVR:0x1C301`, and read the seven bytes at `ds:0x3EC2`. Anything but
-`?? 01 02 03 04 06 07` refutes it.
+**CONFIRMED, and it was PROBABLE until the data segment was found:** that
+table holds `01 02 03 04 06 07` in entries 1-6 in all three -- body, arm, leg,
+hair, shield, weapon, which is `DOS_PAIR_CLASSES`. Entry 0, which the builder
+never reads, is `0A`, `13` and `0B`. The earlier reading could not put the
+table at an address because no single base fitted both it and the size
+letters; that was a base looked for in the file rather than the one the
+program loads. The System unit's start-up sets it -- `mov dx, imm16; mov ds,
+dx` at the far call `START.EXE`'s entry makes first -- to paragraph `0C7C`,
+`0ABE` and `0DE2`, and with those `ds:0x3CF5`, `ds:0x3EC2` and `ds:0x4CAF`
+read `?? 01 02 03 04 06 07` in the EXEPACK-expanded images, and Pool of
+Radiance's `ds:0x8C5` reads `04 53 54`. `tools/icons/dosicons.py --palette`
+reads all three.
 
 **And the shipped engines say it themselves.** Curse's own importer reads a
 Pool of Radiance record's `icon_head` `0x0BD`, `icon_body` `0x0BE` and `size`

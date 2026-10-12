@@ -54,14 +54,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent.parent))
 
 from automap import gamedisks  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
-from goldbox import icons  # noqa: E402
+from goldbox import dos_icons, icons  # noqa: E402
 from goldbox.dos_savegame import dax_blocks  # noqa: E402
 from goldbox.iconparts import CELLS_PER_POSE, SPACE, IconParts  # noqa: E402
-
-#: A block's pixels start here.  Byte 0 is the row count and byte 2 the width
-#: in fours; `tools/icons/portraitshot.py` fitted the 17 against every `HEAD`,
-#: `BODY`, `CHEAD` and `CBODY` block in the game.
-PIXEL_START = 17
 
 #: The figure both ports draw: three cells across, three down, eight pixels a
 #: cell.  The DOS blocks are 24 wide too -- `block[2] * 4 * 2`.
@@ -83,20 +78,6 @@ SEARCH_COLS = range(-1, 2)
 
 
 # -- the art ----------------------------------------------------------------
-def dos_pixels(block: bytes) -> list[list[int]]:
-    """One `.DAX` image block as EGA palette indices, `[y][x]`."""
-    rows, stride = block[0], block[2] * 4
-    out = []
-    for y in range(rows):
-        line: list[int] = []
-        for x in range(stride):
-            byte = block[PIXEL_START + y * stride + x]
-            line.append(byte >> 4)
-            line.append(byte & 0x0F)
-        out.append(line)
-    return out
-
-
 def dos_options(game: pathlib.Path, stem: str, size: str,
                 pose: int = 0) -> dict[int, list[list[int]]]:
     """Every DOS option of one size and pose, keyed by its menu index."""
@@ -105,7 +86,7 @@ def dos_options(game: pathlib.Path, stem: str, size: str,
     out = {}
     for block, raw in dax_blocks(path.read_bytes(), path.name):
         if block & (POSE_BIT | SIZE_BIT) == want:
-            out[block & ~(POSE_BIT | SIZE_BIT)] = dos_pixels(raw)
+            out[block & ~(POSE_BIT | SIZE_BIT)] = dos_icons.block_pixels(raw)
     return out
 
 
@@ -292,25 +273,14 @@ EGA = ("#000000", "#0000AA", "#00AA00", "#00AAAA", "#AA0000", "#AA00AA",
        "#FF5555", "#FF55FF", "#FFFF55", "#FFFFFF")
 
 
-def _composite(body: list[list[int]], head: list[list[int]]) -> list[list[int]]:
-    """A DOS figure: the head block drawn over the body block from row 0."""
-    out = [row[:] + [0] * (FIGURE - len(row)) for row in body]
-    out += [[0] * FIGURE for _ in range(FIGURE - len(out))]
-    for y, row in enumerate(head[:FIGURE]):
-        for x, value in enumerate(row[:FIGURE]):
-            if value:
-                out[y][x] = value
-    return out
-
-
 def _dos_sheet(game: pathlib.Path, size: str, kind: str) -> list[tuple]:
     """Every DOS option of one kind, completed by the other kind's first."""
     bodies = dos_options(game, "CBODY", size)
     heads = dos_options(game, "CHEAD", size)
     if kind == "weapon":
-        return [(n, _composite(bodies[n], heads[min(heads)]))
+        return [(n, dos_icons.composite(bodies[n], heads[min(heads)]))
                 for n in sorted(bodies)]
-    return [(n, _composite(bodies[min(bodies)], heads[n]))
+    return [(n, dos_icons.composite(bodies[min(bodies)], heads[n]))
             for n in sorted(heads)]
 
 

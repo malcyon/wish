@@ -78,14 +78,6 @@ def test_two_figures_a_row_apart_score_one_once_the_search_finds_them():
     assert ic.best_overlap(a, b) == 1.0
 
 
-def test_a_block_renders_as_many_pixels_as_its_header_declares():
-    """Rows from byte 0, two pixels a byte from `block[2] * 4` of them."""
-    block = bytes([2, 0, 3, 0] + [0] * 13) + bytes([0x12] * 24)
-    pixels = ic.dos_pixels(block)
-    assert len(pixels) == 2
-    assert pixels[0] == [1, 2] * 12
-
-
 # -- the finding -------------------------------------------------------------
 @pytest.mark.parametrize("size,heads,bodies", [("small", 14, 32),
                                                ("large", 14, 32)])
