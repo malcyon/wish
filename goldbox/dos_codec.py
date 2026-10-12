@@ -9849,15 +9849,14 @@ def savgam_writes(savgam: bytearray, report: "SaveReport",
         # The note keeps the addresses; the player-facing copy of this
         # sentence is gone (#248, and see OUTDOOR_FACING above).
         report.note(dos_container.pos_facing, 1, OUTDOOR_FACING_WHY)
-    dos_savegame.put_tail_state(savgam, indoors=indoors, container=dos_container,
-                                set_out=not fresh)
+    tail = dos_savegame.put_tail_state(savgam, indoors=indoors,
+                                       container=dos_container,
+                                       set_out=not fresh, modes=state.modes)
     where_stood = "indoors" if indoors else "outdoors"
     if later:
-        camp = (dos_container is dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS
-                and not fresh)
         report.note(dos_container.tail_scratch, 4,
-                    f"the four tail bytes, "
-                    f"{dos_savegame.CURSE_TAIL_CAMP if camp else dos_savegame.LATER_TAIL_ZERO}")
+                    f"the four tail bytes, {tail.why}: "
+                    f"({tail.previous}, {tail.mode}) in the mode pair")
     else:
         report.note(dos_savegame.SCRATCH_BYTE, 4,
                     f"the four tail bytes: 12804 at the value an "

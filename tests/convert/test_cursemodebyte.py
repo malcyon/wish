@@ -5,9 +5,11 @@ at SAVGAM offset 12807 is not 0 (`GAME.OVR:0x1F450`), and the Pit of Moander's
 script, like ten other indoor areas', runs no `LOADFILES` when the save already
 names it.  ENCAMP > SAVE writes 2 there, the mode the camp menu sets on entry
 (`GAME.OVR:0x1B3A6`); the party menu's own save writes 0 (`GAME.OVR:0x201C0`),
-which is what a party that has not set out keeps.  The C64 saves here are built
-from offsets; the Amiga and DOS ones are engine-written specimens, read at run
-time.
+which is what a party that has not set out keeps.  A source that holds a mode
+pair keeps it, translated so the destination's loader draws the map exactly
+when the source's would; the C64 holds none, so its party gets the camp pair.
+The C64 saves here are built from offsets; the Amiga and DOS ones are
+engine-written specimens, read at run time.
 """
 from __future__ import annotations
 
@@ -98,15 +100,64 @@ def _amiga_camp_save() -> amiga_savegame.AmigaSavegame:
                                 str(path))
 
 
-def test_an_amiga_party_moved_into_the_pit_converts_with_the_camp_mode():
-    state = amiga_savegame.state_from_savegame(_amiga_camp_save())
-    assert state.set_out and not state.outdoors
+def _in_the_pit(state: world_state.WorldState) -> world_state.WorldState:
     x, y, facing = PIT_SQUARE
-    in_the_pit = dataclasses.replace(state, area=PIT, geo=PIT, x=x, y=y,
-                                     facing=facing)
-    savgam = _dos_written(in_the_pit)
+    return dataclasses.replace(state, area=PIT, geo=PIT, x=x, y=y,
+                               facing=facing)
+
+
+def test_an_amiga_camp_save_moved_into_the_pit_keeps_its_own_camp_mode():
+    save = _amiga_camp_save()
+    assert (save.first_mode, save.mode) == (2, 2)
+    state = amiga_savegame.state_from_savegame(save)
+    assert state.set_out and not state.outdoors
+    savgam = _dos_written(_in_the_pit(state))
     assert sg.current_area(savgam) == PIT
-    assert _modes(savgam) == CAMP_PAIR
+    assert _modes(savgam) == (2, 2)
+
+
+def test_an_amiga_party_menu_save_after_a_load_still_draws_its_map_on_dos():
+    """Slot C of `WISH-SPEC-wish-661-curse-nrrq-meza` is Amiga Curse's own
+    save of a party that had set out, holding (2, 0).  The Amiga's loader
+    draws its map because the previous mode is camp; DOS's would not with a
+    0, so the writer gives DOS the camp mode."""
+    where = gamedata.specimen("wish-661-curse-nrrq-meza", platform="amiga")
+    disk = AmigaDisk((where / "fetched-df0.adf").read_bytes())
+    save = amiga_savegame.read_slot(disk, "C", amiga_savegame.CURSE)
+    assert (save.first_mode, save.mode) == (2, 0)
+    state = amiga_savegame.state_from_savegame(save)
+    assert state.set_out
+    assert _modes(_dos_written(_in_the_pit(state))) == (2, 2)
+
+
+def test_an_amiga_pair_whose_loader_skips_the_map_stays_zero():
+    """An Amiga (0, 0) of a party that has set out loads without its map
+    there, so DOS gets the 0 that does the same."""
+    save = dataclasses.replace(_amiga_camp_save(), first_mode=0, mode=0)
+    state = amiga_savegame.state_from_savegame(save)
+    assert state.set_out
+    assert _modes(_dos_written(_in_the_pit(state))) == (0, 0)
+
+
+@pytest.mark.parametrize("amiga,dos", [
+    ((4, 2), (4, 2)), ((2, 2), (2, 2)), ((0, 2), (0, 2)),
+    ((2, 0), (2, 2)), ((0, 0), (0, 0)), ((4, 0), (4, 0)),
+])
+def test_every_amiga_pair_the_specimens_hold_maps_to_one_that_loads_alike(
+        amiga, dos):
+    assert amiga_savegame.dos_curse_modes(*amiga) == dos
+
+
+def test_a_dos_party_menu_save_keeps_its_mode_zero():
+    """`WISH-SPEC-curse-535-former-paladin-node-running` slot E is DOS Curse's
+    own party-menu save of a party that had set out: (2, 0), as the game
+    wrote it."""
+    where = gamedata.specimen("curse-535-former-paladin-node-running")
+    engine = (where / "SAVGAME.DAT").read_bytes()
+    assert _modes(engine) == (2, 0)
+    state = world_state.from_dos(engine, DOS_CURSE)
+    assert state.set_out and state.modes == (2, 0)
+    assert _modes(_dos_written(state, dax=engine[DOS_CURSE.head])) == (2, 0)
 
 
 def test_an_amiga_party_saved_at_the_party_menu_keeps_the_party_menu_mode():

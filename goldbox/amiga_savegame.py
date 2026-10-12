@@ -478,7 +478,25 @@ def state_from_savegame(save: AmigaSavegame) -> world_state.WorldState:
     # variable-array triple.  The Amiga save routine names these six words
     # directly, so take them from the parsed table.
     return dataclasses.replace(
-        state, wallset=tuple(block for block, _slot in save.wallset))
+        state, wallset=tuple(block for block, _slot in save.wallset),
+        modes=(dos_curse_modes(save.first_mode, save.mode)
+               if save.container is CURSE else None))
+
+
+def dos_curse_modes(previous: int, mode: int) -> tuple[int, int]:
+    """An Amiga Curse mode pair as the DOS Curse mode pair that loads alike.
+
+    Amiga Curse's loader draws the save's own map and wall sets indoors when
+    the mode is not 0 **or** the previous mode is camp (`/Curse` 0x26A6E-
+    0x26A7A); DOS Curse's only when the mode is not 0 (`GAME.OVR:0x1F450`).
+    So the pair a party-menu save made after loading a camp save holds,
+    (2, 0), which still draws its map on the Amiga, becomes (2, 2), a pair
+    DOS Curse's own camp saves hold.  Every other pair is the same values in
+    the same enumeration on both ports.
+    """
+    if mode == 0 and previous == GAME_MODE_CAMP:
+        return previous, GAME_MODE_CAMP
+    return previous, mode
 
 
 def read_por_state(data: bytes, source: str = "") -> world_state.WorldState:

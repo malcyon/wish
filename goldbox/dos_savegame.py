@@ -1199,12 +1199,39 @@ CURSE_TAIL_CAMP = ("zero in the two scratch bytes, which are recomputed "
                    "mode pair, the camp mode an ENCAMP > SAVE writes and "
                    "the pair 35 of the engine's own camp saves hold -- the "
                    "loader draws the save's map only when the second is "
-                   "not 0")
+                   "not 0; the source holds no mode pair")
+CURSE_TAIL_SOURCE = ("zero in the two scratch bytes, which are recomputed "
+                     "from the map on the first step; the source save's own "
+                     "mode pair, as DOS Curse's loader reads it")
+
+
+@dataclasses.dataclass(frozen=True)
+class TailModes:
+    """The mode pair `put_tail_state` wrote at 12806/12807, and why."""
+    previous: int
+    mode: int
+    why: str
+
+
+def curse_tail_modes(*, set_out: bool,
+                     modes: "tuple[int, int] | None" = None) -> TailModes:
+    """The mode pair a DOS Curse save of this party holds.
+
+    A party that has not set out gets (0, 0), the party menu's own.  A source
+    that holds a pair (`world_state.WorldState.modes`) keeps it.  Any other
+    party gets (0, `CURSE_MODE_CAMP`), what ENCAMP > SAVE writes.
+    """
+    if not set_out:
+        return TailModes(0, 0, LATER_TAIL_ZERO)
+    if modes is not None:
+        return TailModes(modes[0], modes[1], CURSE_TAIL_SOURCE)
+    return TailModes(0, CURSE_MODE_CAMP, CURSE_TAIL_CAMP)
 
 
 def put_tail_state(save: bytearray, *, indoors: bool = True,
                    container: "DosContainer | None" = None,
-                   set_out: bool = True) -> None:
+                   set_out: bool = True,
+                   modes: "tuple[int, int] | None" = None) -> TailModes:
     """Bytes 12804-12807, from measurement rather than from the template.
 
     **Pool of Radiance**: `indoors` sets **two** of them, not one: the
@@ -1230,9 +1257,15 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
     save writes, since that menu sets the mode to 0 on entry
     (`GAME.OVR:0x201C0`).
 
-    **A Curse party that has set out** gets the mode pair (0, 2) instead, the
-    pair an ENCAMP > SAVE writes, see `CURSE_MODE_CAMP`: the loader skips the
-    map and the wall sets while the second byte is 0.
+    **A Curse party that has set out** gets `curse_tail_modes`'s pair: the
+    source's own `modes` where it holds one, otherwise (0, 2), the pair an
+    ENCAMP > SAVE writes (`CURSE_MODE_CAMP`).  The loader skips the map and
+    the wall sets while the second byte is 0.
+
+    Returns the pair written, with the reason the report records.  The
+    staging tools (`tools/dos/acceptance.py`, `cursememorize.py`,
+    `dosoutdoor.py`, `dosoutdoorprobe.py`, `dosfightwatch.py`) call this to
+    replace the mode pair of the save they stage, on purpose.
     """
     container = _container_for_save(save, container)
     if container is SAVE_POOL_OF_RADIANCE:
@@ -1241,15 +1274,17 @@ def put_tail_state(save: bytearray, *, indoors: bool = True,
         save[VIEW_MODE_BYTE] = (VIEW_MODE_INDOORS if indoors
                                 else VIEW_MODE_OUTDOORS)
         save[TAIL_CONSTANT_BYTE] = TAIL_CONSTANT
-        return
+        return TailModes(save[VIEW_MODE_BYTE], TAIL_CONSTANT, "")
     if not container.var_words:
         raise DosSaveError(
             f"a {container.title} saved game's square block is not written here")
+    tail = (curse_tail_modes(set_out=set_out, modes=modes)
+            if container is SAVE_CURSE_OF_THE_AZURE_BONDS
+            else TailModes(0, 0, LATER_TAIL_ZERO))
     save[container.tail_scratch:container.tail_scratch + 2] = bytes(2)
-    save[container.previous_mode] = 0
-    save[container.mode] = (CURSE_MODE_CAMP
-                            if set_out and container is SAVE_CURSE_OF_THE_AZURE_BONDS
-                            else 0)
+    save[container.previous_mode] = tail.previous
+    save[container.mode] = tail.mode
+    return tail
 
 
 def put_travel_square(save: bytearray, x: int, y: int,

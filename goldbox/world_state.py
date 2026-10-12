@@ -106,6 +106,11 @@ class WorldState:
     header: "dict[int, int]"
     #: Where this was read from, for the report.
     source: str = ""
+    #: Curse's (previous, current) game-mode pair as DOS Curse's loader reads
+    #: it, or None where the source holds none (the C64, whose interface mode
+    #: `$7F11` lies outside the saved image).  `from_dos` reads 12806/12807;
+    #: `goldbox.amiga_savegame.state_from_savegame` translates the Amiga's.
+    modes: "tuple[int, int] | None" = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -359,7 +364,10 @@ def from_dos(savgam: bytes,
         set_out=not fresh,
         header={a: dos_savegame.word(savgam, a, container)
                 for a in HEADER_ADDRESSES},
-        source=source)
+        source=source,
+        modes=((savgam[container.previous_mode], savgam[container.mode])
+               if container is dos_savegame.SAVE_CURSE_OF_THE_AZURE_BONDS
+               else None))
 
 
 def from_amiga(savgam: bytes, source: str = "") -> WorldState:
