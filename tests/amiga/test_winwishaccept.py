@@ -884,7 +884,7 @@ def test_discovery_rejects_wrong_prepared_route_before_guest(tmp_path, fault):
         route.phases = (*route.phases[:2], _phase("walk", "world", _step("move", "world", "NP8")),
                         *route.phases[3:])
     elif fault == "deadline":
-        args.deadline = 1801
+        args.deadline = 2101
     else:
         args.manifest.write_text(args.manifest.read_text().replace('"A"', '"B"'))
     with pytest.raises(winwishaccept.AcceptanceStop):
@@ -2469,3 +2469,179 @@ def test_second_page_real_checkpoint_retains_delayed_nonatomic_wish_pair(
         "awaiting image review" if readable else "unproven")
     assert (result["failure"] is None) is readable
     assert game.keys == ["P", "L", "D", "V", "E", "B", "RET"] and ("down",) in calls
+
+
+class _PartyMemory:
+    """A Silver Blades party list in a byte image; each `read_blocks` call is one round trip."""
+
+    BASE, SIZE, DATA = 0xC00000, 0x80000, 0xC50000
+
+    def __init__(self, items):
+        from automap import amiga, amigaparty
+
+        self.layout = amiga.MACHINES["secret-of-the-silver-blades"]
+        self.row = amigaparty.ROWS["secret-of-the-silver-blades"]
+        self.data_base = self.DATA
+        self.memory = ((self.BASE, self.SIZE),)
+        self.image = bytearray(self.SIZE)
+        self.calls = []
+        records = (0xC60000, 0xC60200)
+        self._put(self.DATA + self.row.head, records[0])
+        for slot, (address, name) in enumerate(zip(records, (b"PAINE", b"EPONA"))):
+            self.image[address - self.BASE:address - self.BASE + len(name)] = name
+            self.image[address - self.BASE + self.row.slot] = slot
+            self._put(address + self.row.next_offset, records[slot + 1] if slot == 0 else 0)
+        self.items = []
+        for _ in range(items):
+            self.add_item()
+
+    def _put(self, address, value):
+        at = address - self.BASE
+        self.image[at:at + 4] = value.to_bytes(4, "big")
+
+    def add_item(self):
+        address = 0xC66000 + 0x50 * len(self.items)
+        self.image[address - self.BASE + 1] = len(self.items) + 1
+        link = (self.items[-1] + self.row.items.link if self.items
+                else 0xC60000 + self.row.items.head)
+        self._put(link, address)
+        self.items.append(address)
+
+    def read_blocks(self, blocks):
+        self.calls.append(list(blocks))
+        return [bytes(self.image[a - self.BASE:a - self.BASE + n]) for a, n, *_ in blocks]
+
+    def read(self, address, length):
+        return self.read_blocks([(address, length)])[0]
+
+    def fix(self):
+        return SimpleNamespace(x=3, y=3, facing=2, outdoors=False, world_map=False,
+                               window=None, heading=None)
+
+    def geo(self):
+        return None
+
+    def close(self):
+        pass
+
+
+def _party_checkpoint_controller(tmp_path, monkeypatch, memory):
+    from tools.amiga import amigatarget
+
+    clock = FakeClock()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=SimpleNamespace(), game=FakeGame(),
+        guards=lambda state, path: True, route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}, "build_sha": SHA}, clock=clock, sleep=clock.sleep)
+    monkeypatch.setattr(amigatarget, "connect_pipe", lambda *args: memory)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+
+    def shot(guest, holder, kind, path):
+        pathlib.Path(path).write_bytes(b"wish")
+
+    monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    return controller
+
+
+def test_unchanged_party_is_read_in_one_batch_at_a_later_checkpoint(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    memory = _PartyMemory(items=24)
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, memory)
+    controller._checkpoint("loaded", None, {"raw": "game"})
+    first_calls = len(memory.calls)
+    # One read for the head, one per record, one per item level.
+    assert first_calls == 1 + 2 + 24
+    controller._checkpoint("turn_east", None, {"raw": "game"})
+    assert len(memory.calls) - first_calls == 1
+    observed = controller.checkpoints["turn_east"]["observed"]["party"]
+    assert observed == controller.checkpoints["loaded"]["observed"]["party"]
+    assert [len(member["items"]) for member in observed] == [24, 0]
+    fresh = amigaparty.read_party(memory)
+    assert [member["raw"] for member in observed] == [m.raw.hex() for m in fresh]
+
+
+def test_changed_party_list_is_read_live_after_the_batch(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    memory = _PartyMemory(items=3)
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, memory)
+    controller._checkpoint("loaded", None, {"raw": "game"})
+    memory.add_item()
+    before = len(memory.calls)
+    controller._checkpoint("turn_east", None, {"raw": "game"})
+    assert len(memory.calls) - before == 2
+    observed = controller.checkpoints["turn_east"]["observed"]["party"]
+    fresh = amigaparty.read_party(memory)
+    assert [[address for address, _raw in member["items"]] for member in observed] == [
+        [node.address for node in member.item_nodes] for member in fresh]
+    assert len(observed[0]["items"]) == 4
+
+
+def test_checkpoint_event_records_where_its_time_went(tmp_path, monkeypatch):
+    memory = _PartyMemory(items=1)
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, memory)
+    controller._checkpoint("loaded", None, {"raw": "game"})
+    events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    timings = next(e for e in events if e["event"] == "checkpoint")["timings"]
+    assert set(timings) == {"connect", "party", "fix", "geo", "map_tab", "settle",
+                            "wish_shot", "controls"}
+    assert timings["settle"] >= 10
+    assert all(value >= 0 for value in timings.values())
+    record = controller.checkpoints["loaded"]
+    assert record["timings"] == timings
+    assert record["party_reads"] == {"batched_blocks": 0, "live_reads": 4}
+
+
+@pytest.mark.parametrize("deadline", [1801, 2100])
+def test_leave_discovery_admits_a_2100_second_deadline(tmp_path, deadline):
+    args = _discovery_args(tmp_path)
+    args.deadline = deadline
+    with pytest.raises(winwishaccept.AcceptanceStop, match="prepared manifest is missing"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *unused:
+                                pytest.fail("route inspected without manifest"), driver_sha=SHA)
+
+
+def test_leave_discovery_stops_above_2100_seconds(tmp_path):
+    args = _discovery_args(tmp_path)
+    args.deadline = 2101
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="--deadline must be above 300 and at most 2100"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *unused:
+                                pytest.fail("route inspected after budget stop"), driver_sha=SHA)
+
+
+@pytest.mark.parametrize("mode", ["ssb-opening-first", "ssb-opening-second",
+                                  "ssb-opening-after-second"])
+def test_opening_discovery_modes_keep_the_1800_second_bound(tmp_path, mode):
+    args = _discovery_args(tmp_path)
+    args.discover = mode
+    args.deadline = 1801
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="--deadline must be above 300 and at most 1800"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *unused:
+                                pytest.fail("route inspected after budget stop"), driver_sha=SHA)
+
+
+@pytest.mark.parametrize(("mode", "expected"), [("ssb-leave", 2100),
+                                                ("ssb-opening-first", 1800),
+                                                (None, 3300)])
+def test_default_deadline_per_mode(tmp_path, monkeypatch, mode, expected):
+    seen = []
+    monkeypatch.setattr(winwishaccept.winwish, "Guest", lambda: object())
+    monkeypatch.setattr(winwishaccept, "WinGuest", lambda: object())
+
+    def preflight(args, **kwargs):
+        seen.append(args.deadline)
+        raise winwishaccept.AcceptanceStop("stop before lane claim")
+
+    monkeypatch.setattr(winwishaccept, "preflight", preflight)
+    argv = ["--title", "ssb", "--manifest", str(tmp_path / "prepare.json"), "--sha", SHA,
+            "--holder", "test-acw", "--mute-proof", str(tmp_path / "mute.json"),
+            "--out", str(tmp_path)]
+    if mode:
+        argv += ["--discover", mode]
+    assert winwishaccept.main(argv) == 2
+    assert seen == [expected]

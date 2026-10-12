@@ -34,8 +34,12 @@ MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
 DISCOVERY_SECONDS = 1800
+#: The leave-town route checkpoints 13 times before its terminal key; 1800 s of route.
+LEAVE_DISCOVERY_SECONDS = 2100
 OPENING_THIRD_SECONDS = 1500
 DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
+#: Party nodes this close are dumped as one span, so the batch stays a few dump commands.
+PARTY_SPAN_GAP = 1024
 DISCOVERY_DF0_SHA256 = "068bc3e2bfd79e6014d427b5aef730d2bd52f0ba1cd28c3664fd9306a04a6948"
 OPENING_FIRST_RULE = {
     "box": [88, 302, 700, 400],
@@ -224,6 +228,15 @@ def _states(route: Any) -> set[str]:
     return states | _page_states(route)
 
 
+def _deadline_limit(mode: str | None) -> int:
+    """The largest total deadline, cleanup included, that a mode may run with."""
+    if mode == "ssb-opening-after-third":
+        return OPENING_THIRD_SECONDS
+    if mode == "ssb-leave":
+        return LEAVE_DISCOVERY_SECONDS
+    return DISCOVERY_SECONDS if mode else MAX_SECONDS
+
+
 def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
               driver_sha: str | None = None) -> tuple[Any, Any, pathlib.Path, dict[str, Any]]:
     """Check every static dependency before a lane can be claimed."""
@@ -232,8 +245,7 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     mode = getattr(args, "discover", None)
     opening = mode in OPENING_MODES
     discovery = mode == "ssb-leave" or opening
-    maximum = (OPENING_THIRD_SECONDS if mode == "ssb-opening-after-third"
-               else DISCOVERY_SECONDS if discovery else MAX_SECONDS)
+    maximum = _deadline_limit(mode)
     if args.deadline > maximum or args.deadline <= CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {CLEANUP_SECONDS} and at most {maximum}")
     if not pathlib.Path(args.manifest).is_file():
@@ -342,6 +354,90 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     return route, guards, zipped, info
 
 
+def _party_spans(blocks: list[tuple[int, int]],
+                 memory: Any) -> list[tuple[int, int]]:
+    """Merge nearby blocks into dump spans, never across a memory region."""
+    regions = tuple(memory) if isinstance(memory, tuple) else ()
+
+    def region(address: int, length: int) -> int | None:
+        if not regions:
+            return 0
+        return next((base for base, size in regions
+                     if base <= address and address + length <= base + size), None)
+
+    spans: list[list[int]] = []
+    for address, length in sorted(set(blocks)):
+        home = region(address, length)
+        if home is None:
+            continue
+        if (spans and spans[-1][2] == home
+                and address <= spans[-1][0] + spans[-1][1] + PARTY_SPAN_GAP):
+            spans[-1][1] = max(spans[-1][1], address + length - spans[-1][0])
+        else:
+            spans.append([address, length, home])
+    return [(start, size) for start, size, _home in spans]
+
+
+class _BatchedParty:
+    """A pipe target whose party reads come from one batched read where they can.
+
+    `amigaparty.read_party` reads every list a level per round trip, so a member
+    carrying 24 items costs about 31 sequential WinUAE pipe round trips. The previous
+    checkpoint's party names every node; dumping those spans in one call and
+    answering `walk`'s levels from it gives the same walk, with all its pointer and
+    plausibility checks. A level asking for any block outside the spans is read
+    live, whole.
+    """
+
+    def __init__(self, target: Any, blocks: list[tuple[int, int]]):
+        self.layout = getattr(target, "layout", None)
+        self.data_base = getattr(target, "data_base", None)
+        self.memory = getattr(target, "memory", None)
+        self._source = target
+        self.batched_blocks = len(blocks)
+        self.live_reads = 0
+        spans = _party_spans(blocks, self.memory) if blocks else []
+        self._spans = list(zip(spans, self._read(spans))) if spans else []
+
+    def _read(self, blocks: list[tuple[int, int]]) -> list[bytes]:
+        many = getattr(self._source, "read_blocks", None)
+        if many is not None:
+            return [bytes(raw) for raw in many(blocks)]
+        return [bytes(self._source.read(address, length)) for address, length in blocks]
+
+    def _cached(self, address: int, length: int) -> bytes | None:
+        for (start, size), raw in self._spans:
+            if start <= address and address + length <= start + size:
+                return raw[address - start:address - start + length]
+        return None
+
+    def read_blocks(self, blocks: Any) -> list[bytes]:
+        want = [(block[0], block[1]) for block in blocks]
+        found = [self._cached(address, length) for address, length in want]
+        if all(raw is not None for raw in found):
+            return found
+        self.live_reads += 1
+        return self._read(want)
+
+    def read(self, address: int, length: int) -> bytes:
+        return self.read_blocks([(address, length)])[0]
+
+
+def _party_nodes(target: Any, party: Any) -> list[tuple[int, int]]:
+    """Every record, item and effect node of a party just read, as `(address, size)`."""
+    from automap import amigaparty  # noqa: PLC0415
+
+    row = amigaparty.row_for(target)
+    if row is None or not party:
+        return []
+    nodes = []
+    for member in party:
+        nodes.append((member.address, row.record_size))
+        nodes += [(node.address, row.items.size) for node in member.item_nodes]
+        nodes += [(node.address, row.effects.size) for node in member.effect_nodes]
+    return nodes
+
+
 class Controller:
     """One bounded boot with injectable guests and clock for lifecycle tests."""
 
@@ -370,6 +466,7 @@ class Controller:
         self.remotes: dict[str, str] = {}
         self.checkpoints: dict[str, dict[str, Any]] = {}
         self.area_by_geo: dict[str, set[int]] | None = None
+        self.party_nodes: list[tuple[int, int]] = []
         self.summary: dict[str, Any] = {**info,
             "mapping": {name: row() for name in MAPPING_ROWS},
             "actions": {action.kind: row() for action in route.actions},
@@ -502,10 +599,30 @@ class Controller:
         )
         from tools.amiga import amigatarget  # noqa: PLC0415
 
+        timings: dict[str, float] = {}
+        mark = self.clock()
+
+        def lap(part: str) -> None:
+            nonlocal mark
+            now = self.clock()
+            timings[part] = round(now - mark, 3)
+            mark = now
+
         target = amigatarget.connect_pipe(self.args.holder, amiga.MACHINES[self.route.game_key])
-        party = amigaparty.read_party(target)
+        lap("connect")
+        row_ = amigaparty.row_for(target)
+        base = getattr(target, "data_base", None)
+        batch = ([(base + row_.head, 4), *self.party_nodes]
+                 if self.party_nodes and row_ is not None and base is not None else [])
+        reader = _BatchedParty(target, batch)
+        party = amigaparty.read_party(reader)
+        self.party_nodes = _party_nodes(target, party)
+        party_reads = {"batched_blocks": reader.batched_blocks, "live_reads": reader.live_reads}
+        lap("party")
         fix = target.fix()
+        lap("fix")
         area = self._area_of(geo) if (geo := target.geo()) is not None else None
+        lap("geo")
         engine = {"fix": (None if fix is None else
                           {"x": fix.x, "y": fix.y, "facing": fix.facing,
                            "outdoors": fix.outdoors, "world_map": fix.world_map,
@@ -523,10 +640,14 @@ class Controller:
             winwish.start_wish(self.guest, self.args.holder, flag=True, reseed=False)
             self.wish_closed = False
         self._map_section()
+        lap("map_tab")
         self.sleep(self.left(10))
+        lap("settle")
         wish_path = self.out / f"wish-{name}.png"
         winwish.shot(self.guest, self.args.holder, "wish", wish_path)
+        lap("wish_shot")
         controls = winwish.ui(self.guest, self.args.holder, "controls")
+        lap("controls")
         controls_path = self.out / f"controls-{name}.txt"
         controls_path.write_text("\n".join(controls) + "\n")
         verdict = self._compare_checkpoint(name, expected, engine)
@@ -536,8 +657,10 @@ class Controller:
                                   "wish": str(wish_path), "wish_sidecar": str(wish_path) + ".json",
                                   "controls": str(controls_path),
                                   "elapsed": round(self.clock() - self.started, 3),
-                                  "pair_atomic": False}
-        self.log("checkpoint", name=name, game=game_evidence, wish=str(wish_path))
+                                  "pair_atomic": False,
+                                  "timings": timings, "party_reads": party_reads}
+        self.log("checkpoint", name=name, game=game_evidence, wish=str(wish_path),
+                 timings=timings, party_reads=party_reads)
         self._game_section()
         if verdict["status"] != "awaiting image review":
             raise AcceptanceStop(f"{name}: {verdict['reason'] or verdict['status']}")
@@ -1585,8 +1708,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.deadline is None:
-        args.deadline = (OPENING_THIRD_SECONDS if args.discover == "ssb-opening-after-third"
-                         else DISCOVERY_SECONDS if args.discover else MAX_SECONDS)
+        args.deadline = _deadline_limit(args.discover)
     from tools.amiga.maproute import route_for  # noqa: PLC0415
 
     guest, lane, game = winwish.Guest(), WinGuest(), WinGuest()
