@@ -334,7 +334,9 @@ def _return_coordinator(tmp_path, monkeypatch, *, fail=None, mismatch=None):
         events.append(("place", stage))
         if fail == "returned":
             raise RouteError("return7_area: the party is in area 22, not 82")
-        return {"live_area": 82, "gate": True, "square": [3, 9 if fail == "moved" else 10, 3]}
+        # The game's foyer square, or the departure square Return wrote before area 82's init.
+        return {"live_area": 82, "gate": True,
+                "square": [3, 10, 3] if fail == "moved" else [7, 15, 0]}
 
     def trip(holder, disks_dir, out, left):
         events.append(("trip", holder))
@@ -366,8 +368,8 @@ def _return_coordinator(tmp_path, monkeypatch, *, fail=None, mismatch=None):
     monkeypatch.setattr(driver.route_darkness, "DARKNESS", SimpleNamespace(
         slot_letters=lambda disk: ["B", "F"],
         read_slot=lambda disk, letter: {"place": {
-            "area": 5, "x": 3, "y": 9 if fail == "moved" else 10,
-            "facing": 2 if fail == "saved-place" else 3}}))
+            "area": 5, "x": 3 if fail == "moved" else 7, "y": 10 if fail == "moved" else 15,
+            "facing": 2 if fail == "saved-place" else 3 if fail == "moved" else 0}}))
     guest = _Guest(events, {key: f"remote-{key}" for key in disks})
     args = SimpleNamespace(run_id="synthetic-origin", holder="return7-holder", budget=3000,
                            out=root / "return-output-01", manifest=manifest, controls=controls,
@@ -417,7 +419,9 @@ def test_return_phase_captures_before_travel_and_before_new_f_then_compares_to_t
     assert stored["success"] is True
     assert stored["independently_authenticated"] is False
     assert stored["preservation_established"] is False
-    assert stored["return_square_matches_start"] is True
+    assert stored["return_square_matches_start"] is False
+    assert stored["return_square_expected"] == [7, 15, 0]
+    assert stored["return_square_matches_arrival"] is True
     assert stored["checks"]["return_square"] is True
     assert stored["halt"]["fetched"]["disk3"]["path"] == "return-output-01/fetched/fetched-disk3.adf"
     assert "raw_hex" not in path.read_text()
@@ -673,14 +677,16 @@ def test_reload_phase_needs_a_fresh_run_before_preparing(tmp_path, monkeypatch):
     assert not [event for event in events if event[0] in ("prepare", "boot")]
 
 
-def test_return_that_lands_elsewhere_still_saves_and_compares_but_fails(tmp_path, monkeypatch):
+def test_return_left_on_the_departure_square_still_saves_and_compares_but_fails(
+        tmp_path, monkeypatch):
     args, guest, events, comparisons, _, _ = _return_coordinator(
         tmp_path, monkeypatch, fail="moved")
     with pytest.raises(RouteError, match="return_square"):
         driver.run_origin_return(args, guest=guest)
     receipt = json.loads((args.out / "origin-return-receipt.json").read_text())
     assert "error" not in receipt and receipt["success"] is False
-    assert receipt["return_square_matches_start"] is False
+    assert receipt["return_square_matches_start"] is True
+    assert receipt["return_square_matches_arrival"] is False
     assert receipt["checks"]["return_square"] is False
     assert _keys(events).count("F") == 1
     assert comparisons[-1] == ("post-f", "F", "return-new-F", True)
@@ -739,3 +745,8 @@ def test_reload_budget_is_bounded_before_preparing(tmp_path, monkeypatch, budget
         with pytest.raises(RouteError, match="reload7_deadline"):
             driver.run_origin_reload(args, guest=guest)
         assert not events
+
+
+def test_pinned_origin_return_square_is_the_foyer_area_82_init_writes():
+    assert driver.ORIGIN_RETURN_SQUARE == (7, 15, 0)
+    assert driver.ORIGIN_LIVE_AREA == 82

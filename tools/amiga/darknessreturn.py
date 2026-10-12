@@ -85,6 +85,10 @@ ORIGIN_PREPARED_SHA256 = "de70cca6e178026d60f406c9e64bee3cd87a1da5d8bd2da2e06745
 # The live area byte a load of source-01 G reads (Kalistes' Parlor); the save's place reads 5.
 ORIGIN_LIVE_AREA = 82
 ORIGIN_TARGET_AREA = 22
+# Where the game itself puts this origin's party on a Return into Kalistes' Parlor:
+# area 82's init entry ($8014) stores SAVE 7, 15, 0 into $34/$35/$11 at $8055-$80CD
+# for this party's state ($1F7=1, $219=2, came-from $16=22), over the square Return wrote.
+ORIGIN_RETURN_SQUARE = (7, 15, 0)
 # Comparison labels: each binds one save letter, so a source G, the Return run's
 # game-written F and the reload's reference cannot stand in for one another.
 SOURCE_ROLES = ("selected-source", "same-run-F", "same-run-G",
@@ -2101,9 +2105,12 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
         receipt["returned"] = _origin_place(target, "return7")
         receipt["return_square_matches_start"] = (
             receipt["returned"]["square"] == receipt["start"]["square"])
-        # Return puts the party on the square and facing it left; a miss fails the
-        # run but the save and comparisons still go ahead, so the item evidence is kept.
-        receipt["checks"]["return_square"] = receipt["return_square_matches_start"]
+        receipt["return_square_expected"] = list(ORIGIN_RETURN_SQUARE)
+        receipt["return_square_matches_arrival"] = (
+            receipt["returned"]["square"] == list(ORIGIN_RETURN_SQUARE))
+        # The game's own arrival square for this pinned origin; a miss fails the run,
+        # but the save and comparisons still go ahead, so the item evidence is kept.
+        receipt["checks"]["return_square"] = receipt["return_square_matches_arrival"]
         receipt["checks"]["returned"] = True
         receipt["post_return"], returned = checkpoint(target, "post-return", "world")
         receipt["post_return_comparison"] = _source_compare(
