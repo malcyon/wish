@@ -11,11 +11,8 @@ import logging
 import pathlib
 from dataclasses import dataclass
 
-from PyQt6.QtCore import QRunnable, QThreadPool
-
 from goldbox import dos_icons as art
 
-from .amigafigure import Loaded
 from .iconwidget import Figure
 
 _log = logging.getLogger(__name__)
@@ -47,34 +44,6 @@ class FigureArt:
                        head, body, size, exc)
             return None
         return Figure(shown, self.palette[0])
-
-
-class _Job(QRunnable):
-    def __init__(self, serial: int, folders, title: str, carrier: Loaded):
-        super().__init__()
-        self._serial, self._folders = serial, list(folders)
-        self._title, self._carrier = title, carrier
-
-    def run(self) -> None:
-        try:
-            found = load(self._folders, self._title)
-        except Exception as exc:
-            _log.debug("the figure art load failed: %s", exc)
-            found = None
-        try:
-            self._carrier.done.emit(self._serial, found)
-        except RuntimeError:
-            _log.debug("the window closed before the figure art arrived")
-
-
-def start(serial: int, folders, title: str, carrier: Loaded) -> None:
-    """Run :func:`load` on a worker thread and emit `carrier.done(serial, art)`
-    when it ends; `art` is None when nothing was found.
-
-    Reading and decoding three `.DAX` files takes long enough that the window
-    does not wait for it.
-    """
-    QThreadPool.globalInstance().start(_Job(serial, folders, title, carrier))
 
 
 def load(folders, title: str) -> FigureArt | None:

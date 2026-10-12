@@ -2715,8 +2715,10 @@ class EditorBinding(QObject):
             found = (self._title_folder(f, party.game)
                      for f in self._port_folders(party.game))
             folders = list(dict.fromkeys(f for f in found if f is not None))
-            dosfigure.start(self._figure_serial, folders, party.game.key,
-                            self._figure_carrier)
+            title = party.game.key
+            amigafigure.start(self._figure_serial,
+                              lambda: dosfigure.load(folders, title),
+                              self._figure_carrier)
 
     def _figure_loaded(self, serial: int, art) -> None:
         """The art a background load found, unless another party or folder
