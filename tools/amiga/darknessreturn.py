@@ -1356,9 +1356,10 @@ class GuardedRun:
             try:
                 self.see("title", min(120, self.left(remaining)))
                 return
-            except RouteError:
+            except RouteError as exc:
                 if attempt == 3:
-                    raise
+                    raise RouteError(f"the title did not match its guard within {limit:.0f}s"
+                                     ) from exc
                 if (time.monotonic() - beginning < route_darkness.DARKNESS.boot_span
                         or "intro" not in self.guards):
                     continue

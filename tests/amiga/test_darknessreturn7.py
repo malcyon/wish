@@ -755,8 +755,9 @@ def test_pinned_origin_return_square_is_the_foyer_area_82_init_writes():
 def _slow_title(tmp_path, monkeypatch, *, appears, states):
     """A GuardedRun whose title shows `appears` seconds after the wait begins, on a fake clock."""
     clock = {"now": 0.0}
-    monkeypatch.setattr(driver.time, "monotonic", lambda: clock["now"])
-    monkeypatch.setattr(driver.time, "sleep", lambda seconds: None)
+    # A clock for this module alone, so pytest's own timing keeps the real one.
+    monkeypatch.setattr(driver, "time", SimpleNamespace(
+        monotonic=lambda: clock["now"], sleep=lambda seconds: None, time=lambda: 0.0))
     pressed = []
     guest = SimpleNamespace(press=lambda holder, key, timeout: pressed.append(key))
     guards = {state: object() for state in states}
@@ -780,7 +781,7 @@ def _slow_title(tmp_path, monkeypatch, *, appears, states):
 
 
 def test_a_late_title_is_awaited_when_the_guard_set_has_no_intro(tmp_path, monkeypatch):
-    # The second return run's intro was still showing 240 s in; the title came later.
+    # The intro is still on screen after the first two waits; the title follows by itself.
     run, seen, pressed, clock = _slow_title(tmp_path, monkeypatch, appears=300,
                                             states=("title", "party_menu"))
     run.title()
@@ -791,7 +792,7 @@ def test_a_late_title_is_awaited_when_the_guard_set_has_no_intro(tmp_path, monke
 def test_a_title_that_never_comes_stops_at_the_title_limit_without_keys(tmp_path, monkeypatch):
     run, seen, pressed, clock = _slow_title(tmp_path, monkeypatch, appears=10_000,
                                             states=("title",))
-    with pytest.raises(RouteError, match="title"):
+    with pytest.raises(RouteError, match="within 420s"):
         run.title()
     assert {state for state, _ in seen} == {"title"} and pressed == []
     assert clock["now"] == driver.route_darkness.DARKNESS.title_limit
