@@ -19,7 +19,7 @@ import pytest
 
 from goldbox import dos_port
 from tools.dos import acceptance as da
-from tools.dos import dosbox, screens
+from tools.dos import dosbox, dospod, screens
 
 W, H = 320, 200
 #: A stand-in font: glyph i lights row 1 with i + 1 and row 2 with 0x81.
@@ -159,6 +159,8 @@ def _font(monkeypatch, tmp_path):
     # A screen the route does not know is given this long, spun through.
     monkeypatch.setattr(da, "ICON_WAIT", 0.3)
     monkeypatch.setattr(dosbox, "find_game", lambda stem="POOLRAD": tmp_path)
+    # Pools of Darkness finds its game folder through `dospod.find_game`.
+    monkeypatch.setattr(dospod, "find_game", lambda stem=dospod.STEM: tmp_path)
     monkeypatch.setattr(da, "load_font", lambda game: _FONT)
 
 
