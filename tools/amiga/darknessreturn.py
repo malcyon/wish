@@ -2093,7 +2093,8 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
                  "return7_payload: the loaded party differs from source G before travel")
         receipt["checks"]["pre_travel_coverage"] = True
         receipt["legs"] = _origin_legs(_run_trip(args.holder, args.manifest.parent,
-                                                 args.out / "trip", action_left(2000)))
+                                                 args.out / "trip", action_left(2000)),
+                                       args.out / "trip" / "fasttravel.jsonl")
         receipt["checks"]["legs"] = True
         run.see("world", 60)
         target = _target(args.holder)
@@ -2566,11 +2567,12 @@ def _trip(holder: str, disks: pathlib.Path, out: pathlib.Path, left: float) -> l
     return legs
 
 
-def _origin_legs(legs: list[dict]) -> list[dict]:
+def _origin_legs(legs: list[dict], log: pathlib.Path) -> list[dict]:
     """Require ordinary forward travel from the live origin to 22 and Return to it.
 
-    The first arrival may take one RET at the guarded PRESS RETURN bar; the
-    Return arrival takes none.
+    Each arrival may take one RET, and only at the PRESS RETURN bar: the trip
+    log must show that the title's continue guard matched the frame the key
+    answered. Taydome's Keep and Kalistes' Parlor both open on that bar.
     """
     _require(len(legs) == 2 and all(leg.get("result") == "idle"
                                    and leg.get("settled") for leg in legs),
@@ -2580,9 +2582,20 @@ def _origin_legs(legs: list[dict]) -> list[dict]:
              and back[0] == ORIGIN_TARGET_AREA and back[-1] == ORIGIN_LIVE_AREA,
              f"return7_area: legs saw {forward} then {back}, not "
              f"{ORIGIN_LIVE_AREA} to {ORIGIN_TARGET_AREA} and back")
-    _require(legs[0].get("arrival_keys") in ([], ["RET"])
-             and legs[1].get("arrival_keys") == [],
+    _require(all(leg.get("arrival_keys") in ([], ["RET"]) for leg in legs),
              "return7_prompt: a leg answered a prompt other than the guarded arrival bar")
+    try:
+        events = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+    except (OSError, ValueError) as exc:
+        raise RouteError(f"return7_prompt: the trip log is unreadable: {exc}") from exc
+    starts = [i for i, event in enumerate(events) if event.get("event") == "legality"]
+    _require(len(starts) == 2, "return7_prompt: the trip log does not hold two legs")
+    for leg, begin, end in zip(legs, starts, starts[1:] + [len(events)], strict=True):
+        answers = [event for event in events[begin:end]
+                   if event.get("event") == "arrival_answer"]
+        _require([event.get("key") for event in answers] == leg["arrival_keys"]
+                 and all(event.get("at_continue") is True for event in answers),
+                 "return7_prompt: an arrival key went without the guarded PRESS RETURN bar")
     return legs
 
 

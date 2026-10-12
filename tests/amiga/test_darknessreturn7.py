@@ -101,26 +101,60 @@ def _leg(seen, keys=(), result="idle", settled=True):
             "arrival_keys": list(keys)}
 
 
+def _trip_log(path, legs, *, guard=True, drop=False):
+    """The Fast Travel driver's JSON lines: one legality per leg, then its arrival answers."""
+    lines = []
+    for leg in legs:
+        lines.append({"event": "legality", "ok": True})
+        if not drop:
+            lines += [{"event": "arrival_answer", "key": key, "at_continue": guard}
+                      for key in leg.get("arrival_keys", [])]
+        lines.append({"event": "settle", "gate": True})
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    return path
+
+
 @pytest.mark.parametrize("legs, ok", [
     ([_leg([82, 22], ["RET"]), _leg([22, 82])], True),
     ([_leg([82, 0, 22]), _leg([22, 0, 82])], True),
+    # Kalistes' Parlor opens on the same PRESS RETURN bar as Taydome's Keep.
+    ([_leg([82, 22], ["RET"]), _leg([22, 82], ["RET"])], True),
+    ([_leg([82, 22]), _leg([22, 82], ["RET"])], True),
     ([_leg([5, 22], ["RET"]), _leg([22, 5])], False),
     ([_leg([17, 22], ["RET"]), _leg([22, 17])], False),
     ([_leg([82, 22], ["RET"]), _leg([22, 17])], False),
     ([_leg([82, 23]), _leg([23, 82])], False),
-    ([_leg([82, 22], ["RET"]), _leg([22, 82], ["RET"])], False),
+    ([_leg([82, 22], ["RET"]), _leg([22, 82], ["RET", "RET"])], False),
     ([_leg([82, 22], ["Y"]), _leg([22, 82])], False),
+    ([_leg([82, 22]), _leg([22, 82], ["N"])], False),
     ([_leg([82, 22], ["RET", "RET"]), _leg([22, 82])], False),
     ([_leg([82, 22], settled=False), _leg([22, 82])], False),
     ([_leg([82, 22]), _leg([22], result="not_legal")], False),
     ([_leg([82, 22])], False),
 ])
-def test_origin_legs_require_82_to_22_and_back_with_only_the_guarded_arrival_key(legs, ok):
+def test_origin_legs_require_82_to_22_and_back_with_only_the_guarded_arrival_key(
+        tmp_path, legs, ok):
+    log = _trip_log(tmp_path / "fasttravel.jsonl", legs)
     if ok:
-        assert driver._origin_legs(legs) == legs
+        assert driver._origin_legs(legs, log) == legs
     else:
         with pytest.raises(RouteError, match="return7_"):
-            driver._origin_legs(legs)
+            driver._origin_legs(legs, log)
+
+
+@pytest.mark.parametrize("damage", ["unguarded", "unlogged", "missing", "one-leg"])
+def test_an_arrival_ret_counts_only_when_the_log_shows_the_continue_guard_matched(
+        tmp_path, damage):
+    legs = [_leg([82, 22], ["RET"]), _leg([22, 82], ["RET"])]
+    log = tmp_path / "fasttravel.jsonl"
+    if damage == "unguarded":
+        _trip_log(log, legs, guard=False)
+    elif damage == "unlogged":
+        _trip_log(log, legs, drop=True)
+    elif damage == "one-leg":
+        _trip_log(log, legs[:1])
+    with pytest.raises(RouteError, match="return7_prompt"):
+        driver._origin_legs(legs, log)
 
 
 @pytest.mark.parametrize("live, gate, offered, square, ok", [
@@ -305,10 +339,13 @@ def _return_coordinator(tmp_path, monkeypatch, *, fail=None, mismatch=None):
     def trip(holder, disks_dir, out, left):
         events.append(("trip", holder))
         assert left <= 2000
-        return ([{"result": "idle", "settled": True, "areas_seen": [82, 22],
-                  "arrival_keys": ["RET"]},
-                 {"result": "idle", "settled": True,
-                  "areas_seen": [22, 17 if fail == "trip-area" else 82], "arrival_keys": []}])
+        legs = [{"result": "idle", "settled": True, "areas_seen": [82, 22],
+                 "arrival_keys": ["RET"]},
+                {"result": "idle", "settled": True,
+                 "areas_seen": [22, 17 if fail == "trip-area" else 82], "arrival_keys": ["RET"]}]
+        out.mkdir()
+        _trip_log(out / "fasttravel.jsonl", legs, guard=fail != "unguarded-return")
+        return legs
 
     saved_f = b"Generated game-written F"
 
@@ -392,6 +429,7 @@ def test_return_phase_captures_before_travel_and_before_new_f_then_compares_to_t
     (None, ("pre-travel", "origin-source-G"), False, False),
     ("capture-pre-travel", None, False, False),
     ("trip-area", None, True, False),
+    ("unguarded-return", None, True, False),
     ("returned", None, True, False),
     (None, ("post-return", "origin-source-G"), True, False),
     ("capture-pre-f", None, True, False),
