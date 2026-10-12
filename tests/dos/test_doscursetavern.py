@@ -10,7 +10,9 @@ area byte or, when that does not read, by the loaded save with nothing since
 the load able to have moved the party; the tavern's bar is answered with `PUNCH BARKEEP` only once its text has been
 read, with `LEAVE` once a fight has been met; the bartender's question a
 save whose brawl was already fought shows first is answered `IGNORE THEM`;
-and a bar whose text is anything else is never answered and stops the step.
+and a bar whose text is anything else is never answered and stops the step;
+and a brawl fought with every member on QUICK, which shows no command bar and
+no encounter menu, ends the step on the map once `CONTINUE BATTLE` has shown.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from tools.dos import acceptance as da
-from tools.dos import dosbox
+from tools.dos import dosbox, route_silver_blades
 
 W, H = 320, 200
 #: A stand-in font: glyph i lights row 1 with i + 1 and row 2 with 0x81.
@@ -343,3 +345,73 @@ def test_another_title_never_reads_a_bar_as_the_tavern(tmp_path, monkeypatch):
 
     monkeypatch.setattr(da.Driver, "display_font", no_font, raising=False)
     assert d._tavern_kind(game.frame()) is None
+
+
+#: The screens `fight` met after `PUNCH BARKEEP` in a live DOS Curse run whose
+#: five members all had QUICK set (record 0x198 = 1 in each `CHRDATA*.SAV`),
+#: in the order logged, each with the key the step pressed: the computer's
+#: `MOVE/ATTACK, MOVE LEFT = 2` (unclassified, 12, 4, 4, 1 and 1 cells), a
+#: blank bar, `CONTINUE BATTLE: YES NO`, the continue bar, the treasure, and
+#: the treasure-left question, then the map.  No command bar and no encounter
+#: menu showed.
+BRAWL = (("MOVE/ATTACK, MOVE LEFT = 2", 3, None), ("", 1, None),
+         ("CONTINUE BATTLE:YES NO", 0, "n"),
+         ("PRESS <ENTER>/<RETURN> TO CONTINUE", 0, "Return"),
+         ("VIEW TAKE POOL EXIT", 0, "e"),
+         ("YES NO", 0, "n"))
+
+
+class FakeBrawl(FakeTavern):
+    """`FakeTavern` whose `p` plays `BRAWL` from its start: a screen with a
+    count shows for that many frames, one with a key until that key, and the
+    last leaves the party on the map at 6,10 facing west."""
+
+    def __init__(self, tmp_path, **kw):
+        super().__init__(tmp_path, **kw)
+        self.screen, self.frames = 0, 0
+
+    def frame(self) -> dosbox.Screen:
+        if self.state != "after":
+            return super().frame()
+        text, hold, _ = BRAWL[self.screen]
+        if hold:
+            self.frames += 1
+            if self.frames >= hold:
+                self.screen, self.frames = self.screen + 1, 0
+        px = bytearray(W * H * 3)
+        for col, ch in enumerate(text):
+            if ch != " ":           # a space is a dark cell, as the game draws it
+                _draw(px, da.BAR_ROW, col, ch, _WHITE)
+        return dosbox.Screen(W, H, bytes(px))
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            if self.state == "after":
+                self.keys.append(k)
+                if k == BRAWL[self.screen][2]:
+                    self.screen += 1
+                    if self.screen == len(BRAWL):
+                        self.state, self.f = "map", 3
+            else:
+                super().key(k, gap=gap)
+                if self.state == "after":
+                    self.screen, self.frames = 0, 0
+
+
+def test_a_brawl_fought_on_quick_ends_the_step_once_continue_battle_shows(
+        tmp_path, monkeypatch, font, clock):
+    game = FakeBrawl(tmp_path, injuries=True)
+    d = _driver(game, monkeypatch, OpenGeo())
+    game.state, game.screen = "after", 3
+    monkeypatch.setitem(route_silver_blades.BARS, game.frame().glyphs(dosbox.BAR),
+                        "continue")
+    game.state = "map"
+    result = d.fight(600)
+    assert game.keys[game.keys.index("p"):] == ["p", "n", "Return", "e", "n"]
+    assert game.state == "map" and d.where == "map"
+    assert result["bars"] == 0 and result["encounters"] == 0
+    assert [(e["answer"], e["bar"]) for e in _events(d, "tavern")] == [
+        ("ignore", INJURIES_BAR), ("punch", TAVERN_BAR)]
+    kinds = [e["kind"] for e in _events(d, "fight-screen")]
+    assert kinds[2:] == [None, "blank", "continue_battle", "continue",
+                         "treasure", "yes_no"]
