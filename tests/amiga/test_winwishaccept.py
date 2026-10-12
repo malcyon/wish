@@ -3563,6 +3563,47 @@ def test_cleanup_waits_for_a_queued_key_before_turning_encounters_off(tmp_path, 
     assert len(waits) == 1 and waits[0]["seconds"] > 0
 
 
+def test_cleanup_waits_when_the_key_schedule_raises_after_sending(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, events, clock, _ = _map_walk_controller(tmp_path, monkeypatch)
+    queued = []
+
+    def schedule_key(holder, key, lead, timeout):
+        queued.append(clock.now - 0.25)  # the deadline argument read the clock once since
+        raise winwishaccept.AcceptanceStop("reply lost after the send")
+    controller.game.schedule_key = schedule_key
+    with pytest.raises(winwishaccept.AcceptanceStop, match="reply lost"):
+        controller.run_phase(maproute._ssb_walk())
+    bound = winwishaccept._latest_landing(queued[0], winwishaccept.MIN_EMULATION_SPEED)
+    assert controller.keys_pending_until == bound
+    controller._cleanup()
+    switched_off = [event for event in events if event[:2] == ("switch", False)]
+    assert switched_off and switched_off[-1][2] >= bound
+
+
+def test_cleanup_waits_for_a_key_that_lands_late_after_the_stop(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, events, clock, _ = _map_walk_controller(tmp_path, monkeypatch)
+    queued = []
+
+    def schedule_key(holder, key, lead, timeout):
+        queued.append(clock.now - 0.25)  # the deadline argument read the clock once since
+        clock.sleep(3.0)  # the debugger call takes time; the key lands after its reply
+        queued.append(clock.now + 0.25)  # the clock read that follows the reply
+        return "404"
+    controller.game.schedule_key = schedule_key
+    with pytest.raises(winwishaccept.AcceptanceStop, match="stayed at 3,3"):
+        controller.run_phase(maproute._ssb_walk())
+    bound = winwishaccept._latest_landing(queued[1], winwishaccept.SLOW_EMULATION_SPEED)
+    assert controller.keys_pending_until == bound
+    assert bound > winwishaccept._latest_landing(queued[0], winwishaccept.SLOW_EMULATION_SPEED)
+    controller._cleanup()
+    switched_off = [event for event in events if event[:2] == ("switch", False)]
+    assert switched_off and switched_off[-1][2] >= bound
+
+
 def test_walk_tab_parser_and_computed_deadline(tmp_path):
     parser = winwishaccept._parser()
     base = ["--title", "ssb", "--manifest", str(tmp_path / "prepare.json"),

@@ -72,6 +72,8 @@ WALK_TAB_MARGIN = 5.0
 #: The slowest emulation, against the wall clock, the Wish shot still waits for. Nothing
 #: measures the speed; the probes saw a 500-frame delay land in 8 to 12 s.
 MIN_EMULATION_SPEED = 0.8
+#: The slowest emulation a missed key is still waited out at before cleanup proceeds.
+SLOW_EMULATION_SPEED = 0.5
 #: Seconds the Automapper keeps polling after a key could have landed, before its shot.
 WALK_SETTLE = 10.0
 OPENING_THIRD_SECONDS = 1500
@@ -195,6 +197,11 @@ def _action_budget(route: Any) -> int:
             total += visits * (keys(action.show) + keys(action.back))
             total += 2 if action.kind == "spells" else 1
     return total
+
+
+def _latest_landing(queued: float, speed: float) -> float:
+    """When a key queued at `queued` has landed and been released at `speed` of full speed."""
+    return queued + (WALK_LEAD_FRAMES + KEY_HOLD_FRAMES) / AMIGA_FRAMES_PER_SECOND / speed
 
 
 def _key_effect_problem(kind: str, before: dict[str, Any] | None,
@@ -1144,11 +1151,12 @@ class Controller:
                 raise AcceptanceStop(f"encounter switch before walk key {step.key}: {result}")
             self.log("encounters_applied", before=step.key, readback=result)
         before = self.clock()
+        earliest = before + WALK_LEAD_FRAMES / AMIGA_FRAMES_PER_SECOND
+        # The key may be queued in the emulator before the call raises, so cleanup waits from here.
+        self.keys_pending_until = _latest_landing(before, MIN_EMULATION_SPEED)
         reply = self.game.schedule_key(self.args.holder, step.key, WALK_LEAD_FRAMES, self.left(60))
         sent = self.clock()
-        earliest = before + WALK_LEAD_FRAMES / AMIGA_FRAMES_PER_SECOND
-        latest = sent + ((WALK_LEAD_FRAMES + KEY_HOLD_FRAMES)
-                         / AMIGA_FRAMES_PER_SECOND / MIN_EMULATION_SPEED)
+        latest = _latest_landing(sent, MIN_EMULATION_SPEED)
         self.keys_pending_until = latest
         self.log("walk_key_queued", key=step.key, index=index, lead_frames=WALK_LEAD_FRAMES,
                  reply=reply)
@@ -1187,6 +1195,11 @@ class Controller:
             lap("fix")
         self.walk_fix = fix_after
         problem = _key_effect_problem(step.kind, fix_before, fix_after)
+        if (fix_before is not None and fix_after is not None
+                and (fix_after["x"], fix_after["y"]) == (fix_before["x"], fix_before["y"])
+                and (step.kind == "move" or fix_after["facing"] == fix_before["facing"])):
+            # The key may only be late; cleanup waits for the slowest emulation it could run at.
+            self.keys_pending_until = _latest_landing(sent, SLOW_EMULATION_SPEED)
         self.summary.setdefault("map_walk_keys", []).append(
             {"key": step.key, "kind": step.kind, "index": index, "schedule": schedule,
              "wish": str(wish_path), "controls": str(controls_path), "game": frame,
