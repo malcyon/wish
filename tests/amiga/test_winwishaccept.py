@@ -2645,3 +2645,157 @@ def test_default_deadline_per_mode(tmp_path, monkeypatch, mode, expected):
         argv += ["--discover", mode]
     assert winwishaccept.main(argv) == 2
     assert seen == [expected]
+
+
+def _timed_out(message="winvm ssh exceeded its 1.9s limit"):
+    return winuaesession.ShotTimedOut(f"winuae.ps1 shot returned '{message}'")
+
+
+def test_leave_terminal_window_counts_from_the_np8(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original_press, original_grab = game.press, game.grab
+    allowed = []
+
+    def press(holder, key, timeout):
+        original_press(holder, key, timeout)
+        if key == "NP8":
+            clock.now += 3.5
+
+    def grab(state, raw, crop, timeout):
+        if state == "ssb_leave_unknown":
+            allowed.append(timeout)
+        return original_grab(state, raw, crop, timeout)
+
+    game.press, game.grab = press, grab
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert allowed and allowed[0] > 4
+
+
+def test_terminal_shot_timeout_is_retried_without_a_key(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    attempts = 0
+
+    def grab(state, raw, crop, timeout):
+        nonlocal attempts
+        if state == "ssb_leave_unknown":
+            attempts += 1
+            if attempts == 1:
+                clock.now += 1
+                raise _timed_out()
+        return original(state, raw, crop, timeout)
+
+    game.grab = grab
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert game.keys[-1] == "NP8"
+    timeouts = result["discovery"]["shot_timeouts"]
+    assert len(timeouts) == 1 and "1.9s limit" in timeouts[0]["error"]
+    assert 2 <= attempts <= 3
+    assert ("checkpoint", "ssb_leave_terminal") in calls
+    assert result["checkpoints"]["ssb_leave_terminal"]["game"]["crop"] is not None
+
+
+def test_terminal_shot_timeouts_are_recorded_and_stop_once_the_window_is_spent(
+        tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    attempts = 0
+
+    def grab(state, raw, crop, timeout):
+        nonlocal attempts
+        if state == "ssb_leave_unknown":
+            attempts += 1
+            clock.now += 2
+            raise _timed_out()
+        return original(state, raw, crop, timeout)
+
+    game.grab = grab
+    result = controller.run_discovery()
+    assert result["failure"].startswith("ShotTimedOut")
+    assert 2 <= attempts <= 3
+    assert len(result["discovery"]["shot_timeouts"]) == attempts
+    assert game.keys[-1] == "NP8"
+    assert "ssb_leave_terminal" not in controller.checkpoints
+    assert ("down",) in calls
+
+
+def test_await_retries_a_timed_out_shot_within_its_own_limit(tmp_path):
+    clock, game = FakeClock(), FakeGame()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=SimpleNamespace(), game=game,
+        guards=lambda state, path: True, route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}, "build_sha": SHA}, clock=clock, sleep=clock.sleep)
+    original = game.grab
+    attempts = 0
+
+    def grab(state, raw, crop, timeout):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            clock.now += 20
+            raise _timed_out("winvm ssh exceeded its 20.0s limit")
+        return original(state, raw, crop, timeout)
+
+    game.grab = grab
+    frame = controller._await("world", limit=90)
+    assert frame["crop"] is not None and attempts == 2
+    events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert [e["state"] for e in events if e["event"] == "shot_retry"] == ["world"]
+    assert len(controller.summary["shot_timeouts"]) == 1
+
+
+def test_await_stops_with_the_timeout_once_its_limit_is_spent(tmp_path):
+    clock, game = FakeClock(), FakeGame()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=SimpleNamespace(), game=game,
+        guards=lambda state, path: True, route=_route(), zipped=tmp_path / "build.zip",
+        info={"media": {}, "build_sha": SHA}, clock=clock, sleep=clock.sleep)
+    keys_before = list(game.keys)
+
+    def grab(state, raw, crop, timeout):
+        clock.now += 20
+        raise _timed_out("winvm ssh exceeded its 20.0s limit")
+
+    game.grab = grab
+    with pytest.raises(winuaesession.ShotTimedOut):
+        controller._await("world", limit=30)
+    assert game.keys == keys_before
+
+
+def test_terminal_timeout_after_a_good_frame_keeps_that_frame(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    controller, game, clock, _, calls = _discovery_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    original = game.grab
+    attempts = 0
+
+    def grab(state, raw, crop, timeout):
+        nonlocal attempts
+        if state == "ssb_leave_unknown":
+            attempts += 1
+            if attempts == 2:
+                clock.now += timeout
+                raise _timed_out("winvm ssh exceeded its 1.5s limit")
+        return original(state, raw, crop, timeout)
+
+    game.grab = grab
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    assert attempts == 2
+    assert len(result["discovery"]["shot_timeouts"]) == 1
+    first = result["discovery"]["evidence"][0]
+    assert result["checkpoints"]["ssb_leave_terminal"]["game"] is first
+    assert first["crop"] is not None
+    assert game.keys[-1] == "NP8"

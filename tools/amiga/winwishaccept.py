@@ -23,7 +23,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from tools.amiga import guardmaps, noencounters, screens, winwish  # noqa: E402
-from tools.amiga.winuaesession import RouteError, WinGuest  # noqa: E402
+from tools.amiga.winuaesession import RouteError, ShotTimedOut, WinGuest  # noqa: E402
 
 BUILD_SHA = re.compile(r"[0-9a-f]{40}\Z")
 REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
@@ -536,9 +536,19 @@ class Controller:
                interstitials: tuple = ()) -> dict[str, Any]:
         end = self.clock() + self.left(limit)
         last = None
+        timed_out: ShotTimedOut | None = None
         counts = [0] * len(interstitials)
         while self.clock() < end:
-            last = self._capture(state, check=False)
+            try:
+                last = self._capture(state, check=False)
+            except ShotTimedOut as exc:
+                # A slow round trip sends no key; ask again while this wait's own time holds.
+                timed_out = exc
+                self.summary.setdefault("shot_timeouts", []).append(
+                    {"state": state, "error": str(exc)})
+                self.log("shot_retry", state=state, error=str(exc))
+                continue
+            timed_out = None
             if last["crop"] is not None:
                 crop = pathlib.Path(last["crop"])
                 if self.guards(state, crop):
@@ -553,6 +563,8 @@ class Controller:
                         end = self.clock() + self.left(limit)
                         break
             self.sleep(min(1.0, max(0, end - self.clock())))
+        if timed_out is not None:
+            raise timed_out
         raise AcceptanceStop(f"{state} screen was not recognized before its deadline; last {last}")
 
     def _press_interstitial(self, screen: str, key: str) -> None:
@@ -1446,6 +1458,7 @@ class Controller:
                                 *, stop_guard: str | None = None) -> dict[str, Any]:
         frames = self.summary["discovery"]["evidence"]
         start = len(frames)
+        spent_by_timeout = False
         for number in range(3):
             remaining = end - self.clock()
             if remaining <= 0:
@@ -1466,7 +1479,20 @@ class Controller:
                                "error": f"{type(exc).__name__}: {exc}"}
                     frames.append(partial)
                     self.log("terminal_frame", **partial)
-                raise
+                if not isinstance(exc, ShotTimedOut):
+                    raise
+                # A slow round trip sends no key: grab again inside the same window.
+                timeout = {"attempt": number + 1, "allowed": round(remaining, 3),
+                           "error": f"{type(exc).__name__}: {exc}"}
+                self.summary["discovery"].setdefault("shot_timeouts", []).append(timeout)
+                self.log("terminal_shot_timeout", **timeout)
+                if number == 2 or end - self.clock() <= 0:
+                    # Frames taken before it stand; with none, stop as before.
+                    if not any(frame["crop"] is not None for frame in frames[start:]):
+                        raise
+                    spent_by_timeout = True
+                    break
+                continue
             current = self.game.last_shot
             source = current.copy() if isinstance(current, dict) and current is not previous else None
             frame = {"raw": str(raw), "crop": str(crop) if exact else None,
@@ -1480,7 +1506,7 @@ class Controller:
             if exact and self.clock() <= end and stop_guard and self.guards(stop_guard, crop):
                 return frame
         current_frames = frames[start:]
-        if not current_frames or self.clock() > end:
+        if not current_frames or (self.clock() > end and not spent_by_timeout):
             raise AcceptanceStop("terminal pipe frames exceeded five seconds")
         exact_frames = [frame for frame in current_frames if frame["crop"] is not None]
         if not exact_frames:
@@ -1626,8 +1652,10 @@ class Controller:
                     "status") != "awaiting image review":
                 raise AcceptanceStop("terminal 15,8,E checkpoint is not verified")
             self.game.snapshot("ssb_leave_terminal", self.args.holder)
-            terminal_start = self.clock()
             self._press("NP8")
+            # The five seconds count from the key, as in the opening modes, not from before
+            # its round trip.
+            terminal_start = self.clock()
             end = min(terminal_start + 5, self.route_end)
             frame = self._capture_unknown_frames("ssb_leave_unknown", "leave", end)
             discovery = self.summary["discovery"]
