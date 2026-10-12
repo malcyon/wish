@@ -796,12 +796,78 @@ def test_a_loaded_script_with_no_roll_is_named_once_and_nothing_is_written(state
 def test_a_row_whose_area_is_not_loaded_is_stopped_with_that_said_and_nothing_is_written(state):
     pipe = FakePipe()
     gates = build(pipe, "pool-of-radiance")
+    row = next(r for r in ne.rows_for("pool-of-radiance") if r.kind == ne.GATE)
+    pipe.put(pipe_address(pipe, ne.script_spec(row)), bytes(ne.ENTRY_TABLE))
+    result = switch(pipe, "pool-of-radiance", state).on()
+    stopped = [r for r in result["rows"] if r.get("row") and "stopped" in r]
+    assert stopped and all("so its area is not loaded" in r["stopped"] for r in stopped)
+    assert pipe.writes() == []
+    assert pipe.get(gates[row.spec], len(STATEMENT)) == STATEMENT
+    assert [s["verdict"] for s in result["loaded"]] == [ne.NOT_COVERED]
+
+
+def test_a_gate_whose_area_is_loaded_but_statement_differs_is_named_a_mismatch(state):
+    pipe = FakePipe()
+    gates = build(pipe, "pool-of-radiance")
     address = next(iter(gates.values()))
     pipe.put(address, b"\x01" * len(STATEMENT))
     result = switch(pipe, "pool-of-radiance", state).on()
-    stopped = [r for r in result["rows"] if r.get("row") and "stopped" in r]
-    assert any("do not match its expected hash" in r["stopped"] for r in stopped)
+    stopped = [r["stopped"] for r in result["rows"] if r.get("row") and "stopped" in r]
+    assert len(stopped) == 1 and "no longer describes the game" in stopped[0]
+    assert "for example" not in stopped[0]
     assert pipe.get(address, len(STATEMENT)) == b"\x01" * len(STATEMENT)
+    [loaded] = result["loaded"]
+    assert loaded["verdict"] == ne.MISMATCH
+    assert list(loaded["rows"].values()).count(ne.MISMATCH) == 1
+
+
+@pytest.mark.parametrize("title", TITLES)
+def test_on_says_every_roll_of_the_loaded_script_is_changed(title, state):
+    pipe = FakePipe()
+    build(pipe, title)
+    result = switch(pipe, title, state).on()
+    [loaded] = result["loaded"]
+    assert loaded["verdict"] == ne.CHANGED
+    assert set(loaded["rows"].values()) == {ne.CHANGED}
+
+
+def test_every_gate_names_the_area_whose_script_holds_it():
+    """A gate with no area cannot tell a script it does not belong to from a
+    statement that changed, so the switch could not say which it met."""
+    assert [r.spec for r in REAL_ROWS if r.kind == ne.GATE and not r.area] == []
+
+
+def test_keys_name_the_loaded_script_when_it_changes(state, monkeypatch):
+    title = "curse-of-the-azure-bonds"
+    entries = bytes(range(1, ne.ENTRY_TABLE + 1))
+    none = next(r for r in ne.rows_for(title) if r.kind == ne.NONE)
+    monkeypatch.setattr(ne, "ROWS", tuple(
+        dataclasses.replace(r, digest=ne.digest(entries)) if r is none else r
+        for r in ne.ROWS))
+    pipe = FakePipe()
+    build(pipe, title)
+    head = pipe_address(pipe, none.spec)
+    switch(pipe, title, state).on()
+
+    def press(name):
+        pipe.put(head, entries)        # the step loads a script with no roll
+
+    later = switch(pipe, title, state)
+    later.press = press
+    result = later.keys(["NP8", "NP8", "NP2"])
+    verdicts = [(e["before"], [s["verdict"] for s in e["loaded"]]) for e in result["loaded"]]
+    assert verdicts == [("NP8", [ne.CHANGED]), ("NP8", [ne.NO_ROLL])]
+
+
+def test_a_script_no_row_names_is_reported_not_covered(state):
+    pipe = FakePipe()
+    build(pipe, "curse-of-the-azure-bonds")
+    none = next(r for r in ne.rows_for("curse-of-the-azure-bonds") if r.kind == ne.NONE)
+    pipe.put(pipe_address(pipe, none.spec), bytes(range(0x90, 0x90 + ne.ENTRY_TABLE)))
+    result = switch(pipe, "curse-of-the-azure-bonds", state).on()
+    assert pipe.writes() == []
+    assert [s["verdict"] for s in result["loaded"]] == [ne.NOT_COVERED]
+    assert not [r for r in result["rows"] if "none" in r]
 
 
 # -- Curse of the Azure Bonds and Pool of Radiance, against the player's disks --
@@ -809,11 +875,15 @@ def test_a_row_whose_area_is_not_loaded_is_stopped_with_that_said_and_nothing_is
 CURSE, POOL = "curse-of-the-azure-bonds", "pool-of-radiance"
 POOL_BASE = 0x9900
 
-#: The Curse world-map scripts each `none` row names, and every `RANDOM` each
-#: makes: three pick the PATROL FOREST monsters the player chose to fight and
-#: one picks whether a journey leg shows a note.
-CURSE_WORLD_MAP_ROLLS = {0x50: {0x84DE, 0x84F8, 0x8508, 0x9A1A}, 0x51: set()}
-CURSE_ECL01_SPEC = "*0x5006+0x9952"
+#: Each Curse script a `none` row names, and every `RANDOM` it makes.  The
+#: world map's (`$50`) pick the PATROL FOREST monsters the player chose to
+#: fight and whether a journey leg shows a note; Tilverton's (`$01`) pick a
+#: crowd rumour or street event, and a tavern brawl after a menu choice.
+CURSE_NONE = {0x01: {0x891F, 0x9952}, 0x30: set(),
+              0x50: {0x84DE, 0x84F8, 0x8508, 0x9A1A}, 0x51: set(), 0x52: set()}
+
+#: The Curse gate's offset and the one area whose script holds its statement.
+CURSE_GATES = {0x8739: 2}
 
 #: Each Pool gate's offset in the `[data+0xA4]` buffer and the one area whose
 #: script holds its statement there.
@@ -843,45 +913,46 @@ def curse_scripts() -> dict[int, bytes]:
     return {s.area: blocks[s.block] for s in tripspace.spaces(CURSE, library)}
 
 
-def test_curse_ecl01_gate_changes_one_opcode_and_restores_it_with_area_controls(
-        state, monkeypatch):
+def _area_of(row) -> int:
+    return int(row.source.split("area $", 1)[1][:2], 16)
+
+
+def test_curse_rows_write_only_ecl02_and_name_each_script_with_no_roll(state, monkeypatch):
     # Generated bytes deliberately differ from the game's statement and entry table.
-    entries = {area: bytes(range(start, start + ne.ENTRY_TABLE))
-               for area, start in ((1, 0x20), (2, 0x40), (0x50, 0x60), (0x51, 0x80))}
+    areas = (2, *CURSE_NONE, 0x99)
+    entries = {area: bytes(range(n * 0x20, n * 0x20 + ne.ENTRY_TABLE))
+               for n, area in enumerate(areas, 1)}
     rows = []
     for row in REAL_ROWS:
         if row.title == CURSE and row.kind == ne.GATE:
-            rows.append(dataclasses.replace(
-                row, digest=ne.digest(STATEMENT),
-                area=ne.digest(entries[1]) if row.spec == CURSE_ECL01_SPEC else ""))
+            rows.append(dataclasses.replace(row, digest=ne.digest(STATEMENT),
+                                            area=ne.digest(entries[2])))
         elif row.title == CURSE and row.kind == ne.NONE:
-            area = 0x50 if "$50" in row.source else 0x51
-            rows.append(dataclasses.replace(row, digest=ne.digest(entries[area])))
+            rows.append(dataclasses.replace(row, digest=ne.digest(entries[_area_of(row)])))
         else:
             rows.append(row)
     monkeypatch.setattr(ne, "ROWS", tuple(rows))
     pipe = FakePipe()
     build(pipe, CURSE)
     head = pipe_address(pipe, "*0x5006+0x8000")
-    ecl01 = pipe_address(pipe, CURSE_ECL01_SPEC)
     ecl02 = pipe_address(pipe, "*0x5006+0x8739")
-    for area in (1, 2, 0x50, 0x51):
+    ecl01_roll = pipe_address(pipe, "*0x5006+0x9952")
+    for area in areas:
         pipe.put(head, entries[area])
-        pipe.put(ecl01, STATEMENT)
-        pipe.put(ecl02, STATEMENT if area == 2 else bytes([0x01]) * ne.STATEMENT)
+        pipe.put(ecl02, STATEMENT)
+        pipe.put(ecl01_roll, STATEMENT)
         pipe.batches.clear()
         reply = switch(pipe, CURSE, state).on()
         written = {int(line.split()[1], 16) for line in pipe.writes()}
-        assert written == ({ecl01} if area == 1 else {ecl02} if area == 2 else set())
-        expected = bytes([ne.SAVE]) + STATEMENT[1:]
-        assert pipe.get(ecl01, ne.STATEMENT) == (expected if area == 1 else STATEMENT)
-        assert pipe.get(ecl02, ne.STATEMENT) == (
-            expected if area == 2 else bytes([0x01]) * ne.STATEMENT)
-        assert len([r for r in reply["rows"] if "none" in r]) == (area in (0x50, 0x51))
+        assert written == ({ecl02} if area == 2 else set()), area
+        assert pipe.get(ecl01_roll, ne.STATEMENT) == STATEMENT
+        named = [r["none"] for r in reply["rows"] if "none" in r]
+        assert len(named) == (area in CURSE_NONE), area
+        [loaded] = reply["loaded"]
+        assert loaded["verdict"] == (ne.CHANGED if area == 2 else ne.NO_ROLL
+                                     if area in CURSE_NONE else ne.NOT_COVERED), area
         assert "error" not in switch(pipe, CURSE, state).off()
-        assert pipe.get(ecl01, ne.STATEMENT) == STATEMENT
-        assert pipe.get(ecl02, ne.STATEMENT) == (
-            STATEMENT if area == 2 else bytes([0x01]) * ne.STATEMENT)
+        assert pipe.get(ecl02, ne.STATEMENT) == STATEMENT
 
 
 def pool_scripts() -> dict[int, bytes]:
@@ -893,7 +964,7 @@ def pool_scripts() -> dict[int, bytes]:
             for area, block in amiga_dax.blocks(library, "ecl.dax")}
 
 
-def test_each_curse_none_row_is_one_world_map_script_and_it_makes_no_encounter_roll():
+def test_each_curse_none_row_is_one_script_and_names_every_roll_it_makes():
     from tools.amiga import amigasaves, tripspace
 
     scripts = curse_scripts()
@@ -902,58 +973,79 @@ def test_each_curse_none_row_is_one_world_map_script_and_it_makes_no_encounter_r
     for row in (r for r in REAL_ROWS if r.title == CURSE and r.kind == ne.NONE):
         hits = [area for area, body in scripts.items()
                 if ne.digest(body[:ne.ENTRY_TABLE]) == row.digest]
-        assert len(hits) == 1, (row.source, hits)
+        assert hits == [_area_of(row)], (row.source, hits)
         named[hits[0]] = row
-    assert set(named) == set(CURSE_WORLD_MAP_ROLLS)
-    gate = next(r for r in REAL_ROWS if r.title == CURSE and r.kind == ne.GATE)
-    at = ne.parse_spec(gate.spec)[1] - SCRIPT_BASE
-    for area, rolls in CURSE_WORLD_MAP_ROLLS.items():
+    assert set(named) == set(CURSE_NONE)
+    for area, rolls in CURSE_NONE.items():
         found, bad = tripspace.walk(CURSE, model, skip, scripts[area])
         assert not bad, area
         assert {SCRIPT_BASE + i for i, s in found.items() if s.op == ne.RANDOM} == rolls
-        # The ECL02 gate's address holds another statement here, which is
-        # why the switch stops that row on the world map.
-        assert ne.digest(scripts[area][at:at + ne.STATEMENT]) != gate.digest
 
 
-def test_curse_ecl01_step_gate_is_unique_and_exits_before_a_fight():
+def test_each_curse_gate_is_in_the_one_area_it_names():
+    scripts = curse_scripts()
+    gates = [r for r in REAL_ROWS if r.title == CURSE and r.kind == ne.GATE]
+    assert {ne.parse_spec(r.spec)[1] for r in gates} == set(CURSE_GATES)
+    for row in gates:
+        at = ne.parse_spec(row.spec)[1] - SCRIPT_BASE
+        assert [a for a, body in scripts.items()
+                if ne.digest(body[:ne.ENTRY_TABLE]) == row.area] == [CURSE_GATES[at + SCRIPT_BASE]]
+        assert [a for a, body in scripts.items()
+                if ne.digest(body[at:at + ne.STATEMENT]) == row.digest] == [CURSE_GATES[at + SCRIPT_BASE]]
+
+
+def test_tilverton_step_roll_cannot_start_a_fight():
+    """ECL01's step entry sends an attribute-0 square to `$9927`, whose roll
+    at `$9952` reaches `COMBAT` only with `[$4C05]` = 1 or `[$7F80]` > 0.
+    Entry 1 sets `[$4C02]` = 0 and `[$7F80]` = (attribute & 127) / 8, which is
+    0 for the one `ON GOTO` arm that reaches `$9927`; `[$4C05]` is set only
+    just before a `GOTO $9961` that clears it, and no script loads area 1."""
     from tools.amiga import amigasaves, tripspace
 
     scripts = curse_scripts()
-    assert len(scripts) == 25
     model, skip = tripspace.glib_model(CURSE, amigasaves.images())
-    rows = [r for r in REAL_ROWS if r.title == CURSE and r.kind == ne.GATE]
-    gate = next(r for r in rows if r.spec == CURSE_ECL01_SPEC)
-    assert len([r for r in rows if r.spec == CURSE_ECL01_SPEC]) == 1
-    assert gate.grade == ne.PROBABLE and gate.changes == ((0, ne.SAVE),)
-    assert ne.script_spec(gate) == "*0x5006+0x8000"
-    at = ne.parse_spec(gate.spec)[1] - SCRIPT_BASE
-    assert [area for area, body in scripts.items()
-            if ne.digest(body[:ne.ENTRY_TABLE]) == gate.area] == [1]
-    assert [area for area, body in scripts.items()
-            if ne.digest(body[at:at + ne.STATEMENT]) == gate.digest] == [1]
     body = scripts[1]
-    found, bad = tripspace.walk(CURSE, model, skip, body, entries=(1,))
-    assert not bad and at in found
-    roll = found[at]
-    assert roll.op == ne.RANDOM and roll.end - at == ne.STATEMENT
-    assert roll.operands == ((0, 100), (1, 0x7F79))
-    compare = tripspace.decode(model, body, roll.end)
-    condition = tripspace.decode(model, body, compare.end)
-    exit_ = tripspace.decode(model, body, condition.end)
-    assert compare.op == COMPARE and compare.operands == ((1, 0x7F79), (1, 0x7F7A))
-    assert condition.op == 0x19 and exit_.op == EXIT  # IF> EXIT
-    assert tripspace.decode(skip, body, condition.end).end == exit_.end
-    assert 0x9991 - SCRIPT_BASE in found and found[0x9991 - SCRIPT_BASE].op == SETUPMON
-    assert 0x9482 - SCRIPT_BASE in found and found[0x9482 - SCRIPT_BASE].op == COMBAT
-    assert _fight_reachable(model, skip, body, roll.end,
-                            {(1, 0x7F79): 0, (1, 0x7F7A): 10})
-    for limit in (10, 20, 30, 40):
-        assert not _fight_reachable(model, skip, body, roll.end,
-                                    {(1, 0x7F79): 100, (1, 0x7F7A): limit})
-    # The player-menu roll stays untouched, as do the other fight arms.
-    assert all(r.spec != "*0x5006+0x891F" for r in rows)
-    assert tripspace.decode(model, body, 0x891F - SCRIPT_BASE).op == ne.RANDOM
+    found, bad = tripspace.walk(CURSE, model, skip, body)
+    assert not bad
+
+    def at(address):
+        return found[address - SCRIPT_BASE]
+
+    step = tripspace.decode(model, body, 4)
+    assert step.op == tripspace.GOTO and step.address(0) == 0x8286
+    assert (at(0x8286).op, at(0x8286).operands) == (ne.SAVE, ((0, 0), (1, 0x4C02)))
+    assert (at(0x828C).op, at(0x828C).operands) == (0x2F, ((0, 127), (1, 0xC04F), (1, 0x7F7B)))
+    assert (at(0x8295).op, at(0x8295).operands) == (DIV, ((1, 0x7F7B), (0, 8), (1, 0x7F80)))
+    dispatch = at(0x82A8)
+    assert dispatch.op == tripspace.ONGOTO and dispatch.operands[0] == (1, 0x7F7B)
+    assert dispatch.address(2) == 0x9927
+    assert [dispatch.address(k) for k in range(3, len(dispatch.operands))].count(0x9927) == 0
+    # Only the step dispatch and the door path jump into the roll's arm.
+    arm = range(0x9927 - SCRIPT_BASE, 0x9BBB - SCRIPT_BASE)
+    into = {(s.at + SCRIPT_BASE, s.address(k)) for s in found.values()
+            if s.op in (tripspace.GOTO, tripspace.GOSUB, tripspace.ONGOTO, tripspace.ONGOSUB)
+            and s.at not in arm
+            for k in range(len(s.operands)) if s.address(k) is not None
+            and s.address(k) - SCRIPT_BASE in arm}
+    assert into == {(0x81EB, 0x9961), (0x82A8, 0x9927)}
+    # [$4C05] = 1 is written once, by the door path that jumps to $9961.
+    writes = sorted(s.at + SCRIPT_BASE for s in found.values()
+                    if s.op == ne.SAVE and s.operands[1] == (1, 0x4C05))
+    assert writes == [0x81E5, 0x997F]
+    assert at(0x81E5).operands[0] == (0, 1) and at(0x997F).operands[0] == (0, 0)
+    assert tripspace.decode(model, body, at(0x81E5).end).address(0) == 0x9961
+    # No script loads Tilverton, so [$4C05] never arrives set from elsewhere.
+    for area, script in scripts.items():
+        loads, _bad = tripspace.walk(CURSE, model, skip, script)
+        assert not [s for s in loads.values()
+                    if s.op == tripspace.NEWECL and s.operands[0] == (0, 1)], area
+    start = 0x9927 - SCRIPT_BASE
+    rest = {(1, 0x4C02): 0, (1, 0x4C05): 0, (1, 0x7F80): 0, (1, 0xC04F): 0}
+    assert not _fight_reachable(model, skip, body, start, rest)
+    # The two ways in that the step never has.
+    assert _fight_reachable(model, skip, body, start, {**rest, (1, 0x4C05): 1})
+    assert _fight_reachable(model, skip, body, start,
+                            {**rest, (1, 0x7F80): 1, (1, 0x4C06): 1})
 
 
 def test_each_pool_gate_is_the_fight_roll_of_one_area_and_save_takes_the_other_side():
@@ -968,6 +1060,8 @@ def test_each_pool_gate_is_the_fight_roll_of_one_area_and_save_takes_the_other_s
         hits = [area for area, body in scripts.items()
                 if ne.digest(body[at:at + ne.STATEMENT]) == row.digest]
         assert hits == [POOL_GATES[at]], row.spec
+        assert [area for area, body in scripts.items()
+                if ne.digest(body[:ne.ENTRY_TABLE]) == row.area] == [POOL_GATES[at]], row.spec
         if POOL_GATES[at] != 0:
             continue
         body = scripts[0]
@@ -996,7 +1090,7 @@ def test_pool_on_changes_only_the_loaded_area_s_rolls_and_off_puts_the_script_ba
     for area, body in sorted(scripts.items()):
         script = body.ljust(SCRIPT_BUFFER, b"\0")
         pipe.put(buffer, script)
-        switch(pipe, POOL, state).on()
+        result = switch(pipe, POOL, state).on()
         now = pipe.get(buffer, SCRIPT_BUFFER)
         changed_at = {i for i in range(SCRIPT_BUFFER) if now[i] != script[i]}
         want = {ne.parse_spec(r.spec)[1] + offset
@@ -1006,24 +1100,35 @@ def test_pool_on_changes_only_the_loaded_area_s_rolls_and_off_puts_the_script_ba
                 if script[ne.parse_spec(r.spec)[1] + offset] != value}
         assert changed_at == want, area
         assert {at for at, a in POOL_GATES.items() if a == area} <= changed_at, area
+        assert not [r for r in result["rows"] if "no longer describes" in r.get("stopped", "")]
+        assert [s["verdict"] for s in result["loaded"]] == [
+            ne.CHANGED if area in POOL_GATES.values() else ne.NOT_COVERED], area
         result = switch(pipe, POOL, state).off()
         assert "error" not in result, area
         assert pipe.get(buffer, SCRIPT_BUFFER) == script, area
 
 
-def test_curse_on_names_the_world_map_script_and_writes_nothing_there(state, monkeypatch):
+def test_curse_on_names_each_script_with_no_roll_and_writes_nothing_there(state, monkeypatch):
     monkeypatch.setattr(ne, "ROWS", REAL_ROWS)
     scripts = curse_scripts()
     pipe = FakePipe()
     build(pipe, CURSE)
     gate = next(r for r in REAL_ROWS if r.title == CURSE and r.kind == ne.GATE)
     buffer = int.from_bytes(pipe.get(DATA_BASE + ne.parse_spec(gate.spec)[0], 4), "big")
-    for area in CURSE_WORLD_MAP_ROLLS:
-        pipe.put(buffer + SCRIPT_BASE, scripts[area].ljust(SCRIPT_BUFFER, b"\0"))
+    for area, body in sorted(scripts.items()):
+        pipe.put(buffer + SCRIPT_BASE, body.ljust(SCRIPT_BUFFER, b"\0"))
+        pipe.batches.clear()
         result = switch(pipe, CURSE, state).on()
         named = [r["none"] for r in result["rows"] if "none" in r]
-        assert len(named) == 1 and f"area ${area:02X}" in named[0], area
-        assert pipe.writes() == [], area
+        [loaded] = result["loaded"]
+        if area in CURSE_NONE:
+            assert len(named) == 1 and f"area ${area:02X}" in named[0], area
+            assert loaded["verdict"] == ne.NO_ROLL and pipe.writes() == [], area
+        elif area in CURSE_GATES.values():
+            assert loaded["verdict"] == ne.CHANGED and not named, area
+        else:
+            assert loaded["verdict"] == ne.NOT_COVERED and pipe.writes() == [], area
+        assert "error" not in switch(pipe, CURSE, state).off()
 
 
 # -- Secret of the Silver Blades, against the player's disks --------------------

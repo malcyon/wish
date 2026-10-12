@@ -25,7 +25,10 @@ load: a short script leaves an earlier area's roll in place past its end.
 A `none` row names a script that makes no random-encounter roll, recognised by
 its entry table, so that while it is loaded the reply names the script as
 having no random roll, beside the stopped rows instead of leaving them to read
-as a failure.
+as a failure.  Every gate names its area too, so `on` and `keys` also say, in
+`loaded`, what each loaded script is: one with no roll, one whose rolls are all
+changed, one where a row's statement no longer matches the game, or one no row
+names, whose rolls the switch does not know.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
@@ -118,6 +121,23 @@ def _rest(title, spec, new, grade, source):
 
 def _none(title, spec, digest, grade, source):
     return Row(title, NONE, spec, digest, (), b"", grade, source)
+
+
+#: What `EncounterSwitch.loaded` makes of a loaded script.
+NO_ROLL, CHANGED, UNCHANGED, MISMATCH, NOT_COVERED = (
+    "no random roll", "every roll changed", "rolls not changed",
+    "a row's statement does not match", "not in the table")
+
+
+def _mismatch(row: Row, now: bytes) -> str:
+    """Why a gate whose statement hash does not match is stopped."""
+    seen = f"({digest(now)}, not {row.digest})"
+    if row.area:
+        return (f"its area's script is loaded, but the {STATEMENT} bytes at the "
+                f"row's address do not match its expected hash {seen}: the row "
+                "no longer describes the game")
+    return (f"the {STATEMENT} bytes at the row's address do not match its "
+            f"expected hash {seen}, for example because its area is not loaded")
 
 
 def length(row: Row) -> int:
@@ -405,27 +425,33 @@ _DARKNESS_ROWS = tuple(
 #: because that counter also sets how many guards the fight brings.
 ROWS = (
     _gate("pool-of-radiance", "*0xA4+0x7B3", "59ff65e6", PROBABLE,
-          "ECL25 wilderness roll at $A0B3, same statement as area 26"),
+          "ECL25 wilderness roll at $A0B3, same statement as area 26",
+          area="4c1d0df1"),
     _gate("pool-of-radiance", "*0xA4+0x7E7", "59ff65e6", CONFIRMED,
-          "area 26 roll at $A0E7, 103 steps in 29.7 minutes live"),
+          "area 26 roll at $A0E7, 103 steps in 29.7 minutes live",
+          area="6ba45148"),
     _gate("pool-of-radiance", "*0xA4+0x5A7", "59ff65e6", PROBABLE,
-          "ECL27 wilderness roll at $9EA7, same statement as area 26"),
+          "ECL27 wilderness roll at $9EA7, same statement as area 26",
+          area="4288727a"),
     _gate("pool-of-radiance", "*0xA4+0x23A", "a57ba371", PROBABLE,
           "Slums roll at $9B3A, ECL14: IF<= 12 EXIT, so the constant is 0",
-          changes=((0, SAVE), (2, 0))),
+          changes=((0, SAVE), (2, 0)), area="8a48228a"),
     _gate("pool-of-radiance", "*0xA4+0x10E", "59ff65e6", PROBABLE,
           "area 0 step roll at $9A0E: RANDOM 19, COMPARE 19, IF= looks for "
           "the MAD MAN in the party, whose attack brings the city watch, so "
           "the constant is 0",
-          changes=((0, SAVE), (2, 0))),
+          changes=((0, SAVE), (2, 0)), area="7fa45343"),
     _gate("pool-of-radiance", "*0xA4+0xB40", "8bb105ac", PROBABLE,
           "area 0 tavern roll at $A440 after a tale: RANDOM 3, COMPARE 1, "
-          "IF= GOTO the drunken brawl at $A693"),
+          "IF= GOTO the drunken brawl at $A693", area="7fa45343"),
     _gate("curse-of-the-azure-bonds", "*0x5006+0x8739", "9afc9873", PROBABLE,
-          "ECL02 roll at $8739: IF> EXIT"),
-    _gate("curse-of-the-azure-bonds", "*0x5006+0x9952", "9afc9873", PROBABLE,
-          "ECL01 step chance at $9952: IF> EXIT at $995F before "
-          "SETUPMON at $9991 and COMBAT at $9482", area="c80bfd1e"),
+          "ECL02 roll at $8739: IF> EXIT", area="a18965ac"),
+    _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "c80bfd1e", PROBABLE,
+          "Tilverton, area $01: its step roll at $9952 only picks a crowd "
+          "rumour or street event, because its fight arm needs [$4C05] = 1, "
+          "which no step starts with, or [$7F80] > 0, which is 0 on every "
+          "square that rolls; its roll at $891F comes after a tavern menu "
+          "choice the player makes"),
     _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "0da02140", PROBABLE,
           "world map area $50: its rolls pick the PATROL FOREST monsters the "
           "player asked to fight ($84DE, $84F8, $8508) and whether a journey "
@@ -433,6 +459,10 @@ ROWS = (
     _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "c27b304a", PROBABLE,
           "world map area $51: no RANDOM statement; each leg's fight is the "
           "leg's own"),
+    _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "5da67cd1", PROBABLE,
+          "area $52: no RANDOM statement"),
+    _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "c02c3110", PROBABLE,
+          "area $30: no RANDOM statement"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x859D", "dc6e4e48", PROBABLE,
           "ECL10 roll at $859D: IF> EXIT", area="793f0cfc"),
     _gate("secret-of-the-silver-blades", "*0x6956+0x89F6", "dc6e4e48", PROBABLE,
@@ -600,12 +630,7 @@ class EncounterSwitch:
                     if address not in self.blocked:
                         self.blocked.add(address)
                         done.append({"row": row.spec, "grade": row.grade,
-                                     "stopped": f"the {STATEMENT} bytes at "
-                                                "the row's address do not match "
-                                                f"its expected hash ({digest(now)}"
-                                                f", not {row.digest}), for "
-                                                "example because its area is "
-                                                "not loaded"})
+                                     "stopped": _mismatch(row, now)})
                     continue
                 self.blocked.discard(address)
                 changed = bytearray(now)
@@ -641,6 +666,53 @@ class EncounterSwitch:
                 result = self._checked_write(address, now, row.new)
             done.append({"row": row.spec, "grade": row.grade, **result})
         return done
+
+    def loaded(self) -> list[dict]:
+        """What the switch makes of each loaded script: one entry per script
+        start the rows read, with its entry-table hash and a `verdict`.
+
+        `NO_ROLL` is a `none` row's script; `CHANGED` a script whose every gate
+        holds its change; `MISMATCH` a script one of whose gates holds neither
+        its statement nor its change, a row that no longer describes the game;
+        `UNCHANGED` a script whose gates are not changed yet (the switch is
+        off, or a write failed); and `NOT_COVERED` a script no row names,
+        whose rolls the switch does not know.
+        """
+        out = []
+        scripts = dict.fromkeys(script_spec(r) for r in self.rows if r.kind != REST)
+        for spec in scripts:
+            head = self.resolve(spec)
+            if head is None:
+                out.append({"script": spec, "verdict": NOT_COVERED,
+                            "why": "the script pointer is null"})
+                continue
+            seen = digest(self.read(head, ENTRY_TABLE))
+            entry = {"script": spec, "entry_table": seen}
+            rows = [r for r in self.rows if r.kind != REST and script_spec(r) == spec]
+            none = next((r for r in rows if r.kind == NONE and r.digest == seen), None)
+            if none is not None:
+                out.append({**entry, "verdict": NO_ROLL, "why": none.source})
+                continue
+            gates = [r for r in rows if r.kind == GATE and r.area == seen]
+            if not gates:
+                out.append({**entry, "verdict": NOT_COVERED,
+                            "why": "no row names this script, so the switch "
+                                   "does not know its rolls"})
+                continue
+            states = {}
+            for row in gates:
+                address = self.resolve(row.spec)
+                now = self.read(address, STATEMENT)
+                if address in self.patched and now == self.patched[address][1]:
+                    states[row.spec] = CHANGED
+                elif digest(now) == row.digest:
+                    states[row.spec] = UNCHANGED
+                else:
+                    states[row.spec] = MISMATCH
+            verdict = next(v for v in (MISMATCH, UNCHANGED, CHANGED)
+                           if v in states.values())
+            out.append({**entry, "verdict": verdict, "rows": states})
+        return out
 
     def _other_area(self, row: Row) -> str | None:
         """None when `row` names no area or its area's script is loaded, else
@@ -1031,6 +1103,8 @@ class WinuaeEncounters:
         #: This title's rows that could not be put back, still recorded.
         self.stuck: list[dict] = []
         self.speculative = False
+        #: `EncounterSwitch.loaded` as the last pass read it.
+        self.last_loaded: list[dict] = []
         #: `(anchor_base, data_base)` as the state file last had them.
         self.bases: tuple[int | None, int | None] = (None, None)
 
@@ -1137,9 +1211,13 @@ class WinuaeEncounters:
         return done
 
     def _apply(self) -> list[dict]:
+        """Apply the rows and read `EncounterSwitch.loaded` into `last_loaded`,
+        in one prefetched pass."""
         self.memory.prefetch(self.switch.rows)
         try:
-            return self.switch.apply()
+            done = self.switch.apply()
+            self.last_loaded = self.switch.loaded()
+            return done
         finally:
             self.memory.clear()
 
@@ -1179,7 +1257,8 @@ class WinuaeEncounters:
             self.switch = None
             raise
         return {"action": "on", "repaired": repaired, "rows": done,
-                "held": [r.spec for r in self.switch.rows if r.kind != NONE]}
+                "held": [r.spec for r in self.switch.rows if r.kind != NONE],
+                "loaded": self.last_loaded}
 
     def off(self) -> dict:
         """Put every recorded change back and record the switch as off."""
@@ -1227,7 +1306,8 @@ class WinuaeEncounters:
         if saved["on"] and saved.get("title") != self.title:
             raise ValueError(f"no_encounters is on for {saved['title']}, not "
                              f"{self.title}")
-        result = {"action": "keys", "pressed": [], "applied": []}
+        result = {"action": "keys", "pressed": [], "applied": [], "loaded": []}
+        seen = None
         try:
             if saved["on"] and self.switch is None:
                 self._ready(saved)
@@ -1237,6 +1317,9 @@ class WinuaeEncounters:
                     done = self._apply()
                     if done:
                         result["applied"].append({"before": name, "rows": done})
+                    if self.last_loaded != seen:
+                        seen = self.last_loaded
+                        result["loaded"].append({"before": name, "loaded": seen})
                 self.press(name)
                 result["pressed"].append(name)
         except WINUAE_ERRORS as exc:
