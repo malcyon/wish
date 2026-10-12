@@ -18,6 +18,7 @@ import json
 import pathlib
 import re
 import shutil
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -65,8 +66,19 @@ def write_json(path: pathlib.Path, value: Any) -> None:
 
 
 def cha_stem(name: str) -> str:
-    """The file stem Amiga Pool's REMOVE writes for a member called `name`."""
+    """The file stem Amiga Pool's REMOVE writes for a record named `name`.
+
+    A player character's space is stored as 0xFF, which the writer keeps.
+    """
     return "".join(c for c in name if c not in _CLEANED).upper()
+
+
+def name_key(name: str) -> str:
+    """One spelling for a Pool record name, its file stem, Curse's copy and the live list.
+
+    0xFF is read as a space, then the writer's cleaning removes it with the rest.
+    """
+    return cha_stem(name.replace("\xff", " "))
 
 
 def _record_name(record: bytes) -> str:
@@ -87,14 +99,19 @@ def copy_characters(source: amiga_adf.AmigaDisk, target: amiga_adf.AmigaDisk,
     effects has none. Nothing is written to `source`.
     """
     require(bool(names), "no character named")
-    stems = [cha_stem(name) for name in names]
-    require(len(set(stems)) == len(stems), f"two names give one file: {stems}")
+    keys = [name_key(name) for name in names]
+    require(len(set(keys)) == len(keys), f"two names give one character: {keys}")
     present = _drawer_files(target, CURSE_DRAWER)
     listed = [name for name in present if LISTED.fullmatch(name)]
     require(not listed, f"the Curse drawer already lists {listed}")
+    offered = [n[:-4] for n in _drawer_files(source, source_drawer) if n.lower().endswith(".cha")]
     copies = []
-    for name, stem in zip(names, stems):
-        row: dict[str, Any] = {"name": name, "stem": stem}
+    for name, key in zip(names, keys):
+        found = [stem for stem in offered if name_key(stem) == key]
+        require(len(found) == 1, f"{len(found)} .cha files on {source.volume_name} "
+                                 f"are {name!r}: {found}")
+        stem = found[0]
+        row: dict[str, Any] = {"name": name, "stem": stem, "key": key}
         for suffix in CHARACTER_SUFFIXES:
             path = f"{source_drawer}/{stem}{suffix}"
             try:
@@ -155,14 +172,15 @@ def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, names: list[st
     require(save not in letters, f"slot {save} is already on the Curse disk")
     members = _slot_members(working, load)
     players = sum(1 for m in members if m.raw[0xF7] < 0x80)
-    records = {name: source.read_file(f"{source_drawer}/{cha_stem(name)}.cha") for name in names}
-    adding_players = sum(1 for r in records.values() if r[0x85] < 0x80)
+    copies = copy_characters(source, working, names, source_drawer=source_drawer)
+    records = [working.read_file(row["cha"]["target"]) for row in copies]
+    adding_players = sum(1 for r in records if r[0x85] < 0x80)
     require(players < PLAYER_SEATS and players + adding_players <= PLAYER_SEATS,
             f"slot {load} has {players} player members; ADD seats at most {PLAYER_SEATS}")
     require(len(members) + len(names) <= PARTY_SEATS,
             f"slot {load} has {len(members)} members; too many to seat {len(names)} more")
+    # Made only once the copy and the seat checks pass, so a stopped stage can be rerun.
     out.mkdir(parents=True)
-    copies = copy_characters(source, working, names, source_drawer=source_drawer)
     disks = {}
     for key in ("save", "diskb"):
         local = out / f"{key}.adf"
@@ -197,7 +215,7 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
     for row in add["copies"]:
         cha = staged.read_file(row["cha"]["target"])
         spc = staged.read_file(row["spc"]["target"]) if row.get("spc") else b""
-        match = [m for m in members if m.name == row["stem"]]
+        match = [m for m in members if name_key(m.name) == row["key"]]
         entry: dict[str, Any] = {"seated": len(match)}
         if len(match) == 1:
             curse = match[0].raw
@@ -208,7 +226,8 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
             entry["spc"] = [list(effect_fields(spc[i:i + 10]))
                             for i in range(0, len(spc) - 9, 10)]
         found["members"][row["stem"]] = entry
-    found["kept"] = [name for name in add["load_names"] if name in found["names"]]
+    saved = [name_key(name) for name in found["names"]]
+    found["kept"] = [name for name in add["load_names"] if name_key(name) in saved]
     return found
 
 
@@ -219,6 +238,12 @@ def verdict(found: dict, manifest: dict) -> list[str]:
         problems.append(f"the fetched disk fails verification: {found['verify']}")
     if found["kept"] != manifest["add"]["load_names"]:
         problems.append(f"the loaded party is not kept: {found['names']}")
+    stems = [row["stem"] for row in manifest["add"].get("copies", [])]
+    if not stems:
+        problems.append("the manifest stages no character")
+    for stem in stems:
+        if stem not in found["members"]:
+            problems.append(f"{stem} was not read back")
     for stem, entry in found["members"].items():
         if entry["seated"] != 1:
             problems.append(f"{stem} is in the saved party {entry['seated']} times")
@@ -247,6 +272,17 @@ KNOWN = ("intro", "front_end", "title", "load_picker", "loaded_menu", "add_from"
 BOOT_ESCAPES = 6
 #: Seconds a screen may stay unchanged after an ESC before ESC is pressed on it again.
 ESCAPE_AGAIN = 15.0
+#: The only keys each screen may receive; the save and load letters come from the manifest
+#: and are checked against `SLOT`. The party menu's D(rop), E(xit), R(emove), C(reate) and
+#: M(odify) and the sheet's D(rop) and T(rade) are deliberately absent.
+ALLOWED_KEYS = {
+    "intro": frozenset({"ESC"}), "front_end": frozenset({"ESC"}), "title": frozenset({"L"}),
+    "load_picker": frozenset("ABCDEFGHIJ"), "loaded_menu": frozenset({"A", "V", "S", "NP7"}),
+    "add_from": frozenset({"P"}), "add_picker": frozenset({"A", "NP1", "E"}),
+    "sheet": frozenset({"E"}), "save_picker": frozenset("ABCDEFGHIJ"),
+}
+#: Seconds the live party read may take before the run stops without saving.
+READ_LIMIT = 60.0
 #: Seconds the game is left to finish writing after the save message clears.
 POST_WRITE_WAIT = 20.0
 TITLE = route_curse.CURSE_KEY
@@ -308,6 +344,7 @@ class Screens:
         raise RouteError(f"{'/'.join(states)} did not show within {limit:.0f}s; last shot {shot}")
 
     def press(self, key: str, on: str) -> None:
+        require(key in ALLOWED_KEYS.get(on, ()), f"{key} is not a key this driver sends on {on}")
         self.guest.press(self.holder, key, timeout=self.left(30))
         self.events.append({"from": on, "key": key})
 
@@ -352,15 +389,16 @@ def check_live(live: list[dict], manifest: dict) -> dict:
     staged `.cha`'s, and the saved slot's read-back is what judges them.
     """
     add = manifest["add"]
-    names = [m["name"] for m in live]
-    loaded = add["load_names"]
-    stems = [row["stem"] for row in add["copies"]]
-    require(names[:len(loaded)] == loaded and sorted(names[len(loaded):]) == sorted(stems),
-            f"the party after ADD is {names}, not {loaded} and {stems}")
+    names = [name_key(m["name"]) for m in live]
+    loaded = [name_key(name) for name in add["load_names"]]
+    rows = {row["key"]: row for row in add["copies"]}
+    require(names[:len(loaded)] == loaded and sorted(names[len(loaded):]) == sorted(rows),
+            f"the party after ADD is {[m['name'] for m in live]}, not "
+            f"{add['load_names']} and {[row['stem'] for row in add['copies']]}")
     staged = amiga_adf.AmigaDisk.open(manifest["disks"]["save"]["path"])
     fields = {}
     for member in live[len(loaded):]:
-        cha = staged.read_file(f"{CURSE_DRAWER}/{member['name']}.cha")
+        cha = staged.read_file(rows[name_key(member["name"])]["cha"]["target"])
         fields[member["name"]] = {field: {"cha": cha[pool], "live": member[field],
                                           "equal": cha[pool] == member[field]}
                                   for field, (pool, _later) in MAPPED.items()
@@ -376,6 +414,23 @@ def mute(guest: Any, out: pathlib.Path, timeout: float) -> pathlib.Path:
     write_json(proof, json.loads(output[output.index("{"):]))
     require(guest.silence(proof), "the Windows playback endpoint did not read back muted")
     return proof
+
+
+def bounded(reader: Callable, holder: str, seconds: float) -> Any:
+    """`reader(holder)`, interrupted after `seconds`; any failure is a stop before the save."""
+    def expired(signum, frame):
+        raise TimeoutError(f"the party read took over {seconds:.0f}s")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        return reader(holder)
+    except Exception as exc:  # noqa: BLE001 - the save waits on this read, whatever stops it
+        raise RouteError(f"the party did not read before the save: "
+                         f"{type(exc).__name__}: {exc}") from exc
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> dict:
@@ -398,6 +453,10 @@ def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> di
         screens.press("A", "add_picker")
         screens.sleep(5.0)
         shown = screens.wait(("add_picker", "loaded_menu"), 60, past=("add_picker",))
+        if shown == "add_picker" and number == count - 1:
+            # A list closing late would put E on the party menu, where it is EXIT FROM GAME.
+            screens.sleep(2.0)
+            shown = screens.wait(("add_picker", "loaded_menu"), 30, past=("add_picker",))
         if shown == "loaded_menu":
             require(number == count - 1,
                     f"the picker closed after {number + 1} of {count} characters")
@@ -405,14 +464,8 @@ def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> di
     else:
         screens.press("E", "add_picker")
         screens.wait(("loaded_menu",), 30, past=("add_picker",))
-    found: dict[str, Any] = {}
-    try:
-        live = reader(holder)
-    except Exception as exc:  # noqa: BLE001 - an unreadable list is recorded, the save decides
-        found["live_error"] = f"{type(exc).__name__}: {exc}"
-    else:
-        found["live"] = live
-        found["live_fields"] = check_live(live, manifest)
+    live = bounded(reader, holder, screens.left(READ_LIMIT))
+    found: dict[str, Any] = {"live": live, "live_fields": check_live(live, manifest)}
     # ADD leaves the last character added highlighted; NP7 moves up the list.
     for number in range(count):
         if number:
@@ -442,6 +495,10 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     manifest = json.loads(args.manifest.read_text())
     require("add" in manifest and manifest.get("title") == "curse",
             "the manifest is not a curseadd.py stage")
+    add = manifest["add"]
+    require(bool(add.get("copies")), "the manifest stages no character")
+    require(bool(SLOT.fullmatch(str(add.get("load")))) and bool(SLOT.fullmatch(str(add.get("save"))))
+            and add["load"] != add["save"], "the load and save letters must be two letters A-J")
     for key, entry in (*manifest["disks"].items(), *manifest["registered"].items()):
         require(sha256(pathlib.Path(entry["path"])) == entry["sha256"], f"the {key} disk hash differs")
     staged = amiga_adf.AmigaDisk.open(manifest["disks"]["save"]["path"])

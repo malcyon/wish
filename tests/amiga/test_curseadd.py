@@ -18,7 +18,7 @@ from tools.registry import specimens
 
 def _record(name: str, control: int = 0, status: int = 0, kind: int = 0) -> bytes:
     raw = bytearray(curseadd.AMIGA_POR_RECORD_SIZE)
-    raw[:len(name)] = name.encode()
+    raw[:len(name)] = name.encode("latin1")
     raw[0x85], raw[0x10E], raw[0xA1], raw[0x11D] = control, status, kind, 9
     return bytes(raw)
 
@@ -62,6 +62,31 @@ def test_copy_puts_cha_and_spc_unchanged_and_leaves_the_itm():
     assert rows[0]["spc"]["equal"] is True
 
 
+def test_name_key_reads_pool_and_curse_spellings_alike():
+    assert curseadd.name_key("LADY\xffKATHERINE") == "LADYKATHERINE"
+    assert curseadd.name_key("Lady Katherine") == "LADYKATHERINE"
+    assert curseadd.name_key("J.R. Smith") == curseadd.name_key("JRSMITH") == "JRSMITH"
+
+
+def test_copy_finds_a_multi_word_player_by_the_file_remove_wrote():
+    stem = "LADY\xffKATHERINE"
+    cha = _record(stem)
+    target = _curse_disk()
+    rows = curseadd.copy_characters(
+        _pool_disk({f"{stem}.cha": cha, f"{stem}.spc": bytes(10)}), target, ["Lady Katherine"])
+    assert rows[0]["stem"] == stem and rows[0]["key"] == "LADYKATHERINE"
+    assert target.read_file(f"SAVE/{stem}.cha") == cha
+    assert target.read_file(f"SAVE/{stem}.spc") == bytes(10)
+
+
+def test_copy_finds_a_name_remove_cleaned():
+    target = _curse_disk()
+    rows = curseadd.copy_characters(_pool_disk({"JRSMITH.cha": _record("JRSMITH", 0xB2)}),
+                                    target, ["J.R. Smith"])
+    assert rows[0]["stem"] == "JRSMITH"
+    assert target.read_file("SAVE/JRSMITH.cha")[0x85] == 0xB2
+
+
 def test_copy_records_a_character_with_no_effects_file():
     target = _curse_disk()
     rows = curseadd.copy_characters(_pool_disk({"GEN.cha": _record("GEN", 0xB2)}), target, ["GEN"])
@@ -70,7 +95,7 @@ def test_copy_records_a_character_with_no_effects_file():
 
 
 @pytest.mark.parametrize("case", ["listed_cha", "listed_sav", "wrong_size", "other_name",
-                                  "missing", "duplicate_stem", "none"])
+                                  "missing", "duplicate_stem", "two_files", "none"])
 def test_copy_stops_before_writing(case):
     files = {"ROSALIND.cha": _record("ROSALIND")}
     names, present = ["ROSALIND"], ("savgamA.dat",)
@@ -86,13 +111,15 @@ def test_copy_stops_before_writing(case):
         names = ["NOBODY"]
     elif case == "duplicate_stem":
         names = ["ROSALIND", "rosalind"]
+    elif case == "two_files":
+        files["ROSA.LIND.cha"] = _record("ROSALIND")
     elif case == "none":
         names = []
     target = _curse_disk(present)
     before = target.to_bytes()
     with pytest.raises(RouteError):
         curseadd.copy_characters(_pool_disk(files), target, names)
-    if case not in ("wrong_size", "other_name"):
+    if case not in ("wrong_size", "other_name", "two_files"):
         assert target.to_bytes() == before
 
 
@@ -143,6 +170,20 @@ class FakeGuards:
         return state == self.guest.current
 
 
+#: Keys that would act on the party or leave the game if they reached these screens.
+FORBIDDEN = ({("loaded_menu", key) for key in "BCDEHMRT"} | {("sheet", key) for key in "DT"}
+             | {("title", key) for key in "CEDM"} | {("add_from", "C"), ("add_from", "H")})
+
+
+def _keys_allowed(screens, guest):
+    pressed = [event for event in screens.events if "key" in event]
+    assert [event["key"] for event in pressed] == guest.keys
+    for event in pressed:
+        assert event["key"] in curseadd.ALLOWED_KEYS[event["from"]], event
+        assert (event["from"], event["key"]) not in FORBIDDEN, event
+    assert set(guest.keys) <= set().union(*curseadd.ALLOWED_KEYS.values())
+
+
 def _screens(tmp_path, script, budget=10_000):
     clock = Clock()
     guest = FakeGuest(script, clock)
@@ -172,6 +213,7 @@ def test_boot_presses_escape_once_per_screen_until_the_party_menu(tmp_path):
     screens, guest = _screens(tmp_path, [None, "intro", "intro", "front_end", "title"])
     screens.to_party_menu(300)
     assert guest.keys == ["ESC", "ESC"]
+    _keys_allowed(screens, guest)
 
 
 def test_boot_stops_after_the_escape_cap(tmp_path):
@@ -179,6 +221,17 @@ def test_boot_stops_after_the_escape_cap(tmp_path):
     with pytest.raises(RouteError, match="ESCs"):
         screens.to_party_menu(3000)
     assert guest.keys == ["ESC"] * curseadd.BOOT_ESCAPES
+    _keys_allowed(screens, guest)
+
+
+@pytest.mark.parametrize("on, key", [("loaded_menu", "D"), ("loaded_menu", "E"),
+                                     ("sheet", "D"), ("title", "Q"), ("save_picker", "K"),
+                                     ("nowhere", "A")])
+def test_a_key_outside_the_allowlist_is_never_sent(tmp_path, on, key):
+    screens, guest = _screens(tmp_path, [None])
+    with pytest.raises(RouteError, match="not a key"):
+        screens.press(key, on)
+    assert guest.keys == [] and screens.events == []
 
 
 def _manifest(tmp_path, stems, names=("GALAIN", "HOLLAND")):
@@ -189,23 +242,39 @@ def _manifest(tmp_path, stems, names=("GALAIN", "HOLLAND")):
     disk.save(save)
     return {"title": "curse", "disks": {"save": {"path": str(save)}},
             "add": {"load": "A", "save": "D", "load_names": list(names),
-                    "copies": [{"stem": stem, "cha": {"target": f"SAVE/{stem}.cha"}}
-                               for stem in stems]}}
+                    "copies": [{"stem": stem, "key": curseadd.name_key(stem),
+                                "cha": {"target": f"SAVE/{stem}.cha"}} for stem in stems]}}
 
 
+def _live(*names):
+    return [{"name": n, "control": 0xB2 if n == "GEN" else 0, "status": 0, "type": 0}
+            for n in names]
+
+
+#: Boot, load, one add, the picker shown twice before E, view and save.
 ROUTE_ONE = [None, "intro", "front_end", "title", "load_picker", None, "loaded_menu",
-             "add_from", "add_picker", "add_picker", "loaded_menu", "sheet", "loaded_menu",
-             "save_picker", "saving", "loaded_menu", "loaded_menu"]
+             "add_from", "add_picker", "add_picker", "add_picker", "loaded_menu", "sheet",
+             "loaded_menu", "save_picker", "saving", "loaded_menu", "loaded_menu"]
 
 
 def test_drive_adds_views_and_saves_one_character(tmp_path):
     screens, guest = _screens(tmp_path, ROUTE_ONE)
     manifest = _manifest(tmp_path, ["ROSALIND"])
-    live = [{"name": n, "control": 0, "status": 0, "type": 0}
-            for n in ("GALAIN", "HOLLAND", "ROSALIND")]
-    found = curseadd.drive(screens, manifest, "holder", lambda holder: live)
+    found = curseadd.drive(screens, manifest, "holder",
+                           lambda holder: _live("GALAIN", "HOLLAND", "ROSALIND"))
     assert guest.keys == ["ESC", "ESC", "L", "A", "A", "P", "A", "E", "V", "E", "S", "D"]
     assert found["live_fields"]["ROSALIND"]["control"] == {"cha": 0, "live": 0, "equal": True}
+    _keys_allowed(screens, guest)
+
+
+def test_drive_compares_multi_word_names_by_their_cleaned_form(tmp_path):
+    screens, guest = _screens(tmp_path, ROUTE_ONE)
+    manifest = _manifest(tmp_path, ["LADY\xffKATHERINE"], names=("SIR\xffBOB",))
+    found = curseadd.drive(screens, manifest, "holder",
+                           lambda holder: _live("SIR BOB", "LADY KATHERINE"))
+    assert found["live_fields"]["LADY KATHERINE"]["type"]["equal"] is True
+    assert guest.keys[-2:] == ["S", "D"]
+    _keys_allowed(screens, guest)
 
 
 def test_drive_adds_two_and_takes_the_picker_closing_itself(tmp_path):
@@ -214,14 +283,39 @@ def test_drive_adds_two_and_takes_the_picker_closing_itself(tmp_path):
               "save_picker", "loaded_menu", "loaded_menu"]
     screens, guest = _screens(tmp_path, script)
     manifest = _manifest(tmp_path, ["ROSALIND", "GEN"])
-
-    def unreadable(holder):
-        raise RouteError("the party list does not read")
-
-    found = curseadd.drive(screens, manifest, "holder", unreadable)
+    found = curseadd.drive(screens, manifest, "holder",
+                           lambda holder: _live("GALAIN", "HOLLAND", "GEN", "ROSALIND"))
     assert guest.keys == ["L", "A", "A", "P", "A", "NP1", "A", "V", "E", "NP7", "V", "E",
                           "S", "D"]
-    assert "the party list does not read" in found["live_error"]
+    assert found["live_fields"]["GEN"]["control"]["live"] == 0xB2
+    _keys_allowed(screens, guest)
+
+
+def test_drive_does_not_press_exit_on_a_picker_that_closed_late(tmp_path):
+    script = [None, "title", "load_picker", "loaded_menu", "add_from", "add_picker",
+              "add_picker", "loaded_menu", "sheet", "loaded_menu", "save_picker",
+              "loaded_menu", "loaded_menu"]
+    screens, guest = _screens(tmp_path, script)
+    curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder",
+                   lambda holder: _live("GALAIN", "HOLLAND", "ROSALIND"))
+    assert guest.keys == ["L", "A", "A", "P", "A", "V", "E", "S", "D"]
+    _keys_allowed(screens, guest)
+
+
+@pytest.mark.parametrize("problem", ["raises", "hangs"])
+def test_drive_stops_before_saving_when_the_party_does_not_read(tmp_path, monkeypatch, problem):
+    screens, guest = _screens(tmp_path, ROUTE_ONE)
+    monkeypatch.setattr(curseadd, "READ_LIMIT", 0.2)
+
+    def reader(holder):
+        if problem == "raises":
+            raise ValueError("the party list does not read")
+        curseadd.time.sleep(5)
+
+    with pytest.raises(RouteError, match="party"):
+        curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder", reader)
+    assert "S" not in guest.keys
+    _keys_allowed(screens, guest)
 
 
 def test_drive_stops_when_the_picker_closes_early(tmp_path):
@@ -232,14 +326,16 @@ def test_drive_stops_when_the_picker_closes_early(tmp_path):
         curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND", "GEN"]), "holder",
                        lambda holder: [])
     assert "S" not in guest.keys
+    _keys_allowed(screens, guest)
 
 
 def test_drive_stops_before_saving_when_the_live_party_differs(tmp_path):
     screens, guest = _screens(tmp_path, ROUTE_ONE)
-    live = [{"name": n, "control": 0, "status": 0, "type": 0} for n in ("GALAIN", "OTHER")]
     with pytest.raises(RouteError, match="party after ADD"):
-        curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder", lambda h: live)
+        curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder",
+                       lambda h: _live("GALAIN", "OTHER"))
     assert "S" not in guest.keys
+    _keys_allowed(screens, guest)
 
 
 def _staged(tmp_path, stems=("ROSALIND",)):
@@ -277,7 +373,8 @@ def _args(tmp_path, manifest):
                               budget=600, wait_lane=0)
 
 
-@pytest.mark.parametrize("problem", ["out_exists", "not_staged", "hash", "slot_taken"])
+@pytest.mark.parametrize("problem", ["out_exists", "not_staged", "hash", "slot_taken",
+                                     "bad_letter", "same_letter", "key_letter", "no_copies"])
 def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
     manifest = _staged(tmp_path)
     monkeypatch.setattr(curseadd, "slot_letters", lambda disk: ["A", "B", "C"])
@@ -289,8 +386,16 @@ def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
         manifest.write_text(json.dumps(value))
     elif problem == "hash":
         (tmp_path / "diskb.adf").write_bytes(b"changed")
-    else:
+    elif problem == "slot_taken":
         monkeypatch.setattr(curseadd, "slot_letters", lambda disk: ["A", "D"])
+    else:
+        value = json.loads(manifest.read_text())
+        if problem == "no_copies":
+            value["add"]["copies"] = []
+        else:
+            value["add"]["save"] = {"bad_letter": "K", "same_letter": "A",
+                                    "key_letter": "ESC"}[problem]
+        manifest.write_text(json.dumps(value))
     guest = LaneGuest()
     with pytest.raises(RouteError):
         curseadd.run(_args(tmp_path, manifest), guest=guest, guards=object(),
@@ -350,7 +455,8 @@ def test_run_succeeds_only_on_a_clean_read_back(tmp_path, monkeypatch, problems)
 
 
 def test_verdict_names_a_changed_byte_and_a_missing_member():
-    manifest = {"add": {"load_names": ["GALAIN"]}}
+    manifest = {"add": {"load_names": ["GALAIN"],
+                        "copies": [{"stem": "GEN"}, {"stem": "ROSALIND"}]}}
     found = {"verify": [], "kept": ["GALAIN"], "names": ["GALAIN", "GEN"], "members": {
         "GEN": {"seated": 1, "fields": {
             "control": {"cha": 0xB2, "curse": 0, "equal": False},
@@ -360,7 +466,32 @@ def test_verdict_names_a_changed_byte_and_a_missing_member():
     problems = curseadd.verdict(found, manifest)
     assert any("GEN control" in p for p in problems)
     assert any("ROSALIND" in p for p in problems)
-    assert curseadd.verdict({**found, "members": {}}, manifest) == []
+
+
+def test_verdict_needs_every_staged_character_read_back():
+    manifest = {"add": {"load_names": ["GALAIN"], "copies": [{"stem": "ROSALIND"}]}}
+    found = {"verify": [], "kept": ["GALAIN"], "names": ["GALAIN"], "members": {}}
+    assert any("ROSALIND" in p for p in curseadd.verdict(found, manifest))
+    manifest["add"]["copies"] = []
+    assert curseadd.verdict(found, manifest) != []
+
+
+def test_stage_that_stops_leaves_no_folder(tmp_path, monkeypatch):
+    save, diskb = tmp_path / "save.adf", tmp_path / "diskb.adf"
+    _curse_disk(("savgamA.dat", "OTHER.cha")).save(save)
+    diskb.write_bytes(b"synthetic disk b")
+    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()  # noqa: E731
+    prep = tmp_path / "prep.json"
+    prep.write_text(json.dumps({"title": "curse", "registered": {}, "disks": {
+        "save": {"path": str(save), "sha256": digest(save)},
+        "diskb": {"path": str(diskb), "sha256": digest(diskb)}}}))
+    source = tmp_path / "pool.adf"
+    _pool_disk({"ROSALIND.cha": _record("ROSALIND")}).save(source)
+    monkeypatch.setattr(curseadd, "slot_letters", lambda disk: ["A"])
+    monkeypatch.setattr(curseadd, "_slot_members", lambda disk, letter: [])
+    with pytest.raises(RouteError, match="already lists"):
+        curseadd.stage(prep, source, ["ROSALIND"], tmp_path / "out")
+    assert not (tmp_path / "out").exists()
 
 
 def _registered_inputs():
