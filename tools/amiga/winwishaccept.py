@@ -78,6 +78,13 @@ SLOW_EMULATION_SPEED = 0.5
 WALK_SETTLE = 10.0
 OPENING_THIRD_SECONDS = 1500
 DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
+#: The guard name of a title's code-wheel question, which `amigacursewheel.py` answers. The
+#: title wait answers it only where the guard source has a rule for it.
+WHEEL_SCREENS = {"curse": "curse_wheel"}
+#: Seconds `amigacursewheel.answer` waits after each of its two keys.
+WHEEL_SETTLE = 2.0
+#: The most one checkpoint read fetches, as for `acceptance.py --read-at`.
+READ_LIMIT = 4096
 #: Party nodes this close are dumped as one span, so the batch stays a few dump commands.
 PARTY_SPAN_GAP = 1024
 DISCOVERY_DF0_SHA256 = "068bc3e2bfd79e6014d427b5aef730d2bd52f0ba1cd28c3664fd9306a04a6948"
@@ -187,8 +194,10 @@ def _action_budget(route: Any) -> int:
     from automap import amigaparty  # noqa: PLC0415
 
     def keys(phase: Any) -> int:
-        return sum((amigaparty.MAX_MEMBERS - 1 if step.kind == "select" else 1)
-                   for step in phase.steps if step.kind in ("key", "turn", "move", "insert", "select"))
+        return sum((amigaparty.MAX_MEMBERS - 1 if step.kind == "select"
+                    else len(step.keys) if step.kind == "type" else 1)
+                   for step in phase.steps
+                   if step.kind in ("key", "turn", "move", "insert", "select", "type"))
 
     total = max(1, keys(next(phase for phase in route.phases if phase.name == "reload")))
     for action in route.actions:
@@ -270,6 +279,7 @@ def _phase_map(route: Any) -> dict[str, Any]:
                 if step.checkpoint in checkpoints:
                     raise AcceptanceStop(f"checkpoint {step.checkpoint} is repeated")
                 checkpoints.add(step.checkpoint)
+    _check_steps(route)
     unready = [f"{p.name}: {p.reason or 'no reason supplied'}" for p in phases.values()
                if not p.ready]
     if route.unresolved:
@@ -277,6 +287,50 @@ def _phase_map(route: Any) -> dict[str, Any]:
     if unready:
         raise AcceptanceStop("route incomplete: " + "; ".join(unready))
     return phases
+
+
+def _check_steps(route: Any) -> None:
+    """Typed keys, relaunches and checkpoint reads, checked before any lane is claimed."""
+    for phase in route.phases:
+        for step in phase.steps:
+            keys = tuple(getattr(step, "keys", ()) or ())
+            if step.kind == "type" and (not keys or step.key is not None):
+                raise AcceptanceStop(f"{phase.name}: a type step needs its keys and no single key")
+            if step.kind != "type" and keys:
+                raise AcceptanceStop(f"{phase.name}: only a type step has a key list")
+            if getattr(step, "relaunch", False) and step.kind not in ("key", "type"):
+                raise AcceptanceStop(f"{phase.name}: only a key or type step can relaunch the program")
+            reads = tuple(getattr(step, "reads", ()) or ())
+            if reads and not step.checkpoint:
+                raise AcceptanceStop(f"{phase.name}: checkpoint reads need a checkpoint")
+            for spec in reads:
+                if spec.anchor not in ("abs", "base", "a4") or not 0 < spec.length <= READ_LIMIT:
+                    raise AcceptanceStop(f"{phase.name}: read {spec.name} needs an abs, base or "
+                                         f"a4 anchor and 1 to {READ_LIMIT} bytes")
+
+
+def _title_pages(route: Any, guards: Any) -> tuple:
+    """The interstitial rows the title wait answers: key rows waiting for `title`, and the
+    title's code-wheel question when the guard source has a rule for it."""
+    rows = tuple(row for row in route.amiga_title.interstitials
+                 if row[1][0] == "keys" and row[2] is not None and "title" in row[2])
+    wheel = WHEEL_SCREENS.get(route.title)
+    if wheel and wheel in (getattr(guards, "rules", None) or {}):
+        rows += ((wheel, ("wheel",), frozenset({"title"}), 1),)
+    return rows
+
+
+def _declared_pages(route: Any, phases: list[Any]) -> set[str]:
+    """The screens the title wait and each phase's pages may press a key on."""
+    rows = {row[0]: row for row in route.amiga_title.interstitials}
+    names = {row[0] for row in _title_pages(route, None)}
+    for phase in phases:
+        for name in getattr(phase, "pages", ()) or ():
+            if name not in rows:
+                raise AcceptanceStop(f"{phase.name} names page {name}, which has no interstitial row")
+            if rows[name][1][0] == "keys":
+                names.add(name)
+    return names
 
 
 def _page_states(route: Any) -> set[str]:
@@ -298,7 +352,7 @@ def _states(route: Any) -> set[str]:
             phases.extend((action.show, action.back))
     states = {state for phase in phases for state in
               (phase.initial_state, *(step.state for step in phase.steps))}
-    return states | _page_states(route)
+    return states | _page_states(route) | _declared_pages(route, phases)
 
 
 def _deadline_limit(mode: str | None, walk_tab: str = "editor") -> int:
@@ -684,11 +738,14 @@ class Controller:
                 if self.guards(state, crop):
                     return last
                 for at, (name, action, waiting_for, row_limit) in enumerate(interstitials):
-                    if (action[0] == "keys" and counts[at] < row_limit
+                    if (action[0] in ("keys", "wheel") and counts[at] < row_limit
                             and (waiting_for is None or state in waiting_for)
                             and self.guards(name, crop)):
                         counts[at] += 1
-                        self._press_interstitial(name, action[1])
+                        if action[0] == "wheel":
+                            self._answer_wheel(name)
+                        else:
+                            self._press_interstitial(name, action[1])
                         # The limit measures waiting for the screen, not acting on a page.
                         end = self.clock() + self.left(limit)
                         break
@@ -767,10 +824,60 @@ class Controller:
 
     def _press_interstitial(self, screen: str, key: str) -> None:
         if self.encounters_on:
-            raise AcceptanceStop(f"interstitial {screen} appeared while encounters were controlled")
-        self.game.press(self.args.holder, key, self.left(30))
+            # The switch's own key path, so suppression is applied to this key as to a route key.
+            result = self.encounters.keys([key])
+            if result.get("stopped") or result.get("error") or result.get("pressed") != [key]:
+                raise AcceptanceStop(f"encounter-controlled key {key} on {screen}: {result}")
+        else:
+            self.game.press(self.args.holder, key, self.left(30))
         self.summary["interstitial_keys"] = self.summary.get("interstitial_keys", 0) + 1
         self.log("interstitial", screen=screen, key=key)
+
+    def _answer_wheel(self, screen: str) -> None:
+        """The code-wheel question, read and answered by `amigacursewheel.py`, which records nothing."""
+        from tools.amiga import amigacursewheel  # noqa: PLC0415
+
+        if self.encounters_on:
+            raise AcceptanceStop(f"{screen} appeared while encounters were controlled")
+        try:
+            answered = amigacursewheel.answer(self.args.holder, WHEEL_SETTLE)
+        except SystemExit as exc:
+            raise AcceptanceStop(f"{screen}: {exc}") from exc
+        if not answered:
+            raise AcceptanceStop(f"{screen} was recognized but no wheel challenge was read")
+        self.summary["interstitial_keys"] = self.summary.get("interstitial_keys", 0) + 2
+        self.log("interstitial", screen=screen, key="wheel")
+
+    def _await_title(self) -> dict[str, Any]:
+        """The title screen, answering the title's own boot pages and code wheel on the way."""
+        return self._await("title", limit=self.route.amiga_title.title_limit,
+                           interstitials=_title_pages(self.route, self.guards))
+
+    def _phase_pages(self, phase: Any) -> tuple:
+        names = set(getattr(phase, "pages", ()) or ())
+        return tuple(row for row in self.route.amiga_title.interstitials if row[0] in names)
+
+    def _type(self, step: Any, *, action: bool) -> None:
+        """A `type` step's keys in order, each counted, with no guard between them."""
+        for key in step.keys:
+            self._press(key, action=action)
+
+    def _relaunch_ready(self, step: Any) -> None:
+        """A program restart needs encounter suppression off, in memory and in its saved state."""
+        if self.encounters_on:
+            raise AcceptanceStop(f"{step.state}: the program restarts with encounter suppression on")
+        if self.encounters is not None:
+            saved = self.encounters.state.load()
+            if saved["on"] or saved["rows"]:
+                raise AcceptanceStop(f"{step.state}: the program restarts with encounter "
+                                     f"suppression outstanding: {saved}")
+
+    def _relaunched(self) -> None:
+        """Forget what pointed into the old program: the batched party nodes and the
+        encounter switch's target, which the next switch locates again."""
+        self.party_nodes = []
+        self.encounters = None
+        self.log("relaunched")
 
     def _press(self, key: str, *, action: bool = False) -> None:
         self._count(action)
@@ -802,10 +909,11 @@ class Controller:
         self.encounters_on = enabled
         self.log("encounters", enabled=enabled, readback=result)
 
-    def _checkpoint(self, name: str, expected: Any, game_evidence: dict[str, Any]) -> None:
+    def _checkpoint(self, name: str, expected: Any, game_evidence: dict[str, Any],
+                    *, reads: tuple = ()) -> None:
         timings: dict[str, float] = {}
         lap = self._lap(timings)
-        engine, party_reads = self._read_engine(lap)
+        engine, party_reads = self._read_engine(lap, reads=reads) if reads else self._read_engine(lap)
         if self.wish_closed:
             winwish.start_wish(self.guest, self.args.holder, flag=True, reseed=False)
             self.wish_closed = False
@@ -827,7 +935,7 @@ class Controller:
             mark = now
         return lap
 
-    def _read_engine(self, lap: Any) -> tuple[dict[str, Any], dict[str, int]]:
+    def _read_engine(self, lap: Any, *, reads: tuple = ()) -> tuple[dict[str, Any], dict[str, int]]:
         """The game's fix, area and party through a pipe connection the driver closes again."""
         from automap import (
             amiga,  # noqa: PLC0415
@@ -854,6 +962,8 @@ class Controller:
                           {"x": fix.x, "y": fix.y, "facing": fix.facing,
                            "outdoors": fix.outdoors, "world_map": fix.world_map,
                            "window": fix.window, "heading": fix.heading,
+                           "world_node": getattr(fix, "world_node", None),
+                           "world_leg": getattr(fix, "world_leg", None),
                            "area": area}),
                   "geo_sha256": (None if geo is None else hashlib.sha256(geo).hexdigest()),
                   "party": (None if party is None else [
@@ -861,9 +971,43 @@ class Controller:
                        "address": member.address, "raw": member.raw.hex(),
                        "items": [[node.address, node.raw.hex()] for node in member.item_nodes]}
                       for member in party])}
+        if reads:
+            engine["memory_reads"] = self._memory_reads(target, reads)
+            lap("reads")
         target.close()
         self.game._pipe = None
         return engine, party_reads
+
+    def _memory_reads(self, target: Any, reads: tuple) -> list[dict[str, Any]]:
+        """Each read's bytes, or why it has none; a read never changes a verdict."""
+        from tools.amiga.amigatarget import A4_BIAS  # noqa: PLC0415
+
+        records = []
+        for spec in reads:
+            record: dict[str, Any] = {"name": spec.name, "anchor": spec.anchor,
+                                      "offset": spec.offset, "length": spec.length,
+                                      "hop": spec.hop}
+            try:
+                address = spec.offset
+                if spec.anchor != "abs":
+                    base = getattr(target, "data_base", None)
+                    if base is None:
+                        raise ValueError("the data hunk is not located")
+                    address += base + (A4_BIAS if spec.anchor == "a4" else 0)
+                if spec.hop is not None:
+                    pointer = int.from_bytes(bytes(target.read(address, 4)), "big")
+                    record.update(pointer_at=address, pointer=pointer)
+                    if pointer == 0:
+                        raise ValueError("the pointer is null")
+                    address = pointer + spec.hop
+                data = bytes(target.read(address, spec.length))
+                record.update(address=address, hex=data.hex(),
+                              set_bits=sum(bin(byte).count("1") for byte in data))
+            except Exception as exc:  # noqa: BLE001
+                record["error"] = f"{type(exc).__name__}: {exc}"
+            records.append(record)
+            self.log("memory_read", **record)
+        return records
 
     def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
         """Wish's shot and its controls, of whichever tab is showing."""
@@ -970,6 +1114,11 @@ class Controller:
                 if relation == "equal" and fix != old:
                     return row("failed", expected=asdict(expected), observed=engine,
                                reason=f"reload changed established fix from {old} to {fix}")
+                if relation == "view_changed":
+                    view = (bool(fix.get("outdoors")), bool(fix.get("world_map")))
+                    if view == (bool(old.get("outdoors")), bool(old.get("world_map"))):
+                        return row("failed", expected=asdict(expected), observed=engine,
+                                   reason=f"the view stayed (outdoors, world map) = {view}")
                 if relation == "area_changed":
                     old_geo = previous["observed"].get("geo_sha256")
                     if old_geo is None or engine["geo_sha256"] is None:
@@ -1044,11 +1193,7 @@ class Controller:
         self._game_section()
         last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
             phase.initial_state, self.route.amiga_title.title_limit))
-        # Only the opening-scene load, first or after camp LOAD, waits for the story's
-        # treasure screen.
-        pages = (self.route.amiga_title.interstitials
-                 if phase.name in ("load", "camp_reload", "reload") and self.route.title == "ssb"
-                 and any(step.state == "treasure_bar" for step in phase.steps) else ())
+        pages = self._phase_pages(phase)
         map_walk = getattr(self.args, "walk_tab", "editor") == "map" and phase.name == "walk"
         if map_walk:
             self.walk_fix = None
@@ -1061,7 +1206,12 @@ class Controller:
                 last_frame = self._map_walk_key(step, before_state, walk_keys)
                 before_state = step.state
                 continue
-            if kind in ("key", "turn", "move"):
+            relaunch = getattr(step, "relaunch", False)
+            if relaunch:
+                self._relaunch_ready(step)
+            if kind == "type":
+                self._type(step, action=action_context is not None or namespace == "original_slot_reload")
+            elif kind in ("key", "turn", "move"):
                 self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
             elif kind == "insert":
                 medium = next(m for m in self.route.media if m.key == step.media)
@@ -1104,6 +1254,8 @@ class Controller:
                 step.state, 90), interstitials=pages)
             last_frame = frame
             before_state = step.state
+            if relaunch:
+                self._relaunched()
             if step.checkpoint:
                 expected = step.expected
                 if namespace and expected and expected.compare_to:
@@ -1114,8 +1266,9 @@ class Controller:
                         local.update(action_context.get("visit_checkpoints", ()))
                     if expected.compare_to in local:
                         expected = replace(expected, compare_to=f"{namespace}.{expected.compare_to}")
+                reads = tuple(getattr(step, "reads", ()) or ())
                 self._checkpoint(f"{namespace}.{step.checkpoint}" if namespace else step.checkpoint,
-                                 expected, frame)
+                                 expected, frame, **({"reads": reads} if reads else {}))
                 if action_context is not None:
                     action_context.setdefault("visit_checkpoints", set()).add(step.checkpoint)
         if action_context is not None and namespace:
@@ -2039,7 +2192,7 @@ class Controller:
         try:
             self._up()
             self._game_section()
-            title = self._await("title", limit=300)
+            title = self._await_title()
             self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
             _phase_map(self.route)
             for phase in self.route.phases:

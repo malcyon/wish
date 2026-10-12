@@ -3639,3 +3639,243 @@ def test_schedule_key_queues_one_key_through_the_pipe_and_requires_its_reply(mon
     for key in ("F11", "NOSUCHKEY"):
         with pytest.raises(winuaesession.RouteError):
             guest.schedule_key("test-acw", key, 1500, 30)
+
+
+def _screen_controller(tmp_path, title, interstitials, first, *, guards=None):
+    """A controller whose fake screen shows `first`, with guards that match the screen's own name."""
+    clock, game = FakeClock(), FakeGame()
+    screen = {"show": first}
+
+    def grab(state, raw, crop, timeout):
+        pathlib.Path(raw).write_bytes(b"raw")
+        pathlib.Path(crop).write_bytes(screen["show"].encode())
+        return True
+
+    game.grab = grab
+    route = _route()
+    route.title = title
+    route.amiga_title = SimpleNamespace(wait_limits={}, title_limit=300,
+                                        interstitials=interstitials)
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=SimpleNamespace(stop=lambda *args: None),
+        game=game, guards=guards or (lambda state, path: path.read_bytes().decode() == state),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    controller.pipe_released = True
+    return controller, game, screen
+
+
+def test_the_pool_code_wheel_is_answered_before_the_title(tmp_path, monkeypatch):
+    from tools.amiga import route_pool
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "pool", route_pool.POOL.interstitials, "wheel")
+    game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
+        show="title" if (screen["show"], key) == ("wheel", "RET") else screen["show"]))
+    monkeypatch.setattr(controller, "_up", lambda: None)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_cleanup",
+                        lambda: controller.summary["cleanup"].update(errors=[]))
+
+    def stop(route):
+        raise winwishaccept.AcceptanceStop("the route ends after the title")
+
+    monkeypatch.setattr(winwishaccept, "_phase_map", stop)
+    result = controller.run_title()
+    assert game.keys == ["RET"]
+    assert result["interstitial_keys"] == 1
+    assert result["mapping"]["title"]["status"] == "awaiting image review"
+
+
+def test_a_second_wheel_frame_or_an_unknown_frame_gets_no_title_key(tmp_path):
+    from tools.amiga import route_pool
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "pool", route_pool.POOL.interstitials, "wheel")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="title screen was not recognized"):
+        controller._await_title()
+    assert game.keys == ["RET"]
+    controller, game, screen = _screen_controller(
+        tmp_path / "unknown", "pool", route_pool.POOL.interstitials, "mystery")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="title screen was not recognized"):
+        controller._await_title()
+    assert game.keys == []
+
+
+@pytest.mark.parametrize("measured", [True, False])
+def test_the_curse_wheel_is_answered_only_where_its_guard_is_measured(tmp_path, monkeypatch,
+                                                                      measured):
+    from tools.amiga import amigacursewheel, route_curse
+
+    class Guards:
+        rules = {"title": {}, "front_end": {}, **({"curse_wheel": {}} if measured else {})}
+
+        def __call__(self, state, path):
+            return state in self.rules and path.read_bytes().decode() == state
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "curse", route_curse.CURSE.interstitials, "curse_wheel", guards=Guards())
+    answered = []
+
+    def answer(holder, settle):
+        answered.append((holder, settle))
+        screen["show"] = "title"
+        return True
+
+    monkeypatch.setattr(amigacursewheel, "answer", answer)
+    if measured:
+        controller._await_title()
+        assert answered == [("test-acw", winwishaccept.WHEEL_SETTLE)]
+        assert controller.summary["interstitial_keys"] == 2
+    else:
+        with pytest.raises(winwishaccept.AcceptanceStop, match="title screen was not recognized"):
+            controller._await_title()
+        assert answered == []
+    assert game.keys == []
+
+
+def test_a_page_during_an_encounter_controlled_walk_goes_through_the_switch(tmp_path):
+    from tools.amiga import maproute
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "darkness", (("continue", ("keys", "RET"), frozenset({"world"}), 3),), "world")
+    sent = []
+
+    def keys(names):
+        sent.extend(names)
+        screen["show"] = "continue" if names == ["NP8"] else "world"
+        return {"pressed": names}
+
+    controller.encounters_on = True
+    controller.encounters = SimpleNamespace(keys=keys)
+    walk = maproute.Phase("walk", "world", (maproute.Step("move", "world", key="NP8"),),
+                          pages=("continue",))
+    controller.run_phase(walk)
+    assert sent == ["NP8", "RET"]
+    assert game.keys == []
+    assert controller.summary["interstitial_keys"] == 1
+
+
+def test_a_page_a_phase_does_not_declare_gets_no_key(tmp_path):
+    from tools.amiga import maproute
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "darkness", (("continue", ("keys", "RET"), frozenset({"world"}), 3),), "world")
+    game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(show="continue"))
+    walk = maproute.Phase("walk", "world", (maproute.Step("move", "world", key="NP8"),))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="world screen was not recognized"):
+        controller.run_phase(walk)
+    assert game.keys == ["NP8"]
+    unknown = maproute.Phase("walk", "world", (), pages=("journal",))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="names page journal"):
+        winwishaccept._declared_pages(controller.route, [unknown])
+
+
+class _WorldMapMemory(_PartyMemory):
+    def fix(self):
+        return SimpleNamespace(x=0, y=0, facing=None, outdoors=False, world_map=True,
+                               window=None, heading=None, world_node=6, world_leg=2)
+
+
+def test_a_checkpoint_records_and_checks_the_world_node(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _WorldMapMemory(items=0))
+    controller._checkpoint("curse_world", maproute.Expected(
+        engine={"world_map": 1, "world_node": 6}), {"raw": "game"})
+    record = controller.checkpoints["curse_world"]
+    assert (record["observed"]["fix"]["world_node"], record["observed"]["fix"]["world_leg"]) == (6, 2)
+    assert record["comparison"]["status"] == "awaiting image review"
+    with pytest.raises(winwishaccept.AcceptanceStop, match="engine world_node reads 6, expected 7"):
+        controller._checkpoint("curse_world_again", maproute.Expected(
+            engine={"world_node": 7}), {"raw": "game"})
+
+
+def test_view_changed_passes_on_a_new_view_and_fails_on_the_same_one(tmp_path):
+    from tools.amiga import maproute
+
+    controller, _, _ = _screen_controller(tmp_path, "curse", (), "world")
+    indoors = {"x": 2, "y": 6, "facing": 1, "outdoors": False, "world_map": False, "area": 16}
+    controller.checkpoints["yulash"] = {"observed": {"fix": indoors, "geo_sha256": "a"}}
+    expected = maproute.Expected(compare_to="yulash", relation="view_changed")
+    world = {"fix": {**indoors, "x": 0, "y": 0, "facing": None, "world_map": True},
+             "geo_sha256": "a"}
+    assert controller._compare_checkpoint("world", expected, world)["status"] == (
+        "awaiting image review")
+    same = controller._compare_checkpoint("still", expected, {"fix": dict(indoors), "geo_sha256": "a"})
+    assert same["status"] == "failed"
+    assert "the view stayed" in same["reason"]
+
+
+def _relaunch_phase():
+    from tools.amiga import maproute
+
+    return maproute.Phase("reload", "cli", (maproute.Step(
+        "type", "wheel", keys=("P", "R", "O", "G", "R", "A", "M", "RET"), relaunch=True),))
+
+
+def test_a_relaunch_clears_the_party_nodes_and_the_encounter_target(tmp_path):
+    controller, game, screen = _screen_controller(tmp_path, "pool", (), "cli")
+    game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
+        show="wheel" if key == "RET" else "cli"))
+    controller.party_nodes = [(0xC60000, 340)]
+    controller.encounters = SimpleNamespace(state=SimpleNamespace(
+        load=lambda: {"on": False, "rows": []}))
+    controller.run_phase(_relaunch_phase())
+    assert controller.party_nodes == []
+    assert controller.encounters is None
+
+
+@pytest.mark.parametrize("outstanding", ["on", "rows"])
+def test_a_relaunch_with_suppression_outstanding_sends_no_key(tmp_path, outstanding):
+    controller, game, _ = _screen_controller(tmp_path, "pool", (), "cli")
+    controller.party_nodes = [(0xC60000, 340)]
+    controller.encounters_on = outstanding == "on"
+    controller.encounters = SimpleNamespace(state=SimpleNamespace(
+        load=lambda: {"on": False, "rows": [1] if outstanding == "rows" else []}))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="restarts with encounter suppression"):
+        controller.run_phase(_relaunch_phase())
+    assert game.keys == []
+    assert controller.party_nodes == [(0xC60000, 340)]
+
+
+def test_a_type_step_sends_its_keys_and_awaits_once(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game, screen = _screen_controller(tmp_path, "pool", (), "cli")
+    waits = []
+    real_await = controller._await
+    monkeypatch.setattr(controller, "_await", lambda state, **kwargs: (
+        waits.append((state, list(game.keys))), real_await(state, **kwargs))[1])
+    game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
+        show="wheel" if key == "RET" else "cli"))
+    phase = maproute.Phase("reload", "cli", (maproute.Step(
+        "type", "wheel", keys=("P", "R", "O", "G", "R", "A", "M", "RET")),))
+    controller.run_phase(phase)
+    typed = ["P", "R", "O", "G", "R", "A", "M", "RET"]
+    assert game.keys == typed
+    assert waits == [("cli", []), ("wheel", typed)]
+    assert controller.mapping_commands == 8
+    with pytest.raises(winwishaccept.AcceptanceStop, match="type step needs its keys"):
+        winwishaccept._check_steps(SimpleNamespace(phases=(maproute.Phase(
+            "reload", "cli", (maproute.Step("type", "wheel"),)),)))
+
+
+def test_checkpoint_reads_are_recorded_without_a_verdict(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    memory = _PartyMemory(items=0)
+    memory._put(memory.DATA + 0x57AC, 0xC70000)
+    memory.image[0xC70024 - memory.BASE:0xC70027 - memory.BASE] = bytes((1, 34, 14))
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, memory)
+    reads = (maproute.Read("overland", "base", 0x57AC, 3, hop=0x24),
+             maproute.Read("unset", "base", 0x57B0, 3, hop=0x24))
+    controller._checkpoint("overland_step", None, {"raw": "game"}, reads=reads)
+    record = controller.checkpoints["overland_step"]
+    first, second = record["observed"]["memory_reads"]
+    assert (first["pointer"], first["address"], first["hex"]) == (0xC70000, 0xC70024, "01220e")
+    assert "the pointer is null" in second["error"]
+    assert record["comparison"]["status"] == "awaiting image review"
+    with pytest.raises(winwishaccept.AcceptanceStop, match="reads need a checkpoint"):
+        winwishaccept._check_steps(SimpleNamespace(phases=(maproute.Phase(
+            "transition", "world", (maproute.Step("move", "world", key="NP8", reads=reads),)),)))

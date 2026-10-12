@@ -25,14 +25,30 @@ class Expected:
     engine: Mapping[str, int] | None = None
     window: Mapping[str, int] | None = None
     compare_to: str | None = None
-    relation: Literal["equal", "stationary", "moved", "area_changed"] | None = None
+    relation: Literal["equal", "stationary", "moved", "area_changed", "view_changed"] | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class Read:
+    """Bytes read at a checkpoint for the record only; no verdict depends on them.
+
+    The address is `offset` from `anchor`: `abs` is zero, `base` the located data hunk and
+    `a4` that hunk plus the A4 bias, as `--read-at` counts them. With `hop`, the big-endian
+    long at that address is a pointer and the bytes are read at the pointer plus `hop`.
+    """
+
+    name: str
+    anchor: Literal["abs", "base", "a4"]
+    offset: int
+    length: int
+    hop: int | None = None
 
 
 @dataclasses.dataclass(frozen=True)
 class Step:
     kind: Literal[
         "key", "turn", "move", "insert", "answer", "snapshot", "restore",
-        "encounters", "select", "observe",
+        "encounters", "select", "observe", "type",
     ]
     state: str
     key: str | None = None
@@ -42,6 +58,12 @@ class Step:
     encounters: bool | None = None
     checkpoint: str | None = None
     expected: Expected | None = None
+    #: A `type` step's keys, sent in order with one guarded wait after the last.
+    keys: tuple[str, ...] = ()
+    #: The step starts the game program again, so memory read before it is stale.
+    relaunch: bool = False
+    #: Read-only bytes recorded with the step's checkpoint.
+    reads: tuple[Read, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -51,6 +73,8 @@ class Phase:
     steps: tuple[Step, ...]
     ready: bool = True
     reason: str | None = None
+    #: The title's interstitial screens this phase may answer while it waits for a step's screen.
+    pages: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -127,8 +151,13 @@ def _media_for(title: str, manifest: Mapping[str, object], base: AmigaTitle
     return tuple(_entry(key, disks.get(key)) for key in base.disk_keys)
 
 
-def _phase(name: str, initial: str, *steps: Step) -> Phase:
-    return Phase(name, initial, steps)
+def _phase(name: str, initial: str, *steps: Step, pages: tuple[str, ...] = ()) -> Phase:
+    return Phase(name, initial, steps, pages=pages)
+
+
+#: The Silver Blades opening story's continue pages, and the treasure offer that can stand in
+#: for the camp bar, answered while the opening-scene load and the camp reload wait.
+_SSB_STORY_PAGES = ("continue", "treasure")
 
 
 def _missing(name: str, initial: str, reason: str) -> Phase:
@@ -174,6 +203,7 @@ def _load(title: str, slot: str, opening_scene: bool = False) -> Phase:
                 Step("answer", "treasure_bar"),
                 Step("key", "treasure", key="E"),
                 Step("key", "world", key="N", checkpoint="loaded", expected=expected),
+                pages=_SSB_STORY_PAGES,
             )
         return _phase("load", "title", *prefix,
                       Step("answer", "world", checkpoint="loaded", expected=expected))
@@ -330,6 +360,7 @@ def _ssb_camp_reload() -> Phase:
         Step("key", "world", key="N", checkpoint="ssb_camp_reloaded",
              expected=Expected(engine={"area": 16, "x": 3, "y": 3, "facing": 2},
                                compare_to="ssb_ruins_arrival", relation="area_changed")),
+        pages=_SSB_STORY_PAGES,
     )
 
 
@@ -337,7 +368,7 @@ def _ssb_reload(slot: str) -> Phase:
     """Camp LOAD back to the prepared slot, from the camp bar to the New Verdigris square."""
     steps = (*_ssb_camp().steps, *_ssb_camp_load().steps,
              Step("key", "loaded_menu", key=slot), *_ssb_camp_reload().steps)
-    return _phase("reload", "world", *steps)
+    return _phase("reload", "world", *steps, pages=_SSB_STORY_PAGES)
 
 
 def _ssb_reopen() -> Phase:
