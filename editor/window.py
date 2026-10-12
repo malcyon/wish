@@ -2081,7 +2081,7 @@ class EditorBinding(QObject):
         from goldbox.d64 import load_payload
         from goldbox.portraits import PortraitError, tables_from_disks
 
-        from .dosimport import GameFiles
+        from .dosimport import GameFiles, load_companions
 
         def read_animate(disk):
             return load_payload(disk, dos_codec.ANIMATE_FILE)
@@ -2110,7 +2110,10 @@ class EditorBinding(QObject):
             return GameFiles(icon=IconParts.load(icon_disk),
                              animate=read_animate(animate_disk),
                              portraits=portraits,
-                             item_types=item_types)
+                             item_types=item_types,
+                             companions=load_companions(
+                                 game.key,
+                                 self._disk_candidates(pattern, game)))
         except Exception:
             _log.exception("could not read the conversion's game files off "
                            "%s and %s", icon_disk, animate_disk)

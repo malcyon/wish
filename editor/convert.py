@@ -726,12 +726,14 @@ class AmigaToC64(DosToC64):
                 state, characters, options.icon, options.animate,
                 portraits=options.portraits, game=self.destination_game,
                 leave=leave, item_types=options.item_types, names=chosen,
-                leave_effects=leave_effects, party_icons=pool_icons)
+                leave_effects=leave_effects, party_icons=pool_icons,
+                companions=options.companions)
         else:
             save0, save1, report = dos_codec.new_save_from_neutral(
                 state, characters, party_icons, options.icon, options.animate,
                 game=self.destination_game, leave=leave,
-                item_types=options.item_types, leave_effects=leave_effects)
+                item_types=options.item_types, leave_effects=leave_effects,
+                companions=options.companions)
         image = dos_codec.save_disk(bytes(save0), bytes(save1),
                               self.destination_game)
         name = self._name.format(slot=slot)
@@ -760,6 +762,10 @@ class C64ToDos(Direction):
     figure at all, because the table only runs one way)`). Save As
     supplies it, off the *source*'s own title rather than the destination's
     (`#383`); left out, every figure is the game's own default.
+
+    `companions` is `goldbox.dos_codec.c64_party`'s own argument, read off the
+    same source title: a companion who joined on the C64 arrives with his
+    combat picture. Left out, he arrives with none.
     """
 
     source_port = "c64"
@@ -780,7 +786,8 @@ class C64ToDos(Direction):
                 options: "str | pathlib.Path",
                 icon_parts: "Any | None" = None,
                 names: "Mapping[int, str] | None" = None,
-                leave: "Mapping[int, Collection[int]] | None" = None
+                leave: "Mapping[int, Collection[int]] | None" = None,
+                companions: "Any | None" = None
                 ) -> "AmigaDosRehearsal":
         if leave:
             # Only a C64 record has a slot count a pack can overflow; a
@@ -792,7 +799,8 @@ class C64ToDos(Direction):
         c64 = dos_codec.c64_title(source.save0, self.title)
         state = world_state.from_c64(source.save0, game=c64)
         characters, icons = dos_codec.c64_party(
-            source.save0, source.save1, c64, icon_parts=icon_parts)
+            source.save0, source.save1, c64, icon_parts=icon_parts,
+            companions=companions)
         characters = saveplan.fit_names(
             characters, self.destination_port, self.deltas.key, names)
         with tempfile.TemporaryDirectory(prefix="wish-convert-") as scratch:
@@ -1390,7 +1398,8 @@ class C64ToAmiga(Direction):
                 icon_parts: "Any | None" = None,
                 names: "Mapping[int, str] | None" = None,
                 leave: "Mapping[int, Collection[int]] | None" = None,
-                disk_one: "str | pathlib.Path | None" = None) -> AmigaWriteRehearsal:
+                disk_one: "str | pathlib.Path | None" = None,
+                companions: "Any | None" = None) -> AmigaWriteRehearsal:
         if leave:
             # Only a C64 record has a slot count a pack can overflow; a
             # choice of what to leave behind means nothing to this port.
@@ -1399,7 +1408,8 @@ class C64ToAmiga(Direction):
                 f"pack to leave anything of")
         game_data = _amiga_destination_data(self.deltas, options, source)
         party, icons = dos_codec.c64_party(source.save0, source.save1,
-                                     game=self.title, icon_parts=icon_parts)
+                                     game=self.title, icon_parts=icon_parts,
+                                     companions=companions)
         party = saveplan.fit_names(
             party, self.destination_port, self.deltas.key, names)
         state = world_state.from_c64(

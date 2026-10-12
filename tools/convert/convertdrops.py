@@ -114,8 +114,10 @@ def game_files(game):
                     portraits = tables_from_disks(where)
                 except (PortraitError, OSError):
                     portraits = None
-            out = dosimport.GameFiles(icon=icon, animate=animate,
-                                      portraits=portraits)
+            out = dosimport.GameFiles(
+                icon=icon, animate=animate, portraits=portraits,
+                companions=dosimport.load_companions(
+                    game.key, sorted(pathlib.Path(where).glob("*.[dD]64"))))
     _GAME_FILES[game.key] = out
     return out
 
@@ -256,7 +258,9 @@ def sweep() -> int:
                         rehearsal = direction.rehearse(
                             source, slot, options,
                             icon_parts=files.icon if files else None,
-                            **chosen)
+                            **chosen, **(
+                                {"companions": files.companions}
+                                if files and files.companions else {}))
                     else:
                         rehearsal = direction.rehearse(source, slot, options,
                                                        **chosen)

@@ -22,6 +22,7 @@ import copy
 import dataclasses
 import logging
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from . import (
     classcode,
@@ -42,6 +43,9 @@ from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
 from .portraits import draws_sheet_portrait
 from .record import CharacterRecord
+
+if TYPE_CHECKING:
+    from .companions import Companions
 
 _log = logging.getLogger("wish.goldbox.c64_codec")
 
@@ -767,6 +771,33 @@ def zombie_player(char: NeutralCharacter) -> bool:
             and char.get("npc_control_byte") == DOS_PC_TAKEN_OVER)
 
 
+def companion_mon(char: NeutralCharacter,
+                  companions: "Companions | None") -> int | None:
+    """The `MON` id a Curse or Silver Blades companion joined from, or None.
+
+    A companion whose name matches one `MON` file and whose combat picture is
+    the picture a DOS or Amiga join writes for that file.  The writer gives
+    him that file's story byte and the default icon, because the C64 game
+    gives a joining companion no icon of his own.  A player character, a
+    player character the engine has taken over, a companion with no match
+    (an imported or animated player) and a companion whose picture is
+    another monster's all come back None.
+    """
+    if companions is None or not char.get("npc"):
+        return None
+    if char.get("npc_control_byte") == DOS_PC_TAKEN_OVER:
+        return None
+    if deltas_for(char.game).key != companions.key:
+        return None
+    mon_id = companions.match(str(char.get("name", "")))
+    picture = char.get("unnamed_0ab")
+    if mon_id is None or picture is None:
+        return None
+    if int(picture) != companions.picture_for(mon_id):
+        return None
+    return mon_id
+
+
 def living_player(char: NeutralCharacter) -> NeutralCharacter:
     """`char` as an ordinary living player character when it is a zombie
     player character, else `char` itself.
@@ -1206,6 +1237,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
           payload: bytearray | None = None, party_slot: int | None = None,
           clock_minutes: int | None = None,
           item_types: Mapping[int, ItemType] | None = None,
+          companions: "Companions | None" = None,
           ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a neutral one.
 
@@ -1225,6 +1257,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     With it a Pool of Radiance character's `roster_movement` is computed by
     `derive.expected_movement` from the converted record; without it, and for
     every other title, the source's `movement_current` is copied.
+
+    `companions` is the title's companion table (`goldbox.companions`).  With
+    it a companion who matches a `MON` file gets that file's story byte at
+    `0x0E5`, which is what draws him with his own monster art on a C64
+    side that holds it, and the picture's mark at `0x0E7`; the caller gives
+    him the default icon (:func:`companion_mon`).  Without it he keeps the
+    picture and no story byte.
     """
     rec = CharacterRecord.blank()
     rep = Report()
@@ -3094,14 +3133,29 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         # companion fill) gets `CONVERTED_FILL_MARK` beside it, player or
         # companion alike.  Some of those the reader would return anyway; the
         # mark keeps a round trip identical.
+        mon_id = companion_mon(char, companions)
         mark = (CONVERTED_FILL_MARK if deltas.key in NO_COMPANION_PICTURE
-                and value in (NO_PLAYER_DRAW, NO_COMPANION_PICTURE[deltas.key])
+                and (mon_id is not None or value in (
+                    NO_PLAYER_DRAW, NO_COMPANION_PICTURE[deltas.key]))
                 else 0)
         rec.set_raw("identity_pair", bytes([value, mark]))
         emit(identity, "identity_pair", 0x0E6, 2,
              "; 0x0E7 is the pair's second byte, which nothing on the C64 "
              "reads back" + (f", marked {mark:#04x} because the first equals "
-                             "the title's own fill" if mark else ""))
+                             "the title's own fill, or his picture is a "
+                             "companion's" if mark else ""))
+        if mon_id is not None:
+            story = companions.story_byte(mon_id)
+            rec.set("story_picture", story)
+            rep.note(0x0E5, 1,
+                      f"story_picture ${story:02X}: MON{mon_id:02X}'s own "
+                      "byte, which the combat start reads to draw him with "
+                      "his own monster art")
+    if (companions is None and char.get("npc") and identity is not None
+            and deltas.key in NO_COMPANION_PICTURE
+            and char.get("npc_control_byte") != DOS_PC_TAKEN_OVER):
+        _log.debug("no companion table: %s keeps his picture at 0x0E6 and "
+                   "gets no story byte at 0x0E5", char.get("name"))
 
     # -- the closing sweep: unwritten fields, then the reader's own drops ----
     w.finish()
@@ -3584,6 +3638,10 @@ READ_TARGETS: dict[str, str] = (
                             "itself (#600, #626, #628)",
        "spells_known": "the spellbook mask's low seven bytes, unpacked into "
                        "neutral spells_known",
+       "story_picture": "not read: the byte is a picture for the combat "
+                        "start, not a monster id, so a companion's picture "
+                        "on the other ports comes from his name through the "
+                        "companion table",
        "spells_known_high": "the same mask's high nine bytes, 0x07F-0x087, "
                             "unpacked into the same neutral spells_known. How "
                             "far into them the reader goes is the title's "
@@ -3685,7 +3743,8 @@ def running_effect_label(eid: int, minutes: int, game) -> str:
 def read(rec: CharacterRecord, roster=None, inventory=None,
          game=None, source: str | None = None, *,
          payload: bytes | None = None, party_slot: int | None = None,
-         clock_minutes: int | None = None) -> NeutralCharacter:
+         clock_minutes: int | None = None,
+         companions: "Companions | None" = None) -> NeutralCharacter:
     """Read one C64 record into the neutral record.
 
     `roster` is the character's roster block, which is where a *save slot*
@@ -3706,6 +3765,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     lay-on-hands and cure rows, and each other row through
     `effects.dos_record`.  Left out, `lay_on_hands_minutes` reads 0 (which
     reads as "may heal now", the same as an unspent byte) and no row is read.
+
+    `companions` is the title's companion table (`goldbox.companions`).  A
+    companion who joined on the C64 holds no picture, so with it his name
+    gives the `MON` file he was copied from and so the picture the DOS and
+    Amiga joins write for it; a picture a conversion stored is read first.
+    The story byte at `0x0E5` is never read as a picture: Silver Blades'
+    story bytes are not its monster ids.
     """
     out = NeutralCharacter("C64", source=source, game=game)
     deltas = deltas_for(game)
@@ -4430,6 +4496,15 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
                 f"the C64's identity pair @0x0E6, the first byte: {what}, "
                 "as a conversion wrote it", grade("identity_pair"))
+    elif (is_npc and companions is not None and companions.key == deltas.key
+          and deltas.key in NO_COMPANION_PICTURE
+          and rec.get("name") is not None):
+        mon_id = companions.match(str(rec.get("name")))
+        if mon_id is not None:
+            out.set("unnamed_0ab", companions.picture_for(mon_id),
+                    f"the combat picture the DOS and Amiga joins write for "
+                    f"MON{mon_id:02X}, found by the companion's name",
+                    Confidence.PROBABLE, Provenance.COMPUTED)
 
     # A name in `READ_DROPPED` is reported **only where
     # `READ_DROPPED_PLAYER_TEXT` has a sentence for it**, the same rule

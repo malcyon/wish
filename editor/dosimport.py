@@ -52,6 +52,8 @@ from collections.abc import Collection, Mapping
 from typing import Any
 
 from goldbox import c64_port, dos_codec, titles
+from goldbox.companions import JOINABLE, Companions
+from goldbox.d64 import D64
 from goldbox.iconparts import IconParts
 from goldbox.portraits import PortraitTables
 from goldbox.savegame import SaveGame0, SaveGame1
@@ -121,6 +123,36 @@ class GameFiles:
     #: `None` for the other titles or when no disk answers.  Without it a Pool
     #: of Radiance character's movement is copied, not computed.
     item_types: dict | None = None
+    #: The title's companion table, read off its game sides, or `None` for a
+    #: title that has none and when a side cannot be read.  Without it a
+    #: companion keeps the picture he arrived with and gets no story byte,
+    #: and one who joined on the C64 arrives with no picture.
+    companions: Companions | None = None
+
+
+def load_companions(key: str, candidates: Collection[str | pathlib.Path]
+                    ) -> Companions | None:
+    """The companion table for title `key` read off the disk images in
+    `candidates`, or `None` when the title has none or they cannot give it.
+
+    A candidate that is not a readable disk image is left out, because a
+    folder's glob can match a save disk or a damaged copy beside the game
+    sides; the table needs every `MON` file, so a title whose sides are
+    incomplete gets `None` too.
+    """
+    if key not in JOINABLE:
+        return None
+    sides = []
+    for candidate in candidates:
+        try:
+            sides.append(D64.open(str(candidate)))
+        except Exception as exc:
+            _log.debug("%s is not a readable disk image: %s", candidate, exc)
+    try:
+        return Companions.load(key, sides)
+    except ValueError as exc:
+        _log.debug("no companion table for %s: %s", key, exc)
+        return None
 
 
 @dataclasses.dataclass
@@ -185,7 +217,8 @@ def rehearse(folder: str | pathlib.Path, slot: str,
                                               game=game, leave=leave,
                                               item_types=files.item_types,
                                               names=chosen,
-                                              leave_effects=leave_effects)
+                                              leave_effects=leave_effects,
+                                              companions=files.companions)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
     sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos_codec.save_disk(bytes(payload0), bytes(payload1), game)

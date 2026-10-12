@@ -58,7 +58,15 @@ import pathlib
 import shutil
 import struct
 import tempfile
-from typing import Any, Collection, Iterable, Mapping, NamedTuple, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Collection,
+    Iterable,
+    Mapping,
+    NamedTuple,
+    Sequence,
+)
 
 from . import (
     areas,
@@ -131,6 +139,9 @@ from .portraits import (
     tables_from_dos,
 )
 from .record import CharacterRecord
+
+if TYPE_CHECKING:
+    from .companions import Companions
 
 #: Where a condition the player must never be shown goes instead.  The name is
 #: a child of the `wish` logger, so `wish/debuglog.py`'s handler picks it up
@@ -3640,6 +3651,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
                   leave_effects: Collection[int] = (),
                   drop_type_zero: bool = False,
                   zombie_lives: bool = False,
+                  companions: "Companions | None" = None,
                   ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
@@ -3669,6 +3681,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     (`c64_codec.living_player`) before the C64 record is built, which is what
     a conversion wants; left off, he stays a zombie, which the editor's DOS
     and Amiga sheet relies on.
+
+    `companions` is :func:`neutral_to_c64_record`'s own argument.
 
     `drop_type_zero` leaves out the items the C64 counts as an empty slot
     (see :func:`_without_type_zero`), after `leave` and `leave_effects`.  Left off, the C64 writer still writes
@@ -3702,7 +3716,8 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     return neutral_to_c64_record(out, icon=icon, payload=payload,
                                  party_slot=party_slot,
                                  clock_minutes=clock_minutes,
-                                 item_types=item_types)
+                                 item_types=item_types,
+                                 companions=companions)
 
 
 def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
@@ -3710,6 +3725,7 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                           party_slot: int | None = None,
                           clock_minutes: int | None = None,
                           item_types: "Mapping[int, ItemType] | None" = None,
+                          companions: "Companions | None" = None,
                           ) -> tuple[CharacterRecord, Report]:
     """Build one C64 record from an already decoded neutral character.
 
@@ -3721,6 +3737,11 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
     write`'s own three keyword arguments, handed straight on, and so is
     `item_types`, the ITEMS type table that makes a Pool of Radiance
     character's movement computed rather than copied.
+
+    `companions` is the title's companion table.  A companion it matches
+    (`goldbox.c64_codec.companion_mon`) gets the default icon in place of
+    `icon`, because the C64 game gives a joining companion no icon of his
+    own, and `c64_codec.write` gives him his `MON` file's story byte.
     """
     out = NeutralCharacter(char.port, source=char.source, game=char.game)
     out.fields = dict(char.fields)
@@ -3743,9 +3764,11 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
                                    "C64, which cancels a scribe before it "
                                    "saves",
                     field.confidence, Provenance.RESHAPED)
+    if c64_codec.companion_mon(out, companions) is not None:
+        icon = companions.default_icon
     return c64_codec.write(out, icon=icon, payload=payload,
                            party_slot=party_slot, clock_minutes=clock_minutes,
-                           item_types=item_types)
+                           item_types=item_types, companions=companions)
 
 
 def _scribe_mark_cleared(item: bytes, scroll_types: tuple[int, ...]) -> bytes:
@@ -8386,6 +8409,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                    item_types: "Mapping[int, ItemType] | None" = None,
                    names: "Mapping[int, str] | None" = None,
                    leave_effects: "Mapping[int, Collection[int]] | None" = None,
+                   companions: "Companions | None" = None,
                    ) -> C64SaveReport:
     """Write a DOS party into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
@@ -8560,7 +8584,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 icon=_neutral_icon_for(
                     char, source_icon, icon, icon_tables.get(size)),
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
-                item_types=item_types)
+                item_types=item_types, companions=companions)
             name = str(char.get("name", ""))
         else:
             source_icon = (neutral_icons[index]
@@ -8575,7 +8599,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
                 leave=left, item_types=item_types,
                 name=(names or {}).get(index),
                 leave_effects=left_effects, drop_type_zero=drop_zero,
-                zombie_lives=True)
+                zombie_lives=True, companions=companions)
             name = (names or {}).get(index, char.name)
         all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
@@ -8869,7 +8893,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                  animate: bytes | None = None,
                  portraits: PortraitTables | None = None,
                  game=None, *,
-                 item_types: "Mapping[int, ItemType] | None" = None) -> C64SaveReport:
+                 item_types: "Mapping[int, ItemType] | None" = None,
+                 companions: "Companions | None" = None) -> C64SaveReport:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     Reads the party and the place off `folder`'s own `CHRDAT<slot><n>.SAV`
@@ -8892,7 +8917,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                                   source=str(savgam_path))
     return write_c64_save(save0, save1, state, party, icon=icon,
                           animate=animate, portraits=portraits, game=container,
-                          item_types=item_types)
+                          item_types=item_types, companions=companions)
 
 
 def new_save_from(state: "world_state.WorldState",
@@ -8905,6 +8930,7 @@ def new_save_from(state: "world_state.WorldState",
                   names: "Mapping[int, str] | None" = None,
                   leave_effects: "Mapping[int, Collection[int]] | None" = None,
                   party_icons: "Sequence[DosIcon | None] | None" = None,
+                  companions: "Companions | None" = None,
                   ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a place and a party, owing nothing to another
     save (#118).  The engine `new_save` and #353's Amiga reader share; see
@@ -8927,7 +8953,7 @@ def new_save_from(state: "world_state.WorldState",
                             game=container, leave=leave,
                             item_types=item_types, names=names,
                             leave_effects=leave_effects,
-                            neutral_icons=party_icons)
+                            neutral_icons=party_icons, companions=companions)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -8943,6 +8969,7 @@ def new_save_from_neutral(
         leave: "Mapping[int, Collection[int]] | None" = None,
         item_types: "Mapping[int, ItemType] | None" = None,
         leave_effects: "Mapping[int, Collection[int]] | None" = None,
+        companions: "Companions | None" = None,
         ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a neutral party and its source combat icons."""
     if len(party_icons) != len(party):
@@ -8956,7 +8983,8 @@ def new_save_from_neutral(
     report = write_c64_save(
         save0, save1 or None, state, party, icon=icon, animate=animate,
         neutral_icons=party_icons, game=container, leave=leave,
-        item_types=item_types, leave_effects=leave_effects)
+        item_types=item_types, leave_effects=leave_effects,
+        companions=companions)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -8973,6 +9001,7 @@ def new_save(folder: str | pathlib.Path, slot: str,
              item_types: "Mapping[int, ItemType] | None" = None,
              names: "Mapping[int, str] | None" = None,
              leave_effects: "Mapping[int, Collection[int]] | None" = None,
+             companions: "Companions | None" = None,
              ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
@@ -9005,7 +9034,8 @@ def new_save(folder: str | pathlib.Path, slot: str,
                                   source=str(savgam_path))
     return new_save_from(state, party, icon, animate, portraits=portraits,
                          game=container, leave=leave, item_types=item_types,
-                         names=names, leave_effects=leave_effects)
+                         names=names, leave_effects=leave_effects,
+                         companions=companions)
 
 
 def save_disk(save0: bytes, save1: bytes, game=None):
@@ -9981,7 +10011,9 @@ def _c64_save_context(save0: bytes, save1: bytes | None, c64):
     return sg, sg1, effects.clock_minutes(clock_digits)
 
 
-def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins) -> "NeutralCharacter":
+def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins,
+                   companions: "Companions | None" = None
+                   ) -> "NeutralCharacter":
     """One occupied C64 slot read with its roster block, inventory and the
     save's clock, which is what the effect rows need."""
     from .items import items_for_slot
@@ -9992,19 +10024,23 @@ def _read_c64_slot(char_slot, sg1, c64, save0, clock_mins) -> "NeutralCharacter"
                                inventory=inv, game=c64,
                                source=f"C64 slot {char_slot.index}",
                                payload=save0, party_slot=char_slot.index,
-                               clock_minutes=clock_mins)
+                               clock_minutes=clock_mins,
+                               companions=companions)
     return character
 
 
 def c64_member_neutral(save0: bytes, save1: bytes | None, game,
-                       index: int) -> "NeutralCharacter":
+                       index: int,
+                       companions: "Companions | None" = None
+                       ) -> "NeutralCharacter":
     """The C64 party member in slot `index`, read exactly as `c64_party`
     reads him (roster block, inventory and clock included)."""
     c64 = c64_save.container_for(game)
     sg, sg1, clock_mins = _c64_save_context(save0, save1, c64)
     for char_slot in sg.characters:
         if char_slot.index == index:
-            return _read_c64_slot(char_slot, sg1, c64, save0, clock_mins)
+            return _read_c64_slot(char_slot, sg1, c64, save0, clock_mins,
+                                  companions)
     raise ValueError(f"C64 slot {index} holds no character")
 
 
@@ -10066,7 +10102,8 @@ def _write_prayer_holder(save0: bytearray, report: Report,
 
 
 def c64_party(save0: bytes, save1: bytes | None, game=None,
-             icon_parts: "IconParts | None" = None
+             icon_parts: "IconParts | None" = None,
+             companions: "Companions | None" = None
              ) -> "tuple[list[NeutralCharacter], list[DosIcon | None]]":
     """The C64 party, read through `c64_codec.read` and given back in DOS
     file order, with each character's own combat icon beside it (#320).
@@ -10099,6 +10136,10 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     `icon_parts` left out, the second list is all `None` and nothing here
     changes from before #320.
 
+    `companions` is the title's companion table, `c64_codec.read`'s own
+    argument: with it a companion who joined on the C64 comes back with the
+    combat picture his join writes on DOS and the Amiga.
+
     **A record `recognise` cannot read is not a reason to fail the whole
     party.**  Every icon on the player's own disks reads back
     (`tests/icons/test_iconreverse.py`), but a hand-authored one -- SHARA THE
@@ -10123,7 +10164,8 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
     icons: "list[DosIcon | None]" = []
     for char_slot in party:
         character = c64_codec.living_player(
-            _read_c64_slot(char_slot, sg1, c64, save0, clock_mins))
+            _read_c64_slot(char_slot, sg1, c64, save0, clock_mins,
+                           companions))
         icon = None
         if icon_parts is not None:
             # Not `char_slot.record.get_raw("region_220")`: `Slot.record`
@@ -10618,7 +10660,8 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                    slot: str = "A",
                    game: str | pathlib.Path | None = None,
                    title=None,
-                   icon_parts: "IconParts | None" = None) -> "SaveReport":
+                   icon_parts: "IconParts | None" = None,
+                   companions: "Companions | None" = None) -> "SaveReport":
     """Write a C64 save into a DOS save directory.
 
     `save0` and `save1` are the C64 `SAVEDGAME0`/`SAVEDGAME1` payloads; `out`
@@ -10700,7 +10743,8 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     """
     c64 = c64_title(save0, title)
     state = world_state.from_c64(save0, game=c64)
-    characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
+    characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts,
+                                  companions=companions)
     return write_dos_save_from(state, characters, template, out, slot, game,
                                icons=icons)
 
@@ -10787,7 +10831,8 @@ def new_dos_save_from(state: "world_state.WorldState",
 def new_dos_save(save0: bytes, save1: bytes | None,
                  out: str | pathlib.Path, slot: str,
                  game: str | pathlib.Path, title=None,
-                 icon_parts: "IconParts | None" = None) -> "SaveReport":
+                 icon_parts: "IconParts | None" = None,
+                 companions: "Companions | None" = None) -> "SaveReport":
     """A whole DOS save from a C64 one, owing nothing to another save (#26).
 
     The mirror of :func:`new_save`, and the same rejection: `game` is the DOS
@@ -10812,7 +10857,8 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     """
     c64 = c64_title(save0, title)
     state = world_state.from_c64(save0, game=c64)
-    characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts)
+    characters, icons = c64_party(save0, save1, c64, icon_parts=icon_parts,
+                                  companions=companions)
     return new_dos_save_from(state, characters, out, slot, game, icons=icons)
 
 

@@ -18,6 +18,7 @@ Tests for converting a character or a save between ports and titles: the neutral
 | `test_c64strengthindex.py` | Checks that a converted character's C64 strength index is the one each title's own routine computes, including strength above 18. |
 | `test_c64thac0.py` | Checks that a converted character's THAC0 on the C64 sheet is computed from the C64's own tables rather than copied. |
 | `test_c64traitslots.py` | Checks which effects from both neutral effect lists reach the C64's ten trait slots. |
+| `test_companionc64.py` | Checks that a Curse or Silver Blades companion keeps his picture, gets his `MON` file's story byte and the default icon on the C64, and gets his `MON` id back from his name, on the player's own disks. |
 | `test_companions.py` | Checks that a C64 companion's name gives his `MON` file, picture and story byte, and that the default icon is the one `INIT` seeds, on the player's own Curse and Silver Blades disks. |
 | `test_convert.py` | Checks `editor.convert`'s registry: which directions the library can write whole, as round trips, and the dialog built on it. |
 | `test_convertmatrix.py` | Checks that the bytes Save As writes for each of the six DOS and C64 directions equal what the library's own entry point writes. |

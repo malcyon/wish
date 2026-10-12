@@ -918,7 +918,7 @@ def _game_files_from_folder(folder: pathlib.Path,
     from goldbox.items import load_item_types
     from goldbox.portraits import PortraitError, tables_from_disks
 
-    from .dosimport import GameFiles
+    from .dosimport import GameFiles, load_companions
 
     def read_animate(disk):
         return load_payload(disk, dos_codec.ANIMATE_FILE)
@@ -953,7 +953,9 @@ def _game_files_from_folder(folder: pathlib.Path,
         return GameFiles(icon=IconParts.load(icon_disk),
                                    animate=read_animate(animate_disk),
                                    portraits=portraits,
-                                   item_types=item_types)
+                                   item_types=item_types,
+                                   companions=load_companions(
+                                       game.key, candidates))
     except Exception:
         _log.exception("could not read the conversion's game files off %s",
                        folder)
@@ -1088,6 +1090,9 @@ def rehearse(direction: Any, source: Any, assets: Assets,
     elif port == "amiga":
         chosen["disk_one"] = assets.amiga_disk_one
     if direction.source_port == "c64" and port in ("dos", "amiga"):
+        companions = getattr(assets.source_files, "companions", None)
+        if companions is not None:
+            chosen["companions"] = companions
         return direction.rehearse(source, slot, options,
                                   icon_parts=assets.source_files.icon,
                                   names=names, **chosen), slot

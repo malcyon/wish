@@ -232,6 +232,10 @@ NOT_ON_THE_SHEET = (
     # alone -- so a widget would offer a number nobody chose, and changing
     # it would change nothing.
     "identity_pair",
+    # The picture the combat start draws a story companion with. The game
+    # copies it from the companion's monster file and nothing a player
+    # chooses sets it, so a widget would offer a number nobody picked.
+    "story_picture",
     # The NPC control byte: bit 7 (control), the low seven bits for an NPC
     # (morale) and bit 0 for a player character on the titles where it means
     # anything (abilities altered). Three separate meanings packed into one

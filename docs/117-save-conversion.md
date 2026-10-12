@@ -2207,6 +2207,7 @@ graph LR
   areas --> layout
   backstab --> titles
   c64_codec --> classcode
+  c64_codec --> companions
   c64_codec --> derive
   c64_codec --> dos_port
   c64_codec --> effects
@@ -2238,6 +2239,7 @@ graph LR
   dos_codec --> c64_port
   dos_codec --> c64_save
   dos_codec --> classcode
+  dos_codec --> companions
   dos_codec -.->|deferred| d64
   dos_codec --> derive
   dos_codec --> dos_port
