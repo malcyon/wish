@@ -22,13 +22,15 @@ applies the rows again before each key press and changes the row once its
 area loads.  A gate that names its `area` is also checked against the loaded
 script's entry table, because Silver Blades does not clear the buffer before a
 load: a short script leaves an earlier area's roll in place past its end.
-A `none` row names a script that makes no random-encounter roll, recognised by
-its entry table, so that while it is loaded the reply names the script as
-having no random roll, beside the stopped rows instead of leaving them to read
-as a failure.  Every gate names its area too, so `on` and `keys` also say, in
-`loaded`, what each loaded script is: one with no roll, one whose rolls are all
-changed, one where a row's statement no longer matches the game, or one no row
-names, whose rolls the switch does not know.
+A `none` row names a script none of whose rolls can start a random fight,
+recognised by its entry table, so that while it is loaded the reply names the
+script as having no random fight, beside the stopped rows instead of leaving
+them to read as a failure.  Every gate names its area too, so `on` and `keys` also say, in
+`loaded`, what each loaded script is: one with no roll that can start a random
+fight, one whose listed rolls are all changed (its other rolls are in `EXEMPT`,
+each with the reason it cannot start one), one where a row's statement no
+longer matches the game, or one no row names, whose rolls the switch does not
+know.
 
 The class does no I/O of its own: the driver hands it `resolve`, `read` and
 `write`, so it runs against a fake, and a `journal` callback that is given
@@ -124,8 +126,8 @@ def _none(title, spec, digest, grade, source):
 
 
 #: What `EncounterSwitch.loaded` makes of a loaded script.
-NO_ROLL, CHANGED, UNCHANGED, MISMATCH, NOT_COVERED = (
-    "no random roll", "every roll changed", "rolls not changed",
+NO_FIGHT, CHANGED, UNCHANGED, MISMATCH, NOT_COVERED = (
+    "no random fight", "every listed roll changed", "rolls not changed",
     "a row's statement does not match", "not in the table")
 
 
@@ -444,6 +446,19 @@ ROWS = (
     _gate("pool-of-radiance", "*0xA4+0xB40", "8bb105ac", PROBABLE,
           "area 0 tavern roll at $A440 after a tale: RANDOM 3, COMPARE 1, "
           "IF= GOTO the drunken brawl at $A693", area="7fa45343"),
+    _gate("pool-of-radiance", "*0xA4+0x14E2", "c7a0fdfb", PROBABLE,
+          "Slums square type 18 roll at $ADE2 while [$4A80] < 15: RANDOM 10, "
+          "+3 and +2 by [$4A0B] and [$6DCA], COMPARE 9, IF>= GOTO the street "
+          "fight at $9B8A, so the constant is 0",
+          changes=((0, SAVE), (2, 0)), area="8a48228a"),
+    _gate("pool-of-radiance", "*0xA4+0xD7D", "4b478e76", PROBABLE,
+          "area 27 square types 10 and 11, once [$4A9E] is 255: RANDOM 7, "
+          "COMPARE 0, IF> EXIT, else SETUPMON at $A68B and COMBAT at $A6CD",
+          area="4288727a"),
+    _gate("pool-of-radiance", "*0xA4+0xE7A", "4b478e76", PROBABLE,
+          "area 27 square types 15 and 16, once [$4A9E] is 255: RANDOM 7, "
+          "COMPARE 0, IF> EXIT, else SETUPMON at $A788 and COMBAT at $A7F5",
+          area="4288727a"),
     _gate("curse-of-the-azure-bonds", "*0x5006+0x8739", "9afc9873", PROBABLE,
           "ECL02 roll at $8739: IF> EXIT", area="a18965ac"),
     _none("curse-of-the-azure-bonds", "*0x5006+0x8000", "c80bfd1e", PROBABLE,
@@ -516,6 +531,74 @@ ROWS = (
           "$7ED3 chance word in the $7C00 block"),
     _rest("pools-of-darkness", "*0x57AC+0x2C", "00", SPECULATIVE,
           "variable $2C, the chance byte"),
+)
+
+
+_POOL_SELECTION = ("picks the monsters once a fight is decided, by the step "
+                   "roll or by the camp entry, whose chance is the rest row")
+_POOL_PARLAY = "the outcome of a PARLAY the player chose in an encounter"
+_POOL_ANSWER = "comes after the player's answer to a menu"
+
+#: Every other `RANDOM` in a script that has gates, and why it cannot start a
+#: random fight on a step: `(title, entry-table hash, ECL address, reason)`.
+#: With the gates, these are all the rolls of their scripts
+#: (`tests/amiga/test_noencounters_winuae.py` checks it on the player's disks),
+#: so `loaded` can say that every roll able to start one is changed.
+EXEMPT = (
+    ("curse-of-the-azure-bonds", "a18965ac", 0x8748,
+     "reached only on the success side of the $8739 roll; picks which "
+     "encounter it is"),
+    ("pool-of-radiance", "7fa45343", 0xA328,
+     "square type 20: a pickpocket's ROB; no fight on its own"),
+    ("pool-of-radiance", "7fa45343", 0xA340,
+     "after the pickpocket, whether a menu offers the brawl; the brawl "
+     + _POOL_ANSWER),
+    ("pool-of-radiance", "7fa45343", 0xA429, "picks which tale the tavern tells"),
+    ("pool-of-radiance", "7fa45343", 0xA58D,
+     "the outcome of a wager the player entered; it moves money only"),
+    ("pool-of-radiance", "7fa45343", 0xA6D2,
+     "inside the brawl at $A693, after the fight is decided: its size"),
+    ("pool-of-radiance", "7fa45343", 0xA74A,
+     "inside the brawl at $A693, after the fight is decided: its monsters"),
+    ("pool-of-radiance", "7fa45343", 0xAEF4,
+     "facing for a party put out on a random square; no fight"),
+    ("pool-of-radiance", "7fa45343", 0xAEFA,
+     "square for a party put out on a random square; no fight"),
+    ("pool-of-radiance", "8a48228a", 0x9B8A, _POOL_SELECTION),
+    ("pool-of-radiance", "8a48228a", 0x9C8A,
+     "inside an encounter already met: whether it opens with the "
+     "encounter menu"),
+    ("pool-of-radiance", "8a48228a", 0xA595, "picks one of three messages"),
+    ("pool-of-radiance", "8a48228a", 0xB225,
+     "facing for a party sent to a random square after an encounter"),
+    ("pool-of-radiance", "8a48228a", 0xB22B,
+     "square for a party sent to a random square after an encounter"),
+    ("pool-of-radiance", "8a48228a", 0xB2DE, _POOL_PARLAY),
+    ("pool-of-radiance", "8a48228a", 0xB4AC,
+     "after a PARLAY the player chose: whether the party is sent away or "
+     "fights"),
+    ("pool-of-radiance", "4c1d0df1", 0xA2CF, _POOL_PARLAY),
+    ("pool-of-radiance", "4c1d0df1", 0xA472, _POOL_ANSWER),
+    ("pool-of-radiance", "4c1d0df1", 0xAB57, _POOL_SELECTION),
+    ("pool-of-radiance", "4c1d0df1", 0xAB6A, _POOL_SELECTION),
+    ("pool-of-radiance", "4c1d0df1", 0xAC1A, _POOL_SELECTION),
+    ("pool-of-radiance", "6ba45148", 0xA2F7, _POOL_PARLAY),
+    ("pool-of-radiance", "6ba45148", 0xA44C,
+     "past the step roll: which of two menus it offers; " + _POOL_ANSWER),
+    ("pool-of-radiance", "6ba45148", 0xAA5F,
+     "square type 9's fixed fight while [$4A14] is 0: its size"),
+    ("pool-of-radiance", "6ba45148", 0xAB15, _POOL_SELECTION),
+    ("pool-of-radiance", "6ba45148", 0xAB28, _POOL_SELECTION),
+    ("pool-of-radiance", "6ba45148", 0xABDC, _POOL_SELECTION),
+    ("pool-of-radiance", "4288727a", 0xA0B7, _POOL_PARLAY),
+    ("pool-of-radiance", "4288727a", 0xA255, _POOL_ANSWER),
+    ("pool-of-radiance", "4288727a", 0xA6AF,
+     "after the $A67D roll decides a fight: its size"),
+    ("pool-of-radiance", "4288727a", 0xA7C1,
+     "after the $A77A roll decides a fight: its size"),
+    ("pool-of-radiance", "4288727a", 0xA867, _POOL_SELECTION),
+    ("pool-of-radiance", "4288727a", 0xA87A, _POOL_SELECTION),
+    ("pool-of-radiance", "4288727a", 0xA920, _POOL_SELECTION),
 )
 
 
@@ -609,8 +692,8 @@ class EncounterSwitch:
                 elif key not in self.noted:
                     self.noted.add(key)
                     done.append({"row": row.spec, "grade": row.grade,
-                                 "none": "the loaded script makes no "
-                                         f"random-encounter roll: {row.source}"})
+                                 "none": "no roll in the loaded script can "
+                                         f"start a random fight: {row.source}"})
                 continue
             if row.kind == GATE:
                 # Rows of two areas can share an address, so a row stopped
@@ -671,12 +754,14 @@ class EncounterSwitch:
         """What the switch makes of each loaded script: one entry per script
         start the rows read, with its entry-table hash and a `verdict`.
 
-        `NO_ROLL` is a `none` row's script; `CHANGED` a script whose every gate
-        holds its change; `MISMATCH` a script one of whose gates holds neither
-        its statement nor its change, a row that no longer describes the game;
-        `UNCHANGED` a script whose gates are not changed yet (the switch is
-        off, or a write failed); and `NOT_COVERED` a script no row names,
-        whose rolls the switch does not know.
+        `NO_FIGHT` is a `none` row's script, none of whose rolls can start a
+        random fight; `CHANGED` a script whose every gate holds its change;
+        `MISMATCH` a script one of whose gates holds neither its statement nor
+        its change, a row that no longer describes the game; `UNCHANGED` a
+        script whose gates are not changed yet (the switch is off, or a write
+        failed); and `NOT_COVERED` a script no row names, whose rolls the
+        switch does not know.  A script with gates also lists, under
+        `exempt`, each of its other rolls (`EXEMPT`) and why it is left alone.
         """
         out = []
         scripts = dict.fromkeys(script_spec(r) for r in self.rows if r.kind != REST)
@@ -691,7 +776,7 @@ class EncounterSwitch:
             rows = [r for r in self.rows if r.kind != REST and script_spec(r) == spec]
             none = next((r for r in rows if r.kind == NONE and r.digest == seen), None)
             if none is not None:
-                out.append({**entry, "verdict": NO_ROLL, "why": none.source})
+                out.append({**entry, "verdict": NO_FIGHT, "why": none.source})
                 continue
             gates = [r for r in rows if r.kind == GATE and r.area == seen]
             if not gates:
@@ -711,7 +796,9 @@ class EncounterSwitch:
                     states[row.spec] = MISMATCH
             verdict = next(v for v in (MISMATCH, UNCHANGED, CHANGED)
                            if v in states.values())
-            out.append({**entry, "verdict": verdict, "rows": states})
+            out.append({**entry, "verdict": verdict, "rows": states,
+                        "exempt": {f"${at:04X}": why for title, area, at, why
+                                   in EXEMPT if title == self.title and area == seen}})
         return out
 
     def _other_area(self, row: Row) -> str | None:
@@ -1213,6 +1300,7 @@ class WinuaeEncounters:
     def _apply(self) -> list[dict]:
         """Apply the rows and read `EncounterSwitch.loaded` into `last_loaded`,
         in one prefetched pass."""
+        self.last_loaded = []
         self.memory.prefetch(self.switch.rows)
         try:
             done = self.switch.apply()

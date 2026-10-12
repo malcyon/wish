@@ -784,7 +784,7 @@ def test_a_loaded_script_with_no_roll_is_named_once_and_nothing_is_written(state
         pipe.put(address, b"\x01" * len(STATEMENT))
     result = switch(pipe, title, state).on()
     named = [r for r in result["rows"] if "none" in r]
-    assert len(named) == 1 and "makes no random-encounter roll" in named[0]["none"]
+    assert len(named) == 1 and "can start a random fight" in named[0]["none"]
     assert all("stopped" in r for r in result["rows"] if "none" not in r)
     assert none.spec not in result["held"]
     assert pipe.writes() == []
@@ -831,6 +831,37 @@ def test_on_says_every_roll_of_the_loaded_script_is_changed(title, state):
     assert set(loaded["rows"].values()) == {ne.CHANGED}
 
 
+def test_changed_names_each_exempt_roll_of_the_loaded_script_with_its_reason(
+        state, monkeypatch):
+    title = "pool-of-radiance"
+    monkeypatch.setattr(ne, "EXEMPT", (
+        (title, ne.digest(ENTRIES), 0xA328, "a pickpocket"),
+        (title, "00000000", 0xA340, "another script's roll"),
+        ("curse-of-the-azure-bonds", ne.digest(ENTRIES), 0x8748, "another title's")))
+    pipe = FakePipe()
+    build(pipe, title)
+    [loaded] = switch(pipe, title, state).on()["loaded"]
+    assert loaded["verdict"] == ne.CHANGED
+    assert loaded["exempt"] == {"$A328": "a pickpocket"}
+
+
+def test_a_failed_pass_leaves_no_verdict_from_an_earlier_one(state, monkeypatch):
+    title = "pool-of-radiance"
+    pipe = FakePipe()
+    build(pipe, title)
+    held = switch(pipe, title, state)
+    held.on()
+    assert held.last_loaded and held.last_loaded[0]["verdict"] == ne.CHANGED
+
+    def fail():
+        raise OSError("the pipe closed")
+
+    monkeypatch.setattr(held.switch, "apply", fail)
+    with pytest.raises(OSError):
+        held._apply()
+    assert held.last_loaded == []
+
+
 def test_every_gate_names_the_area_whose_script_holds_it():
     """A gate with no area cannot tell a script it does not belong to from a
     statement that changed, so the switch could not say which it met."""
@@ -856,7 +887,7 @@ def test_keys_name_the_loaded_script_when_it_changes(state, monkeypatch):
     later.press = press
     result = later.keys(["NP8", "NP8", "NP2"])
     verdicts = [(e["before"], [s["verdict"] for s in e["loaded"]]) for e in result["loaded"]]
-    assert verdicts == [("NP8", [ne.CHANGED]), ("NP8", [ne.NO_ROLL])]
+    assert verdicts == [("NP8", [ne.CHANGED]), ("NP8", [ne.NO_FIGHT])]
 
 
 def test_a_script_no_row_names_is_reported_not_covered(state):
@@ -887,7 +918,8 @@ CURSE_GATES = {0x8739: 2}
 
 #: Each Pool gate's offset in the `[data+0xA4]` buffer and the one area whose
 #: script holds its statement there.
-POOL_GATES = {0x7B3: 25, 0x7E7: 26, 0x5A7: 27, 0x23A: 20, 0x10E: 0, 0xB40: 0}
+POOL_GATES = {0x7B3: 25, 0x7E7: 26, 0x5A7: 27, 0x23A: 20, 0x10E: 0, 0xB40: 0,
+              0x14E2: 20, 0xD7D: 27, 0xE7A: 27}
 
 #: What the four older Pool statements hash to in area 0's script.
 POOL_AREA_0_STOPPED = {0x7B3: "2927c493", 0x7E7: "5ed2b7d5", 0x5A7: "580dd5ab",
@@ -949,7 +981,7 @@ def test_curse_rows_write_only_ecl02_and_name_each_script_with_no_roll(state, mo
         named = [r["none"] for r in reply["rows"] if "none" in r]
         assert len(named) == (area in CURSE_NONE), area
         [loaded] = reply["loaded"]
-        assert loaded["verdict"] == (ne.CHANGED if area == 2 else ne.NO_ROLL
+        assert loaded["verdict"] == (ne.CHANGED if area == 2 else ne.NO_FIGHT
                                      if area in CURSE_NONE else ne.NOT_COVERED), area
         assert "error" not in switch(pipe, CURSE, state).off()
         assert pipe.get(ecl02, ne.STATEMENT) == STATEMENT
@@ -992,6 +1024,84 @@ def test_each_curse_gate_is_in_the_one_area_it_names():
                 if ne.digest(body[:ne.ENTRY_TABLE]) == row.area] == [CURSE_GATES[at + SCRIPT_BASE]]
         assert [a for a, body in scripts.items()
                 if ne.digest(body[at:at + ne.STATEMENT]) == row.digest] == [CURSE_GATES[at + SCRIPT_BASE]]
+
+
+def _gated_scripts():
+    """`(title, area, script, entry-table hash, gate ECL addresses)` for every
+    area a gate names."""
+    out = []
+    for title, scripts, base in ((CURSE, curse_scripts(), 0),
+                                 (POOL, pool_scripts(), POOL_BASE)):
+        gates = [r for r in REAL_ROWS if r.title == title and r.kind == ne.GATE]
+        for area, body in sorted(scripts.items()):
+            seen = ne.digest(body[:ne.ENTRY_TABLE])
+            mine = {base + ne.parse_spec(r.spec)[1] for r in gates if r.area == seen}
+            if mine:
+                out.append((title, area, body, seen, mine))
+    assert out
+    return out
+
+
+def test_every_roll_of_a_gated_script_is_gated_or_exempt_with_a_reason():
+    """`loaded` says every listed roll is changed; with this, a script with
+    gates has no roll the table does not account for."""
+    from tools.amiga import amigasaves, tripspace
+
+    models = {CURSE: tripspace.glib_model(CURSE, amigasaves.images()),
+              POOL: tripspace.pool_models()}
+    named = set()
+    for title, area, body, seen, gates in _gated_scripts():
+        model, skip = models[title]
+        found, bad = tripspace.walk(title, model, skip, body)
+        assert not bad, (title, area)
+        base = POOL_BASE if title == POOL else SCRIPT_BASE
+        rolls = {base + i for i, s in found.items() if s.op == ne.RANDOM}
+        exempt = {at: why for t, a, at, why in ne.EXEMPT if t == title and a == seen}
+        assert all(why.strip() for why in exempt.values()), (title, area)
+        assert not gates & set(exempt), (title, area)
+        assert rolls == gates | set(exempt), (title, area, sorted(map(hex, rolls ^ (gates | set(exempt)))))
+        named.update((title, seen, at) for at in exempt)
+    assert named == {(t, a, at) for t, a, at, _why in ne.EXEMPT}
+
+
+def test_ecl02_second_roll_is_reached_only_past_its_step_roll():
+    """With `$8739`'s `IF> EXIT` forced the way the switch sends it, no path
+    from any entry reaches `$8748`."""
+    from tools.amiga import amigasaves, tripspace
+
+    model, skip = tripspace.glib_model(CURSE, amigasaves.images())
+    body = curse_scripts()[2]
+    roll = tripspace.decode(model, body, 0x8739 - SCRIPT_BASE)
+    compare = tripspace.decode(model, body, roll.end)
+    condition = tripspace.decode(model, body, compare.end)
+    exit_ = tripspace.decode(model, body, condition.end)
+    assert (roll.op, condition.op, exit_.op) == (ne.RANDOM, 0x19, EXIT)
+    assert exit_.end == 0x8748 - SCRIPT_BASE
+
+    def reached(forced):
+        seen, work = set(), [tripspace.decode(model, body, 4 * n).address(0) - SCRIPT_BASE
+                             for n in range(tripspace.ENTRIES)]
+        while work:
+            i = work.pop()
+            if i in seen:
+                continue
+            seen.add(i)
+            s = tripspace.decode(model, body, i)
+            nxt = []
+            if s.op in (tripspace.GOTO, tripspace.GOSUB):
+                nxt.append(s.address(0) - SCRIPT_BASE)
+            if s.op in (tripspace.ONGOTO, tripspace.ONGOSUB):
+                nxt += [s.address(k) - SCRIPT_BASE for k in range(2, len(s.operands))
+                        if s.address(k) is not None]
+            if s.op not in tripspace.STOPS:
+                nxt.append(s.end)
+            if s.op in tripspace.CONDITIONS:
+                nxt.append(tripspace.decode(skip, body, s.end).end)
+            work += [forced] if i == condition.at and forced is not None else nxt
+        return seen
+
+    assert 0x8748 - SCRIPT_BASE in reached(None)
+    assert 0x8748 - SCRIPT_BASE not in reached(exit_.at)
 
 
 def test_tilverton_step_roll_cannot_start_a_fight():
@@ -1123,7 +1233,7 @@ def test_curse_on_names_each_script_with_no_roll_and_writes_nothing_there(state,
         [loaded] = result["loaded"]
         if area in CURSE_NONE:
             assert len(named) == 1 and f"area ${area:02X}" in named[0], area
-            assert loaded["verdict"] == ne.NO_ROLL and pipe.writes() == [], area
+            assert loaded["verdict"] == ne.NO_FIGHT and pipe.writes() == [], area
         elif area in CURSE_GATES.values():
             assert loaded["verdict"] == ne.CHANGED and not named, area
         else:
