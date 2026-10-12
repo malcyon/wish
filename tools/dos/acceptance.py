@@ -217,7 +217,21 @@ ADDRESS=VALUE` sets one script-variable word of `SAVGAM`, or in Pools of
 Darkness one byte of `SAVGAM<L>.PTY` by the scripts' own 1-based index (`read`
 reports it as the last saved slot holds it); `--stage-place
 X,Y,FACING` puts the party on a square of an indoor `SAVGAM`, or of a
-Pools of Darkness save made in a dungeon, facing 0 to 3 (N E S W), last of the stages.
+Pools of Darkness save made in a dungeon, facing 0 to 3 (N E S W);
+`--stage-icon LINE=HEAD:BODY:COLOURS` writes line N's combat figure (head,
+body and six colour bytes) at the title's own record offsets
+(`goldbox.dos_port`), leaving `size` alone, last of the stages.
+
+**`icon N` shoots roster line N's own `ALTER > ICON` screen in camp** (Pool,
+Curse and Silver Blades) and leaves the figure as it was.  The line is
+highlighted as for `sheet N`, its name read off the roster with the title's
+font names the installed record, and every key goes out only after its bar
+has been read as text: `ALTER` on the camp bar, `ICON` on the Alter bar,
+`EXIT` on the ICON bar, `Y` at `Is this icon ok?`, `EXIT` on the Alter bar.
+The editor writes back on `EXIT` the figure it copied on entry and starts
+again on any answer but `Y` (`ICON_EXIT` has the code), so nothing it
+offers is opened and the figure comes back unchanged.  Any other screen
+stops the run, as does a save folder that changed.
 
 **The rest-time keys are read from each title's `GAME.OVR`**, because nobody
 had captured the screen.  Pool of Radiance's rest menu is `Rest daYs Hours
@@ -1124,6 +1138,166 @@ CURE_ANYWAY = "y"
 #: message speed, through `Delay` (`START.EXE` image 0x57F9), before the
 #: sheet redraws; no key is asked for.
 SHEET_BACK_SECONDS = 60.0
+
+#: `icon N`: the camp's `ALTER` and the Alter bar's `ICON`, each keyed by its
+#: capital.  The camp bar is `Save View Magic Rest Alter [Fix] Exit` and the
+#: Alter bar `Order Drop Speed Icon Pics Exit` (Pool, Curse) or `... Icon
+#: Level Exit` (Silver Blades), all in each title's `START.EXE`.
+ICON_ALTER = "a"
+ICON_OPEN = "i"
+#: `EXIT` on the ICON bar.  The ICON editor's top level leaves on `E` or key
+#: 0 (the Pascal set at Pool `GAME.OVR` 0x1D175, Curse 0x23E7B, Silver Blades
+#: 0x21366, each `{0, 'E'}`), and on the way out writes back the head, body,
+#: size and six colours it copied on entry, unless a `Keep` in a sub-menu
+#: replaced the copy (Pool 0x1D7D6-0x1D80E, Curse 0x24509, Silver Blades
+#: 0x219F7).  It then asks `Is this icon ok?`: `Y` returns, and any other
+#: answer starts the editor again (Pool 0x1D89E, Curse 0x24596, Silver
+#: Blades 0x21A87).  So with no sub-menu opened, `E` then `Y` leaves the
+#: figure as it was, and `Y` is the only way out.
+ICON_EXIT = "e"
+ICON_KEEP = "y"
+#: `EXIT` on the Alter bar, back to the camp bar.
+ALTER_EXIT = "e"
+#: The titles `icon N` is driven in.  Pools of Darkness has the same strings
+#: (`GAME.EXE`), but its editor's exit has not been read.
+ICON_TITLES = frozenset({"pool", "curse", "ssb"})
+#: The words each bar of the route must hold, read with the title's font.
+#: The ICON bar's colour words differ: Pool's `COLOR-1 COLOR-2`, the later
+#: titles' `1ST-COLOR 2ND-COLOR` (`START.EXE`).
+ICON_CAMP_WORDS = frozenset({"SAVE", "VIEW", "MAGIC", "REST", "ALTER"})
+ICON_ALTER_WORDS = frozenset({"ORDER", "DROP", "SPEED", "ICON"})
+ICON_BAR_WORDS = frozenset({"PARTS", "SIZE"})
+ICON_COLOUR_WORDS = frozenset({"COLOR-1", "1ST-COLOR"})
+#: The question the editor asks on the way out, `Is this icon ok?` in all
+#: three overlays (Pool `GAME.OVR` 0x1D19A).
+ICON_QUESTION = "THIS ICON OK"
+#: How long each screen of the route is given to show after its key, and
+#: the gap between the two captures that must read it the same.
+ICON_WAIT = 15.0
+ICON_SETTLE = 0.5
+#: The OLD and NEW figure bands of the ICON screen, under the `OLD` and
+#: `NEW` labels at text rows 6 and 12 (Pool `GAME.OVR` 0x1D272-0x1D2E1):
+#: OLD at y 56-79 and NEW at y 104-127, each a 24-pixel READY box at x 32-55
+#: and an ACTION box at x 104-127.  Measured on seven captures, three Pool,
+#: two Curse and two Silver Blades, where every non-paper pixel of the four
+#: figures fell inside the boxes and the two bands were equal.
+ICON_FIGURES = {title: ((32, 56, 96, 24), (32, 104, 96, 24)) for title in ICON_TITLES}
+#: The roster's first text row and column in camp (`POD_ROSTER["camp"]`).
+ICON_ROSTER_ROW, ICON_ROSTER_COLUMN = 32 // CELL, 136 // CELL
+#: The record fields `--stage-icon` writes, at each title's own offsets
+#: (`goldbox.dos_port`); `size` is the race's and is left alone.
+ICON_FIELDS = ("icon_head", "icon_body", "icon_colours")
+#: The largest head and body the ICON editor offers: it wraps the head at 13
+#: and the body at 31 (Pool `GAME.OVR` 0x1D553-0x1D62B).
+ICON_HEAD_MAX, ICON_BODY_MAX = 13, 31
+#: The record layout each title's `CHRDAT` file is read with.
+ICON_LAYOUTS = {"pool": "pool-of-radiance",
+                "curse": "curse-of-the-azure-bonds",
+                "ssb": "secret-of-the-silver-blades",
+                "darkness": "pools-of-darkness"}
+
+
+def bar_word_list(text: str) -> list[str]:
+    """A bar read as text, split into its words at spaces and colons."""
+    return [w for w in re.split(r"[\s:]+", text.upper()) if w]
+
+
+def icon_screen_kind(rows: list[str]) -> str | None:
+    """Which screen of the `icon N` route `rows` (a frame's 25 text rows,
+    read with the title's font) is: `camp`, `alter`, `icon` or `question`,
+    or None for any other.  Each is judged by the bar row's words alone,
+    and the question also by its text on some row."""
+    if len(rows) <= BAR_ROW:
+        return None
+    words = bar_word_list(rows[BAR_ROW])
+    if not words:
+        return None
+    have = set(words)
+    if words[-2:] == ["YES", "NO"] and any(ICON_QUESTION in r.upper() for r in rows):
+        return "question"
+    if words[-1] != "EXIT":
+        return None
+    if ICON_BAR_WORDS <= have and have & ICON_COLOUR_WORDS:
+        return "icon"
+    if ICON_ALTER_WORDS <= have:
+        return "alter"
+    if ICON_CAMP_WORDS <= have:
+        return "camp"
+    return None
+
+
+def parse_stage_icon(text: str) -> tuple[int, int, int, bytes]:
+    """`LINE=HEAD:BODY:COLOURS`: roster line 1-8, a head 0-13, a body 0-31
+    and the six colour bytes as twelve hex digits."""
+    where, sep, value = text.partition("=")
+    parts = value.split(":")
+    if not sep or len(parts) != 3 or not re.fullmatch(r"[1-8]", where.strip()):
+        raise ValueError(f"{text!r}: a staged figure is LINE=HEAD:BODY:COLOURS, "
+                         "the line 1 to 8")
+    head, body, colours = (p.strip() for p in parts)
+    if not re.fullmatch(r"\d{1,2}", head) or int(head) > ICON_HEAD_MAX:
+        raise ValueError(f"{text!r}: the head is 0 to {ICON_HEAD_MAX}")
+    if not re.fullmatch(r"\d{1,2}", body) or int(body) > ICON_BODY_MAX:
+        raise ValueError(f"{text!r}: the body is 0 to {ICON_BODY_MAX}")
+    if not re.fullmatch(r"[0-9A-Fa-f]{12}", colours):
+        raise ValueError(f"{text!r}: the colours are six bytes, twelve hex digits")
+    return int(where), int(head), int(body), bytes.fromhex(colours)
+
+
+def stage_icon(save_dir: pathlib.Path, letter: str, title: str, line: int,
+               head: int, body: int, colours: bytes) -> dict:
+    """Write roster line `line`'s figure into its installed `CHRDAT` record at
+    `title`'s own offsets: `icon_head`, `icon_body` and the six
+    `icon_colours`.  The record's size must name `title`'s layout, so a
+    figure is never written at another title's offsets."""
+    from goldbox import dos_port
+    path = save_dir / f"CHRDAT{letter.upper()}{line}.SAV"
+    data = bytearray(path.read_bytes())
+    key = ICON_LAYOUTS[title]
+    try:
+        found = dos_port.deltas_for(len(data)).key
+    except dos_port.DosDeltasError as e:
+        raise ValueError(f"--stage-icon: {path.name}: {e}") from None
+    if found != key:
+        raise ValueError(f"--stage-icon: {path.name} is a {found} record, "
+                         f"not the {key} record {title} loads")
+    fields = dos_port.FIELDS_BY_NAME_FOR[key]
+    before = {}
+    for name, value in zip(ICON_FIELDS, (bytes((head,)), bytes((body,)), colours)):
+        f = fields[name]
+        if f.size != len(value):
+            raise ValueError(f"--stage-icon: {key} {name} is {f.size} bytes")
+        before[name] = bytes(data[f.offset:f.offset + f.size]).hex()
+        data[f.offset:f.offset + f.size] = value
+    path.write_bytes(bytes(data))
+    return {"stage": "icon", "file": path.name,
+            "name": dos_codec.read_character(path).name,
+            "offsets": {n: hex(fields[n].offset) for n in ICON_FIELDS},
+            "before": before,
+            "after": {"icon_head": f"{head:02x}", "icon_body": f"{body:02x}",
+                      "icon_colours": colours.hex()}}
+
+
+def icon_record(save_dir: pathlib.Path, letter: str, name: str) -> dict | None:
+    """The installed `CHRDAT` record whose name is `name`, with its figure
+    fields, or None when no record of the slot has that name."""
+    for path in sorted(save_dir.glob(f"CHRDAT{letter.upper()}?.SAV")):
+        try:
+            c = dos_codec.read_character(path)
+        except (OSError, ValueError):
+            continue
+        if c.name.strip().upper() != name.strip().upper():
+            continue
+        return {"file": path.name, "icon_head": c.get("icon_head"),
+                "icon_body": c.get("icon_body"), "size": c.get("size"),
+                "icon_colours": bytes(c.get("icon_colours")).hex()}
+    return None
+
+
+def folder_hashes(folder: pathlib.Path) -> dict[str, str]:
+    """Each file of `folder` by name, as a SHA-1."""
+    return {p.name: hashlib.sha1(p.read_bytes()).hexdigest()
+            for p in sorted(folder.iterdir()) if p.is_file()}
 
 #: `HUMAN CHANGE CLASSES` on Curse's party menu, `H` (`GAME.OVR` 0x20486),
 #: enabled at 0x20252 when the hall word `--hall` opens is set and the
@@ -2453,7 +2627,8 @@ def rest_presses(minutes: int) -> tuple[int, int, int]:
 STEP_HELP = ("load, begin, vault, move-on, 'walk MI', 'walk I', 'walk 1', 'turn 4', camp, leave, "
              "display, "
              "'rest 5m', 'save D', 'verify-dead-companion C 2 PHILIPPE', "
-             "'train 1', 'change 2 FIGHTER', 'sheet 1', 'heal 1', 'cure 1', 'items 1', "
+             "'train 1', 'change 2 FIGHTER', 'sheet 1', 'icon 1', 'heal 1', 'cure 1', "
+             "'items 1', "
              "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
              "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
@@ -2487,7 +2662,8 @@ def parse_step(text: str) -> Step:
     if kind == "verify-dead-companion" and words == [
             "verify-dead-companion", "C", "2", "PHILIPPE"]:
         return Step(kind, text, letter="C", line=2, name="PHILIPPE")
-    if kind in ("train", "sheet", "items", "view", "memorize", "heal", "cure") and len(
+    if kind in ("train", "sheet", "items", "view", "memorize", "heal", "cure",
+                "icon") and len(
             words) == 2 and re.fullmatch(r"[1-8]", words[1]):
         return Step(kind, text, line=int(words[1]))
     if kind == "cast" and len(words) >= 3 and re.fullmatch(r"[1-8]", words[1]):
@@ -2753,6 +2929,12 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
+        elif k == "icon":
+            if title not in ICON_TITLES:
+                raise ValueError(f"icon is driven in {', '.join(sorted(ICON_TITLES))} "
+                                 f"only, not {title}")
+            if where != "camp":
+                raise ValueError(f"icon needs camp first: {step.text!r}")
         elif k == "display":
             if title not in DISPLAY_TITLES:
                 raise ValueError(f"display is driven in "
@@ -2988,7 +3170,7 @@ def temple_staging_rejection(args, steps: list[Step]) -> str | None:
     if not any(s.kind == "temple" for s in steps):
         return None
     for option in ("xp", "add_node", "stage_control", "stage_side", "stage_var",
-                   "stage_place"):
+                   "stage_place", "stage_icon"):
         if getattr(args, option, None):
             return (f"a run with temple raise stages only gold and constitution "
                     f"with --stage-record, not --{option.replace('_', '-')}")
@@ -6857,6 +7039,126 @@ class Driver:
         self.back_to_camp(f"sheet-{line}-back")
         return got
 
+    def icon_rows(self, screen) -> list[str]:
+        """`screen`'s text rows for `icon_screen_kind`, read with the title's
+        font: the bar row alone, and every row only when the bar ends `YES
+        NO` without the question on it."""
+        font = self.display_font()
+        rows = [""] * (BAR_ROW + 1)
+        rows[BAR_ROW] = text_row(screen, BAR_ROW, font)
+        if (bar_word_list(rows[BAR_ROW])[-2:] == ["YES", "NO"]
+                and ICON_QUESTION not in rows[BAR_ROW].upper()):
+            rows = [text_row(screen, row, font) for row in range(BAR_ROW + 1)]
+        return rows
+
+    def icon_wait(self, want: tuple[str, ...], label: str):
+        """Wait for a screen of `want`, read the same on two captures
+        `ICON_SETTLE` apart, and return its kind and the later capture; the
+        kind is None when `ICON_WAIT` passes first.  The camp picture and the
+        ICON screen animate, so a whole-frame settle would wait out its
+        timeout on them; the bar is what is waited on."""
+        end = time.time() + self.bounded(ICON_WAIT, label)
+        seen = None
+        screen = self.s.capture()
+        while True:
+            kind = icon_screen_kind(self.icon_rows(screen))
+            if kind in want and kind == seen:
+                return kind, screen
+            seen = kind
+            if time.time() > end:
+                return None, screen
+            time.sleep(ICON_SETTLE)
+            screen = self.s.capture()
+
+    def icon_key(self, key: str, at: str, want: tuple[str, ...], label: str):
+        """Press `key` once, only while the screen reads as `at`, and wait for
+        one of `want`; the kind reached and its capture.  Any other screen,
+        before or after, stops the run with nothing more pressed."""
+        rows = self.icon_rows(self.s.capture())
+        if icon_screen_kind(rows) != at:
+            raise self.fail(label, f"the {at} bar is not showing, so {key!r} is "
+                            f"not pressed (bar reads {rows[BAR_ROW]!r})")
+        self.s.key(key)
+        kind, screen = self.icon_wait(want, label)
+        if kind is None:
+            rows = self.icon_rows(screen)
+            raise self.fail(label, f"{key!r} on the {at} bar did not bring "
+                            f"{' or '.join(want)} (bar reads {rows[BAR_ROW]!r})")
+        return kind, screen
+
+    def icon_figures_match(self, screen, label: str) -> None:
+        """Stop unless the NEW figures on `screen` are the OLD ones, pixel for
+        pixel: nothing the step pressed may change the figure."""
+        old, new = ICON_FIGURES[self.title.key]
+        if screen.rows(old) != screen.rows(new):
+            raise self.fail(label, "the NEW figures differ from the OLD ones")
+
+    def icon(self, line: int) -> dict:
+        """Camp: roster line `line`'s own `ALTER > ICON` screen, shot, and back
+        to camp with the figure as it was.
+
+        The line is highlighted as `sheet N` does it and its name read off the
+        roster with the title's font, which names the installed record the
+        screen draws.  Then `ALTER`, `ICON`, a shot of the ICON screen, its
+        `EXIT`, `Y` to `Is this icon ok?` (`ICON_EXIT` has the code), and the
+        Alter bar's `EXIT`.  Each key goes out only after the bar it belongs
+        to has been read as text; no other key is pressed, so `Parts`, the
+        colours and `Size` are never opened and nothing is saved.  The NEW
+        figures must equal the OLD ones on the ICON screen and at the
+        question, and the step stops if the save folder changed.
+        """
+        title = self.title.key
+        if title not in ICON_TITLES:
+            raise StepFailed(f"icon is driven in {', '.join(sorted(ICON_TITLES))} "
+                             f"only, not {title}")
+        if self.where != "camp" or self.camp_sig is None:
+            raise StepFailed("icon needs camp first")
+        label = f"icon-{line}"
+        self.ensure_camp()
+        font = self.display_font()
+        before = folder_hashes(self.s.save_dir)
+        next_key = POOL_ROSTER_NEXT if title == "pool" else CAMP_ROSTER_NEXT[title]
+        moved = self.pick_line(line, "camp", f"{label}-select", next_key)
+        name = text_row(self.s.capture(), ICON_ROSTER_ROW + line - 1, font,
+                        range(ICON_ROSTER_COLUMN,
+                              ICON_ROSTER_COLUMN + POD_NAME_CELLS)).strip()
+        record = icon_record(self.s.save_dir, self.slot, name) if name else None
+        if record is None:
+            raise self.fail(f"{label}-name", f"roster line {line} reads {name!r}, "
+                            f"which names no CHRDAT{self.slot} record")
+        self.shot(f"{label}-line")
+        self.icon_key(ICON_ALTER, "camp", ("alter",), f"{label}-alter")
+        alter = self.shot(f"{label}-alter")
+        _, screen = self.icon_key(ICON_OPEN, "alter", ("icon",), f"{label}-open")
+        self.icon_figures_match(screen, f"{label}-open")
+        shot = self.shot(label)
+        digest = screen.digest()
+        _, asked = self.icon_key(ICON_EXIT, "icon", ("question",), f"{label}-exit")
+        self.icon_figures_match(asked, f"{label}-exit")
+        question = self.shot(f"{label}-question")
+        back, _ = self.icon_key(ICON_KEEP, "question", ("alter", "camp"),
+                                f"{label}-keep")
+        if back == "alter":
+            self.icon_key(ALTER_EXIT, "alter", ("camp",), f"{label}-back")
+        if not self.wait_camp(timeout=self.bounded(ICON_WAIT, label)):
+            raise self.fail(f"{label}-back", "the camp bar did not come back")
+        here = roster_line(self.s.capture(), "camp", self.party_size)
+        if here != line:
+            raise self.fail(f"{label}-back", f"the highlight came back on line "
+                            f"{here}, not {line}")
+        camp = self.shot(f"{label}-camp")
+        after = folder_hashes(self.s.save_dir)
+        if after != before:
+            changed = sorted(n for n in set(before) | set(after)
+                             if before.get(n) != after.get(n))
+            raise self.fail(f"{label}-files", f"the save folder changed: {changed}")
+        self.note(event="icon", line=line, name=name, shot=f"{shot}.png", **record)
+        return {"line": line, **moved, "name": name, "record": record,
+                "alter": alter, "icon": shot, "digest": digest,
+                "question": question, "answered": ICON_KEEP.upper(),
+                "via": back, "camp": camp, "old_equals_new": True,
+                "save_unchanged": True}
+
     def verify_dead_companion(self, letter: str, line: int, name: str) -> dict:
         if (self.title.key != "curse" or (letter, line, name) != ("C", 2, "PHILIPPE")
                 or self.where != "camp" or self.left_camp
@@ -8349,6 +8651,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = d.change(step.line, step.name)
                 elif step.kind == "sheet":
                     r = d.sheet(step.line)
+                elif step.kind == "icon":
+                    r = d.icon(step.line)
                 elif step.kind == "heal":
                     r = d.heal(step.line)
                 elif step.kind == "cure":
@@ -8636,6 +8940,7 @@ def check_staging(args, save: pathlib.Path, from_slot: str | None) -> None:
              + [parse_node(t)[0] for t in getattr(args, "add_node", []) or []]
              + [parse_control(t)[0] for t in getattr(args, "stage_control", []) or []]
              + [parse_side(t)[0] for t in getattr(args, "stage_side", []) or []]
+             + [parse_stage_icon(t)[0] for t in getattr(args, "stage_icon", []) or []]
              + [r[0] for r in records])
     for line in lines:
         want = f"CHRDAT{from_slot}{line}.SAV"
@@ -8692,7 +8997,8 @@ def stage_exports(save_dir: pathlib.Path, folder: pathlib.Path) -> dict:
 
 def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
     """The `--hall`, `--xp`, `--add-node`, `--stage-control`, `--stage-side`,
-    `--stage-record`, `--stage-var` and `--stage-place` stages, in that order."""
+    `--stage-record`, `--stage-var`, `--stage-place` and `--stage-icon` stages,
+    in that order."""
     done = []
     if getattr(args, "hall", False):
         done.append(stage_hall(save_dir, letter))
@@ -8713,6 +9019,8 @@ def stage(save_dir: pathlib.Path, letter: str, args) -> list[dict]:
     if getattr(args, "stage_place", None):
         done.append((stage_pod_place if pod else stage_place)(
             save_dir, letter, *parse_place(args.stage_place)))
+    for text in getattr(args, "stage_icon", []) or []:
+        done.append(stage_icon(save_dir, letter, args.title, *parse_stage_icon(text)))
     return done
 
 
@@ -9168,6 +9476,12 @@ def main(argv: list[str] | None = None) -> int:
                          "to 3 = N E S W) in an indoor SAVGAM, or a dungeon "
                          "SAVGAM<L>.PTY in darkness, after --stage-var, "
                          "before the boot")
+    ap.add_argument("--stage-icon", action="append", default=[],
+                    metavar="LINE=HEAD:BODY:COLOURS",
+                    help="stage roster line LINE's combat figure, head 0-13, "
+                         "body 0-31 and six colour bytes as twelve hex digits, "
+                         "at the title's own record offsets, last of the "
+                         "stages, before the boot (repeatable)")
     ap.add_argument("--first-bar-key", default=None, metavar="KEY",
                     help="SPACE or one letter or digit, pressed once at the "
                          "first command bar of the first fight instead of "
@@ -9221,6 +9535,8 @@ def main(argv: list[str] | None = None) -> int:
             parse_var(v)
         if getattr(args, "stage_place", None):
             parse_place(args.stage_place)
+        for t in args.stage_icon:
+            parse_stage_icon(t)
         validate_steps([parse_step(s) for s in args.steps], args.title)
         why = temple_staging_rejection(args, [parse_step(s) for s in args.steps])
         if why:
@@ -9232,7 +9548,8 @@ def main(argv: list[str] | None = None) -> int:
                                  "--convert is required, except by a run that "
                                  "begins with add")
             staging = ("hall", "xp", "add_node", "stage_control", "stage_side",
-                       "stage_record", "stage_var", "stage_place", "expect")
+                       "stage_record", "stage_var", "stage_place", "stage_icon",
+                       "expect")
             if any(getattr(args, a, None) for a in staging):
                 raise ValueError("a run with no save has nothing to stage or expect")
             if args.from_slot or args.first_bar_key is not None:

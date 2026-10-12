@@ -20,6 +20,7 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosfight.py` | Checks the record offsets and fight verdicts of `tools/dos/dosfightrun.py`, and that its driver answers each bar it recognises. |
 | `test_dosfightwatch.py` | Checks that `walk_to_encounter` waits out a frame caught mid-redraw and gives up naming its digest at a bar nobody has labelled. |
 | `test_dosgnome.py` | Checks the step grammar of `tools/dos/dosgnome.py` and how it splits a `.SPC` file into records, against the characters it rolled. |
+| `test_dosiconstep.py` | Checks on a fake camp that `tools/dos/acceptance.py`'s `icon N` step opens roster line N's `ALTER > ICON` screen and comes back to camp pressing only `ALTER`, `ICON`, `EXIT`, `Y` and the Alter bar's `EXIT`, each on its own bar read as text, that any other screen, a roster name no record holds, NEW figures that are not the OLD ones or a changed save folder stops it, and that `--stage-icon` writes the figure at each title's own record offsets and nowhere else. |
 | `test_dosladder.py` | Checks the training-hall routing of `tools/dos/dosladder.py` against the player's `GEO00`, and the records its trainer wrote. |
 | `test_doslatercontainer.py` | Checks the Curse and Silver Blades `SAVGAM<slot>.DAT` container built from nothing, on synthetic buffers and on converted C64 specimens. |
 | `test_doslatertitles.py` | Checks the DOS record writer for each later title: the field tables, record widths, item and effect files, and the fields only those titles have. |
