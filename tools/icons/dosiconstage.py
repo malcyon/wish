@@ -12,10 +12,11 @@ screens' MODIFY ICON step.  So the figures have to be put there.
 
     tools/icons/dosiconstage.py --folder path/to/dosparty --slot C
 
-This writes four record bytes a character and nothing else: `icon_head`
-`0x0BD`, `icon_body` `0x0BE` and the six `icon_colours` pairs at `0x0C1`.
-**`size` `0x0C0` is left alone**, because it is the race's and changing it
-would move two things at once.
+This writes `icon_head`, `icon_body` and the six `icon_colours` bytes of a
+character and nothing else, at the offsets of the title the record's size
+names (`goldbox.dos_port`; Pool of Radiance `0x0BD`, `0x0BE` and `0x0C1`).
+**`size` is left alone**, because it is the race's and changing it would
+move two things at once.
 
 Editing an input and then watching the game compute from it is a valid
 experiment -- the engine does not care how a byte got there -- which is what
@@ -33,11 +34,7 @@ TOOLS = pathlib.Path(__file__).resolve().parent.parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 
-from goldbox import dos_codec  # noqa: E402
-
-ICON_HEAD = 0x0BD
-ICON_BODY = 0x0BE
-ICON_COLOURS = 0x0C1
+from goldbox import dos_codec, dos_port  # noqa: E402
 
 #: Six DOS figures a person can tell apart, in the order the files are read.
 #: Chosen for distance rather than meaning: a bow, a sword and shield, a
@@ -64,9 +61,11 @@ def stage(folder: pathlib.Path, slot: str, figures=FIGURES) -> list[dict]:
                          f"{len(figures)} figures to write")
     for path, (head, body, colours) in zip(names, figures):
         data = bytearray(path.read_bytes())
-        data[ICON_HEAD] = head
-        data[ICON_BODY] = body
-        data[ICON_COLOURS:ICON_COLOURS + 6] = bytes.fromhex(colours)
+        fields = dos_port.FIELDS_BY_NAME_FOR[dos_port.deltas_for(len(data)).key]
+        data[fields["icon_head"].offset] = head
+        data[fields["icon_body"].offset] = body
+        at = fields["icon_colours"].offset
+        data[at:at + 6] = bytes.fromhex(colours)
         path.write_bytes(bytes(data))
         char = dos_codec.read_character(path)
         written.append({"file": path.name, "name": char.name,
