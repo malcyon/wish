@@ -71,7 +71,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
 from automap import amiga, fsuaehelper  # noqa: E402
-from tools.amiga import noencounters  # noqa: E402
+from tools.amiga import noencounters, winwish  # noqa: E402
 from tools.registry import scratch  # noqa: E402
 
 #: The small-data base these titles are linked with, printed beside the hunk
@@ -1770,7 +1770,7 @@ WISH_UNSET = ("POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE", "POR_ULTIMATE",
 
 #: What the `wish` command sets for the window and puts back afterwards.
 WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
-WISH_ENV = (*WISH_UNSET, WISH_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+WISH_ENV = (*WISH_UNSET, WISH_FLAG, winwish.FAST_TRAVEL_FLAG, "XDG_CONFIG_HOME", "XDG_DATA_HOME",
             "APPDATA", "LOCALAPPDATA", "XDG_RUNTIME_DIR",
             # Set by `mapmarker._offscreen`, which this process calls.
             "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
@@ -2054,7 +2054,17 @@ def check_wish_arguments(args) -> dict[str, str]:
         except ValueError as exc:
             raise SystemExit(f"--swap-sequence {args.swap_sequence!r}: {exc}"
                              ) from exc
+    parse_travel_targets(args.travel_targets)
     return parse_disks_for(args.disks_for)
+
+
+def parse_travel_targets(items: list[str] | None) -> dict[str, list[int]]:
+    """`--travel-targets KEY=ID[,ID]` as the `fast_travel_targets` table, as
+    the WinUAE launch parses it, blocking a malformed spec."""
+    try:
+        return winwish.parse_travel_targets(items)
+    except winwish.WinwishError as exc:
+        raise SystemExit(f"--travel-targets: {exc}") from exc
 
 
 def wish(args) -> int:
@@ -2104,13 +2114,16 @@ def wish(args) -> int:
     `peek`, `poke`, `locate`, `fix`, `dump`, `poll`, `time` and `geo` are
     error rows: the window owns the only way to the game.  `--disks-for
     KEY=FOLDER` writes the title's folder where Preferences keeps it, in the
-    run's own settings.  `FSUAE_PORT` is set to `--port` for the run so the
+    run's own settings; `--travel-targets KEY=ID[,ID]` does the same for the
+    Fast Travel destinations, and the Fast Travel flag is on unless
+    `--no-travel-flag` is given.  `FSUAE_PORT` is set to `--port` for the run so the
     window finds a pooled slot's port without a product change, and put back.
     """
     from tools.gui import mapmarker
 
     out = pathlib.Path(args.out)
     folders = check_wish_arguments(args)
+    travel_targets = parse_travel_targets(args.travel_targets)
     (out / "shots").mkdir(parents=True, exist_ok=True)
     commands = pathlib.Path(args.commands)
     commands.touch()
@@ -2162,6 +2175,8 @@ def wish(args) -> int:
         for name in WISH_UNSET:
             os.environ.pop(name, None)
         os.environ[WISH_FLAG] = "1"
+        if not args.no_travel_flag:
+            os.environ[winwish.FAST_TRAVEL_FLAG] = "1"
         # `wish.fsuae.listening` and `connect` read this at call time, so the
         # window finds the slot's port without a change to the product.
         amiga.FSUAE_PORT = args.port
@@ -2175,15 +2190,22 @@ def wish(args) -> int:
         (out / RUNTIME_NOTE).write_text(f"{fsuaehelper.runtime_dir()}\n",
                                         encoding="utf-8")
         mapmarker.private_settings(out)
-        if folders:
+        if folders or travel_targets:
             from automap.config import Settings
 
             settings = Settings.load()
-            settings.game_folders = {**(settings.game_folders or {}), **folders}
+            if folders:
+                settings.game_folders = {**(settings.game_folders or {}),
+                                         **folders}
+            if travel_targets:
+                settings.fast_travel_targets = {
+                    **(settings.fast_travel_targets or {}), **travel_targets}
             settings.save()
         if not args.closed:
             run.open()
         note(event="wish", port=args.port, disks=folders,
+             travel_flag=not args.no_travel_flag,
+             travel_targets=travel_targets,
              window=run.window is not None)
 
         def handle(word: str, rest: str, line: str, now: float) -> bool:
@@ -3082,6 +3104,13 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--disks-for", action="append", metavar="KEY=FOLDER",
                    help="repeatable: the title's disk folder, written where "
                         "Preferences keeps it (e.g. pools-of-darkness=DIR)")
+    w.add_argument("--travel-targets", action="append", metavar="KEY=ID[,ID]",
+                   help="repeatable: the Fast Travel destinations for a "
+                        "title, written where Preferences keeps them "
+                        "(e.g. pools-of-darkness=22)")
+    w.add_argument("--no-travel-flag", action="store_true",
+                   help="leave the Fast Travel flag unset, as a player "
+                        "without it would have it")
     w.add_argument("--closed", action="store_true",
                    help="start with no window; `open` makes one")
     w.add_argument("--display", default=os.environ.get("DISPLAY", ":0"),

@@ -2113,7 +2113,8 @@ class FakeWindow:
 
 def wish_args(tmp_path, **kw):
     base = dict(out=str(tmp_path / "run"), commands=str(tmp_path / "cmds"),
-                disks_for=None, closed=False, display=":77", settle=0.0,
+                disks_for=None, travel_targets=None,
+                no_travel_flag=False, closed=False, display=":77", settle=0.0,
                 interval=0.0, observe_wait=0.0, seconds=30.0, hold=0.12,
                 swap_sequence=None, fs_uae_log=None, title=None,
                 host="127.0.0.1", port=6531, timeout=None)
@@ -2129,7 +2130,7 @@ def wished(monkeypatch, tmp_path):
     from wish import fsuae
 
     seen = {"windows": [], "keys": [], "grabs": [], "resets": 0, "forgets": 0,
-            "port": [], "flag": [], "shots": []}
+            "port": [], "flag": [], "travel": [], "shots": []}
     runtime = tmp_path / "runtime"
     runtime.mkdir()
     monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: runtime)
@@ -2145,6 +2146,7 @@ def wished(monkeypatch, tmp_path):
         seen["windows"].append(window)
         seen["port"].append(fsuaegdb.amiga.FSUAE_PORT)
         seen["flag"].append(os.environ.get(fsuaegdb.WISH_FLAG))
+        seen["travel"].append(os.environ.get(fsuaegdb.winwish.FAST_TRAVEL_FLAG))
         return FakeApp(), window
 
     monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
@@ -2253,16 +2255,53 @@ def test_wish_closed_starts_without_a_window(wished, tmp_path):
 def test_wish_sets_the_port_and_the_flag_for_the_window_and_puts_them_back(
         wished, tmp_path, monkeypatch):
     monkeypatch.setenv(fsuaegdb.WISH_FLAG, "off")
+    monkeypatch.setenv(fsuaegdb.winwish.FAST_TRAVEL_FLAG, "off")
     monkeypatch.setenv("XDG_CONFIG_HOME", "/somewhere")
     monkeypatch.setenv("APPDATA", "/roaming")
     before = fsuaegdb.amiga.FSUAE_PORT
     run_wish(tmp_path, [])
     assert wished["port"] == [6531] and wished["flag"] == ["1"]
+    assert wished["travel"] == ["1"]
+    assert os.environ[fsuaegdb.winwish.FAST_TRAVEL_FLAG] == "off"
     assert fsuaegdb.amiga.FSUAE_PORT == before
     assert os.environ[fsuaegdb.WISH_FLAG] == "off"
     assert os.environ["XDG_CONFIG_HOME"] == "/somewhere"
     assert os.environ["APPDATA"] == "/roaming"
     assert "XDG_DATA_HOME" not in os.environ
+
+
+def test_wish_without_the_travel_flag_leaves_it_unset(
+        wished, tmp_path, monkeypatch):
+    monkeypatch.delenv(fsuaegdb.winwish.FAST_TRAVEL_FLAG, raising=False)
+    run_wish(tmp_path, [], no_travel_flag=True)
+    assert wished["travel"] == [None]
+    assert fsuaegdb.winwish.FAST_TRAVEL_FLAG not in os.environ
+
+
+def test_wish_writes_the_travel_targets_where_preferences_keeps_them(
+        wished, tmp_path, monkeypatch):
+    from automap.config import Settings
+
+    read = []
+
+    def open_wish(out):
+        read.append(Settings.load().fast_travel_targets)
+        return FakeApp(), FakeWindow()
+
+    monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
+    rows = run_wish(tmp_path, [], travel_targets=[
+        "pools-of-darkness=22", "pool-of-radiance=8,0"])
+    assert read == [{"pools-of-darkness": [22], "pool-of-radiance": [0, 8]}]
+    row = by_event(rows, "wish")[0]
+    assert row["travel_flag"] is True
+    assert row["travel_targets"] == read[0]
+
+
+def test_wish_blocks_a_bad_travel_targets_before_the_window_exists(
+        wished, tmp_path, monkeypatch):
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: pytest.fail("opened"))
+    with pytest.raises(SystemExit, match="--travel-targets"):
+        fsuaegdb.wish(wish_args(tmp_path, travel_targets=["pools-of-darkness"]))
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])
