@@ -477,6 +477,75 @@ def legality_report(fasttravel, target, rows) -> list[str]:
     return lines
 
 
+def _area(to: int | None, title: str) -> object | None:
+    """The destination area for id `to`, or None when `to` is None or names no area of `title`."""
+    if to is None:
+        return None
+    # area_by_id is empty for a title the C64 fast travel does not support, which
+    # Pools of Darkness is; the Amiga legality check decides what is offered.
+    return engine.area_by_id(to, title) or goldbox_areas.area_in(to, title)
+
+
+def _print_result(result: dict) -> None:
+    print(json.dumps(result), flush=True)
+
+
+def run_legs(title: str, disks: str, to: int | None, back: bool, arrival_answer: tuple[str, ...] | None,
+             peek_vars: tuple[int, ...], out: pathlib.Path, target: amiga.AmigaTarget,
+             shot: Callable[[pathlib.Path], None], press: Callable[[str], None], budget: float,
+             *, answer: str | None = None, waypoint: engine.Waypoint | None = None, measure_row: bool = False,
+             report: Callable[[dict], None] = _print_result) -> list[dict]:
+    """Run the forward leg to area `to` and, with `back`, the way back, on a located `target`.
+
+    `shot` and `press` are the screen and key channels of whichever emulator holds the game;
+    `report` receives each leg's result as it finishes. The caller decides how the process
+    handles a termination signal and what a failed leg exits with.
+    """
+    machine = amiga.MACHINES[title]
+    area = _area(to, machine.title)
+    fasttravel = amigafasttravel.AmigaFastTravel(title, disks)
+    if waypoint is not None:
+        fasttravel.back = waypoint
+    results: list[dict] = []
+    leg = 0
+
+    def finished(result: dict) -> dict:
+        report(result)
+        results.append(result)
+        return result
+
+    with open(out / "fasttravel.jsonl", "w") as stream:
+        log = Log(stream, time.monotonic)
+        at_continue = continue_guard(title, out, log=log)
+        try:
+            with (measuring_row(title, log) if measure_row else contextlib.nullcontext()):
+                row = amigatrip.row_for(title)
+                if area is not None:
+                    leg = 1
+                    finished(run_trip(fasttravel, target, row, area, out, shot, press, log,
+                                      answer=answer, budget=budget,
+                                      arrival_answer=arrival_answer,
+                                      party=amigaparty.read_party,
+                                      peek_vars=peek_vars, title=title,
+                                      at_continue=at_continue))
+                if back and results and results[0]["result"] == "idle" \
+                        and not results[0]["settled"]:
+                    finished({"result": "skipped", "reason": "leg 1 never became ready"})
+                elif back and (not results or results[0]["result"] == "idle"):
+                    leg = len(results) + 1
+                    finished(run_trip(fasttravel, target, row, None, out, shot, press, log,
+                                      back=True, budget=budget,
+                                      answer=answer,
+                                      arrival_answer=arrival_answer,
+                                      party=amigaparty.read_party,
+                                      peek_vars=peek_vars, title=title,
+                                      at_continue=at_continue))
+        except BaseException as exc:
+            log("interrupted", error=type(exc).__name__, leg=leg)
+            raise
+    return results
+
+
 def main(argv: list[str] | None = None) -> int:
     from tools.amiga import amigadrive  # noqa: PLC0415
 
@@ -546,20 +615,13 @@ def main(argv: list[str] | None = None) -> int:
             report = legality_report(fasttravel, target, candidate_areas(machine.title))
         print("\n".join(report))
         return 0
-    # area_by_id is empty for a title the C64 fast travel does not support, which
-    # Pools of Darkness is; the Amiga legality check decides what is offered.
-    area = None if args.to is None else (
-        engine.area_by_id(args.to, machine.title)
-        or goldbox_areas.area_in(args.to, machine.title))
+    area = _area(args.to, machine.title)
     if args.to is not None and area is None:
         parser.error(f"--to {args.to} is not an area of {machine.title}")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     pipe = amiga.WinuaePipe(holder=args.holder)
     target = amiga.AmigaTarget(pipe, machine)
-    fasttravel = amigafasttravel.AmigaFastTravel(args.title, args.disks)
-    if waypoint is not None:
-        fasttravel.back = waypoint
 
     def shot(path: pathlib.Path) -> None:
         amigadrive.shot(args.holder, path)
@@ -567,52 +629,15 @@ def main(argv: list[str] | None = None) -> int:
     def press(key: str) -> None:
         amigadrive.press(args.holder, key, SETTLE_SECONDS)
 
-    results = []
-    leg = 0
-    at_continue = None
-
     def terminated(*_: object) -> None:
         raise SystemExit(143)
 
     previous = signal.signal(signal.SIGTERM, terminated)
-
-    def finished(result: dict) -> dict:
-        print(json.dumps(result), flush=True)
-        results.append(result)
-        return result
-
     try:
         target.locate()
-        with open(out / "fasttravel.jsonl", "w") as stream:
-            log = Log(stream, time.monotonic)
-            at_continue = continue_guard(args.title, out, log=log)
-            try:
-                with (measuring_row(args.title, log) if args.measure_row
-                      else contextlib.nullcontext()):
-                    row = amigatrip.row_for(args.title)
-                    if area is not None:
-                        leg = 1
-                        finished(run_trip(fasttravel, target, row, area, out, shot, press, log,
-                                          answer=args.answer, budget=args.budget,
-                                          arrival_answer=arrival_answer,
-                                          party=amigaparty.read_party,
-                                          peek_vars=peek_vars, title=args.title,
-                                          at_continue=at_continue))
-                    if args.back and results and results[0]["result"] == "idle" \
-                            and not results[0]["settled"]:
-                        finished({"result": "skipped", "reason": "leg 1 never became ready"})
-                    elif args.back and (not results or results[0]["result"] == "idle"):
-                        leg = len(results) + 1
-                        finished(run_trip(fasttravel, target, row, None, out, shot, press, log,
-                                          back=True, budget=args.budget,
-                                          answer=args.answer,
-                                          arrival_answer=arrival_answer,
-                                          party=amigaparty.read_party,
-                                          peek_vars=peek_vars, title=args.title,
-                                          at_continue=at_continue))
-            except BaseException as exc:
-                log("interrupted", error=type(exc).__name__, leg=leg)
-                raise
+        results = run_legs(args.title, args.disks, args.to, args.back, arrival_answer, peek_vars,
+                           out, target, shot, press, args.budget, answer=args.answer,
+                           waypoint=waypoint, measure_row=args.measure_row)
     except (DriverError, amiga.GuestError) as exc:
         raise SystemExit(str(exc)) from exc
     finally:

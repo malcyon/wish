@@ -1432,7 +1432,12 @@ class SourcePrivateGuest:
                  "bundle_source_privacy: fetched directory is not owner/0700")
         with os.fdopen(os.open(local, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb"):
             pass
-        response = self.guest.get(remote, local, timeout=timeout)
+        live = getattr(self.guest, "get_live", None)
+        emulator = getattr(self.guest, "emulator", None)
+        if live is not None and emulator is not None and emulator.poll() is None:
+            response = live(remote, local, timeout=timeout)
+        else:
+            response = self.guest.get(remote, local, timeout=timeout)
         _require(local.stat().st_uid == os.getuid()
                  and stat.S_IMODE(local.stat().st_mode) == 0o600,
                  "bundle_source_privacy: fetched media has wrong owner or mode")
@@ -2013,6 +2018,18 @@ def _fresh_output(out: pathlib.Path, prefix: str) -> None:
                  f"{prefix}_privacy: {directory.name} is not owner/0700")
 
 
+def _origin_guest(args: argparse.Namespace, guest: Any) -> Any:
+    """The lane `--emulator` names, unless the caller supplied one."""
+    if guest is not None:
+        return guest
+    if getattr(args, "emulator", "winuae") == "fsuae":
+        from tools.amiga import fsuaesession  # noqa: PLC0415
+
+        return fsuaesession.FsuaeGuest(game="amiga-darkness",
+                                       first_key_after=fsuaesession.FIRST_KEY_AFTER["darkness"])
+    return WinGuest()
+
+
 def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
     """One boot: load source-01 G, Fast Travel to 22 and Return, capture, and save a new F."""
     _require(os.name == "posix", "return7_privacy: POSIX owner checks are required")
@@ -2041,7 +2058,8 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
                                "checks": {}, "cleanup": [], "success": False,
                                "independently_authenticated": False,
                                "preservation_established": False}
-    guest = SourcePrivateGuest(guest or WinGuest(), root)
+    guest = SourcePrivateGuest(_origin_guest(args, guest), root)
+    receipt["emulator"] = getattr(args, "emulator", "winuae")
     command = [str(pathlib.Path(__file__)), "origin-return", "--run-id", args.run_id,
                "--holder", args.holder]
     booted = False
@@ -2095,7 +2113,7 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
         run.press("journal", "X", "journal_answer")
         run.press("journal_answer", "RET", "world")
         receipt["checks"]["world_guarded"] = True
-        target = _target(args.holder)
+        target = _target_on(args.holder, guest)
         receipt["party"] = _origin_party(target)
         receipt["start"] = _origin_start(target, args.manifest.parent)
         receipt["checks"]["start"] = True
@@ -2106,12 +2124,12 @@ def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None
         _require(receipt["pre_travel_comparison"]["all_payloads_match_reference"],
                  "return7_payload: the loaded party differs from source G before travel")
         receipt["checks"]["pre_travel_coverage"] = True
-        receipt["legs"] = _origin_legs(_run_trip(args.holder, args.manifest.parent,
-                                                 args.out / "trip", action_left(2000)),
+        receipt["legs"] = _origin_legs(_origin_trip(guest, args.holder, args.manifest.parent,
+                                                   args.out / "trip", action_left(2000)),
                                        args.out / "trip" / "fasttravel.jsonl")
         receipt["checks"]["legs"] = True
         run.see("world", 60)
-        target = _target(args.holder)
+        target = _target_on(args.holder, guest)
         receipt["returned"] = _origin_place(target, "return7")
         receipt["return_square_matches_start"] = (
             receipt["returned"]["square"] == receipt["start"]["square"])
@@ -2343,7 +2361,8 @@ def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None
                                "checks": {}, "cleanup": [], "success": False,
                                "independently_authenticated": False,
                                "preservation_established": False}
-    guest = SourcePrivateGuest(guest or WinGuest(), root)
+    guest = SourcePrivateGuest(_origin_guest(args, guest), root)
+    receipt["emulator"] = getattr(args, "emulator", "winuae")
     command = [str(pathlib.Path(__file__)), "origin-reload", "--run-id", args.run_id,
                "--holder", args.holder]
     reference = {"source_disk_sha256": seed["disk_sha256"], "source_f_sha256": seed["f_sha256"]}
@@ -2394,7 +2413,7 @@ def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None
         run.press("journal", "X", "journal_answer")
         run.press("journal_answer", "RET", "world")
         receipt["checks"]["world_guarded"] = True
-        target = _target(args.holder)
+        target = _target_on(args.holder, guest)
         receipt["party"] = _origin_party(target)
         receipt["reloaded"] = _origin_place(target, "reload7")
         receipt["reloaded_square_matches_saved"] = receipt["reloaded"]["square"] == seed["square"]
@@ -2704,6 +2723,43 @@ def _target(holder: str) -> amiga.AmigaTarget:
     target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), amiga.MACHINES[TITLE])
     target.locate(memory=_measured_regions(target, check_target=False))
     return target
+
+
+def _target_on(holder: str, guest: Any) -> amiga.AmigaTarget:
+    """The target on the debugger connection of an FS-UAE guest, else on WinUAE's pipe for `holder`."""
+    gdb = getattr(guest, "gdb", None)
+    if gdb is None:
+        return _target(holder)
+    target = amiga.AmigaTarget(gdb, amiga.MACHINES[TITLE])
+    target.locate(memory=_measured_regions(target, check_target=False))
+    return target
+
+
+def _origin_trip(guest: Any, holder: str, disks: pathlib.Path, out: pathlib.Path,
+                 left: float) -> list[dict]:
+    """The guarded trip to 22 and back: a driver subprocess on WinUAE, in this process on FS-UAE.
+
+    FS-UAE serves one debugger client and the guest holds it, so the legs run here on its target.
+    Their own per-leg budget bounds the run; `left` bounds only the WinUAE subprocess.
+    """
+    if getattr(guest, "gdb", None) is None:
+        return _run_trip(holder, disks, out, left)
+    target = _target_on(holder, guest)
+
+    def press(key: str) -> None:
+        guest.press(holder, key, 30)
+        time.sleep(fasttravelrun.SETTLE_SECONDS)
+
+    out.mkdir(parents=True, exist_ok=False)
+    legs: list[dict] = []
+    try:
+        fasttravelrun.run_legs(
+            TITLE, str(disks), 22, True, ("RET",),
+            fasttravelrun.amigavars.parse_list("25,26,34,35,129,C1,BF"), out, target,
+            guest.shot, press, 900.0, report=legs.append)
+    except (fasttravelrun.DriverError, amiga.GuestError) as exc:
+        raise RouteError(str(exc)) from exc
+    return legs
 
 
 def _boot(guest: WinGuest, manifest_path: pathlib.Path, manifest: dict,
@@ -3076,7 +3132,11 @@ def main(argv: list[str] | None = None) -> int:
         origin = phases.add_parser(name)
         origin.add_argument("--run-id", required=True)
         origin.add_argument("--holder", required=True)
-        origin.add_argument("--audio-proof", type=pathlib.Path, required=True)
+        if name == "origin-observe":
+            origin.add_argument("--audio-proof", type=pathlib.Path, required=True)
+        else:
+            origin.add_argument("--emulator", choices=("winuae", "fsuae"), default="winuae")
+            origin.add_argument("--audio-proof", type=pathlib.Path)
         if name == "origin-reload":
             origin.add_argument("--return-receipt", type=pathlib.Path, required=True)
         else:
@@ -3086,6 +3146,12 @@ def main(argv: list[str] | None = None) -> int:
         origin.add_argument("--out", type=pathlib.Path, required=True)
         origin.add_argument("--budget", type=float, required=True)
     args = parser.parse_args(argv)
+    if args.phase in ("origin-return", "origin-reload"):
+        if args.emulator == "winuae" and args.audio_proof is None:
+            parser.error("--audio-proof is required with --emulator winuae")
+        if args.emulator == "fsuae" and args.audio_proof is not None:
+            parser.error("--audio-proof belongs to --emulator winuae; an FS-UAE run proves its "
+                         "silence from the emulator's own environment")
     runners = {"origin-observe": run_origin_observe, "origin-return": run_origin_return,
                "origin-reload": run_origin_reload, "bundle-source": run_bundle_source,
                "p2": run_p2, "reload": run_reload}

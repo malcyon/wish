@@ -1300,3 +1300,14 @@ def test_sigterm_exits_143_and_the_old_handler_comes_back(monkeypatch, tmp_path)
         ftr.main(argv)
     assert caught.value.code == 143 and seen["installed"]
     assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_run_legs_runs_both_legs_on_the_channels_it_is_given_and_reports_each(
+        monkeypatch, tmp_path):
+    argv = _interrupted_run(monkeypatch, tmp_path, lambda: {"result": "idle", "settled": True})
+    reported = []
+    previous = signal.getsignal(signal.SIGTERM)
+    results = ftr.run_legs("pools-of-darkness", "D", 3, True, None, (), tmp_path, object(),
+                           lambda path: None, lambda key: None, 60.0, report=reported.append)
+    assert argv and results == reported and len(results) == 2
+    assert signal.getsignal(signal.SIGTERM) is previous

@@ -804,3 +804,155 @@ def test_a_guarded_intro_is_still_skipped_after_the_boot_span(tmp_path, monkeypa
     run.title()
     assert [state for state, _ in seen] == ["title", "title", "intro", "title"]
     assert pressed == ["ESC"]
+
+
+class _FsuaeGuest(_Guest):
+    """A recording FS-UAE lane: a debugger connection, a screen channel, and a live copy of F."""
+
+    def __init__(self, events, remotes, running=True):
+        super().__init__(events, remotes)
+        self.gdb = object()
+        self.shots = []
+        self.running = running
+
+    class _Emulator:
+        def __init__(self, guest):
+            self.guest = guest
+
+        def poll(self):
+            return None if self.guest.running else 0
+
+    @property
+    def emulator(self):
+        return self._Emulator(self)
+
+    def press(self, holder, key, timeout):
+        self.events.append(("lane-key", key))
+
+    def shot(self, path):
+        self.shots.append(path)
+
+    def get(self, remote, local, timeout):
+        if self.running:
+            raise RouteError("still open in a running emulator")
+        return super().get(remote, local, timeout)
+
+    def get_live(self, remote, local, timeout):
+        self.events.append(("get_live", remote))
+        local.write_bytes(b"Generated live F marker")
+        return "fetched"
+
+
+def _fsuae_wiring(monkeypatch, events):
+    """Targets built on a guest's connection and legs run in this process, recorded."""
+    built = []
+
+    class Target:
+        def __init__(self, debugger, layout):
+            built.append(debugger)
+
+        def locate(self, memory=None):
+            events.append(("located",))
+
+    monkeypatch.setattr(driver.amiga, "AmigaTarget", Target)
+    monkeypatch.setattr(driver, "_measured_regions", lambda target, check_target: None)
+    monkeypatch.setattr(driver, "_run_trip", lambda *a: pytest.fail("FS-UAE used the WinUAE subprocess"))
+    monkeypatch.setattr(driver.fasttravelrun, "SETTLE_SECONDS", 0)
+    return built
+
+
+def test_fsuae_target_is_built_on_the_guests_debugger_connection(monkeypatch):
+    events = []
+    built = _fsuae_wiring(monkeypatch, events)
+    monkeypatch.setattr(driver, "_target", lambda holder: pytest.fail("FS-UAE used the WinUAE pipe"))
+    guest = _FsuaeGuest(events, {})
+    driver._target_on("holder", driver.SourcePrivateGuest(guest, pathlib.Path()))
+    assert built == [guest.gdb] and events == [("located",)]
+
+
+def test_winuae_target_still_comes_from_the_pipe(monkeypatch):
+    monkeypatch.setattr(driver, "_target", lambda holder: ("pipe", holder))
+    assert driver._target_on("holder", _Guest([], {})) == ("pipe", "holder")
+
+
+def test_fsuae_trip_runs_both_legs_in_process_on_the_guests_channels(tmp_path, monkeypatch):
+    events = []
+    built = _fsuae_wiring(monkeypatch, events)
+    guest = _FsuaeGuest(events, {})
+    seen = {}
+
+    def run_legs(title, disks, to, back, arrival_answer, peek_vars, out, target, shot, press,
+                 budget, *, report, **kw):
+        seen.update(title=title, to=to, back=back, arrival=arrival_answer, target=target,
+                    shot=shot, budget=budget)
+        press("RET")
+        report({"result": "idle", "settled": True})
+        report({"result": "idle", "settled": True})
+
+    monkeypatch.setattr(driver.fasttravelrun, "run_legs", run_legs)
+    legs = driver._origin_trip(guest, "holder", tmp_path, tmp_path / "trip", 2000)
+    assert len(legs) == 2 and (tmp_path / "trip").is_dir()
+    assert (seen["title"], seen["to"], seen["back"], seen["arrival"]) == (
+        driver.TITLE, 22, True, ("RET",))
+    assert seen["shot"] == guest.shot and len(built) == 1
+    assert ("lane-key", "RET") in events
+
+
+def test_fsuae_phase_reads_f_while_running_through_the_live_copy(tmp_path, monkeypatch):
+    _synthetic_private_files(monkeypatch, tmp_path)
+    guest = _FsuaeGuest([], {"disk3": "remote-disk3"})
+    root = tmp_path / "run"
+    root.mkdir(mode=0o700)
+    private = driver.SourcePrivateGuest(guest, root)
+    private.get("remote-disk3", root / "f.adf", timeout=5)
+    assert guest.events == [("get_live", "remote-disk3")]
+    guest.running = False
+    private.get("remote-disk3", root / "f2.adf", timeout=5)
+    assert guest.events[-1] == ("fetch", "disk3")
+
+
+def test_fsuae_origin_return_runs_in_process_and_never_the_pipe_or_subprocess(
+        tmp_path, monkeypatch):
+    args, _, events, _, _, disks = _return_coordinator(tmp_path, monkeypatch)
+    guest = _FsuaeGuest(events, {key: f"remote-{key}" for key in disks}, running=False)
+    built = _fsuae_wiring(monkeypatch, events)
+    monkeypatch.setattr(driver, "_target", lambda holder: pytest.fail("FS-UAE used the WinUAE pipe"))
+
+    def run_legs(title, disks_dir, to, back, arrival, peek, out, target, shot, press, budget, *,
+                 report, **kw):
+        events.append(("trip", args.holder))
+        legs = [{"result": "idle", "settled": True, "areas_seen": [82, 22], "arrival_keys": ["RET"]},
+                {"result": "idle", "settled": True, "areas_seen": [22, 82], "arrival_keys": ["RET"]}]
+        _trip_log(out / "fasttravel.jsonl", legs)
+        for leg in legs:
+            report(leg)
+
+    monkeypatch.setattr(driver.fasttravelrun, "run_legs", run_legs)
+    args.emulator, args.audio_proof = "fsuae", None
+    receipt = driver.run_origin_return(args, guest=guest)
+    assert receipt["success"] is True and receipt["emulator"] == "fsuae"
+    assert built and all(debugger is guest.gdb for debugger in built)
+    assert ("trip", args.holder) in events
+
+
+def test_fsuae_build_uses_the_darkness_pool_game_and_first_key_age():
+    from tools.amiga import fsuaesession
+
+    guest = driver._origin_guest(SimpleNamespace(emulator="fsuae"), None)
+    assert isinstance(guest, fsuaesession.FsuaeGuest) and guest.game == "amiga-darkness"
+    assert guest.first_key_after == fsuaesession.FIRST_KEY_AFTER["darkness"]
+
+
+@pytest.mark.parametrize("phase", ["origin-return", "origin-reload"])
+@pytest.mark.parametrize("extra, message", [
+    (["--emulator", "fsuae", "--audio-proof", "a.json"], "belongs to --emulator winuae"),
+    ([], "required with --emulator winuae"),
+])
+def test_audio_proof_belongs_to_winuae_only(phase, extra, message, capsys):
+    command = [phase, "--run-id", "r", "--holder", "h", "--source-manifest", "s.json",
+               "--controls", "c.json", "--out", "o", "--budget", "1000",
+               *(["--return-receipt", "rr.json"] if phase == "origin-reload"
+                 else ["--manifest", "m.json"]), *extra]
+    with pytest.raises(SystemExit):
+        driver.main(command)
+    assert message in capsys.readouterr().err
