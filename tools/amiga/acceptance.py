@@ -5681,7 +5681,8 @@ def main(argv: list[str] | None = None) -> int:
                         args.save_count is not None)):
                     raise RouteError("published disk one takes only a Save As report")
                 print(prepare_published(args.title, args.run_id, args.saveas_report,
-                                        args.issue or PUBLISHED_ISSUE, camp=args.camp, place=place))
+                                        _pin_key(args.issue) if args.issue else PUBLISHED_ISSUE,
+                                        camp=args.camp, place=place))
                 return 0
             if args.title not in PUBLISHED_DISKS:
                 raise RouteError("published disk one is only for Curse and Silver Blades")

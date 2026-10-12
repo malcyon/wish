@@ -665,3 +665,24 @@ def test_the_cli_gives_a_silver_blades_substitute_the_numeric_issue(monkeypatch,
     assert acceptance.main(["prepare", "--title", "ssb", "--run-id", "x", "--issue", given,
                             "--substitute", "S.adf"]) == 0
     assert seen["issue"] == numeric
+
+
+@pytest.mark.parametrize("given,numeric", [("WISH-367", "367"), ("367", "367")])
+def test_the_cli_gives_a_silver_blades_join_prepare_the_numeric_issue(monkeypatch, given, numeric):
+    seen = {}
+    monkeypatch.setattr(route_silver_blades, "prepare",
+                        lambda source, run_id, **kw: seen.update(kw) or pathlib.Path("p.json"))
+    assert acceptance.main(["prepare", "--title", "ssb", "--run-id", "x", "--issue", given,
+                            "--source", "j.d64"]) == 0
+    assert seen["issue"] == numeric
+
+
+@pytest.mark.parametrize("given,numeric", [("WISH-367", "367"), ("367", "367")])
+def test_the_cli_gives_prepare_published_the_numeric_issue(monkeypatch, given, numeric):
+    seen = {}
+    monkeypatch.setattr(acceptance, "prepare_published",
+                        lambda name, run_id, report, issue, **kw: seen.update(issue=issue)
+                        or pathlib.Path("p.json"))
+    assert acceptance.main(["prepare", "--title", "ssb", "--run-id", "x", "--issue", given,
+                            "--published-disk-one", "--saveas-report", "r.json"]) == 0
+    assert seen["issue"] == numeric
