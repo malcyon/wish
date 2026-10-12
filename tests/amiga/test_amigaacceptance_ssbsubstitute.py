@@ -655,3 +655,13 @@ def test_a_title_manifest_is_never_run_on_the_legacy_route(tmp_path, clock, monk
             audio_proof=_audio_proof(tmp_path), guard=SubstituteGuard(),
             identity=SubstituteIdentity(), accept=True, journal_python="/usr/bin/python3",
             preflight=lambda _python: None, answer=lambda *_: (0, "answered"))
+
+
+@pytest.mark.parametrize("given,numeric", [("WISH-367", "367"), ("367", "367")])
+def test_the_cli_gives_a_silver_blades_substitute_the_numeric_issue(monkeypatch, given, numeric):
+    seen = {}
+    monkeypatch.setattr(route_silver_blades, "prepare_substitute",
+                        lambda substitute, run_id, **kw: seen.update(kw) or pathlib.Path("p.json"))
+    assert acceptance.main(["prepare", "--title", "ssb", "--run-id", "x", "--issue", given,
+                            "--substitute", "S.adf"]) == 0
+    assert seen["issue"] == numeric

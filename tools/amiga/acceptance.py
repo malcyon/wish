@@ -5740,13 +5740,13 @@ def main(argv: list[str] | None = None) -> int:
                 if silver_blades and args.substitute is not None:
                     print(route_silver_blades.prepare_substitute(
                         args.substitute, args.run_id, letter=args.substitute_letter,
-                        issue=args.issue or "672",
+                        issue=_pin_key(args.issue) if args.issue else "672",
                         **({"camp": args.camp} if args.camp else {})))
                     return 0
                 if silver_blades:
                     print(route_silver_blades.prepare(
                         args.source, args.run_id, staged_from=args.staged_from,
-                        issue=args.issue or "672",
+                        issue=_pin_key(args.issue) if args.issue else "672",
                         **({} if args.save_count is None else {"save_count": args.save_count})))
                     return 0
                 print(prepare(TITLES[args.title], args.run_id, specimen=args.disk3,
