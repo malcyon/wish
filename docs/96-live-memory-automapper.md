@@ -821,7 +821,7 @@ writes it, so the next script load also clears a redirect.
 | `SAVE` targets for the square | `$C04B`, `$C04C`, `$C04D` (facing 0-3) | same | same | variables `$34`, `$35`, `$11` |
 | one-key buffer (flag, character) | none | `g3804`, `g3805` | `g4f6c`, `g4f6d` | `g5742`, `g5743` |
 | menu kind / menu text | none (the menu is in locals) | `g1c24` / `g3342` | `g2384` / `g4a5e` | `g235e` / `g4f34` |
-| **Grade** | CONFIRMED: code and 4 trips | CONFIRMED: code and 2 trips | CONFIRMED for the 2 trips to The Ruins and back; a trip to area 4 hung, so `automap/amigatrip.py` still holds its row unconfirmed | CONFIRMED: code and 3 trips |
+| **Grade** | CONFIRMED: code and 4 trips | CONFIRMED: code and 2 trips | CONFIRMED for the trip to The Ruins and back and, through Wish's tab, a trip to 48 with a save and a reload (comments 6d7f7f53, c522ce0b); the earlier trip to area 4 hung and the confirmed row does not cover it | CONFIRMED: code and 3 trips |
 
 **The key.** In Curse, Silver Blades and Pools of Darkness, writing `01 b8`
 (pending, keypad 8) to the one-key buffer is read as a forward key. Pool of
@@ -881,11 +881,15 @@ C64).
 `WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL`; the mapping backend's separate flag does
 not enable travel. `automap/window.py` also requires a confirmed title row in
 `automap/amigatrip.py`. All four titles have confirmed rows, Silver Blades
-included. `automap/amigafasttravel.py` then
-requires a writable target, the game's gate, a `fasttravelable` destination
-with a script on the player's disks, and room in the departing script for the
-trip and any departure statements (tier 1 or 2, or Pool of Radiance's init
-span in areas 1 and 28). A trip goes straight to the destination unless a row
+included. `automap/amigafasttravel.py` then requires a writable target, the
+game's gate, a `fasttravelable` destination with a script on the player's
+disks, and room in the departing script for the trip and any departure
+statements (tier 1, or Pool of Radiance's init span in areas 1 and 28). No row
+has `direct_confirmed`, so tier 2 is never offered. In Silver Blades the
+scripts of areas 32, 50, 65 and 66 leave 4, 18, 16 and 8 free bytes
+(`tools/amiga/tripspace.py`), which is not tier 1, so no trip leaves them and
+the row stays greyed there; area 33 fits only a trip that writes no area-file
+byte. A trip goes straight to the destination unless a row
 of `automap/departures.py` applies ([`150`](150-departing-prologues.md), "How
 Fast Travel leaves an area"): a write row adds guarded `SAVE`s, while Return
 out of the Kobold Caves with Princess Fatima walks its proven door. Forward
@@ -902,11 +906,14 @@ with a game-written save and a reload, then Silver Blades to 48 and Pools of
 Darkness to 22 (WISH-360 (Complete Amiga Fast Travel and Return), comment
 c522ce0b). FS-UAE tab runs passed for all four titles too (comments 29b74103
 and 6d7f7f53). After a NO at Princess Fatima's door, Return is withdrawn and
-the party walks on (comment 3439b60f). The Pools of Darkness item check is settled. A seven-member party
-Fast Travelled, Returned, saved F and reloaded: 64 item heads and 4 bundle
-children showed 0 payload differences before and after travel and after
-reload, and the only metadata differences were display offsets (comment
-6007dd92); FS-UAE passed all 10 reload checks (comment 5eccc27f). This
+the party walks on (comment 3439b60f).
+
+**The Pools of Darkness item check is settled.** A seven-member party Fast
+Travelled, Returned, saved F and reloaded: 64 item heads and 4 bundle children
+showed 0 payload differences before and after travel and after reload, and the
+only metadata differences were display offsets (comment 6007dd92); FS-UAE
+passed all 10 reload checks (comment 5eccc27f). CONFIRMED for that one party,
+which is the only one measured; PROBABLE for other parties. This
 replaces the earlier open note about two changed live node hashes (comment
 85511f41), because the live node holds a rebuilt display buffer and heap links
 besides the 20 saved payload bytes (comment e744989f), and the later capture
@@ -1225,11 +1232,12 @@ directory and opens nothing, because WinUAE serves one client at a time.
   Pools of Darkness folder.
 * **`WISH_WINUAE_PIPE` names the pipe Wish opens,** for test runs where another
   lane's emulator may own the lowest name.
-* **It has run in Wish on Pool of Radiance only.** On WinUAE 6.0.3 Wish's own
-  window followed the party through a turn and two steps with the right marker.
-  After a restart of Wish the explored squares were lost; the notes are now saved
-  as each new square is revealed, and that has not been run in a Windows build.
-  Curse, Silver Blades and Pools of Darkness have not been run in Wish on WinUAE.
+* **The restart and note-saving behaviour has been run on Pool of Radiance
+  only.** On WinUAE 6.0.3 Wish's own window followed the party through a turn
+  and two steps with the right marker. After a restart of Wish the explored
+  squares were lost; the notes are now saved as each new square is revealed,
+  and that has not been run in a Windows build. Fast Travel and Return in the
+  tab have run on all four titles (above).
   The tests use a fake pipe, and the ones that use a real named pipe run only on
   Windows.
 

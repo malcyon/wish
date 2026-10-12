@@ -197,12 +197,12 @@ and a59ab194). The older forward-trip NO control stayed in area 13 with eight
 names and no Return armed; that is evidence for the old path, not a current-tab
 NO check. `areas_seen` omitted 27 because `continue_pending` read that area and
 armed the next hop before the driver's next area sample; its `continue` event
-establishes the intermediate area. The Amiga Return with NO also passed: the party stayed in area 13 with its
-eight names, Wish stopped offering that Return, and the party turned, found the
-door locked and bashed it open (comment 3439b60f). C64 current-code Return
-still needs a live check. This replaces the unrun L2 claim because the Amiga
-YES and NO Returns now have retained receipts, while the forward path has since
-been held.
+establishes the intermediate area. The Amiga Return with NO also passed: the
+party stayed in area 13 with its eight names, Wish stopped offering that
+Return, and the party turned, found the door locked and bashed it open (comment
+3439b60f). C64 current-code Return still needs a live check. This replaces
+the unrun L2 claim because the Amiga YES and NO Returns now have retained
+receipts, while the forward path has since been held.
 
 ### Curse, Silver Blades and Pools of Darkness
 
@@ -216,9 +216,11 @@ has no Curse re-entry addresses, so a `route_to` row cannot run there.
 **Secret of the Silver Blades** (68de904c). Needed: S1, S2 and S3, all
 disabled. Not needed (eleven exits, N1-N11), among them the Ruins' `$4CFF`
 write (one of eleven exits makes it), the wall pins and the cancel byte. The
-Amiga offers Fast Travel for this title now that its trip row is confirmed in
-`automap/amigatrip.py`; it carries no departure row, because these three are
-disabled. Whether DOS and the Amiga store `$C059`/`$C05A` at all is unread.
+Amiga offers Fast Travel for this title through its confirmed trip row in
+`automap/amigatrip.py` and carries no departure row, because these three are
+disabled. No trip leaves areas 32, 50, 65 or 66: their scripts leave 4, 18, 16
+and 8 free bytes, which is not tier 1, and no row has `direct_confirmed`, so
+tier 2 is never offered. Whether DOS and the Amiga store `$C059`/`$C05A` at all is unread.
 
 **Pools of Darkness** (b7604d0f, revised by 77050ad9 and 6191dd8c). Needed:
 D11 above. The story companion rows D1-D10 are not built. On the English
