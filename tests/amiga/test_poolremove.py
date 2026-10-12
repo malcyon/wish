@@ -557,7 +557,7 @@ def test_an_unknown_screen_after_remove_leaves_begin_unsent(rig):
 
 
 def test_the_built_in_hall_guards_load_beside_the_pool_guards(tmp_path):
-    rules = poolremove.PixelGuards(poolremove._guard_file(tmp_path, None)).rules
+    rules = poolremove.PixelGuards(poolremove.guard_file(tmp_path, None)).rules
     assert set(poolremove.HALL_STATES) <= set(rules) and "world" in rules
 
 

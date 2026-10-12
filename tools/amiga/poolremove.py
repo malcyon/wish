@@ -512,7 +512,8 @@ def preflight(manifest_path: pathlib.Path, member: str,
     return manifest, steps, names.index(wanted) + 1
 
 
-def _guard_file(out: pathlib.Path, extra: pathlib.Path | None) -> pathlib.Path:
+def guard_file(out: pathlib.Path, extra: pathlib.Path | None) -> pathlib.Path:
+    """`guards_pool.json`'s rules and the hall's, with `extra`'s on top, as the file `PixelGuards` reads."""
     rules = {**json.loads(GUARDS.read_text())["guards"], **HALL_GUARDS}
     if extra is not None:
         rules.update(json.loads(extra.read_text()))
@@ -599,7 +600,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, live_factory: Callable[[
             disks[key] = {**entry, "path": str(path)}
         prepared = {**manifest, "disks": disks}
         write_json(local, prepared)
-        guards = PixelGuards(_guard_file(args.out, args.guards))
+        guards = PixelGuards(guard_file(args.out, args.guards))
         proof = args.out / "mute.json"
         output = guest._run("ssh", acceptance.MUTE_READBACK, timeout=60)
         write_json(proof, json.loads(output[output.index("{"):]))

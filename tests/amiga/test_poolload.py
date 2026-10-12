@@ -141,14 +141,6 @@ def test_a_start_that_never_shows_the_title_fails_without_a_key(rig, monkeypatch
     assert not receipt["success"] and rig.game.keys == []
 
 
-def test_the_guards_are_the_pool_files_with_the_extra_rules_on_top(tmp_path):
-    extra = tmp_path / "extra.json"
-    extra.write_text(json.dumps({"world": {"box": [0, 0, 1, 1], "sha256": "0" * 64}}))
-    rules = json.loads(poolload.guard_file(tmp_path, extra).read_text())
-    pool = json.loads(poolremove.GUARDS.read_text())["guards"]
-    assert set(rules) == set(pool) and rules["world"] == {"box": [0, 0, 1, 1], "sha256": "0" * 64}
-
-
 def test_a_manifest_of_another_title_stops_before_any_screen(rig):
     with pytest.raises(poolremove.RouteError):
         rig.go(title="darkness")
@@ -160,3 +152,30 @@ def test_main_exits_nonzero_when_the_load_fails(monkeypatch, tmp_path, capsys):
     assert poolload.main(["--manifest", str(tmp_path / "p.json"), "--holder", "h",
                           "--out", str(tmp_path / "o")]) == 1
     assert json.loads(capsys.readouterr().out)["error"] == "no"
+
+
+def test_a_manifest_of_another_title_exits_2_with_one_line_and_writes_nothing(tmp_path, capsys):
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text(json.dumps({"title": "darkness"}))
+    out = tmp_path / "out"
+    assert poolload.main(["--manifest", str(manifest), "--holder", "h", "--out", str(out)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("Poolload: ") and captured.err.count("\n") == 1
+    assert not out.exists()
+
+
+def test_a_manifest_that_cannot_be_read_exits_2(tmp_path, capsys):
+    assert poolload.main(["--manifest", str(tmp_path / "missing.json"), "--holder", "h",
+                          "--out", str(tmp_path / "out")]) == 2
+    assert capsys.readouterr().err.startswith("Poolload: ")
+
+
+def test_an_existing_output_folder_exits_2_and_is_left_alone(tmp_path, capsys):
+    manifest = tmp_path / "prepare.json"
+    manifest.write_text(json.dumps({"title": "pool", "loaded_letter": "A", "names_a": NAMES,
+                                    "state_a": {"area": 13, "x": 6, "y": 5, "facing": 0}}))
+    out = tmp_path / "out"
+    out.mkdir()
+    assert poolload.main(["--manifest", str(manifest), "--holder", "h", "--out", str(out)]) == 2
+    assert "already exists" in capsys.readouterr().err and list(out.iterdir()) == []

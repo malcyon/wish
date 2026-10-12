@@ -42,16 +42,6 @@ def _fold(name: str) -> str:
     return name.replace(" ", "").casefold()
 
 
-def guard_file(out: pathlib.Path, extra: pathlib.Path | None) -> pathlib.Path:
-    """`guards_pool.json`'s rules, with `extra`'s on top, as the file `PixelGuards` reads."""
-    rules = dict(json.loads(poolremove.GUARDS.read_text())["guards"])
-    if extra is not None:
-        rules.update(json.loads(extra.read_text()))
-    path = out / "guards.json"
-    path.write_text(json.dumps(rules, indent=1, sort_keys=True))
-    return path
-
-
 def run(args: argparse.Namespace, *, guest: Any = None,
         live_factory: Callable[[str], Any] = poolremove.Live) -> dict:
     """Load the slot on the running machine and check the party; never halts the lane."""
@@ -63,7 +53,7 @@ def run(args: argparse.Namespace, *, guest: Any = None,
     guest = guest or WinGuest()
     # The lane is the caller's claim; screenshots need its holder named.
     guest.holder = args.holder
-    guards = poolremove.PixelGuards(guard_file(args.out, args.guards))
+    guards = poolremove.PixelGuards(poolremove.guard_file(args.out, args.guards))
     screens = poolremove.Screens(guest, args.holder, args.out / "screens", guards,
                                  time.monotonic() + args.budget)
     receipt: dict[str, Any] = {"manifest": str(args.manifest.resolve()), "holder": args.holder,
@@ -96,11 +86,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=pathlib.Path, required=True,
                         help="a new folder for load.json and the guarded screens")
     parser.add_argument("--guards", type=pathlib.Path, default=None,
-                        help="further guard rules, added to guards_pool.json's")
+                        help="further guard rules, added to guards_pool.json's and the hall's")
     parser.add_argument("--budget", type=float, default=BUDGET,
                         help="seconds from the start to the loaded world screen")
     args = parser.parse_args(argv)
-    receipt = run(args)
+    try:
+        receipt = run(args)
+    except (RouteError, OSError, ValueError, KeyError) as exc:
+        print(f"Poolload: {exc}", file=sys.stderr)
+        return 2
     print(json.dumps({key: receipt.get(key) for key in ("success", "loaded", "error")}))
     return 0 if receipt["success"] else 1
 
