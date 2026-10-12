@@ -148,6 +148,12 @@ def _transition_phase(route: Any) -> Any:
         raise AcceptanceStop("leave-town YES needs the guarded leave-town transition")
     return phase
 
+def _mapping_budget(route: Any) -> int:
+    """The keys the route's phases press; a route longer than the default cap needs that many."""
+    return sum(1 for phase in route.phases for step in phase.steps
+               if step.kind in ("key", "turn", "move", "insert"))
+
+
 def _action_budget(route: Any) -> int:
     from automap import amigaparty  # noqa: PLC0415
 
@@ -290,6 +296,10 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         route_silver_blades.journal_preflight(sys.executable)
     else:
         _phase_map(route)
+        if args.title == "ssb":
+            from tools.amiga import route_silver_blades  # noqa: PLC0415
+
+            route_silver_blades.journal_preflight(sys.executable)
     if not winwish._mute_proof(pathlib.Path(args.mute_proof)):
         raise AcceptanceStop("the WinUAE audio mute proof is missing or stale")
     if len(route.mounted) > 4 or not route.mounted:
@@ -482,6 +492,7 @@ class Controller:
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         self.action_limit = _action_budget(route)
+        self.mapping_limit = max(MAX_MAPPING_COMMANDS, _mapping_budget(route))
         self.discovery = getattr(args, "discover", None) in (*LEAVE_MODES, *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
@@ -517,7 +528,7 @@ class Controller:
         name = "action_commands" if action else "mapping_commands"
         cap = (self.action_limit if action
                else CAMP_LOAD_MAPPING_COMMANDS if getattr(self.args, "discover", None) == "ssb-camp-load"
-               else MAX_MAPPING_COMMANDS)
+               else self.mapping_limit)
         if getattr(self, name) >= cap:
             raise AcceptanceStop(f"the {cap}-command {'action' if action else 'mapping'} cap is reached")
         setattr(self, name, getattr(self, name) + 1)
@@ -895,8 +906,8 @@ class Controller:
                    reason=("unreadable expected fields: " + ", ".join(missing)) if missing else None)
 
     def flag_controls(self) -> None:
-        """Pool's three flag modes use the same boot and retain Wish settings."""
-        if self.route.title != "pool":
+        """Pool's and Silver Blades' flag modes use the same boot and retain Wish settings."""
+        if self.route.title not in ("pool", "ssb"):
             return
         controls_wanted = ("Heal party", "Save spells", "Restore spells",
                            "Identify", "Quickfight off", "Fast Travel")
@@ -960,7 +971,7 @@ class Controller:
         # Only the opening-scene load, first or after camp LOAD, waits for the story's
         # treasure screen.
         pages = (self.route.amiga_title.interstitials
-                 if phase.name in ("load", "camp_reload") and self.route.title == "ssb"
+                 if phase.name in ("load", "camp_reload", "reload") and self.route.title == "ssb"
                  and any(step.state == "treasure_bar" for step in phase.steps) else ())
         for step in phase.steps:
             kind = step.kind

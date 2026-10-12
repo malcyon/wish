@@ -42,7 +42,7 @@ def _manifest(title: str, root: Path) -> dict:
     disks["disk3"]["sha256"] = route_darkness.DARKNESS_DISK3_SHA256
     return {
         "title": title, "loaded_letter": "B", "disks": disks,
-        "state_a": {"area": 21, "x": 1, "y": 2, "facing": 1},
+        "state_a": {"area": 2, "x": 1, "y": 2, "facing": 1},
     }
 
 
@@ -74,12 +74,13 @@ def test_an_unmeasured_transition_blocks_the_title_before_a_lane_is_claimed(
 
     assert set(phases) == {"load", "stationary", "walk", "transition", "reload",
                            "reopen_step"} | ({"outdoor"} if title in ("pool", "curse") else set())
-    # Silver Blades has a measured leave-town transition; its reload still blocks it.
-    blocking = "reload" if title == "ssb" else "transition"
-    assert phases["transition"].ready is (title == "ssb")
-    assert not phases[blocking].ready
-    assert phases[blocking].reason in route.unresolved
-    assert route.unresolved
+    if title == "ssb":
+        assert all(phase.ready for phase in route.phases)
+        assert route.unresolved == ()
+    else:
+        assert not phases["transition"].ready
+        assert phases["transition"].reason in route.unresolved
+        assert route.unresolved
     assert [action.kind for action in route.actions] == [
         "heal", "spells", "identify", "quickfight", "levelup"]
     assert all(not action.enabled for action in route.actions)
@@ -184,7 +185,7 @@ def test_silver_blades_transition_answers_the_guarded_leave_town_question(tmp_pa
     assert (expected.compare_to, expected.relation) == ("ssb_facing_exit", "area_changed")
     assert "leave_town" in guards
     assert not any("leave-town" in reason for reason in route.unresolved)
-    assert not phases["reload"].ready and not phases["reopen_step"].ready
+    assert phases["reload"].ready and phases["reopen_step"].ready
 
 
 def test_silver_blades_camp_step_encamps_from_the_ruins_on_the_camp_guard(tmp_path: Path):
@@ -197,7 +198,6 @@ def test_silver_blades_camp_step_encamps_from_the_ruins_on_the_camp_guard(tmp_pa
         ("key", "E", "camp", None)]
     assert "camp" in guards
     assert "camp" not in [phase.name for phase in route.phases]
-    assert not {phase.name: phase for phase in route.phases}["reload"].ready
 
 
 def test_silver_blades_camp_load_answers_only_the_guarded_question(tmp_path: Path):
@@ -231,4 +231,39 @@ def test_silver_blades_camp_reload_replays_the_title_load_tail(tmp_path: Path):
     assert (final.expected.compare_to, final.expected.relation) == (
         "ssb_ruins_arrival", "area_changed")
     assert "camp_reload" not in [phase.name for phase in route.phases]
-    assert not {phase.name: phase for phase in route.phases}["reload"].ready
+
+
+def test_silver_blades_reload_goes_through_camp_load_and_the_prepared_slot(tmp_path: Path):
+    route = maproute.route_for("ssb", _manifest("ssb", tmp_path))
+    phases = {phase.name: phase for phase in route.phases}
+    reload = phases["reload"]
+
+    assert [phase.name for phase in route.phases][-2:] == ["reload", "reopen_step"]
+    assert reload.steps == (*maproute._ssb_camp().steps, *maproute._ssb_camp_load().steps,
+                            maproute.Step("key", "loaded_menu", key="D"),
+                            *maproute._ssb_camp_reload().steps)
+    assert [s.key for s in reload.steps if s.key] == list("ELYDBEN")
+    reopen = phases["reopen_step"]
+    assert [s.key for s in reopen.steps if s.key] == ["NP8"]
+    step = next(s for s in reopen.steps if s.checkpoint)
+    assert step.checkpoint == "ssb_reopen_step"
+    assert dict(step.expected.engine) == {"area": 16, "x": 3, "y": 4, "facing": 2}
+    assert (step.expected.compare_to, step.expected.relation) == (
+        "ssb_camp_reloaded", "moved")
+
+
+def test_no_action_line_is_listed_while_every_action_is_disabled(tmp_path: Path):
+    route = maproute.route_for("pool", _manifest("pool", tmp_path))
+
+    assert not any("action" in reason for reason in route.unresolved)
+
+
+def test_pools_of_darkness_accepts_the_area_the_prepared_saves_record(tmp_path: Path):
+    manifest = _manifest("darkness", tmp_path)
+    assert maproute._specimen_gaps(
+        "darkness", manifest, {}, maproute.route_for("darkness", manifest).media, "B") == ()
+    media = maproute.route_for("darkness", manifest).media
+    manifest["state_a"] = {"area": 2, "x": 2, "y": 2, "facing": 1}
+    assert maproute._specimen_gaps("darkness", manifest, {}, media, "B")
+    manifest["state_a"] = {"area": 21, "x": 1, "y": 2, "facing": 1}
+    assert maproute._specimen_gaps("darkness", manifest, {}, media, "B")

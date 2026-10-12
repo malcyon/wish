@@ -112,6 +112,7 @@ def test_unrecognized_walk_stops_later_keys_restores_encounters_and_goes_down(tm
         controller.encounters = SimpleNamespace(
             keys=lambda names: (game.keys.extend(names) or {"pressed": names}))
 
+    monkeypatch.setattr(controller, "flag_controls", lambda: None)
     monkeypatch.setattr(controller, "_up", up)
     monkeypatch.setattr(controller, "_game_section", section)
     monkeypatch.setattr(controller, "_switch", switch)
@@ -159,6 +160,7 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
     monkeypatch.setattr(controller, "_map_section", lambda: None)
     monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
     monkeypatch.setattr(controller, "run_phase", lambda phase: events.append(phase.name))
+    monkeypatch.setattr(controller, "flag_controls", lambda: None)
     monkeypatch.setattr(controller, "run_actions", lambda: None)
     monkeypatch.setattr(controller, "_cleanup", lambda: controller.summary["cleanup"].update(errors=[]))
     monkeypatch.setattr(winwishaccept.winwish, "stop_wish",
@@ -3291,3 +3293,93 @@ def test_encounters_are_switched_off_and_wish_kept_when_the_tab_step_fails_for_a
     assert ("switch", False) in calls and ("stop_wish",) not in calls
     assert controller.encounters.state.load() == {"on": False, "rows": []}
     assert any("encounters: ssh dropped" in error for error in errors)
+
+
+def _reload_screens(controller, game, *, first_pages=9, after_pages=3):
+    """Extend the story fake with the camp LOAD screens that lead into the reload."""
+    st, answer = _story_screens(controller, game, first_pages=first_pages, after_pages=after_pages)
+    story_press = game.press
+    camp = {("world", "E"): "camp", ("camp", "L"): "load_anyway",
+            ("load_anyway", "Y"): "load_picker"}
+
+    def press(holder, key, timeout):
+        if (st["show"], key) in camp:
+            game.keys.append(key)
+            st["show"] = camp[(st["show"], key)]
+        else:
+            story_press(holder, key, timeout)
+
+    game.press = press
+    return st, answer
+
+
+def _real_ssb_phases():
+    from tools.amiga import maproute
+
+    return maproute._phases("ssb", maproute._load("ssb", "D", opening_scene=True), "D")
+
+
+def test_story_pages_during_the_reload_are_answered(tmp_path, monkeypatch):
+    from tools.amiga import maproute, route_silver_blades
+
+    controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    st, answer = _reload_screens(controller, game)
+    st["show"] = "world"
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", answer)
+    controller.args.discover = None
+    controller.discovery = False
+    controller.run_phase(maproute._ssb_reload("D"))
+    assert game.keys == ["E", "L", "Y", "D", "B", *["RET"] * 9, "E", "N", *["RET"] * 3]
+    assert "ssb_camp_reloaded" in controller.checkpoints
+
+
+def test_the_full_silver_blades_route_fits_the_ordinary_key_limit(tmp_path, monkeypatch):
+    controller, *_ = _discovery_controller(tmp_path, monkeypatch)
+    route = controller.route
+    route.phases = _real_ssb_phases()
+    assert winwishaccept._mapping_budget(route) == 44
+    again = winwishaccept.Controller(
+        controller.args, guest=object(), lane=controller.lane, game=controller.game,
+        guards=controller.guards, route=route, zipped=controller.zipped,
+        info=controller.info, clock=controller.clock, sleep=controller.sleep)
+    again.args.discover = None
+    again.mapping_commands = 43
+    again._count()
+    with pytest.raises(winwishaccept.AcceptanceStop, match="44-command mapping cap"):
+        again._count()
+
+
+def test_the_flag_check_runs_on_silver_blades(tmp_path, monkeypatch):
+    clock = FakeClock()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    names = ("Heal party", "Save spells", "Restore spells", "Identify",
+             "Quickfight off", "Fast Travel")
+    modes = iter((True, False, True, True))
+    def controls(*args):
+        enabled = next(modes)
+        return [f"Button|{name}|{name}|enabled={enabled}" for name in names]
+    monkeypatch.setattr(winwishaccept.winwish, "ui", controls)
+    monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
+    monkeypatch.setattr(winwishaccept.winwish, "restart_wish", lambda *args, **kwargs: None)
+    controller.flag_controls()
+    assert set(controller.summary["flags"]) == {"on", "map_only", "off", "restored"}
+
+
+def test_ordinary_silver_blades_preflight_checks_the_journal_answer(tmp_path, monkeypatch):
+    from tools.amiga import route_silver_blades
+
+    called = []
+    monkeypatch.setattr(route_silver_blades, "journal_preflight",
+                        lambda python: called.append(python))
+    args = _args(tmp_path)
+    args.manifest.write_text("{}")
+    guest = SimpleNamespace(gh=lambda *args: pytest.fail("guest touched before the mute proof"))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="mute"):
+        winwishaccept.preflight(args, guest=guest, route_for=lambda title, manifest: _route(),
+                               driver_sha=SHA)
+    assert called

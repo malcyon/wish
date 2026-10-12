@@ -305,7 +305,7 @@ def _ssb_transition() -> Phase:
 
 def _ssb_camp() -> Phase:
     # E after a fresh `world` match, and the camp bar is checked as its result: the first
-    # key of a reload through camp LOAD, which is not yet part of the route's reload phase.
+    # key of a reload through camp LOAD.
     return _phase("camp", "world", Step("key", "camp", key="E"))
 
 
@@ -333,7 +333,26 @@ def _ssb_camp_reload() -> Phase:
     )
 
 
-def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
+def _ssb_reload(slot: str) -> Phase:
+    """Camp LOAD back to the prepared slot, from the camp bar to the New Verdigris square."""
+    steps = (*_ssb_camp().steps, *_ssb_camp_load().steps,
+             Step("key", "loaded_menu", key=slot), *_ssb_camp_reload().steps)
+    return _phase("reload", "world", *steps)
+
+
+def _ssb_reopen() -> Phase:
+    # Encounters stay off in town, as in the walk; the step is one square north of the reload.
+    return _phase(
+        "reopen_step", "world",
+        Step("encounters", "world", encounters=True),
+        Step("move", "world", key="NP8", checkpoint="ssb_reopen_step",
+             expected=Expected(engine={"area": 16, "x": 3, "y": 4, "facing": 2},
+                               compare_to="ssb_camp_reloaded", relation="moved")),
+        Step("encounters", "world", encounters=False),
+    )
+
+
+def _phases(title: str, load: Phase, slot: str) -> tuple[Phase, ...]:
     if title == "pool":
         needs = {
             "stationary": "Indoor stationary turns after TAKE BOAT are not measured.",
@@ -351,10 +370,7 @@ def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
             "reopen_step": "The post-restart sewer step is not measured.",
         }
     elif title == "ssb":
-        needs = {
-            "reload": "The game's no-save return to the load picker is not measured.",
-            "reopen_step": "The post-restart Ruins step is not measured.",
-        }
+        needs = {}
     else:
         needs = {
             "stationary": "Two turns each way from GEO21 are not recorded.",
@@ -366,7 +382,7 @@ def _phases(title: str, load: Phase) -> tuple[Phase, ...]:
     if title == "ssb":
         return (
             load, _ssb_stationary(), _ssb_walk(), _ssb_transition(),
-            *(_missing(name, "world", needs[name]) for name in _REQUIRED[4:]),
+            _ssb_reload(slot), _ssb_reopen(),
         )
     if title in ("pool", "curse"):
         return (
@@ -403,7 +419,7 @@ def _specimen_gaps(title: str, manifest: Mapping[str, object],
                 "area": 16, "x": 3, "y": 3, "facing": 2}:
             return ("Silver Blades needs prepared slot D at New Verdigris 3,3 S.",)
     elif slot != "B" or manifest.get("state_a") != {
-            "area": 21, "x": 1, "y": 2, "facing": 1} or next(
+            "area": 2, "x": 1, "y": 2, "facing": 1} or next(
                 m.sha256 for m in media if m.key == "disk3") != route_darkness.DARKNESS_DISK3_SHA256:
         return ("Pools of Darkness needs registered disk 3 slot B at GEO21 1,2 E.",)
     return ()
@@ -420,7 +436,7 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
     base = _base_title(title, slot, opening_scene)
     media = _media_for(title, manifest, base)
     load = _load(title, slot, opening_scene)
-    phases = _phases(title, load)
+    phases = _phases(title, load, slot)
     source = _source_provenance(manifest)
     specimen_gaps = _specimen_gaps(title, manifest, source, media, slot)
     provenance: dict[str, object] = {
@@ -444,7 +460,8 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
     unresolved = (
         *specimen_gaps,
         *(phase.reason for phase in phases if not phase.ready and phase.reason),
-        "Game-sheet routes and readbacks for the Wish action presses are not measured.",
+        *(("Game-sheet routes and readbacks for the Wish action presses are not measured.",)
+          if any(action.enabled for action in _actions(title)) else ()),
     )
     guard_path = pathlib.Path(__file__).resolve().with_name(_GUARD_NAMES[title])
     return MappingRoute(
