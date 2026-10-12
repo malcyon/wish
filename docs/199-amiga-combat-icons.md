@@ -152,10 +152,15 @@ colour bytes. The engines say so themselves: the Amiga's own importer at
 Curse `0x25776` copies a Pool of Radiance record's `icon_head`, `icon_body`
 and `size` into Curse's, then `movmem`s the six colour bytes, skipping only
 `combat_figure`, which the loader reallocates; Silver Blades' at `0x26FBA`
-does the same with a Curse record, byte by byte. A port that had renumbered
-its art could not do that -- the same argument
-[`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.md) makes for
-the three DOS titles.
+does the same with a Curse record, byte by byte. Between Curse and Silver
+Blades that copy is right, because both number their art as DOS does -- the
+same argument [`168-dos-dax-and-combat-icons.md`](168-dos-dax-and-combat-icons.md)
+makes for the three DOS titles. It does not show that Amiga Pool of Radiance
+numbers its art the same way: it does not, and Curse's import of a Pool
+record probably changes the figure
+([`240-amiga-pool-combat-figure.md`](240-amiga-pool-combat-figure.md)). This
+paragraph used to take the importer as evidence that no Amiga title had
+renumbered its art; measuring Pool's own art refuted that.
 
 **And to the C64 through the machinery that already exists.**
 `goldbox.iconparts.IconParts.dos_icon(head, body, size, colours)` composes a
@@ -173,11 +178,14 @@ same fields:
 | `icon_colours` | converted -- the same six pairs | `TRANSFORMED` |
 | `icon_dimension` | 1 for every player character, and the C64 has one size byte where DOS has two | `DROPPED`, with **no player text** -- Donald, 2026-09-06: *"All PCs are the same size, so it doesn't matter. Just leave that line out during conversions."* |
 
-`goldbox/iconparts.py`'s `amiga_combat_icon` is the pattern of the first three, and
-was written for Amiga Pool of Radiance on exactly this reasoning
-(`#354 (Convert an Amiga Pool of Radiance save to DOS, so a party standing in
-the Slums on the Amiga arrives there under DOSBox)`); this page is what says
-the later two titles are the same case.
+`goldbox/iconparts.py`'s `amiga_combat_icon` is the pattern of the first three
+for the later two titles. It was written for Amiga Pool of Radiance first, on
+the belief that Pool is the same case, and it is not: Amiga Pool numbers and
+draws its figures differently from DOS, so copying its `icon_head`,
+`icon_body` and colour bytes changes most figures
+([`240-amiga-pool-combat-figure.md`](240-amiga-pool-combat-figure.md)). This
+paragraph used to say Pool was the same case; the measurement of Pool's own
+`chead.dax` and `cbody.dax` is why it no longer does.
 
 ## The specimens
 

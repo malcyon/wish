@@ -2184,6 +2184,7 @@ graph LR
   amiga_por --> neutral
   amiga_por --> portraits
   amiga_por -.->|deferred| traits
+  amiga_por_icons --> amiga_dax
   amiga_port --> dos_port
   amiga_savegame --> amiga_adf
   amiga_savegame -.->|deferred| amiga_dax
