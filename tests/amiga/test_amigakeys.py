@@ -8,7 +8,6 @@ ed., chapter 8 ("RAW Keycodes 40-5F hex" and Figure 8-11) and WinUAE's
 from __future__ import annotations
 
 import pathlib
-import re
 import sys
 
 import pytest
@@ -36,8 +35,7 @@ def _fsuaepor_keysyms() -> set[str]:
 
 
 def _swap_keysyms() -> set[str]:
-    sequence = fsuaegdb.DEFAULT_SWAP_SEQUENCE.format(index=1)
-    return {re.sub(r"\*\d+$", "", word) for word in sequence.split()}
+    return set(fsuaegdb.expand_sequence(fsuaegdb.DEFAULT_SWAP_SEQUENCE, 1))
 
 
 def test_every_keysym_the_fsuae_drivers_send_is_in_the_table():
