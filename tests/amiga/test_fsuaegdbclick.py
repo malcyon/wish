@@ -18,6 +18,7 @@ from automap.panel import MessagesPanel, RosterPanel
 from automap.target import MemoryTarget
 from tests.amiga.test_fsuaegdb import (  # noqa: F401 -- `wished` is a fixture
     FakeApp,
+    FakeWindow,
     by_event,
     run_wish,
     wished,
@@ -58,7 +59,10 @@ def window():
 @pytest.fixture
 def real(wished, window, monkeypatch):                  # noqa: F811
     """`wish` over a real button window instead of the observe-only fake."""
-    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: (FakeApp(), window))
+    # A `WishWindow` keeps the bars, the roster and the messages on `.map`.
+    holder = FakeWindow()
+    holder.map = window
+    monkeypatch.setattr(fsuaegdb, "open_wish", lambda out: (FakeApp(), holder))
     return window
 
 

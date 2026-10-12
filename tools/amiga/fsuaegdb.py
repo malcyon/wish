@@ -1977,7 +1977,7 @@ class WishRun:
         """Every button the player can press, as `windowbuttons.rows` lists them."""
         from tools.gui import windowbuttons
 
-        return windowbuttons.rows(self._open_window())
+        return windowbuttons.rows(self._open_window().map)
 
     def click(self, rest: str) -> dict:
         """`NAME [yes|no] [spell]`: press a button and answer its dialogs."""
@@ -1990,7 +1990,7 @@ class WishRun:
             raise ValueError("click's answer is yes or no, then the spell")
         answer = parts[1].lower() if len(parts) > 1 else None
         spell = parts[2] if len(parts) > 2 else None
-        return windowbuttons.click(self._open_window(), parts[0], answer, spell)
+        return windowbuttons.click(self._open_window().map, parts[0], answer, spell)
 
     def select(self, rest: str) -> dict:
         """`COMBO ITEM`: pick a drop-down entry by its text."""
@@ -1999,7 +1999,7 @@ class WishRun:
         parts = rest.split(None, 1)
         if len(parts) != 2:
             raise ValueError("select wants COMBO ITEM")
-        return windowbuttons.select(self._open_window(), parts[0], parts[1])
+        return windowbuttons.select(self._open_window().map, parts[0], parts[1])
 
     def observe(self, name: str) -> dict:
         """The game screen, the helper, and what the window shows, as one row.
