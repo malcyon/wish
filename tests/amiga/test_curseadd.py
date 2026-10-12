@@ -6,6 +6,8 @@ import argparse
 import hashlib
 import json
 import pathlib
+import signal
+import threading
 
 import pytest
 
@@ -66,6 +68,8 @@ def test_name_key_reads_pool_and_curse_spellings_alike():
     assert curseadd.name_key("LADY\xffKATHERINE") == "LADYKATHERINE"
     assert curseadd.name_key("Lady Katherine") == "LADYKATHERINE"
     assert curseadd.name_key("J.R. Smith") == curseadd.name_key("JRSMITH") == "JRSMITH"
+    # The writer upper-cases a-z only; any other letter keeps its byte.
+    assert curseadd.cha_stem("abc\xe9\xff") == "ABC\xe9\xff"
 
 
 def test_copy_finds_a_multi_word_player_by_the_file_remove_wrote():
@@ -149,6 +153,8 @@ class FakeGuest:
         self.script, self.clock = list(script), clock
         self.current = None
         self.keys: list[str] = []
+        #: The screen the last grab showed when each key went out.
+        self.pressed_on: list[str | None] = []
 
     def grab(self, label, raw, crop, timeout):
         self.current = self.script.pop(0) if len(self.script) > 1 else self.script[0]
@@ -157,6 +163,7 @@ class FakeGuest:
 
     def press(self, holder, key, timeout):
         self.keys.append(key)
+        self.pressed_on.append(self.current)
 
 
 class FakeGuards:
@@ -182,6 +189,9 @@ def _keys_allowed(screens, guest):
         assert event["key"] in curseadd.ALLOWED_KEYS[event["from"]], event
         assert (event["from"], event["key"]) not in FORBIDDEN, event
     assert set(guest.keys) <= set().union(*curseadd.ALLOWED_KEYS.values())
+    for key, shown, event in zip(guest.keys, guest.pressed_on, pressed):
+        if (event["from"], key) == ("add_picker", "E"):
+            assert shown == "add_picker", "E went out without the ADD list on the last grab"
 
 
 def _screens(tmp_path, script, budget=10_000):
@@ -307,15 +317,31 @@ def test_drive_stops_before_saving_when_the_party_does_not_read(tmp_path, monkey
     screens, guest = _screens(tmp_path, ROUTE_ONE)
     monkeypatch.setattr(curseadd, "READ_LIMIT", 0.2)
 
+    never = threading.Event()
+
     def reader(holder):
         if problem == "raises":
             raise ValueError("the party list does not read")
-        curseadd.time.sleep(5)
+        never.wait()
 
-    with pytest.raises(RouteError, match="party"):
-        curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder", reader)
+    try:
+        with pytest.raises(RouteError, match="party"):
+            curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder", reader)
+    finally:
+        never.set()
     assert "S" not in guest.keys
     _keys_allowed(screens, guest)
+
+
+def test_the_party_read_bound_needs_no_unix_signal(tmp_path, monkeypatch):
+    """Windows has no SIGALRM or interval timer; the bound must not reach for either."""
+    for name in ("SIGALRM", "setitimer", "ITIMER_REAL", "alarm"):
+        monkeypatch.delattr(signal, name, raising=False)
+    screens, guest = _screens(tmp_path, ROUTE_ONE)
+    curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder",
+                   lambda holder: _live("GALAIN", "HOLLAND", "ROSALIND"))
+    assert guest.keys[-2:] == ["S", "D"]
+    assert curseadd.bounded(lambda holder: holder * 2, "ab", 5) == "abab"
 
 
 def test_drive_stops_when_the_picker_closes_early(tmp_path):

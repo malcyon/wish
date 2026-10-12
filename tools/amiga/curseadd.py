@@ -18,8 +18,8 @@ import json
 import pathlib
 import re
 import shutil
-import signal
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -70,7 +70,7 @@ def cha_stem(name: str) -> str:
 
     A player character's space is stored as 0xFF, which the writer keeps.
     """
-    return "".join(c for c in name if c not in _CLEANED).upper()
+    return "".join(c.upper() if "a" <= c <= "z" else c for c in name if c not in _CLEANED)
 
 
 def name_key(name: str) -> str:
@@ -417,20 +417,29 @@ def mute(guest: Any, out: pathlib.Path, timeout: float) -> pathlib.Path:
 
 
 def bounded(reader: Callable, holder: str, seconds: float) -> Any:
-    """`reader(holder)`, interrupted after `seconds`; any failure is a stop before the save."""
-    def expired(signum, frame):
-        raise TimeoutError(f"the party read took over {seconds:.0f}s")
+    """`reader(holder)` in a worker thread given `seconds`; a failure or a timeout stops the save.
 
-    previous = signal.signal(signal.SIGALRM, expired)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        return reader(holder)
-    except Exception as exc:  # noqa: BLE001 - the save waits on this read, whatever stops it
+    A thread and `join` work on every platform, where an alarm signal exists only on POSIX.
+    A reader still running at the timeout is left to finish on its own daemon thread.
+    """
+    result: dict[str, Any] = {}
+
+    def work() -> None:
+        try:
+            result["value"] = reader(holder)
+        except BaseException as exc:  # noqa: BLE001 - handed to the caller below
+            result["error"] = exc
+
+    worker = threading.Thread(target=work, name="curseadd-party-read", daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise RouteError(f"the party did not read before the save: no answer in {seconds:.0f}s")
+    if "error" in result:
+        exc = result["error"]
         raise RouteError(f"the party did not read before the save: "
                          f"{type(exc).__name__}: {exc}") from exc
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous)
+    return result["value"]
 
 
 def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> dict:
@@ -453,17 +462,16 @@ def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> di
         screens.press("A", "add_picker")
         screens.sleep(5.0)
         shown = screens.wait(("add_picker", "loaded_menu"), 60, past=("add_picker",))
-        if shown == "add_picker" and number == count - 1:
-            # A list closing late would put E on the party menu, where it is EXIT FROM GAME.
-            screens.sleep(2.0)
-            shown = screens.wait(("add_picker", "loaded_menu"), 30, past=("add_picker",))
         if shown == "loaded_menu":
             require(number == count - 1,
                     f"the picker closed after {number + 1} of {count} characters")
             break
     else:
-        screens.press("E", "add_picker")
-        screens.wait(("loaded_menu",), 30, past=("add_picker",))
+        # E on the party menu is EXIT FROM GAME, so the grab that matches the ADD list is the
+        # last thing before the key; a list that closed late is taken as closed.
+        if screens.wait(("add_picker", "loaded_menu"), 30) == "add_picker":
+            screens.press("E", "add_picker")
+            screens.wait(("loaded_menu",), 30, past=("add_picker",))
     live = bounded(reader, holder, screens.left(READ_LIMIT))
     found: dict[str, Any] = {"live": live, "live_fields": check_live(live, manifest)}
     # ADD leaves the last character added highlighted; NP7 moves up the list.
