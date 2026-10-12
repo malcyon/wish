@@ -3,9 +3,11 @@ and its bar.
 
 The fake draws the map bar, the status line's `x,y facing clock` and the
 tavern's `PUNCH BARKEEP HAVE A DRINK LEAVE` as text in a stand-in font, as
-DOS Curse draws them at 3,14 and at 6,10.  What is pinned: the walk follows
-the area's map to the tavern and bans an edge it could not cross; the
-tavern's bar is answered with `PUNCH BARKEEP` only once its text has been
+DOS Curse draws them at 3,14 and at 6,10.  What is pinned: the walk is
+planned over the area's map to the tavern, and bans an edge it could not
+cross; it is planned only with the party confirmed in Tilverton, by the live
+area byte or, when that does not read, by the loaded save with nothing since
+the load able to have moved the party; the tavern's bar is answered with `PUNCH BARKEEP` only once its text has been
 read, with `LEAVE` once a fight has been met; and a bar whose text is
 anything else is never answered and stops the step.
 """
@@ -141,14 +143,21 @@ def font(monkeypatch):
     monkeypatch.setattr(da.Driver, "display_font", lambda self: _FONT, raising=False)
 
 
-def _driver(game, monkeypatch, geo=None):
+def _driver(game, monkeypatch, geo=None, live=1, saved=1):
+    """A Curse driver on `game` whose tavern map is `geo`, whose live area
+    byte reads `live` (None: the read fails) and whose loaded save is in
+    area `saved`."""
     d = da.Driver(game, lambda **k: None, "A", "curse", party_size=5)
     d.logged = []
     d.note = lambda **k: d.logged.append(k)
     d.record_world(game.capture())
     d.where = "map"
-    monkeypatch.setattr(d, "_tavern_geo", lambda: (("GEO2.DAX block 1", geo) if geo
-                                                    else ("in area 4", None)))
+    monkeypatch.setattr(d, "_tavern_map", lambda: (
+        ("GEO2.DAX block 1", geo) if geo else ("no GEO*.DAX holds block 1", None)))
+    monkeypatch.setattr(d, "_live_area", lambda: (
+        (live, "live area DS:12E0") if live is not None
+        else (None, "the live area did not read (no halt)")))
+    monkeypatch.setattr(d, "_saved_area", lambda: (saved, "area from SAVGAMA.DAT"))
     return d
 
 
@@ -165,7 +174,7 @@ def test_the_status_line_reads_as_a_square_and_a_facing(tmp_path):
     assert da.status_place(blank, _FONT) is None
 
 
-def test_the_walk_follows_the_map_to_the_tavern_and_punches_the_barkeep(
+def test_the_walk_is_planned_to_the_tavern_and_punches_the_barkeep(
         tmp_path, monkeypatch, font, clock):
     game = FakeTavern(tmp_path)
     d = _driver(game, monkeypatch, OpenGeo())
@@ -193,13 +202,52 @@ def test_a_door_the_map_draws_open_is_banned_and_the_walk_goes_round(
     assert game.state == "after" and game.keys.count("p") == 1
 
 
-def test_without_the_area_map_the_walk_explores_as_before(tmp_path, monkeypatch, font):
+@pytest.mark.parametrize("live,moved,saved,status,geo,route,why", [
+    # The live area byte decides whatever the save holds.
+    (1, None, 4, True, True, True, "live area DS:12E0: area 1 at 3,14"),
+    (4, [], 1, True, True, False, "area 4, not 1"),
+    # No live byte: the save stands in only while nothing can have moved.
+    (None, [], 1, True, True, True, "area from SAVGAMA.DAT: area 1"),
+    (None, [], 4, True, True, False, "area 4, not 1"),
+    (None, ["walk"], 1, True, True, False, "walk may have moved the party"),
+    (None, ["press", "restore"], 1, True, True, False, "press, restore may have"),
+    (None, None, 1, True, True, False, "no load has run"),
+    # No square on the status line, or no map: no route.
+    (1, [], 1, False, True, False, "the status line reads no square"),
+    (1, [], 1, True, False, False, "no GEO*.DAX holds block 1"),
+])
+def test_the_walk_is_routed_only_with_the_party_confirmed_in_tilverton(
+        tmp_path, monkeypatch, font, live, moved, saved, status, geo, route, why):
     game = FakeTavern(tmp_path)
-    d = _driver(game, monkeypatch, None)
-    walker = d._fight_walker()
-    assert type(walker) is da.Explorer
-    assert _events(d, "fight-route") == [
-        {"event": "fight-route", "route": False, "why": "in area 4", "target": None}]
+    d = _driver(game, monkeypatch, OpenGeo() if geo else None, live=live, saved=saved)
+    d.moved_since_load = moved
+    screen = game.frame() if status else dosbox.Screen(W, H, bytes(W * H * 3))
+    walker = d._fight_walker(screen)
+    assert (type(walker) is da.RouteWalk) is route
+    event = _events(d, "fight-route")[0]
+    assert event["route"] is route and why in event["why"]
+    assert event["target"] == ([6, 10] if route else None)
+
+
+def test_steps_that_can_move_the_party_are_counted_from_the_load(tmp_path):
+    game = FakeTavern(tmp_path)
+    d = da.Driver(game, lambda **k: None, "A", "curse", party_size=5)
+    for kind in ("view", "begin", "camp"):
+        d.step_begins(kind)
+    assert d.moved_since_load is None
+    d.moved_since_load = []          # what `load` sets
+    for kind in ("view", "begin", "camp", "save", "leave", "fight"):
+        d.step_begins(kind)
+    assert d.moved_since_load == []
+    d.step_begins("walk")
+    d.step_begins("turn")
+    assert d.moved_since_load == ["walk", "turn"]
+
+
+def test_the_live_area_needs_a_debugger(tmp_path, monkeypatch):
+    monkeypatch.delattr(FakeTavern, "attach")
+    d = da.Driver(FakeTavern(tmp_path), lambda **k: None, "A", "curse", party_size=5)
+    assert d._live_area() == (None, "no debugger")
 
 
 def _tick_at(game, d):

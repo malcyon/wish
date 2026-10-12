@@ -13,6 +13,7 @@ Tests for the DOS port: the DOS saved game and character record, the DOS record 
 | `test_dosbox.py` | Checks `tools/dos/dosbox.py`'s PPM decoding, digests, bar and area readers, pool-slot claiming and save-staging rules without starting an emulator. |
 | `test_dosbox_walked.py` | Checks `judge_step` and `run_walked` in `tools/dos/dosbox.py` tell a walk from a wall from a driver that pressed nothing, from recorded readings. |
 | `test_dosboxx.py` | Checks `tools/dos/dosboxx.py`'s segmented addressing, chunked memory reads, debugger commands and config against a stubbed DOSBox-X. |
+| `test_doscursetavern.py` | Checks that `tools/dos/acceptance.py`'s Curse `fight` plans its walk to Tilverton's tavern only with the party confirmed in that area, goes round a door it cannot pass, answers the tavern's bar with `PUNCH BARKEEP` only once its text reads true and with `LEAVE` after a fight, and stops at any other bar with no key pressed. |
 | `test_dosdisk.py` | Checks that the `.d64` disk built from a DOS party reads back through `goldbox.savegame` and `goldbox.c64_codec` as the DOS party's own. |
 | `test_dosdropsweep.py` | Checks that the `0x0E6` column of `tools/dos/dosdropsweep.py` reports a former level from the layout's own field name. |
 | `test_dosencrecompute.py` | Checks the encumbrance recompute `tools/dos/dosencrecompute.py` reads out of the shipped binaries, on the player's own copy of the archives. |

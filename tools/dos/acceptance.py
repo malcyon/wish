@@ -89,7 +89,7 @@ a source whose title does not match `--title`:
 | `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight first-bar` | Pool, Curse and Silver Blades, from the map: walk into a fight as `fight` does, log `placement` (judged from each square, as a dead member reads off the map but its fallen figure is drawn) and who acts at the first command bar, shoot it (`first_bar_shot`), and stop there with nothing pressed at it; no fight is fought out, so only `shot` and `read` may come after it |
-| `fight`, `fight 900` | Pool: walk with `dosfightwatch.walk_to_encounter` until a fight bar shows, answer each bar by `PoolOfRadiance.COMBAT_KEYS`, log the command bars as below, and end on the map once its bar has held `FIGHT_SETTLED` seconds; one fight a boot.  Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  Curse's first fight of a boot whose loaded save is in Tilverton (area 1) walks instead over the area's `GEO` to the tavern at 6,10 (`RouteWalk`, `fight-route` in `run.jsonl`), and the tavern's bar, read as text with the title's font, is answered `PUNCH BARKEEP` before a fight and `LEAVE` after one (`tavern`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
+| `fight`, `fight 900` | Pool: walk with `dosfightwatch.walk_to_encounter` until a fight bar shows, answer each bar by `PoolOfRadiance.COMBAT_KEYS`, log the command bars as below, and end on the map once its bar has held `FIGHT_SETTLED` seconds; one fight a boot.  Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds; the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  Curse's first fight of a boot, with the party confirmed in Tilverton (area 1) -- the status line reads a square and the live area byte is 1, or, when that byte does not read, the loaded save is in area 1 and no step since the load can have moved the party (`STILL_STEPS`) -- walks instead over the area's `GEO` to the tavern at 6,10 (`RouteWalk`, `fight-route` in `run.jsonl`), and the tavern's bar, read as text with the title's font, is answered `PUNCH BARKEEP` before a fight and `LEAVE` after one (`tavern`).  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool (35 and 49), Curse and Silver Blades (49), from the map, `load` first, with each title's addresses (`dosfightwatch.PRAYER_LAYOUTS`).  Pool walks to an encounter (`walk_to_encounter`) and arms at the encounter menu; Curse and Silver Blades walk as `fight` does (Silver Blades' area 16 needs `--stage-var 4C2D=1` here too) and arm at the first command bar, once `placement` is logged and `QUICK` pressed there.  At that point it reads every member's effect nodes and Prayer's handler table, breaks on the id-49 stub (and Pool's id-35 stub) and the attack roll's stub (Pool's `08D2:003E`, the table's segment less the Prayer unit plus the attack unit), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar (Pool by `COMBAT_KEYS`, Curse and Silver Blades by `FIGHT_KEYS`), and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and the two roll bytes the +1 helper raises (Pool's `DS:0x6816` and `DS:0x6822`).  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it, and in Curse and Silver Blades only once a monster's attack has also reached the penalty (`monster_penalties`), which a conclusive run there needs (only a list-10 penalty, an attack, counts as a monster's attack; a saving-throw penalty, list 12, does not; and a later round replaces an ally's round until a member carrying the node has completed one); for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, at the defeat screen (Curse and Silver Blades), or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu or first command bar came more than `PRAYER_BOOT_SECONDS` after the driver was made (Pool's walk is bounded by its 40 steps, the other two's by `FIGHT_SECONDS`, and both by the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
 
@@ -1841,7 +1841,7 @@ FIGHT_KEYS = {"command": "q", "encounter": "c", "continue": "Return",
               "treasure": "e", "treasure_left": "n", "yes_no": "n",
               "continue_battle": "n", "locked": "e"}
 #: Curse's Tilverton tavern, area 1, square 6,10: the first `fight` of a
-#: boot whose loaded save is in that area walks there over the area's `GEO`
+#: boot with the party confirmed in that area walks there over the area's `GEO`
 #: (`RouteWalk`), as the C64 `fight` step does, since Tilverton's own roll
 #: starts no fight.  Its bar, read with the title's font, is answered with
 #: `PUNCH BARKEEP`, which starts the brawl, until a fight has been met, and
@@ -1850,6 +1850,14 @@ CURSE_TAVERN_AREA = 1
 CURSE_TAVERN = (6, 10)
 CURSE_TAVERN_BAR = ("PUNCH", "BARKEEP", "HAVE", "A", "DRINK", "LEAVE")
 TAVERN_KEYS = {"punch": "p", "leave": "l"}
+#: The map the tavern walk is planned on: Tilverton's own, `GEO2.DAX` block 1,
+#: byte for byte the C64 `GEO01`.
+CURSE_TAVERN_GEO = 1
+#: Steps that leave the party on the square the load put it on.  When the
+#: live area cannot be read, the tavern walk is planned from the loaded save
+#: only while every step since the load is one of these.
+STILL_STEPS = frozenset({"view", "begin", "camp", "save", "leave", "sheet",
+                         "display", "items", "shot", "read", "memorize", "icon"})
 #: The status line's text row and the cells its `x,y facing clock` text
 #: spans, read with the title's font.
 STATUS_ROW = dosbox.STATUS[1] // CELL
@@ -4055,6 +4063,10 @@ class Driver:
         #: The `fight` steps begun so far; the first-bar key and Alt+X are
         #: the first fight's only.
         self.fights = 0
+        #: The kinds of the steps begun since the last `load` that may have
+        #: moved the party (`STILL_STEPS` and `fight` aside), or None before
+        #: any load.
+        self.moved_since_load: list[str] | None = None
         #: The game's data segment, once a fight's combatants have read true.
         self.combat_ds: int | None = None
         #: The title's text font, once `display` has read it.
@@ -4468,6 +4480,7 @@ class Driver:
     # -- the steps ---------------------------------------------------------
 
     def load(self) -> dict:
+        self.moved_since_load = []
         if self.title.key == "ssb":
             return self._load_ssb()
         if self.title.key == "darkness":
@@ -5839,7 +5852,7 @@ class Driver:
         first_fight = self.fights == 1
         column = status_column(key)
         enter, leave = MOVE_KEYS.get(key, (None, None))
-        walker = self._fight_walker() if first_fight else Explorer()
+        walker = self._fight_walker(map_screen) if first_fight else Explorer()
         state = self._fight_state(first_fight, enter)
         if first_bar:
             state.update(first_bar_key=None, intervene=False, stop_at_first=True)
@@ -6372,32 +6385,73 @@ class Driver:
         self._answer(FIGHT_KEYS[kind], glyphs, kind, state)
         return False
 
-    def _fight_walker(self) -> Explorer:
-        """`RouteWalk` to Curse's tavern when the loaded save is in its area
-        and that area's `GEO` is found in the game's archives, else
-        `Explorer`; the choice is logged as `fight-route`."""
+    def _fight_walker(self, screen: dosbox.Screen) -> Explorer:
+        """`RouteWalk` to Curse's tavern when the party is confirmed in its
+        area now, else `Explorer`; the choice is logged as `fight-route`.
+
+        The party is confirmed there when the status line on `screen` reads
+        as a square and the live area byte (`_live_area`) is the tavern's.
+        When that byte cannot be read, the loaded save's area stands in for
+        it, but only while no step since the load can have moved the party
+        (`STILL_STEPS`).
+        """
         if self.title.key != "curse":
             return Explorer()
-        why, geo = self._tavern_geo()
+        why, geo = self._tavern_route(screen)
         self.note(event="fight-route", route=geo is not None, why=why,
                   target=list(CURSE_TAVERN) if geo is not None else None)
         if geo is None:
             return Explorer()
         return RouteWalk(geo, CURSE_TAVERN, self.display_font())
 
-    def _tavern_geo(self):
+    def _tavern_route(self, screen: dosbox.Screen):
         """Why the walk is or is not routed, and the tavern area's `Geo`."""
-        from goldbox.geo import Geo  # noqa: PLC0415
+        place = status_place(screen, self.display_font())
+        if place is None:
+            return "the status line reads no square", None
+        area, how = self._live_area()
+        if area is None:
+            if self.moved_since_load is None:
+                return f"{how}, and no load has run in this boot", None
+            if self.moved_since_load:
+                return (f"{how}, and {', '.join(self.moved_since_load)} may have "
+                        "moved the party since the load"), None
+            area, saved = self._saved_area()
+            how = f"{how}; {saved}"
+        if area != CURSE_TAVERN_AREA:
+            return f"{how}: area {area}, not {CURSE_TAVERN_AREA}", None
+        why, geo = self._tavern_map()
+        return f"{how}: area {area} at {place[0]},{place[1]}; {why}", geo
 
+    def _live_area(self) -> tuple[int | None, str]:
+        """The area byte of the running game (`dosnoencounters.LiveVariables`),
+        and how it was read, or None and why not."""
+        if not hasattr(self.s, "attach"):
+            return None, "no debugger"
+        try:
+            with dosnoencounters.LiveVariables(self.s, dosnoencounters.CURSE) as live:
+                return live.area(), f"live area DS:{live.ds:04X}"
+        except (dosnoencounters.SwitchError, dosboxx.NotHalted, RuntimeError,
+                ValueError, OSError) as e:
+            return None, f"the live area did not read ({e})"
+
+    def _saved_area(self) -> tuple[int | None, str]:
+        """The loaded save's area, and where it came from."""
         path = self.save_path(self.slot)
         try:
             save = path.read_bytes()
-            area = dos_savegame.current_area(save)
-            block = dos_savegame.geo_block(save)
+            if dos_savegame.outdoors(save):
+                return None, f"{path.name} was saved outdoors"
+            return dos_savegame.current_area(save), f"area from {path.name}"
         except (OSError, dos_savegame.DosSaveError, ValueError) as e:
-            return f"{path.name} unread: {e}", None
-        if area != CURSE_TAVERN_AREA or dos_savegame.outdoors(save):
-            return f"{path.name} is in area {area}, not {CURSE_TAVERN_AREA}", None
+            return None, f"{path.name} unread: {e}"
+
+    def _tavern_map(self):
+        """`CURSE_TAVERN_GEO` out of the game's `GEO*.DAX`, and where, or
+        None and why not."""
+        from goldbox.geo import Geo  # noqa: PLC0415
+
+        block = CURSE_TAVERN_GEO
         try:
             game = self.title.find_game()
         except FileNotFoundError as e:
@@ -7807,6 +7861,9 @@ class Driver:
         """Forget a pending scribe when a step that may leave camp begins."""
         if kind not in SCRIBE_KEEPS:
             self.scribing = False
+        if (self.moved_since_load is not None
+                and kind not in STILL_STEPS | {"load", "fight"}):
+            self.moved_since_load.append(kind)
 
     def rest(self, minutes: int) -> dict:
         """Rest for `minutes`, or until an event ends it early.
