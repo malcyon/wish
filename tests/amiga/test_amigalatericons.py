@@ -480,8 +480,8 @@ def test_the_load_table_comes_before_the_recolour():
     ready, _ = later.compose(heads, bodies, 2, 7, 1, colours, ENTRY, PARTS,
                              LOAD)
     assert ready[0][5] == ready[20][5] == 0
-    plain, _ = later.compose(heads, bodies, 2, 7, 1, colours, ENTRY, PARTS)
-    assert plain[0][5] == plain[20][5] == 8
+    unloaded, _ = later.compose(heads, bodies, 2, 7, 1, colours, ENTRY, PARTS)
+    assert unloaded[0][5] == unloaded[20][5] == 8
 
 
 def test_a_name_is_found_whatever_its_trailing_spaces(monkeypatch):
