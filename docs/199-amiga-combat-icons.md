@@ -136,13 +136,45 @@ colour choices reach -- the six parts are 1, 2, 3, 4, 6 and 7 and their
 highlights, so 0, 5, 8 and 13 keep the identity on DOS and entries 0, 8, 10
 and 14 keep it here.
 
-CONFIRMED as bytes, on both copies of each disk set on this machine. **What a
-player sees is UNKNOWN**: entry 0 is the Amiga screen's background colour
-unless the combat screen's palette says otherwise, and DOS draws the same
-pixels magenta. The experiment: boot Amiga Curse, give a character head 6, and
-photograph his figure on the combat arena beside the DOS one. Nothing a
-conversion writes changes it either way, because a conversion writes indices
-and never pixels.
+CONFIRMED as bytes, on both copies of each disk set on this machine. **They
+are drawn, not see-through**: their mask bit is clear, and the blitter draws
+every pixel whose mask bit is clear (next section), so the ICON screen shows
+them in palette entry 0 -- dark grey in Curse, whose ICON palette exchanges
+entries 0 and 8, and black in Silver Blades. That is a code reading, PROBABLE
+until a capture of a head 2, 4 or 6 figure shows it; the earlier "UNKNOWN"
+here assumed entry 0 might be the background, which the mask rules out. DOS
+draws the same pixels magenta. On the combat arena the colour depends on that
+screen's palette, which has not been read. Nothing a conversion writes changes
+it either way, because a conversion writes indices and never pixels.
+
+## The ICON screen
+
+What a player sees after Camp, Alter, Icon, read from the code and drawn by
+`goldbox/amiga_later_icons.py` off the player's own disks
+(`tools/icons/amigalatericons.py --palette`, `--compose`, `--capture`;
+`tests/amiga/test_amigalatericons.py`). Addresses are file offsets into
+`/Curse` and `/Secret`.
+
+| rule | grade | evidence |
+|---|---|---|
+| A tile's mask plane is set where it is see-through on the disk; the loader inverts it and the blitter draws through it, so an opaque pixel replaces what is under it | CONFIRMED by code | inverter `0x3B6F8` / `0x3F8F8`, hooked for every `TILE` library at `0x3B5BC` / `0x3F7BC`; masked blit `0x3B79A` with minterm `$0FCA` at `0x3F9D8` / `0x4440C`, mask plane on channel A |
+| The recolour table is DOS's, carried into palette entries: `t[e[p]] = e[low nibble]`, `t[e[p + 8]] = e[high nibble]` for each part `p`, `e` the DOS-value table | CONFIRMED by code | builder `0x24EDC`-`0x24F82` / `0x26754`-`0x267FA`; applied to all four loaded buffers by `0x3C126`, which skips the mask plane |
+| The head **covers** the body: the draw helper blits the body, then the head at the same place | CONFIRMED by code | `0x34F44` / `0x3868A`, both slots through `0x3BD20`; every tile's two offsets are 0 |
+| Overwriting differs from DOS's OR in 34 Curse and 30 Silver Blades `(head, body, size, pose)` figures, 40 and 36 pixels, all at size 1 | CONFIRMED, measured | `test_some_small_figures_have_head_pixels_over_body_pixels`; no specimen uses one |
+| Every one of the 21 specimens composes to the DOS figure through the entry table, but for the plume highlight (ARIEL 10 pixels, STORMBRINGER 16) | CONFIRMED, measured | `test_every_specimen_is_the_dos_figure_through_the_entry_table` |
+| The box behind the ready pose is `COMSPR.TLB` art 25 and behind the action pose art 153, in both titles (DOS Silver Blades uses 25 for both) | CONFIRMED by code | loaded into slot 25 at `0x1D86C`; ICON row drawn by `0x157AA` / `0xB832`; both boxes are opaque |
+| Curse's ICON screen shows `ALWAYS.TLB` block 87: block 0's colours with entries 0 and 8 exchanged (and entry 11 changed), so the outline is black and entry 0 dark grey, as on DOS | CONFIRMED by code, colours PROBABLE until captured | ICON routine `0x15F04` calls `0x3549E`, which installs block `0x57`; the Alter menu reinstalls block 0 on return (`0x13F8`) |
+| Silver Blades' ICON screen installs no palette, so it shows `ALWAYS.TLB` block 0: the outline (entry 8) is dark grey, where DOS Silver Blades draws it black | PROBABLE | the only palette calls are start-up `0x1D756` and the fades `0x1CA5A`, `0x1CA94`, all block 0 |
+| Silver Blades' `ALWAYS.TLB` is packed (header byte 10 = 5): an LZ77 variant decoded at `0x45524`, which unpacks the file to exactly its header's size | CONFIRMED | `goldbox.amiga_later_icons.unpack_method_5`; `test_silver_blades_packed_library_holds_one_palette_block_0` |
+| Poses sit at (32, 56) ready and (104, 56) action on the 320x200 screen; Curse repeats the figure at (32, 104) and (104, 104) as the trial row, Silver Blades draws one row | PROBABLE | place is `2 * (word - 0x1F40)` (`0x3E548`), word `0x1F44 + 12 * cell` (`0x34F44`), cells from `0x15F3A` / `0xC68E`; labels "ready    action" drawn under each row |
+
+A palette byte becomes the nibble `(byte + 8) // 17` (`0x3F2FE`) and the
+screen shows nibble `n` as `17 * n`. The ICON screen's keys: `E` is Exit in
+both titles (gadget key `$45`), and Alter is left with its own Exit.
+
+What only a capture settles: the two palettes as shown, the places on the
+canonical crop, and a plume-highlight figure (no captured party member has
+head 2, 4 or 6 at size 2, or 6 at size 1).
 
 ## What this means for a conversion
 

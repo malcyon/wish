@@ -2155,6 +2155,7 @@ graph LR
   amiga_later --> layout
   amiga_later --> neutral
   amiga_later --> portraits
+  amiga_later_icons --> amiga_hunks
   amiga_pod -.->|deferred| amiga_pod_recompute
   amiga_pod --> amiga_port
   amiga_pod --> amiga_shared
