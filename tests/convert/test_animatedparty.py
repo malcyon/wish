@@ -1732,3 +1732,173 @@ def test_a_pools_of_darkness_zombie_with_no_hit_points_reads_back_living(
         monkeypatch, tmp_path, 0xB3, down=True)
     assert arrived.get("hp_current") == 1
     assert arrived.get("active") is True
+
+
+# -- a zombie player character whose control byte an effect end lowered ------
+#
+# A confusion or charm end clears `$B3` to 0 and leaves the status animated
+# (Amiga Curse handlers 137 and 142), so he reaches Curse's, Silver Blades'
+# and Pools of Darkness' saves as an animated member under a player
+# character's control byte.
+
+def _lowered_zombie(key, hp=None):
+    """The title's specimen's first member with the cast's bytes and the
+    end state an effect end leaves: control 0, quickfight cleared, status
+    still animated. He carries no Animate Dead node, as one imported from
+    Pool does not."""
+    first = _later_party(key)[0]
+    raw = bytearray(first.to_bytes())
+    o = _LATER_OFFSETS[key]
+    for name, value in _CAST.items():
+        if name in o:
+            raw[o[name]] = value
+    raw[o["ctl"]] = raw[o["quick"]] = 0
+    if hp is not None:
+        raw[o["hp"]] = hp
+    return dos_codec.DosCharacter(bytes(raw), first.items,
+                                  tuple(first.effects), source="staged",
+                                  deltas=first.deltas)
+
+
+@pytest.mark.parametrize("port", ["dos", "amiga"])
+@pytest.mark.parametrize("key", _LATER_TITLES)
+def test_a_lowered_zombie_player_converts_living(key, port):
+    zombie = _lowered_zombie(key, hp=0)
+    source = _later_from(key, zombie, port)
+    assert (source.get("status"), source.get("npc")) == ("animated", False)
+    assert c64_codec.zombie_player(source)
+    living = c64_codec.living_player(source)
+    assert (living.get("status"), living.get("active"),
+            living.get("hp_current")) == ("okay", True, 1)
+    assert living.get("spells_memorised") == source.get("spells_memorised")
+    record = dos_codec.write(living, deltas=zombie.deltas)[0]
+    o = _LATER_OFFSETS[key]
+    assert [record[o[n]] for n in
+            ("status", "active", "side", "quick", "ctl", "move")] \
+        == [0, 1, 0, 0, 0, 12]
+    if key == _LATER_CURSE:
+        assert record[o["turn"]] == record[o["mtype"]] == 0
+    back = (amiga_pod.pod_to_neutral(amiga_pod.write_pod(living)[0].to_bytes())
+            if key == _LATER_POD else
+            amiga_later.to_neutral_later(amiga_later.write_later(living, key)[0]))
+    assert (back.get("status"), back.get("active"), back.get("movement")) \
+        == ("okay", True, 12)
+    plain = _later_from(key, _later_party(key)[0], port)
+    assert (_later_drops(key, living, zombie.deltas)
+            == _later_drops(key, plain, zombie.deltas))
+
+
+def test_an_animated_companion_is_still_not_a_zombie_player():
+    for control in (0x80, 0xB2, 0xFF):
+        char = _dos_zombie(0, control, True)
+        assert not c64_codec.zombie_player(char)
+        assert c64_codec.living_player(char) is char
+
+
+def _lowered_save_as(tmp_path, key, port):
+    """Save As to `port` of the title's specimen with `_lowered_zombie` as
+    its first member."""
+    import shutil
+
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+
+    name = {_LATER_CURSE: "amigatodos-curse-resave",
+            _LATER_SSB: "amigatodos-ssb-resave"}[key]
+    stage = tmp_path / "src"
+    shutil.copytree(gamedata.specimen(name), stage)
+    stage.chmod(0o755)
+    for one in stage.iterdir():
+        one.chmod(0o644)
+    (stage / "CHRDATA1.SAV").write_bytes(_lowered_zombie(key).to_bytes())
+    party = roster.Party(str(stage / "SAVGAMA.DAT"))
+    source = party.source or convert.Source.detect(party.path)
+    where = tmp_path / "out"
+    where.mkdir()
+    try:
+        if port == "c64":
+            assets = saveplan.resolve_assets(
+                source, "c64", game_files=convertdrops.game_files)
+            target = where / "out.d64"
+        else:
+            amiga = convertdrops.amiga_game_disks(where).get(key)
+            if amiga is None:
+                pytest.skip(f"needs {key}'s own Amiga game disk")
+            assets = saveplan.resolve_assets(
+                source, "amiga", game_files=convertdrops.game_files,
+                amiga_disk=amiga,
+                amiga_disk_one=convertdrops.amiga_disks_one(where).get(key))
+            target = where / "out.adf"
+    except (FileNotFoundError, saveplan.MissingAssets):
+        pytest.skip(f"needs {key}'s own game files")
+    plan = saveplan.prepare_save_as(party, port, target, assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    return plan
+
+
+@pytest.mark.parametrize("port", ["c64", "amiga"])
+@pytest.mark.parametrize("key", [_LATER_CURSE, _LATER_SSB])
+def test_save_as_converts_a_lowered_zombie_living(tmp_path, key, port):
+    plan = _lowered_save_as(tmp_path, key, port)
+    (image,) = plan.files
+    if port == "c64":
+        from goldbox.d64 import D64
+        from goldbox.savegame import load_save
+
+        out = tmp_path / "read-back.d64"
+        out.write_bytes(plan.files[image])
+        _game, sg0, sg1 = load_save(D64.open(str(out)))
+        assert [(sg1.roster(s.index).roster_in_use,
+                 s.record.get("flags_0b8") & 0x80) for s in sg0.characters] \
+            == [(0x01, 0)] * len(sg0.characters)
+    else:
+        from goldbox import amiga_savegame
+        from goldbox.amiga_adf import AmigaDisk
+
+        save = amiga_savegame.read_slot(
+            AmigaDisk(bytearray(plan.files[image])),
+            plan.destination.slot or "A", key)
+        chars = [amiga_later.to_neutral_later(c) for c in save.characters]
+        assert chars
+        assert [(c.get("status"), c.get("npc")) for c in chars] \
+            == [("okay", False)] * len(chars)
+
+
+def test_a_pools_of_darkness_lowered_zombie_converts_living_to_the_amiga(
+        monkeypatch, tmp_path):
+    source, arrived, plan = _pod_save_as_amiga(monkeypatch, tmp_path, 0x00)
+    assert (source.get("status"), source.get("npc")) == ("animated", False)
+    assert c64_codec.zombie_player(source)
+    assert (arrived.get("status"), arrived.get("active")) == ("okay", True)
+    assert arrived.get("npc_control_byte") is None
+    assert dos_codec.window_source(arrived)[2:] == bytes((0x11, 0x22))
+    assert plan.report.losses == []
+
+
+def test_a_pools_of_darkness_amiga_lowered_zombie_reads_back_living_on_dos(
+        monkeypatch, tmp_path):
+    import shutil
+
+    from test_podsave import _dos_source, _synthetic_disk_three
+
+    from editor import convert, podsheet, saveplan
+    from editor.roster import Party
+
+    (tmp_path / "src").mkdir()
+    stage = tmp_path / "stage"
+    shutil.copytree(_pod_zombie_folder(tmp_path / "src", 0x00), stage)
+    disk = _synthetic_disk_three("A")
+    # Keep him as the Amiga writer stores an animated member, to feed the
+    # Amiga to DOS route.
+    with monkeypatch.context() as patch:
+        patch.setattr(c64_codec, "living_player", lambda char: char)
+        kept = convert.PodDosToAmiga().rehearse(
+            _dos_source(stage, "A"), "A", None, disk_three=disk, replace=True)
+    image = tmp_path / "kept.adf"
+    image.write_bytes(kept.disk)
+    party = Party(convert.Source.detect(image, slot="A"))
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "dos-out")
+    record = plan.files["CHRDATA1.SAV"]
+    flags = podsheet.TABLE["field_10c_10f"].offset
+    assert (record[flags], record[flags + 1]) == (0, 1)
+    assert record[podsheet.TABLE["movement"].offset] == 12

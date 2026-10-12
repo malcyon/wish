@@ -765,10 +765,17 @@ def roster_status(rec, roster=None):
 
 def zombie_player(char: NeutralCharacter) -> bool:
     """Whether `char` is a zombie player character: status animated under the
-    control byte DOS gives a player character it has taken over. A zombie
-    companion keeps `$B2`, so it is not one."""
-    return (char.get("status") == "animated"
-            and char.get("npc_control_byte") == DOS_PC_TAKEN_OVER)
+    control byte DOS gives a player character it has taken over, or under a
+    player character's own control byte.
+
+    The second is the zombie whose `$B3` a confusion or charm end cleared
+    (Amiga Curse handlers 137 and 142 clear it and leave the status), and
+    the Pool C64 `$03` with `0x0B8` bit 7 clear. Only Animate Dead writes the
+    status, and a zombie companion keeps `$B2`, so it is not one."""
+    if char.get("status") != "animated":
+        return False
+    return (char.get("npc_control_byte") == DOS_PC_TAKEN_OVER
+            or not char.get("npc"))
 
 
 def companion_mon(char: NeutralCharacter,
