@@ -58,8 +58,9 @@ BOX_BLOCK = 15
 
 #: The top-left pixel of each pose, as in :data:`goldbox.dos_icons.PLACES`:
 #: the ICON routine draws the box and both poses at cells (1, 2) and (4, 2)
-#: for `OLD` and (1, 4) and (4, 4) for `NEW` (`0x17EEF`, `0x17F58`), as the
-#: other three titles do.
+#: for `OLD` and (1, 4) and (4, 4) for `NEW` (`0x17EEF`, `0x17F58`), and the
+#: game's own ICON screens show them at these pixels
+#: (`tools/icons/dospodicons.py --run`).
 PLACES = {("old", 0): (32, 56), ("old", 1): (104, 56),
           ("new", 0): (32, 104), ("new", 1): (104, 104)}
 CELL = 24
@@ -239,9 +240,9 @@ def icon_palette(art: PodGameArt) -> dict[int, tuple[int, int, int]]:
     """The `(r, g, b)` colour of every palette entry the ICON screen sets.
 
     Entries 0-15 are the sixteen EGA colours, which `GAME.EXE`'s table at
-    `ds:0x9D6` writes (`GAME.OVR:0x1A106`) and every block that sets them
-    repeats; the ICON routine then sets the box block's own entries
-    (`GAME.OVR:0x17E45`).
+    `ds:0x9D6` writes (`GAME.OVR:0x1A106`), every block that sets them
+    repeats, and the game's ICON screens show; the ICON routine then sets
+    the box block's own entries (`GAME.OVR:0x17E45`).
     """
     palette = dict(enumerate(EGA))
     for i, (r, g, b) in enumerate(art.box.colours):

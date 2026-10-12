@@ -6,7 +6,9 @@ read the player's DOS games and skip without them: every block decodes, Silver
 Blades' re-drawn head comes from its own file, Donald's own Pool of Radiance
 party composes, `tools/icons/dosicons.py` re-reads every rule the module
 holds out of each title's `GAME.OVR` and `START.EXE`, and Pools of Darkness'
-blocks hold part values and the archives' party composes over the box.
+blocks hold part values and the archives' party composes over the box.  The
+captured ICON screens of all four titles are compared pixel for pixel where
+they are on this machine.
 """
 
 from __future__ import annotations
@@ -535,3 +537,90 @@ def test_the_archives_pod_party_composes(pod_folder):
             drawn = dp.on_box(game.box, pose)
             assert sum(v is not None for row in pose for v in row) > 50
             assert all(v in palette for row in drawn for v in row)
+
+
+# -- Pools of Darkness against the game's ICON screen ------------------------------------
+def pod_screen(game: dp.PodGameArt, fields: dict):
+    """A 320x200 frame holding `fields`' figure at all four places."""
+    import numpy
+    dospodicons = pytest.importorskip("tools.icons.dospodicons")
+    screen = numpy.zeros((200, 320), dtype=numpy.int32)
+    poses = dospodicons.drawn(game, fields)
+    for (_, n), (x, y) in dp.PLACES.items():
+        screen[y:y + dp.CELL, x:x + dp.CELL] = numpy.array(poses[n])
+    return screen, poses
+
+
+def pod_capture_art() -> tuple[dp.PodGameArt, dict]:
+    head, body = pod_blank(10), pod_blank(24, 1)
+    head[0][:2] = [2, 3]
+    heads, bodies = pod_art(head, body)
+    box = dp.decode_block(pod_image(pod_blank(24, 0x57), first=0x40,
+                                    count=32))
+    fields = {"icon_head": 0, "icon_body": 0, "size": 2,
+              "icon_colours": SAME.hex()}
+    return dp.PodGameArt(heads, bodies, box), fields
+
+
+def test_a_pod_frame_holding_the_figure_passes_at_all_four_places():
+    dospodicons = pytest.importorskip("tools.icons.dospodicons")
+    game, fields = pod_capture_art()
+    screen, poses = pod_screen(game, fields)
+    lines = []
+    assert dospodicons.check_frame(lines.append, "X", screen, poses) == 0
+    assert lines[0].startswith("X: pass")
+
+
+def test_one_pod_pixel_out_fails_its_place_and_no_other():
+    dospodicons = pytest.importorskip("tools.icons.dospodicons")
+    game, fields = pod_capture_art()
+    screen, poses = pod_screen(game, fields)
+    x, y = dp.PLACES[("new", 1)]
+    screen[y + 23, x + 5] ^= 1
+    assert dospodicons.differences(screen, poses) == {
+        ("old", 0): 0, ("old", 1): 0, ("new", 0): 0, ("new", 1): 1}
+    lines = []
+    assert dospodicons.check_frame(lines.append, "X", screen, poses) == 1
+    assert "FAIL" in lines[0]
+
+
+def test_a_pod_stage_lays_its_bytes_over_the_save_s_and_checks_where_it_began():
+    dospodicons = pytest.importorskip("tools.icons.dospodicons")
+    fields = {"icon_head": 6, "icon_body": 31, "size": 2,
+              "icon_colours": "f0f9f9c0a260"}
+    stage = {"stage": "icon", "file": "CHRDATA6.SAV",
+             "before": {"icon_head": "06", "icon_body": "1f",
+                        "icon_colours": "f0f9f9c0a260"},
+             "after": {"icon_head": "06", "icon_body": "1f",
+                       "icon_colours": "98f9f9c0a260"}}
+    out, problems = dospodicons.staged(fields, [stage], "CHRDATA6.SAV")
+    assert out["icon_colours"] == "98f9f9c0a260" and problems == []
+    assert dospodicons.staged(fields, [stage], "CHRDATA5.SAV") == (fields, [])
+    other = dict(fields, icon_body=30)
+    _, problems = dospodicons.staged(other, [stage], "CHRDATA6.SAV")
+    assert len(problems) == 1 and "icon_body" in problems[0]
+
+
+#: The archives' Pools of Darkness party on its ICON screen: all six members
+#: as the save holds them, and PAINE again with a body colour nibble of 8.
+POD_RUNS = ("dos-icon-darkness", "dos-icon-darkness-seethrough")
+
+
+def test_every_pod_icon_capture_is_the_composed_figure(pod_folder):
+    """Each member's two poses, OLD and NEW, pixel for pixel."""
+    import json
+
+    from tools.registry import scratch
+    dospodicons = pytest.importorskip("tools.icons.dospodicons")
+    runs = [scratch.cache_dir("acceptance", "WISH-378", run)
+            for run in POD_RUNS]
+    runs = [run for run in runs if (run / "summary.json").exists()]
+    if not runs:
+        pytest.skip("no Pools of Darkness ICON-screen captures here")
+    lines = []
+    problems = sum(dospodicons.check_run(lines.append, pod_folder, None, run)
+                   for run in runs)
+    steps = sum("icon" in result for run in runs for result in json.loads(
+        (run / "summary.json").read_text())["results"])
+    assert problems == 0, lines
+    assert sum(": pass (" in line for line in lines) == steps

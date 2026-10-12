@@ -132,21 +132,31 @@ shipped `POOL4.CFG` selects; the EGA path (display mode 0) was not read.
 | The see-through value is 8: the block loader passes key 8 for `CHEAD`, `CBODY` and `COMSPR`, and the VGA blitter skips every pixel equal to the key | CONFIRMED by code | key `0x3FFA4`, `0x400AE`; stored at `+0x16` by `0x1F36`; blitter `GAME.EXE` image `0x4541`, loop `0x4776`-`0x4784`; mode 2 builds no mask (`+0x17` is 0, `0x1EF4`) |
 | In mode 2 the head is written over the body wherever the head byte is not 8, from row 0; mode 0 ORs as the other titles do | CONFIRMED by code | `GAME.OVR:0x10F8F`-`0x10FEB`, called twice by the loader |
 | The recolour is the other titles' rule: part table `ds:0x6DDD` = `06 01 02 03 04 06 07`, low nibble to part `t`, high to `t + 8`, one simultaneous substitution | CONFIRMED by code | table builder `0x11134`-`0x111BE` and the ICON copy `0x17D2D`-`0x17DB7`; substitution `GAME.EXE` image `0x3051`, VGA branch `0x34B6` |
-| So a stored 8 is see-through, a stored or recoloured 0 draws black, and a colour nibble of 8 makes its part see-through | CONFIRMED by code; not captured | the blitter compares the recoloured byte with the key |
+| So a stored 8 is see-through, a stored or recoloured 0 draws black, and a colour nibble of 8 makes its part see-through | CONFIRMED by code and by capture | the blitter compares the recoloured byte with the key. PAINE staged with body byte `98` has 10 more see-through pixels in the ready pose and 11 in the action pose than with his own `f0`, and the box shows through every one of them on the game's screen |
 | The ICON screen draws the figure from slot 12, a recoloured copy of the member's slot, at cells (1, 2) and (4, 2) for OLD and (1, 4) and (4, 4) for NEW, over `COMSPR` block 15 pose 0 behind both poses | CONFIRMED by code | routine `0x17E16`: box load `0x17E33`, copy and recolour `0x17BE4`, draw `0x17B42` with rows 2 and 4 |
 | `COMSPR` block 15 has no see-through pixel, so whatever the screen fills behind it does not show | CONFIRMED | the archives' block holds only 0x48, 0x4F and 0x57; the fill routine `GAME.EXE` image `0x3727` was not read, and `on_box` stops on a box with see-through pixels |
 | The ICON routine sets DAC entries 0x40-0x5F from the box block's header palette and no other entry | CONFIRMED by code | `0x17E45`; the routine's only other calls are menus, text, the loader and the draws |
-| DAC entries 0-15 hold the sixteen EGA colours on the ICON screen | PROBABLE | `0x1A106` writes them from `GAME.EXE` `ds:0x9D6` and applies them (`0x1A1A2`); every block in the folder whose palette covers 0-15 (`8X8D0` 202, `CURSOR` 1, `TITLE` 1-3) holds the same sixteen. Not captured |
-| The pixel places equal the other titles' measured ones, (32, 56), (104, 56), (32, 104), (104, 104) | SPECULATIVE | same cells and the same `* 3` eight-pixel units (`0x4021A`); the VGA flush from the screen buffer to video memory was not read. A VGA ICON capture settles it |
+| DAC entries 0-15 hold the sixteen EGA colours on the ICON screen | CONFIRMED for 14 of the 16 | `0x1A106` writes them from `GAME.EXE` `ds:0x9D6` and applies them (`0x1A1A2`); every block in the folder whose palette covers 0-15 (`8X8D0` 202, `CURSOR` 1, `TITLE` 1-3) holds the same sixteen. The seven captures draw entries 0-6 and 9-15 in those colours; no captured figure draws 7, and 8 is the key |
+| The pixel places equal the other titles' measured ones, (32, 56), (104, 56), (32, 104), (104, 104) | CONFIRMED by capture | same cells and the same `* 3` eight-pixel units (`0x4021A`); on all seven captures each pose matches at exactly those places and nowhere else in the frame. The code reading alone was SPECULATIVE, because the VGA flush to video memory was not read |
 | The answer to `is this icon ok?` is the menu item index, and Yes is item 0; `ds:0x5362` is 0, so Yes leaves the editor | CONFIRMED by code | `0x3B66D` returns the `Yes No` item (`ds:0x2B64`) and highlights item `[0x5362] + 1` first; `ds:0x5362` is 0 in `GAME.EXE`'s data and no instruction stores to it; `0x1846A` |
-| Both `y` and Return answer Yes | PROBABLE | the menu `0x3A422` upper-cases the key and matches the item hotkeys (`0x3A90F`), and Return takes the highlighted item; the hotkey table builder `0x3A376` was not read |
+| Both `y` and Return answer Yes | CONFIRMED by code; `y` also live | the menu `0x3A422` upper-cases the key and looks it up in the table `0x3A376` builds, entry *k* holding item *k*'s first letter or digit (`0x3A220`, from `0x3A200`); Return gives the highlighted item's letter (`0x39855`). `y` left the editor on all seven captured ICON screens |
 
-**Settling experiments.** One DOSBox-X boot of the archives' `DARKNESS`, slot
-A, reaching camp, Alter, Icon for DOMINIC: compare each pose at the four
-places against `compose` and `on_box`, which settles the places and entries
-0-15. Stage one member's `icon_colours` with a low nibble of 8 in the body
-byte (`98 ..`) first: the body should show the box through it, or the
-see-through reading is wrong.
+**The captures.** Seven ICON screens of the archives' `DARKNESS` party, slot
+A, each reached from camp with `tools/dos/acceptance.py`'s `icon N` step and
+kept under `~/.cache/wish/acceptance/WISH-378/dos-icon-darkness*`: all six
+members as the save holds them (BINKY, GUY DE VALOIS, CLARISSA, ABAGAIL and
+the two the driver step was fitted on, DOMINIC and PAINE), and PAINE again in
+a separate boot with `icon_colours` staged to `98f9f9c0a260`. The composer
+predicts every pose of every one pixel for pixel, OLD and NEW: 0 of 576
+pixels differ at all 28 places. Nothing in the composer was changed for
+them. The comparison can fail: PAINE's own colours against the staged screen
+differ in 14 and 18 pixels, another member's ready pose differs from a
+screen in 176 to 244, and each of five wrong composers -- head ORed into the
+body, head left out, nibbles swapped, see-through drawn as colour 0, or as
+colour 8 -- differs on every one of the seven, by 58 pixels or more.
+`tools/icons/dospodicons.py --run DIR` repeats the comparison from the save's
+own bytes with the run's staged bytes laid over them, and
+`tests/icons/test_dosicons.py` runs it wherever the captures are.
 
 ## `icon_dimension` `@0x06C` -- CONFIRMED
 
