@@ -304,8 +304,9 @@ def _ssb_transition() -> Phase:
 
 
 def _ssb_camp() -> Phase:
-    # Encamp on the guarded camp bar: the first key of a reload through camp LOAD, whose
-    # later screens are not measured, so it is not part of the route's reload phase.
+    # E after a fresh `world` match, and the camp bar is checked as its result: the first
+    # key of a reload through camp LOAD, whose later screens are not measured, so it is
+    # not part of the route's reload phase.
     return _phase("camp", "world", Step("key", "camp", key="E"))
 
 

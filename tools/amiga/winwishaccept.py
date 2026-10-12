@@ -1690,7 +1690,7 @@ class Controller:
                     self.summary["discovery"]["status"] = "awaiting image review"
                     self.summary["discovery"]["reason"] = "The Ruins arrival pair awaits image review"
                     return self.summary
-                # E waits for the camp bar; L goes only after it matches, and the
+                # E after a fresh `world` match; L only after `camp` matches, and the
                 # screen it opens is observed with no further key.
                 self.run_phase(camp)
                 self.game.snapshot("ssb_camp_load_terminal", self.args.holder)

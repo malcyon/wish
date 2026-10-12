@@ -3006,3 +3006,33 @@ def test_camp_load_preflight_requires_the_camp_guard(tmp_path, monkeypatch):
                        match="route has no measured guards for camp"):
         winwishaccept.preflight(args, guest=SimpleNamespace(gh=lambda *a: pytest.fail("guest")),
                                 route_for=lambda *unused: route, driver_sha=SHA)
+
+
+def test_camp_load_encamps_on_a_world_frame_taken_after_the_arrival_pair(tmp_path, monkeypatch):
+    order = []
+    controller, game, _, calls = _leave_yes_controller(tmp_path, monkeypatch)
+    controller.args.discover = "ssb-camp-load"
+    original_grab, original_press = game.grab, game.press
+    checkpoint = controller._checkpoint
+
+    def grab(state, raw, crop, timeout):
+        order.append(("grab", state))
+        return original_grab(state, raw, crop, timeout)
+
+    def press(holder, key, timeout):
+        order.append(("key", key))
+        return original_press(holder, key, timeout)
+
+    def record(name, expected, frame):
+        order.append(("checkpoint", name))
+        return checkpoint(name, expected, frame)
+
+    game.grab, game.press = grab, press
+    monkeypatch.setattr(controller, "_checkpoint", record)
+    result = controller.run_discovery()
+    assert result["failure"] is None
+    arrival = order.index(("checkpoint", "ssb_ruins_arrival"))
+    encamp = order.index(("key", "E"), arrival)
+    assert ("grab", "world") in order[arrival:encamp]
+    load = order.index(("key", "L"), encamp)
+    assert ("grab", "camp") in order[encamp:load]
