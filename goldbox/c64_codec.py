@@ -716,6 +716,12 @@ ZOMBIE_STATUS = 0x03
 ANIMATED_STATUS_TITLES = frozenset({"pool-of-radiance",
                                    "curse-of-the-azure-bonds"})
 
+#: What every Curse `MON` file holds at `0x0E6`, the place a conversion keeps
+#: a companion's DOS and Amiga combat picture: 70 of the 70 on the six game
+#: disks.  No C64 Curse code reads or writes `0x0E6`, so a companion who
+#: joined on the C64 keeps the fill, and no picture id is `$FF`.
+CURSE_NO_PICTURE = 0xFF
+
 def roster_status(rec, roster=None):
     """The roster status byte `read` reads: the roster block's when the save
     has one, else the one stored in the character record, else `None`.
@@ -3614,9 +3620,11 @@ READ_TARGETS: dict[str, str] = (
        "inventory": "read as neutral inventory, from the save's item page "
                     "or the record's sixteen slots",
        "identity_pair": "the first byte read as neutral unnamed_0ab, in "
-                        "Pool of Radiance only; Curse of the Azure Bonds "
+                        "Pool of Radiance; Curse of the Azure Bonds "
                         "and Secret of the Silver Blades never draw it "
-                        "(#258)",
+                        "(#258), and Curse reads it only for a companion "
+                        "whose byte is not the MON files' $FF fill, as the "
+                        "combat picture a conversion wrote there",
        "dual_class_slot": "with dual_class_level, read as neutral "
                           "former_levels -- named by the class the slot "
                           "belongs to -- in a title whose layout has "
@@ -4367,6 +4375,16 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     if deltas.identity_pair and rec.is_stored("identity_pair"):
         out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
                 "the C64's identity pair @0x0E6, the first byte",
+                grade("identity_pair"))
+    elif (deltas is CURSE_RECORD and is_npc
+          and rec.is_stored("identity_pair")
+          and rec.get_raw("identity_pair")[0] != CURSE_NO_PICTURE):
+        # A Curse companion's DOS and Amiga combat picture.  Nothing on the
+        # C64 reads 0x0E6, and every Curse MON file fills it with $FF, so any
+        # other value is the picture a conversion wrote here.
+        out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
+                "the C64's identity pair @0x0E6, the first byte: a Curse "
+                "companion's combat picture, as a conversion wrote it",
                 grade("identity_pair"))
 
     # A name in `READ_DROPPED` is reported **only where

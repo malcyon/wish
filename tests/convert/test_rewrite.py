@@ -852,7 +852,8 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
     his edited rendering's digest is 13, his stored byte; that case is
     tolerated by the `expected - {"unnamed_0ab"}` lower bound.  A character
     whose digest is the same before and after the edit is listed in
-    `_DIGEST_COLLIDES` and asserted unmoved with its original byte kept."""
+    `_DIGEST_COLLIDES` and asserted unmoved with its original byte kept.
+    A later-title companion's byte is his combat picture and never moves."""
     for label, party, game in _dos_parties():
         for char in party:
             before, _ = dos_codec.to_c64_record(char)
@@ -860,6 +861,11 @@ def test_an_edit_lands_on_every_dos_specimen_and_moves_nothing_else():
             out = rewrite.rewrite_dos(char, before, after, game)
             spans, _unplaced = rewrite.dos_spans(char.deltas)
             expected = _gold_moves(char.deltas, dos_only=True)
+            if dos_codec.holds_companion_picture(char.to_bytes(),
+                                                 char.deltas):
+                # A later-title companion's byte is his combat picture, which
+                # the writer keeps rather than digests, so no edit moves it.
+                expected = expected - {"unnamed_0ab"}
             # Only some Curse characters cross a movement step (72 of 325).
             optional = ({"movement_current"}
                         if char.deltas.key in dos_codec._COMBAT_REBUILD_TITLES

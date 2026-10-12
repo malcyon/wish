@@ -77,7 +77,7 @@ from . import (
     world_state,
 )
 from . import levels as level_tables
-from .c64_codec import Report
+from .c64_codec import DOS_PC_TAKEN_OVER, Report
 from .c64_codec import c64_share_from_dos as c64_share_from_dos
 from .dos_port import (
     CLASS_NUMBERS,
@@ -155,6 +155,8 @@ __all__ = [
     "WRITE_DEFAULTS",
     "WRITE_DERIVED",
     "IDENTITY_HELD_PORTS",
+    "COMPANION_PICTURE_TITLES",
+    "holds_companion_picture",
     "identity_byte",
     "PortraitTables",
     "portrait_tables",
@@ -3270,11 +3272,11 @@ def to_neutral(dos: DosCharacter,
 
     # -- the identity draw: no longer a drop, now that it has a C64 home -----
     # `to_c64_record` writes this into the C64's identity_pair at 0x0E6, with
-    # 0x0E7 left zero (#258, docs/170-c64-identity-pair.md).  A pure DOS
-    # round trip still ignores it in favour of `identity_byte`'s digest --
-    # see `write`'s own comment on the point -- so carrying it here changes
-    # nothing about that guarantee and only gives the C64 writer something to
-    # take.
+    # 0x0E7 left zero (#258, docs/170-c64-identity-pair.md).  A DOS
+    # player's byte is still replaced by `identity_byte`'s digest on the way
+    # back -- see `write`'s own comment on the point -- and a later-title
+    # companion's, which is his combat picture, is kept
+    # (`holds_companion_picture`).
     ident = FIELDS_BY_NAME["unnamed_0ab"]
     out.set("unnamed_0ab", dos.get("unnamed_0ab"),
             f"DOS unnamed_0ab @{ident.offset:#05x} ({ident.confidence})",
@@ -4084,8 +4086,10 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "reads (#378); anything else -- a DOS source, or a "
                     "Curse of the Azure Bonds or Silver Blades C64 record, "
                     "whose GEN never draws it -- gets `identity_byte`'s "
-                    "digest instead, exactly as before (#258, WRITE_DERIVED, "
-                    "IDENTITY_HELD_PORTS)"),
+                    "digest instead (#258, WRITE_DERIVED, "
+                    "IDENTITY_HELD_PORTS). A later-title companion's byte is "
+                    "his combat picture and is taken from every port "
+                    "(COMPANION_PICTURE_TITLES)"),
     ("npc", "written over the WRITE_CONSTANTS blob below, into "
             "field_83_87's control byte -- exactly 0x00 for a player "
             "character, which is what the engine's own equality tests "
@@ -4466,7 +4470,12 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
      "a real shipped party already holds zero there for one of its six "
      "(dos_port.py's own note, `\"165, 204, 0, 120, 154, 231 for the "
      "party\"`), so passing a DOS source's own copy through would risk "
-     "exactly the zero-collision #216 fixed"),
+     "exactly the zero-collision #216 fixed.\n"
+     "**Not an identity draw at all for a companion in the later titles**: "
+     "for a member whose control byte is 0x80 or above, Curse, Silver "
+     "Blades and Pools of Darkness read this byte as his combat picture, a "
+     "CPIC block id, and `write` takes the source's own byte from every "
+     "port, DOS included (:data:`COMPANION_PICTURE_TITLES`)"),
 )
 
 #: Ports whose own record draws `unnamed_0ab` for real, per character, and
@@ -4477,6 +4486,42 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
 #: per-character creation-time draw; DOS's own copy is the one exception,
 #: for the reason :data:`WRITE_DERIVED`'s note gives.
 IDENTITY_HELD_PORTS = ("C64", "Amiga")
+
+#: Titles whose DOS engine reads `unnamed_0ab` as a companion's combat
+#: picture.  For a member whose control byte is 0x80 or above, the party
+#: loader looks the byte up as a block of `CPIC<area>.DAX` (the byte plus
+#: 0x80 for the second pose) instead of composing a player's figure, and the
+#: routine that adds a companion writes his monster id there first: Curse
+#: `GAME.OVR` 0x1F3FE and 0x1ECE5, Silver Blades 0x265FD, Pools of Darkness
+#: 0x12F77 and 0x126A3.  The Amiga loaders read the same byte the same way
+#: from one `CPIC.TLB` holding the same ids, and the C64 titles number their
+#: monsters in the same space.  Pool of Radiance's engine reads its 0x0AB
+#: only at ADD CHARACTER, so it is not here.
+COMPANION_PICTURE_TITLES = (CURSE_OF_THE_AZURE_BONDS.key,
+                            SECRET_OF_THE_SILVER_BLADES.key,
+                            POOLS_OF_DARKNESS.key)
+
+
+def holds_companion_picture(record: bytes | bytearray,
+                            deltas: "int | str | DosDeltas | None" = None
+                            ) -> bool:
+    """Whether a DOS record's `unnamed_0ab` is a companion's combat picture.
+
+    True for a later-title record whose control byte has bit 7 set, the
+    test the party loader makes before reading the byte as a `CPIC` block
+    (:data:`COMPANION_PICTURE_TITLES`).  Such a byte is the companion's own
+    picture and is never replaced by a digest or a tie-break.
+
+    A player character the engine has taken over (`DOS_PC_TAKEN_OVER`) is
+    not one: the loader makes the same test on him, but his byte is the
+    identity draw creation made, so he keeps a player's rule.
+    """
+    deltas = deltas_for(len(record) if deltas is None else deltas)
+    if deltas.key not in COMPANION_PICTURE_TITLES:
+        return False
+    f83 = FIELDS_BY_NAME_FOR[deltas.key]["field_83_87"]
+    control = record[f83.offset + (1 if f83.size == 5 else 0)]
+    return control >= 0x80 and control != DOS_PC_TAKEN_OVER
 
 #: Ports `write` recomputes `thac0_base` for, rather than copying the
 #: source's own byte -- see the comment above the call in `write` itself.
@@ -5066,14 +5111,24 @@ def _deduplicate_party_identities(
     The DOS engine only compares this byte after the names already agree, so
     different names deliberately share the one-byte digest's collision space.
     A source-held identity remains untouched unless it is the later half of a
-    colliding same-named pair; then the party's usable identity wins.
+    colliding same-named pair; then the party's usable identity wins.  A
+    companion's combat picture (`holds_companion_picture`) is never changed,
+    and every one counts as taken before any player is looked at, so a
+    same-named player is the one that moves.
     """
     field = FIELDS_BY_NAME_FOR[deltas.key]["unnamed_0ab"]
     name_length = FIELDS_BY_NAME_FOR[deltas.key]["name_length"]
     name_text = FIELDS_BY_NAME_FOR[deltas.key]["name_text"]
     used: dict[bytes, set[int]] = {}
+    for _, rec, _, _, _ in built:
+        if holds_companion_picture(rec, deltas):
+            used.setdefault(bytes(rec[name_length.offset:name_text.end]),
+                            set()).add(rec[field.offset])
     result = []
     for char, rec, itm, spc, report in built:
+        if holds_companion_picture(rec, deltas):
+            result.append((char, rec, itm, spc, report))
+            continue
         record = bytearray(rec)
         name = bytes(record[name_length.offset:name_text.end])
         identities = used.setdefault(name, set())
@@ -7150,11 +7205,18 @@ def write(char: NeutralCharacter,
     _derived_name = "unnamed_0ab"
     _derived_why = dict(WRITE_DERIVED)[_derived_name]
     f = table[_derived_name]
+    # A later-title companion's byte is his combat picture rather than an
+    # identity draw (`holds_companion_picture`), so it is taken from every
+    # port, DOS included: a digest there would give him a figure that is not
+    # his, or one the game cannot find.
     supplied = w.use(_derived_name)
-    if supplied is not None and char.port in IDENTITY_HELD_PORTS:
+    picture = holds_companion_picture(rec, deltas)
+    if supplied is not None and (char.port in IDENTITY_HELD_PORTS or picture):
         rec[f.offset] = int(supplied.value) & 0xFF
+        what = " -- the companion's combat picture" if picture else ""
         rep.note(f.offset, f.size,
-                 f"{_derived_name}: {rec[f.offset]:#04x} <- {supplied.origin}")
+                 f"{_derived_name}: {rec[f.offset]:#04x} <- "
+                 f"{supplied.origin}{what}")
     else:
         rec[f.offset] = identity_byte(rec, deltas)
         rep.note(f.offset, f.size,
