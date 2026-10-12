@@ -82,6 +82,14 @@ ORIGIN_SPECIMEN = "wish360-w4d-source01-fg-disk3"
 ORIGIN_IMAGE_SHA256 = "903b7a7cc4dbe4172733ce98187c38fcb3f3878f7acbd2b390e970d36e28b9be"
 ORIGIN_G_SHA256 = "fd6b8f00f6f342316ace7d33b34e96c09a820a7017aff379ff352c2da712f328"
 ORIGIN_PREPARED_SHA256 = "de70cca6e178026d60f406c9e64bee3cd87a1da5d8bd2da2e067451919da127f"
+# The live area byte a load of source-01 G reads (Kalistes' Parlor); the save's place reads 5.
+ORIGIN_LIVE_AREA = 82
+ORIGIN_TARGET_AREA = 22
+RETURN_SNAPSHOT = "return7-before-trip"
+# Comparison labels: each binds one save letter, so a source G, the Return run's
+# game-written F and the reload's reference cannot stand in for one another.
+SOURCE_ROLES = ("selected-source", "same-run-F", "same-run-G",
+                "origin-source-G", "return-new-F", "reload-F")
 
 
 def _require(condition: bool, reason: str) -> None:
@@ -947,6 +955,30 @@ def prepare_origin(run_id: str) -> pathlib.Path:
     return manifest_path
 
 
+def _private_media(manifest_path: pathlib.Path, manifest: dict, prefix: str) -> pathlib.Path:
+    """Check the run's private registered disks 1-2, executable and configuration; return disk 3."""
+    for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                     ("disk2", route_darkness.DARKNESS_DISK2_SHA256)):
+        row = manifest["disks"][key]
+        path = pathlib.Path(row["path"])
+        _require(path.resolve().parent == manifest_path.parent.resolve()
+                 and path.stat().st_uid == os.getuid()
+                 and stat.S_IMODE(path.stat().st_mode) == 0o600
+                 and row["sha256"] == sha256(path) == pin,
+                 f"{prefix}_manifest: {key} is not a private registered copy")
+    disk1 = amiga_adf.AmigaDisk.open(manifest["disks"]["disk1"]["path"])
+    _require(hashlib.sha256(disk1.read_file("/Pools of Darkness")).hexdigest() ==
+             BUNDLE_EXEC_SHA256, f"{prefix}_manifest: executable differs")
+    _require(sha256(pathlib.Path(__file__).with_name("goldbox-a500.uae")) ==
+             BUNDLE_CONFIG_SHA256, f"{prefix}_manifest: boot configuration differs")
+    path = pathlib.Path(manifest["disks"]["disk3"]["path"])
+    _require(path.resolve().parent == manifest_path.parent.resolve()
+             and path.stat().st_uid == os.getuid()
+             and stat.S_IMODE(path.stat().st_mode) == 0o600,
+             f"{prefix}_privacy: prepared disk 3 is not owner/0600")
+    return path
+
+
 def _origin_contract(manifest_path: pathlib.Path, manifest: dict) -> tuple[pathlib.Path, str]:
     """Check the independently prepared B against source-01 G and registered media."""
     source = _origin_source()
@@ -959,26 +991,8 @@ def _origin_contract(manifest_path: pathlib.Path, manifest: dict) -> tuple[pathl
              and manifest.get("substitute") == {"path": str(source),
                                                 "sha256": ORIGIN_IMAGE_SHA256, "letter": "G"},
              "origin_manifest: B was not made from pinned G")
-    for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
-                     ("disk2", route_darkness.DARKNESS_DISK2_SHA256)):
-        row = manifest["disks"][key]
-        path = pathlib.Path(row["path"])
-        _require(path.resolve().parent == manifest_path.parent.resolve()
-                 and path.stat().st_uid == os.getuid()
-                 and stat.S_IMODE(path.stat().st_mode) == 0o600
-                 and row["sha256"] == sha256(path) == pin,
-                 f"origin_manifest: {key} is not a private registered copy")
-    disk1 = amiga_adf.AmigaDisk.open(manifest["disks"]["disk1"]["path"])
-    _require(hashlib.sha256(disk1.read_file("/Pools of Darkness")).hexdigest() ==
-             BUNDLE_EXEC_SHA256, "origin_manifest: executable differs")
-    _require(sha256(pathlib.Path(__file__).with_name("goldbox-a500.uae")) ==
-             BUNDLE_CONFIG_SHA256, "origin_manifest: boot configuration differs")
+    path = _private_media(manifest_path, manifest, "origin")
     prepared = manifest["disks"]["disk3"]
-    path = pathlib.Path(prepared["path"])
-    _require(path.resolve().parent == manifest_path.parent.resolve()
-             and path.stat().st_uid == os.getuid()
-             and stat.S_IMODE(path.stat().st_mode) == 0o600,
-             "origin_privacy: prepared disk 3 is not owner/0600")
     digest = sha256(path)
     _require(prepared["sha256"] == digest == ORIGIN_PREPARED_SHA256
              and digest != ORIGIN_IMAGE_SHA256,
@@ -1078,10 +1092,15 @@ def _source_controls(path: pathlib.Path, manifest_path: pathlib.Path, disk_hash:
 
 
 def _source_checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, phase: str,
-                       receipt: dict, run: SourceGuardedRun, disk_hash: str) -> dict:
-    """Publish one complete capture only after the whole party and measured ranges recheck."""
-    _require(run.events and run.events[-1].get("screen") in
-             ("save_picker", "camp_save_picker", "camp"),
+                       receipt: dict, run: SourceGuardedRun, disk_hash: str, *,
+                       screens: tuple[str, ...] = ("save_picker", "camp_save_picker", "camp"),
+                       reference: dict | None = None) -> dict:
+    """Publish one complete capture only after the whole party and measured ranges recheck.
+
+    `screens` are the guarded states the last matched frame may be; `reference`
+    replaces the selected source F's image and slot digests in the entry.
+    """
+    _require(run.events and run.events[-1].get("screen") in screens,
              "bundle_source_capture: checkpoint screen has no matched guard")
     regions = _measured_regions(target)
     path = directory / f"{phase}.json"
@@ -1097,8 +1116,11 @@ def _source_checkpoint(target: amiga.AmigaTarget, directory: pathlib.Path, phase
              "bundle_heads": 1, "bundle_children": 4,
              "measured_regions": [list(r) for r in regions],
              "machine": {"anchor_base": target.anchor_base, "data_base": target.data_base},
-             "order": len(receipt.get("item_nodes", [])), "source_disk_sha256": BUNDLE_IMAGE_SHA256,
-             "prepared_disk_sha256": disk_hash, "source_f_sha256": BUNDLE_SOURCE_F_SHA256,
+             "order": len(receipt.get("item_nodes", [])),
+             **(reference if reference is not None else
+                {"source_disk_sha256": BUNDLE_IMAGE_SHA256,
+                 "source_f_sha256": BUNDLE_SOURCE_F_SHA256}),
+             "prepared_disk_sha256": disk_hash,
              "screen": {"shot": run.events[-1]["shot"], "time": run.events[-1]["time"],
                         "state": run.events[-1]["screen"]}}
     receipt.setdefault("item_nodes", []).append(entry)
@@ -1109,10 +1131,12 @@ def _source_compare(entry: dict, reading: dict, disk: amiga_adf.AmigaDisk,
                     letter: str, digest: str, root: pathlib.Path,
                     *, role: str, previous: dict | None = None) -> dict:
     """Compare 64 ordered heads and four children with one specifically labelled slot."""
-    _require(letter in ("F", "G") and role in ("selected-source", "same-run-F", "same-run-G"),
+    _require(letter in ("F", "G") and role in SOURCE_ROLES,
              "bundle_source_reference: unsupported letter or role")
     _require((letter, digest, role) == ("F", BUNDLE_SOURCE_F_SHA256, "selected-source")
-             or (letter, role) in (("F", "same-run-F"), ("G", "same-run-G")),
+             or (letter, digest, role) == ("G", ORIGIN_G_SHA256, "origin-source-G")
+             or (letter, role) in (("F", "same-run-F"), ("G", "same-run-G"),
+                                   ("F", "return-new-F"), ("F", "reload-F")),
              "bundle_source_reference: source, F and G labels cannot be exchanged")
     data, parsed = _source_slot(disk, letter, digest)
     relative = pathlib.PurePosixPath(entry["path"])
@@ -1233,6 +1257,14 @@ def _source_compare(entry: dict, reading: dict, disk: amiga_adf.AmigaDisk,
                                  "link_offsets": [i for i in offsets if 0x2a <= i < 0x2e],
                                  "payload_offsets": [i for i in offsets if i >= 0x2e]})
         older_case = previous["bundle"]["nodes"][0]
+        _require((older_case["slot"], older_case["chain_index"]) == (4, 2),
+                 "bundle_source_capture: earlier case owner differs")
+        older_full = bytes.fromhex(older_case["raw_hex"])
+        _require(len(older_full) == 70, "bundle_source_capture: earlier case head is not 70 bytes")
+        # The 66-byte head rows above stop before the case's first-child link.
+        links = [i for i in range(0x42, 0x46) if older_full[i] != full[i]]
+        if links:
+            metadata.append({"slot": 4, "head": 2, "case_link_offsets": links})
         for ordinal, (a, b) in enumerate(zip(older_case["children"], case["children"], strict=True)):
             x, y = bytes.fromhex(a["raw_hex"]), bytes.fromhex(b["raw_hex"])
             offsets = [i for i in range(70) if x[i] != y[i]]
@@ -1448,8 +1480,9 @@ class SourceBootGuest:
 class OriginFetchGuest:
     """Fetch this boot's media after a successful stop and before lane release."""
 
-    def __init__(self, guest: SourceBootGuest, root: pathlib.Path, remotes: dict):
-        self.guest, self.root, self.remotes = guest, root, remotes
+    def __init__(self, guest: SourceBootGuest, root: pathlib.Path, remotes: dict,
+                 folder: str = "origin-fetched"):
+        self.guest, self.root, self.remotes, self.folder = guest, root, remotes, folder
         self.fetched: dict[str, dict[str, str]] = {}
         self.partial: dict[str, dict[str, str]] = {}
         self.errors: list[str] = []
@@ -1459,7 +1492,7 @@ class OriginFetchGuest:
 
     def stop(self, holder: str, timeout: float) -> str:
         response = self.guest.stop(holder, timeout=timeout)
-        folder = self.root / "origin-fetched"
+        folder = self.root / self.folder
         try:
             folder.mkdir(mode=0o700)
         except Exception as exc:  # noqa: BLE001 - release still needs to run
@@ -1482,8 +1515,12 @@ class OriginFetchGuest:
 
 
 def _source_fetched(guest: SourcePrivateGuest, remote: str, out: pathlib.Path,
-                    limit: float) -> tuple[amiga_adf.AmigaDisk, str]:
-    """Read the game-written F twice, before G, with independent identical ADF copies."""
+                    limit: float, *, place: dict | None = BUNDLE_PLACE
+                    ) -> tuple[amiga_adf.AmigaDisk, str]:
+    """Read the game-written F twice, before G, with independent identical ADF copies.
+
+    `place`, when given, is the saved place F must hold; None leaves it to the caller.
+    """
     _require(limit > 0, "bundle_source_deadline: no time remains for F readback")
     paths = (out / "f-readback-1.adf", out / "f-readback-2.adf")
     hashes = []
@@ -1497,7 +1534,7 @@ def _source_fetched(guest: SourcePrivateGuest, remote: str, out: pathlib.Path,
              "bundle_source_f: two independent fetches differ")
     disk = amiga_adf.AmigaDisk.open(paths[1])
     _source_slot(disk, "F", hashes[1])
-    _require(route_darkness.DARKNESS.read_slot(disk, "F").get("place") == BUNDLE_PLACE,
+    _require(place is None or route_darkness.DARKNESS.read_slot(disk, "F").get("place") == place,
              "bundle_source_f: game-written save has another saved place")
     return disk, hashes[1]
 
@@ -1896,6 +1933,537 @@ def run_origin_observe(args: argparse.Namespace, *, guest: WinGuest | None = Non
     return receipt
 
 
+ORIGIN_REFERENCE = {"source_disk_sha256": ORIGIN_IMAGE_SHA256,
+                    "source_g_sha256": ORIGIN_G_SHA256}
+RETURN_CHECKS = ("preflight", "world_guarded", "start", "pre_travel_coverage", "legs",
+                 "returned", "post_return_coverage", "pre_f_coverage",
+                 "save_f_ui_acknowledged", "same_run_f_verified", "post_f_alignment",
+                 "halt", "final_f_verified", "source_unchanged", "prepared_unchanged")
+RELOAD_CHECKS = ("preflight", "world_guarded", "reloaded", "reload_coverage",
+                 "item_sheet_coverage", "halt", "no_save_written", "sources_unchanged",
+                 "prepared_unchanged")
+
+
+def _origin_start(target: amiga.AmigaTarget, disks: pathlib.Path) -> dict:
+    """Require the live origin, the open menu gate and an offered ordinary trip to 22."""
+    observed = _observe_origin(target, saved_area=BUNDLE_PLACE["area"], disks=disks)
+    square = amigatrip.square(target, amigatrip.row_for(TITLE))
+    observed["square"] = None if square is None else list(square)
+    _require(observed["live_area"] == ORIGIN_LIVE_AREA,
+             f"return7_start: live area {observed['live_area']} is not {ORIGIN_LIVE_AREA}")
+    _require(observed["gate"], "return7_start: the world menu gate is shut")
+    _require(observed["offered"],
+             f"return7_start: Fast Travel withholds area {ORIGIN_TARGET_AREA}: "
+             f"{observed['reason']}")
+    _require(square is not None, "return7_start: the party square is unreadable")
+    return observed
+
+
+def _origin_place(target: amiga.AmigaTarget, stage: str) -> dict:
+    """Require the party back in the live origin at an open world menu."""
+    row = amigatrip.row_for(TITLE)
+    live = amigatrip.area_id(target, row)
+    gate = bool(amigatrip.gate(target, row))
+    square = amigatrip.square(target, row)
+    _require(live == ORIGIN_LIVE_AREA,
+             f"{stage}_area: the party is in area {live}, not {ORIGIN_LIVE_AREA}")
+    _require(gate, f"{stage}_arrival: the world menu gate is shut")
+    _require(square is not None, f"{stage}_arrival: the party square is unreadable")
+    return {"live_area": live, "gate": gate, "square": list(square)}
+
+
+def _relative_fetched(receipt: dict, root: pathlib.Path, prefix: str) -> None:
+    """Keep fetched paths relative to the private run, dropping any that escape it."""
+    for group in ("fetched", "partial"):
+        for file in receipt.get("halt", {}).get(group, {}).values():
+            if "path" in file:
+                path = pathlib.Path(file["path"])
+                if not path.resolve().is_relative_to(root.resolve()):
+                    receipt["cleanup"].append(f"{prefix}_privacy: fetched path escapes private run")
+                    file.pop("path")
+                else:
+                    file["path"] = path.relative_to(root).as_posix()
+
+
+def _fresh_output(out: pathlib.Path, prefix: str) -> None:
+    """Create a phase's owner-only output and its private item-node folder."""
+    for directory in (out, out / "item-nodes"):
+        directory.mkdir(mode=0o700)
+        _require(_private_directory(directory.stat(), os.getuid()),
+                 f"{prefix}_privacy: {directory.name} is not owner/0700")
+
+
+def run_origin_return(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
+    """One boot: load source-01 G, Fast Travel to 22 and Return, capture, and save a new F."""
+    _require(os.name == "posix", "return7_privacy: POSIX owner checks are required")
+    _require(1800 < args.budget <= MAX_EXPERIMENT_SECONDS,
+             "return7_deadline: the budget must exceed 1800 and stay within 3600 seconds")
+    _require(not args.out.exists(), "return7_privacy: output must be fresh")
+    root = pathlib.Path.home() / ".cache/wish/acceptance/360" / args.run_id
+    _require(args.run_id not in ("", ".", "..") and pathlib.Path(args.run_id).name == args.run_id
+             and args.out.parent.resolve() == root.resolve()
+             and args.manifest.parent.resolve() == root.resolve(),
+             "return7_privacy: output and the G preparation must share one private run")
+    _require(_private_directory(root.stat(), os.getuid()),
+             "return7_privacy: prepared run is not owner/0700")
+    _fresh_output(args.out, "return7")
+    nodes = args.out / "item-nodes"
+    began = time.time()
+    deadline = time.monotonic() + args.budget
+    action_end = deadline - 300
+    receipt: dict[str, Any] = {"phase": "origin-return", "run_id": args.run_id,
+                               "holder": args.holder, "began": began,
+                               "combined_deadline": began + args.budget,
+                               "source_image_sha256": ORIGIN_IMAGE_SHA256,
+                               "source_g_sha256": ORIGIN_G_SHA256,
+                               "origin_live_area": ORIGIN_LIVE_AREA,
+                               "target_area": ORIGIN_TARGET_AREA,
+                               "checks": {}, "cleanup": [], "success": False,
+                               "independently_authenticated": False,
+                               "preservation_established": False}
+    guest = SourcePrivateGuest(guest or WinGuest(), root)
+    command = [str(pathlib.Path(__file__)), "origin-return", "--run-id", args.run_id,
+               "--holder", args.holder]
+    booted = False
+    boot = None
+    run = None
+    manifest = None
+    disk_hash = None
+    manifest_hash = None
+    snapshots: list[str] = []
+
+    def action_left(cap: float) -> float:
+        left = min(cap, action_end - time.monotonic())
+        _require(left > 0, "return7_deadline: boot action expired; cleanup reserved")
+        return left
+
+    def checkpoint(target: amiga.AmigaTarget, name: str, screen: str) -> tuple[dict, dict]:
+        reading = _source_checkpoint(target, nodes, name, receipt, run, disk_hash,
+                                     screens=(screen,), reference=ORIGIN_REFERENCE)
+        return reading, receipt["item_nodes"][-1]
+
+    try:
+        manifest = json.loads(args.manifest.read_text())
+        source, disk_hash = _origin_contract(args.manifest, manifest)
+        manifest_hash = sha256(args.manifest)
+        guards, identity, controls = _origin_controls(
+            args.controls, args.source_manifest, disk_hash)
+        receipt["prepared_disk_sha256"] = disk_hash
+        receipt["manifest_sha256"] = manifest_hash
+        receipt["source_controls_sha256"] = sha256(args.controls)
+        receipt["selected_guard_sha256"] = controls["guards"]["sha256"]
+        receipt["selected_identity_sha256"] = controls["identity"]["sha256"]
+        source_disk = amiga_adf.AmigaDisk.open(source)
+        receipt["checks"]["preflight"] = True
+        boot = _boot(SourceBootGuest(guest, action_end, deadline), args.manifest, manifest,
+                     args.holder, args.audio_proof,
+                     time.monotonic() + action_left(1200), command)
+        booted = True
+        receipt["boot"] = {key: boot[key] for key in ("holder", "claim", "start")}
+        if boot.get("log_error"):
+            raise RouteError(f"return7_boot_log: {boot['log_error']}")
+        run = SourceGuardedRun(guest, args.holder, args.out / "screens", guards, action_end,
+                               identity=identity)
+        run.title()
+        run.press("title", "P", "party_menu")
+        run.press("party_menu", "L", "load_from")
+        run.press("load_from", "P", "load_picker")
+        run.press("load_picker", "B", "disk2_prompt")
+        guest.insert(args.holder, 0, boot["remotes"]["disk2"], timeout=action_left(60),
+                     sha256=manifest["disks"]["disk2"]["sha256"])
+        run.press("disk2_prompt", "SPACE", "loaded_menu")
+        run.press("loaded_menu", "B", "journal")
+        run.press("journal", "X", "journal_answer")
+        run.press("journal_answer", "RET", "world")
+        receipt["checks"]["world_guarded"] = True
+        target = _target(args.holder)
+        receipt["party"] = _origin_party(target)
+        receipt["start"] = _origin_start(target, args.manifest.parent)
+        receipt["checks"]["start"] = True
+        receipt["pre_travel"], first = checkpoint(target, "pre-travel", "world")
+        receipt["pre_travel_comparison"] = _source_compare(
+            first, receipt["pre_travel"], source_disk, "G", ORIGIN_G_SHA256, args.out,
+            role="origin-source-G")
+        _require(receipt["pre_travel_comparison"]["all_payloads_match_reference"],
+                 "return7_payload: the loaded party differs from source G before travel")
+        receipt["checks"]["pre_travel_coverage"] = True
+        guest.snapshot(RETURN_SNAPSHOT, args.holder)
+        snapshots.append(RETURN_SNAPSHOT)
+        receipt["legs"] = _origin_legs(_run_trip(args.holder, args.manifest.parent,
+                                                 args.out / "trip", action_left(2000)))
+        receipt["checks"]["legs"] = True
+        run.see("world", 60)
+        target = _target(args.holder)
+        receipt["returned"] = _origin_place(target, "return7")
+        receipt["return_square_matches_start"] = (
+            receipt["returned"]["square"] == receipt["start"]["square"])
+        receipt["checks"]["returned"] = True
+        receipt["post_return"], returned = checkpoint(target, "post-return", "world")
+        receipt["post_return_comparison"] = _source_compare(
+            returned, receipt["post_return"], source_disk, "G", ORIGIN_G_SHA256, args.out,
+            role="origin-source-G", previous=_source_saved_artifact(first, args.out))
+        _require(receipt["post_return_comparison"]["all_payloads_match_reference"],
+                 "return7_payload: a saved payload byte changed across Return, before F")
+        receipt["checks"]["post_return_coverage"] = True
+        run.press("world", "E", "camp")
+        run.press("camp", "S", "camp_save_picker")
+        receipt["pre_f"], before_f = checkpoint(target, "pre-f", "camp_save_picker")
+        receipt["pre_f_source_comparison"] = _source_compare(
+            before_f, receipt["pre_f"], source_disk, "G", ORIGIN_G_SHA256, args.out,
+            role="origin-source-G", previous=_source_saved_artifact(returned, args.out))
+        _require(receipt["pre_f_source_comparison"]["all_payloads_match_reference"],
+                 "return7_payload: the party differs from source G at the save picker")
+        receipt["checks"]["pre_f_coverage"] = True
+        action_left(30)
+        run.press("camp_save_picker", SAVE_LETTER, "exit_game")
+        run.press("exit_game", "N", "camp")
+        receipt["checks"]["save_f_ui_acknowledged"] = True
+        f_disk, f_digest = _source_fetched(guest, boot["remotes"]["disk3"], args.out,
+                                           action_left(120), place=None)
+        receipt["same_run_f_sha256"] = f_digest
+        place = route_darkness.DARKNESS.read_slot(f_disk, SAVE_LETTER).get("place") or {}
+        receipt["saved_place"] = place
+        _require([place.get(field) for field in ("x", "y", "facing")] ==
+                 receipt["returned"]["square"],
+                 "return7_saved_place: F holds another square or facing than the returned party")
+        receipt["checks"]["same_run_f_verified"] = True
+        receipt["pre_f_comparison"] = _source_compare(
+            before_f, receipt["pre_f"], f_disk, SAVE_LETTER, f_digest, args.out,
+            role="return-new-F")
+        _require(receipt["pre_f_comparison"]["all_payloads_match_reference"],
+                 "return7_payload: game-written F differs from the party it saved")
+        receipt["post_f"], after_f = checkpoint(target, "post-f", "camp")
+        receipt["post_f_comparison"] = _source_compare(
+            after_f, receipt["post_f"], f_disk, SAVE_LETTER, f_digest, args.out,
+            role="return-new-F", previous=_source_saved_artifact(before_f, args.out))
+        _require(receipt["post_f_comparison"]["all_payloads_match_reference"],
+                 "return7_payload: the party after the save differs from game-written F")
+        receipt["checks"]["post_f_alignment"] = True
+    except BaseException as exc:
+        receipt["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if run is not None:
+            receipt["screens"] = [{**event, **({"crop": pathlib.Path(event["crop"])
+                                  .relative_to(root).as_posix()} if "crop" in event else {})}
+                                  for event in run.events]
+        if booted:
+            for name in snapshots:
+                try:
+                    guest.discard(name, args.holder)
+                except Exception as exc:  # noqa: BLE001 - halt and release still run
+                    receipt["cleanup"].append(f"discard {name}: {exc}")
+            fetching = OriginFetchGuest(SourceBootGuest(guest, action_end, deadline),
+                                        root, boot["remotes"], folder=f"{args.out.name}/fetched")
+            try:
+                left = min(30.0, max(1.0, deadline - time.monotonic()))
+                if deadline - time.monotonic() <= 0:
+                    receipt["cleanup"].append("return7_deadline: cleanup allowance expired")
+                receipt["halt"] = acceptance.halt_lane(fetching, args.holder, timeout=left)
+                receipt["checks"]["halt"] = True
+            except Exception as exc:  # noqa: BLE001 - retain cleanup failure
+                receipt["cleanup"].append(f"halt: {exc}")
+            finally:
+                receipt.setdefault("halt", {}).setdefault("fetched", fetching.fetched)
+                if fetching.partial:
+                    receipt["halt"]["partial"] = fetching.partial
+                receipt["cleanup"].extend(fetching.errors)
+            if receipt["checks"].get("save_f_ui_acknowledged"):
+                try:
+                    fetched = fetching.fetched["disk3"]
+                    final_path = pathlib.Path(fetched["path"])
+                    _require(sha256(final_path) == fetched["sha256"],
+                             "return7_f: final fetched image digest differs")
+                    final = amiga_adf.AmigaDisk.open(final_path)
+                    _require(not final.verify(), "return7_f: final fetched ADF fails verification")
+                    final_f = hashlib.sha256(amiga_savegame.pod_read_slot(
+                        final, SAVE_LETTER)).hexdigest()
+                    receipt["final_f_sha256"] = final_f
+                    _require(final_f == receipt.get("same_run_f_sha256"),
+                             "return7_f: final fetched F differs from its readback")
+                    _require("G" not in route_darkness.DARKNESS.slot_letters(final),
+                             "return7_f: the run wrote slot G")
+                    receipt["checks"]["final_f_verified"] = True
+                except Exception as exc:  # noqa: BLE001
+                    receipt["cleanup"].append(f"final F: {exc}")
+        try:
+            _require(sha256(_origin_source()) == ORIGIN_IMAGE_SHA256,
+                     "origin_source: preserved original changed")
+            receipt["checks"]["source_unchanged"] = True
+        except Exception as exc:  # noqa: BLE001
+            receipt["cleanup"].append(f"source hash: {exc}")
+        if disk_hash is not None and manifest is not None and manifest_hash is not None:
+            try:
+                _require(sha256(args.manifest) == manifest_hash and
+                         sha256(pathlib.Path(manifest["disks"]["disk3"]["path"])) == disk_hash
+                         and all(sha256(pathlib.Path(manifest["disks"][key]["path"])) == pin
+                                 for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                                                  ("disk2", route_darkness.DARKNESS_DISK2_SHA256))),
+                         "origin_manifest: prepared originals changed")
+                receipt["checks"]["prepared_unchanged"] = True
+            except Exception as exc:  # noqa: BLE001
+                receipt["cleanup"].append(f"prepared hash: {exc}")
+        _relative_fetched(receipt, root, "return7")
+        receipt["success"] = ("error" not in receipt and not receipt["cleanup"] and
+                              all(receipt["checks"].get(key) is True for key in RETURN_CHECKS))
+        _write_source_receipt(args.out / "origin-return-receipt.json", receipt)
+    if not receipt["success"]:
+        raise RouteError(receipt.get("error") or "; ".join(receipt["cleanup"]))
+    return receipt
+
+
+def _return_seed(path: pathlib.Path) -> dict:
+    """The successful Return receipt's fetched disk 3 and the game-written F it holds."""
+    _require(path.name == "origin-return-receipt.json" and path.is_file()
+             and path.stat().st_uid == os.getuid()
+             and stat.S_IMODE(path.stat().st_mode) == 0o600,
+             "reload7_receipt: the Return receipt is missing or not owner/0600")
+    receipt = json.loads(path.read_text())
+    checks = receipt.get("checks", {})
+    _require(receipt.get("phase") == "origin-return" and receipt.get("success") is True
+             and not receipt.get("cleanup")
+             and all(checks.get(key) is True for key in RETURN_CHECKS),
+             "reload7_receipt: the Return receipt is not a complete success")
+    digest = receipt.get("same_run_f_sha256")
+    _require(isinstance(digest, str) and digest == receipt.get("final_f_sha256"),
+             "reload7_receipt: the Return run's F readbacks differ")
+    out = path.parent
+    root = out.parent
+    relative = pathlib.PurePosixPath(receipt["halt"]["fetched"]["disk3"]["path"])
+    _require(not relative.is_absolute() and ".." not in relative.parts,
+             "reload7_receipt: the fetched disk path escapes its run")
+    disk_path = root.joinpath(*relative.parts)
+    _require(disk_path.is_file()
+             and sha256(disk_path) == receipt["halt"]["fetched"]["disk3"]["sha256"],
+             "reload7_seed: the fetched disk 3 differs from its receipt")
+    disk = amiga_adf.AmigaDisk.open(disk_path)
+    _require(not disk.verify(), "reload7_seed: the fetched disk 3 fails ADF verification")
+    try:
+        _source_slot(disk, SAVE_LETTER, digest)
+    except RouteError as exc:
+        raise RouteError(f"reload7_seed: game-written F differs: {exc}") from exc
+    entries = {entry["checkpoint"]: entry for entry in receipt["item_nodes"]}
+    _require("post-f" in entries, "reload7_receipt: the post-F capture is missing")
+    return {"receipt": receipt, "out": out, "disk": disk_path, "disk_sha256": sha256(disk_path),
+            "f_sha256": digest, "post_f": entries["post-f"], "place": receipt["saved_place"],
+            "square": receipt["returned"]["square"]}
+
+
+def _reload_contract(manifest_path: pathlib.Path, manifest: dict, seed: dict) -> str:
+    """Check the fresh B made from the Return run's game-written F."""
+    _require(manifest_path.is_file() and manifest_path.stat().st_uid == os.getuid()
+             and stat.S_IMODE(manifest_path.stat().st_mode) == 0o600,
+             "reload7_privacy: prepared manifest is not owner/0600")
+    _require(manifest.get("title") == "darkness" and manifest.get("loaded_letter") == "B"
+             and manifest.get("names_a") == list(BUNDLE_NAMES)
+             and manifest.get("substitute") == {"path": str(seed["disk"]),
+                                                "sha256": seed["disk_sha256"], "letter": "F"},
+             "reload7_manifest: B was not made from the Return run's F")
+    path = _private_media(manifest_path, manifest, "reload7")
+    digest = sha256(path)
+    _require(manifest["disks"]["disk3"]["sha256"] == digest and digest != seed["disk_sha256"],
+             "reload7_manifest: prepared disk 3 digest differs or is the fetched disk")
+    disk = amiga_adf.AmigaDisk.open(path)
+    _require(not disk.verify() and not {"F", "G"} & set(route_darkness.DARKNESS.slot_letters(disk)),
+             "reload7_manifest: B disk is damaged or F/G is occupied")
+    _require(hashlib.sha256(disk.read_file(LIBRARY)).hexdigest() == LIBRARY_HASH,
+             "reload7_manifest: prepared ECL library digest differs")
+    try:
+        prepared_b, _ = _source_slot(disk, "B", seed["f_sha256"])
+    except RouteError as exc:
+        raise RouteError(f"reload7_manifest: saved B differs: {exc}") from exc
+    _require(prepared_b == amiga_savegame.pod_read_slot(
+        amiga_adf.AmigaDisk.open(seed["disk"]), SAVE_LETTER)
+             and route_darkness.DARKNESS.read_slot(disk, "B").get("place") == seed["place"],
+             "reload7_manifest: prepared B is not the Return run's F")
+    return digest
+
+
+def _reload_controls(path: pathlib.Path, source_manifest: pathlib.Path
+                     ) -> tuple[PixelGuards, PixelGuards, dict]:
+    """Use the source-01 selected rules for the reload of the same seven-member party."""
+    _require(source_manifest.is_file() and sha256(source_manifest) == BUNDLE_MANIFEST_SHA256,
+             "reload7_controls: source-01 manifest differs")
+    return _source_controls(path, source_manifest, BUNDLE_PREPARED_SHA256)
+
+
+def run_origin_reload(args: argparse.Namespace, *, guest: WinGuest | None = None) -> dict:
+    """One boot: load the Return run's game-written F, view the sheet and HILDE's items."""
+    _require(os.name == "posix", "reload7_privacy: POSIX owner checks are required")
+    _require(900 < args.budget <= 1500,
+             "reload7_deadline: one boot must leave 300 seconds for cleanup")
+    root = pathlib.Path.home() / ".cache/wish/acceptance/360" / args.run_id
+    _require(args.run_id not in ("", ".", "..") and pathlib.Path(args.run_id).name == args.run_id
+             and args.out.parent.resolve() == root.resolve() and not root.exists(),
+             "reload7_privacy: the reload needs a fresh private run holding its output")
+    seed = _return_seed(args.return_receipt)
+    old_umask = os.umask(0o077)
+    try:
+        manifest_path = acceptance.prepare(route_darkness.DARKNESS, args.run_id,
+                                           substitute=seed["disk"], substitute_letter="F",
+                                           issue="360")
+    finally:
+        os.umask(old_umask)
+    _require(manifest_path.parent.resolve() == root.resolve()
+             and _private_directory(root.stat(), os.getuid()),
+             "reload7_privacy: fresh preparation is not owner/0700")
+    _fresh_output(args.out, "reload7")
+    nodes = args.out / "item-nodes"
+    began = time.time()
+    deadline = time.monotonic() + args.budget
+    action_end = deadline - 300
+    receipt: dict[str, Any] = {"phase": "origin-reload", "run_id": args.run_id,
+                               "holder": args.holder, "began": began,
+                               "combined_deadline": began + args.budget,
+                               "return_receipt": str(args.return_receipt),
+                               "return_receipt_sha256": sha256(args.return_receipt),
+                               "seed_disk_sha256": seed["disk_sha256"],
+                               "reference_f_sha256": seed["f_sha256"],
+                               "checks": {}, "cleanup": [], "success": False,
+                               "independently_authenticated": False,
+                               "preservation_established": False}
+    guest = SourcePrivateGuest(guest or WinGuest(), root)
+    command = [str(pathlib.Path(__file__)), "origin-reload", "--run-id", args.run_id,
+               "--holder", args.holder]
+    reference = {"source_disk_sha256": seed["disk_sha256"], "source_f_sha256": seed["f_sha256"]}
+    booted = False
+    boot = None
+    run = None
+    manifest = None
+    disk_hash = None
+    manifest_hash = None
+
+    def action_left(cap: float) -> float:
+        left = min(cap, action_end - time.monotonic())
+        _require(left > 0, "reload7_deadline: boot action expired; cleanup reserved")
+        return left
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        disk_hash = _reload_contract(manifest_path, manifest, seed)
+        manifest_hash = sha256(manifest_path)
+        guards, identity, controls = _reload_controls(args.controls, args.source_manifest)
+        receipt["prepared_disk_sha256"] = disk_hash
+        receipt["manifest_sha256"] = manifest_hash
+        receipt["source_controls_sha256"] = sha256(args.controls)
+        receipt["selected_guard_sha256"] = controls["guards"]["sha256"]
+        receipt["selected_identity_sha256"] = controls["identity"]["sha256"]
+        seed_disk = amiga_adf.AmigaDisk.open(seed["disk"])
+        receipt["checks"]["preflight"] = True
+        boot = _boot(SourceBootGuest(guest, action_end, deadline), manifest_path, manifest,
+                     args.holder, args.audio_proof,
+                     time.monotonic() + action_left(1200), command)
+        booted = True
+        receipt["boot"] = {key: boot[key] for key in ("holder", "claim", "start")}
+        if boot.get("log_error"):
+            raise RouteError(f"reload7_boot_log: {boot['log_error']}")
+        run = SourceGuardedRun(guest, args.holder, args.out / "screens", guards, action_end,
+                               identity=identity)
+        run.title()
+        run.press("title", "P", "party_menu")
+        run.press("party_menu", "L", "load_from")
+        run.press("load_from", "P", "load_picker")
+        run.press("load_picker", "B", "disk2_prompt")
+        guest.insert(args.holder, 0, boot["remotes"]["disk2"], timeout=action_left(60),
+                     sha256=manifest["disks"]["disk2"]["sha256"])
+        run.press("disk2_prompt", "SPACE", "loaded_menu")
+        run.press("loaded_menu", "V", "sheet")
+        run.press("sheet", "E", "loaded_menu")
+        run.press("loaded_menu", "B", "journal")
+        run.press("journal", "X", "journal_answer")
+        run.press("journal_answer", "RET", "world")
+        receipt["checks"]["world_guarded"] = True
+        target = _target(args.holder)
+        receipt["party"] = _origin_party(target)
+        receipt["reloaded"] = _origin_place(target, "reload7")
+        receipt["reloaded_square_matches_saved"] = receipt["reloaded"]["square"] == seed["square"]
+        receipt["checks"]["reloaded"] = True
+        receipt["reload_world"] = _source_checkpoint(
+            target, nodes, "reload-world", receipt, run, disk_hash,
+            screens=("world",), reference=reference)
+        loaded = receipt["item_nodes"][-1]
+        receipt["reload_comparison"] = _source_compare(
+            loaded, receipt["reload_world"], seed_disk, SAVE_LETTER, seed["f_sha256"],
+            args.out, role="reload-F",
+            previous=_source_saved_artifact(seed["post_f"], seed["out"]))
+        _require(receipt["reload_comparison"]["all_payloads_match_reference"],
+                 "reload7_payload: the reloaded party differs from the Return run's F")
+        receipt["checks"]["reload_coverage"] = True
+        run.press("world", "E", "camp")
+        steps = route_camp.steps_for(("items 5",), name="darkness", party_size=7)
+        _require(all(kind == "key" for _key, _state, kind in steps)
+                 and steps[-1][1] == "camp", "reload7_camp: unexpected item route")
+        state = "camp"
+        for key, following, _kind in steps:
+            run.press(state, key, following)
+            state = following
+        receipt["reload_items"] = _source_checkpoint(
+            target, nodes, "reload-items", receipt, run, disk_hash,
+            screens=("camp",), reference=reference)
+        receipt["item_sheet_comparison"] = _source_compare(
+            receipt["item_nodes"][-1], receipt["reload_items"], seed_disk, SAVE_LETTER,
+            seed["f_sha256"], args.out, role="reload-F",
+            previous=_source_saved_artifact(loaded, args.out))
+        _require(receipt["item_sheet_comparison"]["all_payloads_match_reference"],
+                 "reload7_payload: HILDE's item view changed a saved payload byte")
+        receipt["checks"]["item_sheet_coverage"] = True
+    except BaseException as exc:
+        receipt["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if run is not None:
+            receipt["screens"] = [{**event, **({"crop": pathlib.Path(event["crop"])
+                                  .relative_to(root).as_posix()} if "crop" in event else {})}
+                                  for event in run.events]
+        if booted:
+            fetching = OriginFetchGuest(SourceBootGuest(guest, action_end, deadline),
+                                        root, boot["remotes"], folder=f"{args.out.name}/fetched")
+            try:
+                left = min(30.0, max(1.0, deadline - time.monotonic()))
+                if deadline - time.monotonic() <= 0:
+                    receipt["cleanup"].append("reload7_deadline: cleanup allowance expired")
+                receipt["halt"] = acceptance.halt_lane(fetching, args.holder, timeout=left)
+                receipt["checks"]["halt"] = True
+            except Exception as exc:  # noqa: BLE001 - retain cleanup failure
+                receipt["cleanup"].append(f"halt: {exc}")
+            finally:
+                receipt.setdefault("halt", {}).setdefault("fetched", fetching.fetched)
+                if fetching.partial:
+                    receipt["halt"]["partial"] = fetching.partial
+                receipt["cleanup"].extend(fetching.errors)
+            try:
+                final = amiga_adf.AmigaDisk.open(fetching.fetched["disk3"]["path"])
+                _require(not {"F", "G"} & set(route_darkness.DARKNESS.slot_letters(final)),
+                         "reload7_save: the reload wrote slot F or G")
+                receipt["checks"]["no_save_written"] = True
+            except Exception as exc:  # noqa: BLE001
+                receipt["cleanup"].append(f"reload disk: {exc}")
+        try:
+            _require(sha256(_origin_source()) == ORIGIN_IMAGE_SHA256
+                     and sha256(seed["disk"]) == seed["disk_sha256"]
+                     and sha256(args.return_receipt) == receipt["return_receipt_sha256"],
+                     "reload7_source: source G, the Return disk or its receipt changed")
+            receipt["checks"]["sources_unchanged"] = True
+        except Exception as exc:  # noqa: BLE001
+            receipt["cleanup"].append(f"source hash: {exc}")
+        if disk_hash is not None and manifest is not None and manifest_hash is not None:
+            try:
+                _require(sha256(manifest_path) == manifest_hash and
+                         sha256(pathlib.Path(manifest["disks"]["disk3"]["path"])) == disk_hash
+                         and all(sha256(pathlib.Path(manifest["disks"][key]["path"])) == pin
+                                 for key, pin in (("disk1", route_darkness.DARKNESS_DISK1_SHA256),
+                                                  ("disk2", route_darkness.DARKNESS_DISK2_SHA256))),
+                         "reload7_manifest: prepared originals changed")
+                receipt["checks"]["prepared_unchanged"] = True
+            except Exception as exc:  # noqa: BLE001
+                receipt["cleanup"].append(f"prepared hash: {exc}")
+        _relative_fetched(receipt, root, "reload7")
+        receipt["success"] = ("error" not in receipt and not receipt["cleanup"] and
+                              all(receipt["checks"].get(key) is True for key in RELOAD_CHECKS))
+        _write_source_receipt(args.out / "origin-reload-receipt.json", receipt)
+    if not receipt["success"]:
+        raise RouteError(receipt.get("error") or "; ".join(receipt["cleanup"]))
+    return receipt
+
+
 def _write_source_receipt(path: pathlib.Path, receipt: dict) -> None:
     """Publish a private, read-back checked report without game payloads."""
     _require("raw_hex" not in json.dumps(receipt),
@@ -1977,6 +2545,41 @@ def _verified_reload_gate(target: amiga.AmigaTarget, state: noencounters.WinuaeS
 
 
 def _trip(holder: str, disks: pathlib.Path, out: pathlib.Path, left: float) -> list[dict]:
+    legs = _run_trip(holder, disks, out, left)
+    _require(len(legs) == 2 and all(leg.get("result") == "idle"
+                                   and leg.get("settled") for leg in legs),
+             "the trip did not finish two settled legs")
+    _require(17 in legs[0].get("areas_seen", []) and 22 in legs[0]["areas_seen"]
+             and 22 in legs[1].get("areas_seen", []) and 17 in legs[1]["areas_seen"],
+             "the trip did not travel 17 to 22 and Return to 17")
+    _require(legs[0].get("arrival_keys") == ["RET"]
+             and legs[1].get("arrival_keys") == [],
+             "the trip answered a prompt other than the one guarded Return bar")
+    return legs
+
+
+def _origin_legs(legs: list[dict]) -> list[dict]:
+    """Require ordinary forward travel from the live origin to 22 and Return to it.
+
+    The first arrival may take one RET at the guarded PRESS RETURN bar; the
+    Return arrival takes none.
+    """
+    _require(len(legs) == 2 and all(leg.get("result") == "idle"
+                                   and leg.get("settled") for leg in legs),
+             "return7_trip: the trip did not finish two settled legs")
+    forward, back = (leg.get("areas_seen") or [None] for leg in legs)
+    _require(forward[0] == ORIGIN_LIVE_AREA and forward[-1] == ORIGIN_TARGET_AREA
+             and back[0] == ORIGIN_TARGET_AREA and back[-1] == ORIGIN_LIVE_AREA,
+             f"return7_area: legs saw {forward} then {back}, not "
+             f"{ORIGIN_LIVE_AREA} to {ORIGIN_TARGET_AREA} and back")
+    _require(legs[0].get("arrival_keys") in ([], ["RET"])
+             and legs[1].get("arrival_keys") == [],
+             "return7_prompt: a leg answered a prompt other than the guarded arrival bar")
+    return legs
+
+
+def _run_trip(holder: str, disks: pathlib.Path, out: pathlib.Path, left: float) -> list[dict]:
+    """Run the ordinary forward trip to 22 and its Return in the Fast Travel driver."""
     command = [sys.executable, str(pathlib.Path(fasttravelrun.__file__)),
                "--holder", holder, "--disks", str(disks), "--title", TITLE,
                "--budget", "900", "--to", "22", "--back", "--arrival-answer", "RET",
@@ -2001,19 +2604,9 @@ def _trip(holder: str, disks: pathlib.Path, out: pathlib.Path, left: float) -> l
     _require(process.returncode == 0,
              f"the guarded trip stopped with code {process.returncode}: {stderr[-500:]}")
     try:
-        legs = [json.loads(line) for line in stdout.splitlines() if line.startswith("{")]
+        return [json.loads(line) for line in stdout.splitlines() if line.startswith("{")]
     except json.JSONDecodeError as exc:
         raise RouteError("the trip returned an unreadable leg receipt") from exc
-    _require(len(legs) == 2 and all(leg.get("result") == "idle"
-                                   and leg.get("settled") for leg in legs),
-             "the trip did not finish two settled legs")
-    _require(17 in legs[0].get("areas_seen", []) and 22 in legs[0]["areas_seen"]
-             and 22 in legs[1].get("areas_seen", []) and 17 in legs[1]["areas_seen"],
-             "the trip did not travel 17 to 22 and Return to 17")
-    _require(legs[0].get("arrival_keys") == ["RET"]
-             and legs[1].get("arrival_keys") == [],
-             "the trip answered a prompt other than the one guarded Return bar")
-    return legs
 
 
 def _stage_flag(target: amiga.AmigaTarget) -> dict:
@@ -2441,16 +3034,26 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--budget", type=float, required=True)
     origin_prepare = phases.add_parser("origin-prepare")
     origin_prepare.add_argument("--run-id", required=True)
-    origin = phases.add_parser("origin-observe")
-    origin.add_argument("--run-id", required=True)
-    origin.add_argument("--holder", required=True)
-    origin.add_argument("--audio-proof", type=pathlib.Path, required=True)
-    origin.add_argument("--manifest", type=pathlib.Path, required=True)
-    origin.add_argument("--source-manifest", type=pathlib.Path, required=True)
-    origin.add_argument("--controls", type=pathlib.Path, required=True)
-    origin.add_argument("--out", type=pathlib.Path, required=True)
-    origin.add_argument("--budget", type=float, required=True)
+    for name in ("origin-observe", "origin-return", "origin-reload"):
+        origin = phases.add_parser(name)
+        origin.add_argument("--run-id", required=True)
+        origin.add_argument("--holder", required=True)
+        origin.add_argument("--audio-proof", type=pathlib.Path, required=True)
+        if name == "origin-reload":
+            origin.add_argument("--return-receipt", type=pathlib.Path, required=True)
+        else:
+            origin.add_argument("--manifest", type=pathlib.Path, required=True)
+        origin.add_argument("--source-manifest", type=pathlib.Path, required=True)
+        origin.add_argument("--controls", type=pathlib.Path, required=True)
+        origin.add_argument("--out", type=pathlib.Path, required=True)
+        origin.add_argument("--budget", type=float, required=True)
     args = parser.parse_args(argv)
+    runners = {"origin-observe": run_origin_observe, "origin-return": run_origin_return,
+               "origin-reload": run_origin_reload, "bundle-source": run_bundle_source,
+               "p2": run_p2, "reload": run_reload}
+    labels = {"origin-observe": "Origin observer", "origin-prepare": "Origin observer",
+              "origin-return": "Seven-member Return", "origin-reload": "Seven-member reload",
+              "bundle-source": "Bundle source"}
     try:
         if args.phase == "origin-prepare":
             manifest = prepare_origin(args.run_id)
@@ -2459,13 +3062,19 @@ def main(argv: list[str] | None = None) -> int:
                               "source_g_sha256": ORIGIN_G_SHA256}, sort_keys=True))
             return 0
         with terminating():
-            result = (run_origin_observe(args) if args.phase == "origin-observe" else
-                      run_bundle_source(args) if args.phase == "bundle-source" else
-                      run_p2(args) if args.phase == "p2" else run_reload(args))
+            result = runners[args.phase](args)
     except (RouteError, OSError, ValueError, KeyError) as exc:
-        print(f"{'Origin observer' if args.phase.startswith('origin-') else 'Bundle source' if args.phase == 'bundle-source' else 'darknessreturn'}: {exc}",
-              file=sys.stderr)
+        print(f"{labels.get(args.phase, 'darknessreturn')}: {exc}", file=sys.stderr)
         return 2
+    if args.phase in ("origin-return", "origin-reload"):
+        statuses = {key: value["evidence_status"] for key, value in result.items()
+                    if key.endswith("comparison") and isinstance(value, dict)}
+        print(json.dumps({"success": result["success"],
+                          "receipt": str(args.out / f"{args.phase}-receipt.json"),
+                          "checks": result["checks"], "comparisons": statuses,
+                          "independently_authenticated": False,
+                          "preservation_established": False}, indent=2, sort_keys=True))
+        return 0
     if args.phase == "origin-observe":
         print(json.dumps({"success": result["success"],
                           "receipt": str(args.out / "origin-observe-receipt.json"),
