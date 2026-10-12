@@ -287,3 +287,55 @@ def test_donalds_pool_party_composes_with_brutus_s_0_nibbles_drawn():
     if "BRUTUS" not in zeros:
         pytest.skip("slot A of por-dos-play has no BRUTUS")
     assert zeros["BRUTUS"] > 0
+
+
+#: The ICON-screen runs, by title: Donald's own Pool party in slots A and J,
+#: and the archives' Curse and Silver Blades parties with some colours and
+#: options staged by `tools/dos/acceptance.py`.
+CAPTURE_RUNS = {"dos-icon-pool-a": POOL, "dos-icon-pool-j": POOL,
+                "dos-icon-curse": CURSE, "dos-icon-ssb": SSB}
+
+
+def _captures():
+    """`(run, title, result)` for every captured ICON screen here."""
+    import json
+
+    from tools.registry import scratch
+    out = []
+    for run, title in CAPTURE_RUNS.items():
+        summary = scratch.cache_dir("acceptance", "WISH-378", run,
+                                    "summary.json")
+        if summary.exists():
+            out += [(run, title, r) for r in json.loads(
+                summary.read_text())["results"] if "icon" in r]
+    return out
+
+
+def test_every_captured_icon_screen_is_the_composed_figure(folders):
+    """Each pose, OLD and NEW, pixel for pixel at :data:`PLACES`."""
+    from tools.registry import scratch
+    dosicons = pytest.importorskip("tools.icons.dosicons")
+    captures = _captures()
+    if not captures:
+        pytest.skip("no DOS ICON-screen captures here")
+    wrong = []
+    for run, title, result in captures:
+        record = result["record"]
+        game = di.read_game(folders[title])
+        palette = di.icon_palette(title)
+        poses = di.compose(game.heads, game.bodies, record["icon_head"],
+                           record["icon_body"], record["size"],
+                           bytes.fromhex(record["icon_colours"]), title)
+        screen = dosicons.capture_pixels(scratch.cache_dir(
+            "acceptance", "WISH-378", run, "shots", result["icon"] + ".png"))
+        for n, pose in enumerate(poses):
+            drawn = di.on_frame(di.frame_for(game, n, title), pose)
+            for which in ("old", "new"):
+                x, y = di.PLACES[(which, n)]
+                differ = sum(
+                    screen[y + dy, x + dx] != (r << 16 | g << 8 | b)
+                    for dy, row in enumerate(drawn)
+                    for dx, (r, g, b) in enumerate(palette[v] for v in row))
+                if differ:
+                    wrong.append((run, result["name"], which, n, differ))
+    assert wrong == []

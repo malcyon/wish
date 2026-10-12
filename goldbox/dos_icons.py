@@ -108,14 +108,15 @@ ICON_SCREENS: dict[str, IconScreen] = {
     "secret-of-the-silver-blades": IconScreen(False, True, 0),
 }
 
-#: Where the ICON screen draws, in 24-pixel cells: `(column, row)` of each
-#: pose of the figure as it was (`OLD`) and as it is being edited (`NEW`).
-#: Pool of Radiance `GAME.OVR:0x1D26F` and `0x1D2EE` call the draw helper at
-#: `0x1CE5E` with rows 2 and 4, which draws the first pose at column 1 and the
-#: second at column 4; the draw routine `0x31F68` multiplies both by three
-#: eight-pixel units.
-PLACES = {("old", 0): (1, 2), ("old", 1): (4, 2),
-          ("new", 0): (1, 4), ("new", 1): (4, 4)}
+#: The top-left pixel, on the 320x200 screen, of each pose of the figure as
+#: it was (`OLD`) and as it is being edited (`NEW`); each pose is `CELL`
+#: pixels square.  Measured on all 17 ICON-screen captures of the three
+#: titles.  The code places them at 24-pixel cells (1, 2), (4, 2), (1, 4) and
+#: (4, 4) -- Pool of Radiance `GAME.OVR:0x1D26F` and `0x1D2EE` call the draw
+#: helper `0x1CE5E` with rows 2 and 4, which draws columns 1 and 4 -- and the
+#: screen sits one 8-pixel unit in from the corner on both axes.
+PLACES = {("old", 0): (32, 56), ("old", 1): (104, 56),
+          ("new", 0): (32, 104), ("new", 1): (104, 104)}
 CELL = 24
 
 

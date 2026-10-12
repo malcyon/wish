@@ -354,8 +354,7 @@ def report_capture(out, title, game, save, slot, name, path) -> int:
     for n, (label, pose) in enumerate(zip(("ready", "action"), poses)):
         rgb = [[palette[v] for v in row] for row in pose]
         places, fewest = find_pose(screen, rgb)
-        col, row = art.PLACES[("new", n)]
-        expected = (col * art.CELL, row * art.CELL)
+        expected = art.PLACES[("new", n)]
         if places:
             out(f"{name} {label}: pixel for pixel at "
                 + ", ".join(f"({x}, {y})" for x, y in places)
