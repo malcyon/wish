@@ -667,8 +667,8 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
     place of a name; `names` is then that id, and `prefix` is not used.  A name matches a control's Name exactly for the whole wait; with
     `prefix`, a prefix match is tried once the wait has run out.  The line reports the
     control's full name.  A found control that offers no pattern to use is looked up
-    again for `CLICK_RETRY` seconds; if it still offers none, the failure names it, the
-    patterns it does report and the names clicked before it.  A disabled control is never invoked, because `Invoke` on one
+    again for `CLICK_RETRY` seconds; if it still offers none, the failure names it as last
+    seen, which it may no longer be, with the patterns it reported and the names clicked before it.  A disabled control is never invoked, because `Invoke` on one
     returns without an error; but a control under a modal dialog can still read enabled,
     so a click that the dialog swallows is not an error.  With `expand`, a `click` only
     uses `ExpandCollapsePattern`, so a split button opens its menu and is not invoked;
@@ -817,7 +817,7 @@ def ui_inner(build: str, action: str, names: tuple[str, ...], kind: str | None, 
         "        try { $patterns = (@($bare.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) -join ', ') } catch {}",
         "        if ($patterns -eq '') { $patterns = 'none' }",
         "        $before = 'nothing'; if ($lines.Count -gt 0) { $before = $lines -join '; ' }",
-        f"        throw ($name + ' offers no way to be clicked after {CLICK_RETRY}s (' + $line + '; patterns: ' + $patterns + '; clicked before it: ' + $before + ')')",
+        f"        throw ($name + ' offers no way to be clicked after {CLICK_RETRY}s (last seen: ' + $line + '; patterns: ' + $patterns + '; clicked before it: ' + $before + ')')",
         "      }",
         f"      if ($null -eq $used) {{ throw \"no control {'with automation id' if by_id else 'named'} $name\" }}",
         "      [void]$lines.Add($hit[0].Current.Name + ' -> ' + $used)",

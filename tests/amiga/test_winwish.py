@@ -1347,7 +1347,9 @@ def _click_loop(inner: str) -> list[str]:
 def test_a_found_control_with_nothing_to_click_is_looked_up_again_inside_the_search_loop():
     inner = winwish.ui_inner(r"C:\b", "click", ("View", "Automapper"), "MenuItem", r"C:\o.txt")
     use = inner[inner.index("function Use-Control"):inner.index("function Use-Control") + 2000]
-    use = use[:use.index("\n  }")]
+    end = use.find("\n  }")
+    assert end != -1, "Use-Control's closing brace was not found at two spaces' indent"
+    use = use[:end]
     # Use-Control answers $null for a control that offers no pattern, so the loop can look again.
     assert "return $null" in use and "throw" not in use
     loop = "\n".join(_click_loop(inner))
@@ -1356,12 +1358,23 @@ def test_a_found_control_with_nothing_to_click_is_looked_up_again_inside_the_sea
     assert loop.index("$used = Use-Control $hit[0]") < loop.index("Start-Sleep -Milliseconds 200")
 
 
+def test_a_control_that_was_clicked_is_never_looked_up_again():
+    inner = winwish.ui_inner(r"C:\b", "click", ("View", "Automapper"), "MenuItem", r"C:\o.txt")
+    loop = "\n".join(_click_loop(inner))
+    use = loop.index("$used = Use-Control $hit[0]")
+    done = loop.find("if ($null -ne $used) { break }")
+    assert done != -1, "the loop does not stop once a control has been used"
+    assert use < done < loop.index("$retry = (Get-Date)")
+
+
 def test_a_control_still_unclickable_is_named_with_its_patterns_and_what_was_clicked_before_it():
     inner = winwish.ui_inner(r"C:\b", "click", ("View", "Automapper"), "MenuItem", r"C:\o.txt")
     assert "the control offers no way to be clicked" not in inner
     after = inner[inner.index("\n".join(_click_loop(inner))):]
     assert "offers no way to be clicked" in after
     assert "Get-Line $bare" in after
+    # The control may be gone by the end of the retry, so the message says when it was read.
+    assert "last seen" in after
     assert "GetSupportedPatterns()" in after
     assert "$lines -join" in after
 
