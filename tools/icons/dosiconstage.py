@@ -59,14 +59,21 @@ def stage(folder: pathlib.Path, slot: str, figures=FIGURES) -> list[dict]:
     if len(names) != len(figures):
         raise SystemExit(f"{len(names)} records in slot {slot} and "
                          f"{len(figures)} figures to write")
+    staged = []
     for path, (head, body, colours) in zip(names, figures):
         data = bytearray(path.read_bytes())
-        fields = dos_port.FIELDS_BY_NAME_FOR[dos_port.deltas_for(len(data)).key]
+        try:
+            key = dos_port.deltas_for(len(data)).key
+        except dos_port.DosDeltasError as exc:
+            raise SystemExit(f"{path.name}: {exc}")
+        fields = dos_port.FIELDS_BY_NAME_FOR[key]
         data[fields["icon_head"].offset] = head
         data[fields["icon_body"].offset] = body
         at = fields["icon_colours"].offset
         data[at:at + 6] = bytes.fromhex(colours)
-        path.write_bytes(bytes(data))
+        staged.append((path, bytes(data)))
+    for path, data in staged:
+        path.write_bytes(data)
         char = dos_codec.read_character(path)
         written.append({"file": path.name, "name": char.name,
                         "icon_head": char.get("icon_head"),

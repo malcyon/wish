@@ -26,3 +26,21 @@ def test_figure_lands_at_the_titles_own_offsets(tmp_path, key, size, head, body,
     expected[head], expected[body] = 8, 22
     expected[colours:colours + 6] = bytes.fromhex(COLOURS)
     assert data == bytes(expected)
+
+
+def test_wrong_size_record_exits_naming_the_file(tmp_path):
+    (tmp_path / "CHRDATD1.SAV").write_bytes(bytes(285))
+    (tmp_path / "CHRDATD2.SAV").write_bytes(bytes(100))
+    figures = [(8, 22, COLOURS)] * 2
+    with pytest.raises(SystemExit) as caught:
+        dosiconstage.stage(tmp_path, "D", figures)
+    assert "CHRDATD2.SAV" in str(caught.value)
+
+
+def test_a_bad_record_leaves_every_record_untouched(tmp_path):
+    for n, size in enumerate((285, 285, 100), 1):
+        (tmp_path / f"CHRDATD{n}.SAV").write_bytes(bytes(size))
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    with pytest.raises(SystemExit):
+        dosiconstage.stage(tmp_path, "D", [(8, 22, COLOURS)] * 3)
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
