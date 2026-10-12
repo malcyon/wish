@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
 )
 
 from goldbox import (
+    amiga_later,
     amiga_pod,
     amiga_por,
     amiga_port,
@@ -70,6 +71,7 @@ from goldbox.spells import for_game as spell_table
 from . import (
     activeeffects,
     amigafigure,
+    amigalaterfigure,
     changes,
     dosfigure,
     files,
@@ -966,8 +968,8 @@ class EditorBinding(QObject):
         self.game_disk_found: str | None = None
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
-        self.figure_art: (amigafigure.FigureArt | dosfigure.FigureArt
-                          | None) = None
+        self.figure_art: (amigafigure.FigureArt | amigalaterfigure.FigureArt
+                          | dosfigure.FigureArt | None) = None
         self._figure_serial = 0
         self._figure_carrier = amigafigure.Loaded(self)
         self._figure_carrier.done.connect(self._figure_loaded)
@@ -2690,9 +2692,9 @@ class EditorBinding(QObject):
 
     def _load_figure_art(self) -> None:
         """Start reading the party's combat-figure art off the player's disks
-        or game folder: Amiga Pool of Radiance, or a DOS Pool of Radiance,
-        Curse or Silver Blades. The figure box stays empty until
-        `_figure_loaded` has it, and when the art is not found."""
+        or game folder: Amiga Pool of Radiance, Curse or Silver Blades, or a
+        DOS Pool of Radiance, Curse or Silver Blades. The figure box stays
+        empty until `_figure_loaded` has it, and when the art is not found."""
         self._figure_serial += 1
         self.figure_art = None
         party = self.party
@@ -2703,6 +2705,11 @@ class EditorBinding(QObject):
             amigafigure.start(self._figure_serial,
                               self._port_folders(party.game),
                               self._figure_carrier)
+        elif (party.port == "amiga"
+                and party.game.key in amigalaterfigure.TITLES):
+            amigalaterfigure.start(self._figure_serial,
+                                   self._port_folders(party.game),
+                                   party.game.key, self._figure_carrier)
         elif party.port == "dos" and party.game.key in dos_icons.ICON_SCREENS:
             found = (self._title_folder(f, party.game)
                      for f in self._port_folders(party.game))
@@ -2726,6 +2733,7 @@ class EditorBinding(QObject):
         """`member`'s combat figure drawn from the art found, or None."""
         if (self.figure_art is None
                 or not isinstance(member.native, (amiga_por.AmigaPorCharacter,
+                                                  amiga_later.AmigaCharacter,
                                                   dos_codec.DosCharacter))):
             return None
         return self.figure_art.figure(member.native)

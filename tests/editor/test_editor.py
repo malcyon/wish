@@ -7134,12 +7134,11 @@ def _amiga_pod_editor(tmp_path):
     return window
 
 
-@pytest.mark.parametrize("make", ["_amiga_curse_editor", "_amiga_pod_editor"])
 def test_no_other_amiga_party_gets_a_figure_even_when_the_art_is_there(
-        app, tmp_path, monkeypatch, make):
+        app, tmp_path, monkeypatch):
     monkeypatch.setattr("editor.amigafigure.load", lambda folders:
                         _generated_figure_art())
-    w = globals()[make](tmp_path)
+    w = _amiga_pod_editor(tmp_path)
     _settle(w)
     assert w.figure_art is None
     w.roster.selectRow(0)
@@ -7457,6 +7456,8 @@ def test_dos_art_does_not_reach_an_amiga_party(
         app, tmp_path, monkeypatch, make):
     _patch_dos_art(monkeypatch)
     monkeypatch.setattr("editor.amigafigure.load", lambda folders: None)
+    monkeypatch.setattr("editor.amigalaterfigure.load",
+                        lambda folders, title: None)
     w = globals()[make](tmp_path)
     w = w[0] if isinstance(w, tuple) else w
     _settle(w)
@@ -7509,6 +7510,351 @@ def test_donalds_pool_party_shows_the_figure_the_composer_makes(
         assert figure.background == palette[0]
         assert member.icon is None
     assert _folder_hashes(save) == before
+
+
+# ---------------------------------------------------------------------------
+# An Amiga Curse or Silver Blades character's combat figure
+# ---------------------------------------------------------------------------
+
+_AMIGA_LATER_TITLES = ["CURSE", "SILVER_BLADES"]
+
+#: Heads 1 and 2, bodies 3 and 4: the pixel each pose puts where.
+_AMIGA_LATER_FIGURES = {1: (1, 3), 2: (2, 4)}
+
+
+def _generated_amiga_later_art(title="curse-of-the-azure-bonds"):
+    """Art for the two members `_amiga_later_editor` writes: size 2, so heads
+    are blocks 65 and 66 and bodies 67 and 68, each with a second pose 128
+    higher. Pixel values 6, 7, 14 and 15 are ones the recolour leaves alone."""
+    from editor.amigalaterfigure import FigureArt
+    from goldbox import amiga_later_icons as later
+
+    def tile(height, y, x, value):
+        rows = [[0] * 24 for _ in range(height)]
+        opaque = [[False] * 24 for _ in range(height)]
+        rows[y][x], opaque[y][x] = value, True
+        return later.Tile(height, 24, tuple(map(tuple, rows)),
+                          tuple(map(tuple, opaque)))
+
+    heads, bodies = {}, {}
+    for option, x in ((1, 5), (2, 9)):
+        heads[64 + option] = tile(8, 0, x, 6)
+        heads[192 + option] = tile(8, 0, x + 1, 6)
+    for option, x in ((3, 3), (4, 7)):
+        bodies[64 + option] = tile(24, 10, x, 14)
+        bodies[192 + option] = tile(24, 10, x + 1, 15)
+    frame = later.Tile(24, 24, ((7,) * 24,) * 24, ((True,) * 24,) * 24)
+    palette = tuple((16 * i, 255 - 16 * i, 9 * i) for i in range(16))
+    return FigureArt(later.LaterArt(
+        title, heads, bodies, (frame, frame), palette, bytes(range(16)),
+        bytes(6)))
+
+
+def _amiga_later_editor(tmp_path, which, settle=True):
+    """A party of two Amiga Curse or Silver Blades characters who differ only
+    in the fields the figure is made from."""
+    from support.amigasavegame import (
+        fake_record,
+        synthetic_curse,
+        synthetic_silver_blades,
+    )
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_port, amiga_savegame
+    container, deltas, make = {
+        "CURSE": (amiga_savegame.CURSE, amiga_port.CURSE_DELTAS,
+                  synthetic_curse),
+        "SILVER_BLADES": (amiga_savegame.SILVER_BLADES,
+                          amiga_port.SILVER_BLADES_DELTAS,
+                          synthetic_silver_blades)}[which]
+    records = []
+    for name, (head, body) in zip(("ALPHA", "BETA"),
+                                  _AMIGA_LATER_FIGURES.values()):
+        raw = bytearray(fake_record(deltas, name))
+        for field, value in (("icon_head", bytes([head])),
+                             ("icon_body", bytes([body])),
+                             ("size", bytes([2])),
+                             ("icon_colours", bytes(6))):
+            at = deltas.offset(deltas.dos_field(field).offset)
+            raw[at:at + len(value)] = value
+        records.append(bytes(raw))
+    data = make(("ALPHA", "BETA"))
+    data = data[:len(data) - 2 * deltas.record_size] + b"".join(records)
+    disk = amiga_savegame.make_save_disk(container, "A", data)
+    path = tmp_path / "later.adf"
+    disk.save(path)
+    window = EditorBinding(make_root(), str(path))
+    if settle:
+        _settle(window)
+    return window, path
+
+
+@pytest.mark.parametrize("which", _AMIGA_LATER_TITLES)
+def test_an_amiga_later_member_shows_his_two_poses_in_the_figure_box(
+        app, tmp_path, monkeypatch, which):
+    from PyQt6.QtGui import QColor
+    monkeypatch.setattr("editor.amigalaterfigure.load", lambda folders, title:
+                        _generated_amiga_later_art(title))
+    w, _path = _amiga_later_editor(tmp_path, which)
+    palette = w.figure_art.art.palette
+    preview = w._widgets["icon"].preview
+    seen, shots = [], []
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        figure = preview.figure
+        assert figure is not None
+        seen.append(figure)
+        preview.grab()              # the first grab settles the size
+        shots.append(preview.grab().toImage())
+    first, second = seen
+    ready, action = first.poses
+    assert ready[0][5] == palette[6] and ready[10][3] == palette[14]
+    assert action[10][4] == palette[15] and action[10][3] == palette[7]
+    assert second.poses[0][0][9] == palette[6]
+    assert second.poses[0][0][5] == palette[7]
+    assert second.poses[0][10][7] == palette[14]
+    assert first.poses != second.poses
+    assert first.background == second.background == palette[0]
+    scale, x0, y0 = preview._geometry()
+    assert shots[0].pixelColor(x0 + 5 * scale + scale // 2,
+                               y0 + scale // 2) == QColor(*palette[6])
+    assert shots[0] != shots[1]
+
+
+@pytest.mark.parametrize("which", _AMIGA_LATER_TITLES)
+def test_the_amiga_later_figure_changes_no_byte_and_leaves_the_controls_greyed(
+        app, tmp_path, monkeypatch, which):
+    import hashlib
+    monkeypatch.setattr("editor.amigalaterfigure.load", lambda folders, title:
+                        _generated_amiga_later_art(title))
+    w, path = _amiga_later_editor(tmp_path, which)
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    icon = w._widgets["icon"]
+    for row in (0, 1, 0):
+        w.roster.selectRow(row)
+        assert icon.preview.figure is not None
+        assert not icon.isEnabled()
+        assert not icon.btn_change.isEnabled()
+        assert not icon.group_box.isEnabled()
+        assert icon.icon is None
+        assert w.party.member(row).icon is None
+        assert icon.toolTip() == icon.btn_change.toolTip() == ""
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    assert not w.dirty
+
+
+@pytest.mark.parametrize("which", _AMIGA_LATER_TITLES)
+def test_missing_amiga_later_art_leaves_the_figure_box_empty(
+        app, tmp_path, monkeypatch, which):
+    from PyQt6.QtGui import QColor
+
+    from editor.window import EditorBinding
+    # Only the save's own folder, with no other disk in it, whatever
+    # Preferences or the Game directory name on the machine running this.
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [tmp_path])
+    w, _path = _amiga_later_editor(tmp_path, which)
+    assert w.figure_art is None
+    preview = w._widgets["icon"].preview
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        assert preview.figure is None
+    shot = preview.grab().toImage()
+    assert shot.pixelColor(shot.width() // 2, shot.height() // 2) == QColor(
+        "#ffffff")
+
+
+def test_an_amiga_later_art_load_that_fails_leaves_the_figure_box_empty(
+        app, tmp_path, monkeypatch):
+    def broken(folders, title):
+        raise OSError("the disk went away")
+    monkeypatch.setattr("editor.amigalaterfigure.load", broken)
+    w, _path = _amiga_later_editor(tmp_path, "CURSE")
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+
+
+def test_art_that_does_not_hold_the_amiga_later_members_blocks_leaves_the_box_empty(
+        app, tmp_path, monkeypatch):
+    art = _generated_amiga_later_art()
+    del art.art.heads[66], art.art.heads[194]
+    monkeypatch.setattr("editor.amigalaterfigure.load",
+                        lambda folders, title: art)
+    w, _path = _amiga_later_editor(tmp_path, "CURSE")
+    preview = w._widgets["icon"].preview
+    w.roster.selectRow(0)
+    assert preview.figure is not None
+    w.roster.selectRow(1)
+    assert preview.figure is None
+
+
+def test_opening_an_amiga_later_save_does_not_wait_for_the_art(
+        app, tmp_path, monkeypatch):
+    import threading
+    release, started = threading.Event(), threading.Event()
+
+    def slow(folders, title):
+        started.set()
+        release.wait(5)
+        return _generated_amiga_later_art(title)
+    monkeypatch.setattr("editor.amigalaterfigure.load", slow)
+    try:
+        w, _path = _amiga_later_editor(tmp_path, "SILVER_BLADES", settle=False)
+        assert not release.is_set()
+        assert len(w.party) == 2 and w.roster.currentIndex().row() == 0
+        assert w.figure_art is None
+        assert w._widgets["icon"].preview.figure is None
+        assert started.wait(5)
+    finally:
+        release.set()
+    _settle(w)
+    assert w._widgets["icon"].preview.figure is not None
+
+
+def test_amiga_later_art_from_an_earlier_open_is_not_drawn(
+        app, tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.amigalaterfigure.load",
+                        lambda folders, title: None)
+    w, _path = _amiga_later_editor(tmp_path, "CURSE")
+    w._figure_loaded(w._figure_serial - 1, _generated_amiga_later_art())
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+    w._figure_loaded(w._figure_serial, _generated_amiga_later_art())
+    assert w._widgets["icon"].preview.figure is not None
+
+
+@pytest.mark.parametrize("which,key", [
+    ("CURSE", "curse-of-the-azure-bonds"),
+    ("SILVER_BLADES", "secret-of-the-silver-blades")])
+def test_the_amiga_later_art_is_looked_for_where_the_amiga_pool_art_is(
+        app, tmp_path, monkeypatch, which, key):
+    from editor.window import EditorBinding
+    asked = []
+
+    def record(folders, title):
+        asked.append((list(folders), title))
+        return None
+    monkeypatch.setattr("editor.amigalaterfigure.load", record)
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [tmp_path / "a",
+                                                         tmp_path / "b"])
+    _amiga_later_editor(tmp_path, which)
+    assert asked == [([tmp_path / "a", tmp_path / "b"], key)]
+
+
+def test_the_amiga_later_reader_takes_the_first_folder_that_holds_the_art(
+        app, tmp_path, monkeypatch):
+    from editor import amigalaterfigure
+    from goldbox import amiga_later_icons as later
+    from goldbox.amiga_adf import AmigaDisk
+    for name in ("first", "second", "third"):
+        (tmp_path / name).mkdir()
+    AmigaDisk.blank("TWO").save(str(tmp_path / "second" / "Disk-2.ADF"))
+    AmigaDisk.blank("THREE").save(str(tmp_path / "second" / "Disk-3.adf"))
+    (tmp_path / "second" / "notes.txt").write_text("not a disk")
+    (tmp_path / "second" / "broken.adf").write_bytes(b"not a disk")
+    AmigaDisk.blank("ONE").save(str(tmp_path / "third" / "Disk-1.adf"))
+    seen = []
+
+    def disk_files(title, disks):
+        seen.append(len(disks))
+        if len(disks) < 2:
+            raise later.LaterArtMissing("no disk 2")
+        return {"files": title}
+    monkeypatch.setattr("editor.amigalaterfigure.art.disk_files", disk_files)
+    monkeypatch.setattr("editor.amigalaterfigure.art.read_art",
+                        lambda title, files: ("art", title, files))
+    found = amigalaterfigure.load(
+        [tmp_path / "absent", tmp_path / "first", tmp_path / "third",
+         tmp_path / "second", tmp_path / "third"],
+        "secret-of-the-silver-blades")
+    assert found.art == ("art", "secret-of-the-silver-blades",
+                         {"files": "secret-of-the-silver-blades"})
+    assert seen == [0, 1, 2]
+    assert amigalaterfigure.load([tmp_path / "first"],
+                                 "curse-of-the-azure-bonds") is None
+    assert amigalaterfigure.load([], "curse-of-the-azure-bonds") is None
+
+
+def test_an_amiga_pools_of_darkness_party_still_shows_an_empty_box(
+        app, tmp_path, monkeypatch):
+    _patch_dos_art(monkeypatch)
+    for name in ("editor.amigafigure.load", "editor.amigalaterfigure.load"):
+        monkeypatch.setattr(name, lambda *args: pytest.fail(
+            "a Pools of Darkness party asked for figure art"))
+    w = _amiga_pod_editor(tmp_path)
+    _settle(w)
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+
+
+def _amiga_later_disk_folder(tmp_path, key):
+    """A folder holding every registered Amiga disk image of the title, or a
+    skip; the images are written whole, as the player's folder has them."""
+    from automap import gamedisks
+    from tools.amiga import amigasaves
+    pattern = {"curse-of-the-azure-bonds": "curse|azure",
+               "secret-of-the-silver-blades": "silver|blade|secret"}[key]
+    if not gamedisks.candidates("amiga"):
+        pytest.skip("needs the amiga registry entry")
+    import re
+    folder = tmp_path / "disks"
+    folder.mkdir()
+    for n, (label, data) in enumerate(amigasaves.images()):
+        if re.search(pattern, label, re.IGNORECASE):
+            (folder / f"disk{n}.adf").write_bytes(data)
+    return folder
+
+
+@pytest.mark.parametrize("key,name", [
+    ("curse-of-the-azure-bonds", "GALAIN"),
+    ("curse-of-the-azure-bonds", "HOLLAND"),
+    ("secret-of-the-silver-blades", "PAINE"),
+    ("secret-of-the-silver-blades", "EPONA")])
+def test_a_registered_amiga_later_member_shows_the_figure_the_composer_makes(
+        app, tmp_path, monkeypatch, key, name):
+    from editor.window import EditorBinding
+    from goldbox import amiga_port, amiga_savegame
+    from tools.icons import amigalatericons
+    expected = amigalatericons.title_art(key)
+    char = amigalatericons.find_record(name)
+    if expected is None:
+        pytest.skip(f"not all of {key}'s Amiga disks are here")
+    if char is None or char.deltas.dos.key != key:
+        pytest.skip(f"no {name} of {key} on the registered disks")
+    folder = _amiga_later_disk_folder(tmp_path, key)
+    container, deltas = {
+        "curse-of-the-azure-bonds": (amiga_savegame.CURSE,
+                                     amiga_port.CURSE_DELTAS),
+        "secret-of-the-silver-blades": (amiga_savegame.SILVER_BLADES,
+                                        amiga_port.SILVER_BLADES_DELTAS)}[key]
+    from support.amigasavegame import synthetic_curse, synthetic_silver_blades
+    make = (synthetic_curse if container is amiga_savegame.CURSE
+            else synthetic_silver_blades)
+    data = make((name,))
+    data = data[:len(data) - deltas.record_size] + char.block_bytes()
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    path = saves / "party.adf"
+    amiga_savegame.make_save_disk(container, "A", data).save(path)
+    before = _folder_hashes(saves)
+    monkeypatch.setattr(EditorBinding, "_port_folders",
+                        lambda self, game, source=None: [folder])
+    w = EditorBinding(make_root(), str(path))
+    _settle(w)
+    w.roster.selectRow(0)
+    member = w.party.member(0)
+    fields = (member.native.get("icon_head"), member.native.get("icon_body"),
+              member.native.get("size"), bytes(member.native.get("icon_colours")))
+    figure = w._widgets["icon"].preview.figure
+    assert figure is not None
+    assert figure.poses == expected.drawn(*fields)
+    assert figure.background == expected.palette[0]
+    assert member.icon is None
+    assert _folder_hashes(saves) == before
 
 
 def test_the_figure_art_is_gathered_from_every_disk_in_the_folder(tmp_path):
