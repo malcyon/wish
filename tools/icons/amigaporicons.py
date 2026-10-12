@@ -74,6 +74,10 @@ PROGRAM_SHA256 = ("b1cbbecc01889c16fe0b6048b6f70126"
 FIGURE = 24
 
 
+class CaptureError(ValueError):
+    """A capture, or a pose to look for in it, that cannot be compared."""
+
+
 def _images():
     from tools.amiga import amigasaves
     return amigasaves.images()
@@ -352,7 +356,7 @@ def drawn_poses(char, amiga, code) -> tuple[tuple, tuple]:
 def capture_pixels(path):
     """A canonical crop's Amiga pixels, `(rows, columns)` of packed RGB.
 
-    Raises `ValueError` unless every 2x2 block of the crop is one colour,
+    Raises :class:`CaptureError` unless every 2x2 block of the crop is one colour,
     which a resampled or filtered frame would not be.
     """
     import numpy
@@ -360,14 +364,14 @@ def capture_pixels(path):
     with Image.open(path) as image:
         rgb = numpy.asarray(image.convert("RGB"), dtype=numpy.int32)
     if rgb.shape[0] % 2 or rgb.shape[1] % 2:
-        raise ValueError(f"{path}: {rgb.shape[1]}x{rgb.shape[0]} is not "
+        raise CaptureError(f"{path}: {rgb.shape[1]}x{rgb.shape[0]} is not "
                          f"a doubled frame")
     packed = rgb[..., 0] << 16 | rgb[..., 1] << 8 | rgb[..., 2]
     small = packed[::2, ::2]
     for dy in (0, 1):
         for dx in (0, 1):
             if not numpy.array_equal(packed[dy::2, dx::2], small):
-                raise ValueError(f"{path}: not every Amiga pixel is a "
+                raise CaptureError(f"{path}: not every Amiga pixel is a "
                                  f"single-colour 2x2 block")
     return small
 
@@ -376,9 +380,17 @@ def find_pose(screen, pose) -> tuple[list[tuple[int, int]], int]:
     """`(places matching pixel for pixel, fewest pixels differing anywhere)`.
 
     Places are the `(x, y)` of the pose's top-left corner in Amiga pixels.
+    Raises :class:`CaptureError` for an empty or ragged pose, or one larger
+    than the screen.
     """
     import numpy
     from numpy.lib.stride_tricks import sliding_window_view
+    if not pose or not pose[0] or any(len(row) != len(pose[0])
+                                      for row in pose):
+        raise CaptureError("an empty or ragged pose cannot be looked for")
+    if len(pose) > screen.shape[0] or len(pose[0]) > screen.shape[1]:
+        raise CaptureError(f"a {len(pose[0])}x{len(pose)} pose does not fit "
+                           f"a {screen.shape[1]}x{screen.shape[0]} screen")
     want = numpy.array([[r << 16 | g << 8 | b for r, g, b in row]
                         for row in pose], dtype=numpy.int32)
     windows = sliding_window_view(screen, want.shape)
@@ -402,7 +414,11 @@ def compare_capture(name: str, path) -> dict[str, tuple] | None:
 
 
 def report_capture(out, name: str, path) -> int:
-    found = compare_capture(name, path)
+    try:
+        found = compare_capture(name, path)
+    except CaptureError as exc:
+        out(str(exc))
+        return 1
     if found is None:
         out(f"need POOLDATA's art, /program and a record called {name}")
         return 1

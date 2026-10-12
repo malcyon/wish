@@ -219,8 +219,9 @@ def icon_palette_chain(program: bytes) -> tuple[int, int, int, int]:
     """
     try:
         hunks, relocs = amiga_hunks.parse(program)
-    except (ValueError, IndexError) as exc:
-        raise PorArtError(f"/program is not a Hunk executable: {exc}") from exc
+    except (ValueError, IndexError, struct.error) as exc:
+        raise PorArtError(f"/program is not a Hunk executable, or is cut "
+                          f"short: {exc}") from exc
     fields = {}
     for (number, offset), to in relocs.items():
         if number < len(hunks) and hunks[number].file_offset is not None:

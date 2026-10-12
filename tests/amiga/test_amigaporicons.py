@@ -204,6 +204,12 @@ def test_the_box_shows_through_only_where_the_pose_is_empty():
         art.on_frame(frame, ((None,),))
 
 
+#: The installed table's sixteen `(red, green, blue)` nibbles.  No entry has
+#: two equal channels, so a swapped red and blue, or a nibble read from the
+#: wrong place, gives another colour.
+_CHANNELS = tuple((i, (5 * i + 3) % 16, (11 * i + 6) % 16) for i in range(16))
+
+
 def _program(bar=art.ICON_MENU_BAR):
     """A two-hunk executable whose ICON menu installs the second table.
 
@@ -234,7 +240,8 @@ def _program(bar=art.ICON_MENU_BAR):
     data = bytearray(0x60)
     data[0:len(bar)] = bar
     for i in range(16):
-        data[0x20 + 2 * i:0x22 + 2 * i] = word(0x111 * (i % 16))
+        red, green, blue = _CHANNELS[i]
+        data[0x20 + 2 * i:0x22 + 2 * i] = word(red << 8 | green << 4 | blue)
         data[0x40 + 2 * i:0x42 + 2 * i] = word(0xF00)
     return hunk_file([
         (amiga_hunks.HUNK_CODE, bytes(code),
@@ -245,13 +252,16 @@ def _program(bar=art.ICON_MENU_BAR):
 
 def test_the_palette_is_the_table_the_icon_menu_installs():
     program = _program()
-    assert art.icon_palette(program) == tuple(
-        (17 * i, 17 * i, 17 * i) for i in range(16))
+    palette = art.icon_palette(program)
+    assert [rgb[0] for rgb in palette] == [17 * r for r, _g, _b in _CHANNELS]
+    assert [rgb[1] for rgb in palette] == [17 * g for _r, g, _b in _CHANNELS]
+    assert [rgb[2] for rgb in palette] == [17 * b for _r, _g, b in _CHANNELS]
     lea, call, setter, table = art.icon_palette_chain(program)
     assert program[lea:lea + 2] == b"\x41\xf9"
     assert program[call:call + 2] == b"\x4e\xba"
     assert program[setter:setter + 4] == bytes.fromhex("4E55FFE0")
-    assert program[table:table + 4] == bytes.fromhex("00000111")
+    assert program[table:table + 2] == (_CHANNELS[0][1] << 4
+                                        | _CHANNELS[0][2]).to_bytes(2, "big")
 
 
 def test_an_executable_without_the_icon_menu_has_no_icon_palette():
@@ -259,6 +269,36 @@ def test_an_executable_without_the_icon_menu_has_no_icon_palette():
         art.icon_palette(_program(bar=b"Parts colour-1 colour-2 Size Exit"))
     with pytest.raises(art.PorArtError):
         art.icon_palette(b"not a hunk file at all")
+
+
+@pytest.mark.parametrize("length", [4, 10, 20, 40])
+def test_a_truncated_executable_has_no_icon_palette(length):
+    with pytest.raises(art.PorArtError):
+        art.icon_palette(_program()[:length])
+
+
+def test_a_pose_larger_than_the_screen_or_empty_cannot_be_looked_for():
+    import numpy
+
+    from tools.icons import amigaporicons
+    screen = numpy.zeros((10, 10), dtype=numpy.int32)
+    pose = (((0, 0, 0),) * 24,) * 24
+    with pytest.raises(amigaporicons.CaptureError):
+        amigaporicons.find_pose(screen, pose)
+    with pytest.raises(amigaporicons.CaptureError):
+        amigaporicons.find_pose(screen, ())
+    with pytest.raises(amigaporicons.CaptureError):
+        amigaporicons.find_pose(screen, ((),))
+
+
+def test_a_pose_is_found_where_it_is_drawn():
+    import numpy
+
+    from tools.icons import amigaporicons
+    screen = numpy.zeros((6, 7), dtype=numpy.int32)
+    screen[2, 3] = 0x112233
+    places, fewest = amigaporicons.find_pose(screen, (((0x11, 0x22, 0x33),),))
+    assert (places, fewest) == ([(3, 2)], 0)
 
 
 # ---------------------------------------------------------------------------
@@ -352,8 +392,9 @@ def test_the_icon_box_is_comspr_block_12():
     assert (frame.width, frame.height) == (24, 24)
 
 
-#: Where stage 2's capture shows each pose, in Amiga pixels: OLD on the
-#: first row of boxes, NEW on the second, and the two the same.
+#: Where each pose is in a capture, in Amiga pixels.  The ICON screen draws
+#: the figure twice, the one the character has (top row) and the one being
+#: edited (bottom row); nothing was edited, so both rows hold it.
 CAPTURE_PLACES = {"ready": [(59, 73), (59, 121)],
                   "action": [(131, 73), (131, 121)]}
 

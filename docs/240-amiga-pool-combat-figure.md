@@ -197,9 +197,7 @@ rules above and finding them in their crops gave twelve register values:
 Exactly three tables in `/program` hold all twelve -- the three above -- and
 the code chain picks `0x03B260`. Only then was LAURANN composed, from her
 record and the disk alone; her value 10, which neither GARWAN nor
-STONEBEARD draws, came from that table. (A first search for the table also used
-her value 10, read off her capture; repeated without it, it finds the same
-three tables, so nothing in the table choice rests on her.)
+STONEBEARD draws, came from that table.
 
 | member | record: head, body, size, colours | ready | action |
 |---|---|---|---|
@@ -207,11 +205,13 @@ three tables, so nothing in the table choice rests on her.)
 | STONEBEARD | 3, 30, 1, `55 55 11 7C 94 EF` | the same | the same |
 | LAURANN, the control | 5, 8, 2, `1A 41 A1 76 F9 44` | the same | the same |
 
-Places are Amiga pixels in the 360x284 frame of WISH-378's stage-2 crops;
-the first row of boxes is OLD and the second NEW. Each comparison is all 576
-pixels of a pose drawn over the box, 0 differing. `tools/icons/amigaporicons.py
---capture NAME PNG` re-takes it, and `tests/amiga/test_amigaporicons.py`
-pins it where the captures are on the machine.
+Places are Amiga pixels in the 360x284 frame of the captures. The ICON
+screen draws the figure twice, the one the character has (top row) and the
+one being edited (bottom row); nothing was edited, so both hold it. Each
+comparison is all 576 pixels of a pose drawn over the box, 0 differing.
+`tools/icons/amigaporicons.py --capture NAME PNG` re-takes it, and
+`tests/amiga/test_amigaporicons.py` pins it where the captures are on the
+machine.
 
 **Empty is decided before the recolour.** `compose` treats a pixel as empty
 where head and body are both 0 in the art, so a colour nibble of 0 draws
