@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -898,6 +899,7 @@ def test_fsuae_trip_runs_both_legs_in_process_on_the_guests_channels(tmp_path, m
     assert ("lane-key", "RET") in events
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX owner/0700 checks require POSIX stat")
 def test_fsuae_phase_reads_f_while_running_through_the_live_copy(tmp_path, monkeypatch):
     _synthetic_private_files(monkeypatch, tmp_path)
     guest = _FsuaeGuest([], {"disk3": "remote-disk3"})
