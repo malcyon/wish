@@ -1,5 +1,7 @@
 """The Amiga Curse of the Azure Bonds and Secret of the Silver Blades combat
-figure, as each title's ICON screen draws it.
+figure, as each title's ICON screen draws it, and the tile and recolour
+rules Amiga Pools of Darkness shares with them
+(:mod:`goldbox.amiga_pod_icons` draws its screen).
 
 Everything is read from the player's own disks at run time; nothing of the
 games' art, colours or tables is held here.  The files:
@@ -22,7 +24,9 @@ puts a mask plane first, whose set bit is see-through on the disk: the tile
 loader inverts it (`/Curse` `0x3B6F8`, `/Secret` `0x3F8F8`) and the blitter
 draws through it with minterm `$CA` (`/Curse` `0x3F9D8`, `/Secret`
 `0x4440C`), so an opaque pixel replaces what is under it.  Type 0 has no mask
-and is opaque.  The next four planes are the palette entry, bit 0 first.
+and is opaque.  The next four planes are the palette entry, bit 0 first;
+a type byte whose high nibble is `E` has five, for a 32-colour screen
+(Pools of Darkness).
 
 :func:`compose` is the figure: the loader (`/Curse` `0x24E42`, `/Secret`
 `0x266BA`) reads body and head blocks for both poses, then recolours all
@@ -75,11 +79,21 @@ TILE_HEADER = struct.Struct(">HHHBB")
 #: `(byte + 8) // 17`, and the screen shows nibble `n` as `17 * n`.
 PALETTE_TYPE, PALETTE_COLOURS = 8, 16
 
+#: The high nibble of a tile's or a palette block's type byte that marks
+#: five bitplanes and 32 colours.  Pools of Darkness's colour translator
+#: (`/Pools of Darkness` `0x40A58`) takes its five-plane path for exactly
+#: these tiles (`0x40AE6`-`0x40AF4`), and the game always opens a five-plane
+#: screen (`0x17414` calls `0x42D5C` with 1).
+DEEP_TYPE, DEEP_PLANES, DEEP_COLOURS = 0xE0, 5, 32
+
 #: The recolour builder's first instructions, the same in both executables:
 #: `andi.w #$f, d1; lea g<entry>(a4), a0; moveq #0, d0; move.b d2, d0;
 #: lea g<parts>(a4), a1` (`/Curse` `0x24F0C`, `/Secret` `0x26784`).  The two
-#: `lea` displacements name the entry table and the part table.
+#: `lea` displacements name the entry table and the part table.  The German
+#: Pools of Darkness keeps its loop counter on the stack, so its third
+#: instruction is `move.b d16(a5), d0` (`_BUILDER_FRAME`).
 _BUILDER = (bytes.fromhex("0241000f41ec"), bytes.fromhex("70001002" "43ec"))
+_BUILDER_FRAME = (bytes.fromhex("7000102d"), bytes.fromhex("43ec"))
 
 #: Silver Blades' block loader, after the two loads (`0x38642`):
 #: `cmpi.b #$19, d3; beq.b; move.l g(a4), -(a7); moveq #0, d0;
@@ -310,12 +324,13 @@ def decode_tile(raw: bytes, name: str = "tile") -> Tile:
         raise LaterArtError(f"{name}: {len(raw)} bytes is shorter than a "
                             f"tile header")
     height, _x, _y, eights, kind = TILE_HEADER.unpack_from(raw, 0)
+    depth = DEEP_PLANES if kind & 0xF0 == DEEP_TYPE else 4
     kind &= 0x0F
     if kind not in (0, 1) or not height or not eights:
         raise LaterArtError(f"{name}: a type-{kind} header of {height} rows "
                             f"and {eights} eights is not a figure tile")
     plane = height * eights
-    planes = 4 + kind
+    planes = depth + kind
     want = TILE_HEADER.size + planes * plane
     # A block is stored at an even length, so an odd tile carries one byte
     # of padding (Silver Blades' redrawn head, art 74, is 143 and 144).
@@ -330,7 +345,8 @@ def decode_tile(raw: bytes, name: str = "tile") -> Tile:
     width = eights * 8
     rows, opaque = [], []
     for y in range(height):
-        rows.append(tuple(sum(bit(kind + p, y, x) << p for p in range(4))
+        rows.append(tuple(sum(bit(kind + p, y, x) << p
+                              for p in range(depth))
                           for x in range(width)))
         opaque.append(tuple(not (kind and bit(0, y, x))
                             for x in range(width)))
@@ -356,11 +372,14 @@ def frames(comspr: dict[int, Tile]) -> tuple[Tile, Tile]:
 # Colours
 # ---------------------------------------------------------------------------
 def palette_block(raw: bytes, name: str = "palette") -> tuple[tuple[int, int, int], ...]:
-    """A type-8 block's sixteen colours, as the screen shows them."""
-    if (len(raw) < TILE_HEADER.size + 3 * PALETTE_COLOURS
+    """A type-8 block's sixteen colours, or 32 when its type byte's high
+    nibble is :data:`DEEP_TYPE`, as the screen shows them."""
+    count = (DEEP_COLOURS if len(raw) > 7 and raw[7] & 0xF0 == DEEP_TYPE
+             else PALETTE_COLOURS)
+    if (len(raw) < TILE_HEADER.size + 3 * count
             or raw[7] & 0x0F != PALETTE_TYPE):
         raise LaterArtError(f"{name} is not a palette block")
-    body = raw[TILE_HEADER.size:TILE_HEADER.size + 3 * PALETTE_COLOURS]
+    body = raw[TILE_HEADER.size:TILE_HEADER.size + 3 * count]
     return tuple(tuple(17 * ((c + 8) // 17) for c in body[i:i + 3])
                  for i in range(0, len(body), 3))
 
@@ -402,14 +421,17 @@ def icon_palette(always: bytes, title: str, pictures: bytes | None = None
     return tuple(palette)
 
 
-def recolour_tables(executable: bytes) -> tuple[bytes, bytes]:
+def recolour_tables(executable: bytes, entries: int = PALETTE_COLOURS
+                    ) -> tuple[bytes, bytes]:
     """`(entry, parts)`: the executable's own two recolour tables.
 
     `entry[v]` is the Amiga palette entry DOS pixel value `v` is drawn in
-    (Curse `g0EE4`, Silver Blades `g2374`); `parts` are the six part values
-    the record's colour bytes recolour, in record order (`g1BB9`, `g1F76`).
-    Found through the recolour builder's own `lea` instructions rather than
-    at a fixed offset.
+    (Curse `g0EE4`, Silver Blades `g2374`, Pools of Darkness `g234E`);
+    `parts` are the six part values the record's colour bytes recolour, in
+    record order (`g1BB9`, `g1F76`, `g1EA6`).  Found through the recolour
+    builder's own `lea` instructions rather than at a fixed offset.
+    `entries` is the screen's palette size: Curse and Silver Blades' tables
+    are an order of 0-15, Pools of Darkness's sixteen of its 32 entries.
     """
     try:
         hunks, _relocs = amiga_hunks.parse(executable)
@@ -421,14 +443,23 @@ def recolour_tables(executable: bytes) -> tuple[bytes, bytes]:
     if code is None or data is None or data.file_offset is None:
         raise LaterArtError("the executable has no code and data hunk")
     head, tail = _BUILDER
+    frame, frame_tail = _BUILDER_FRAME
     found = []
     at = executable.find(head, code.file_offset, code.file_offset + code.size)
     while at >= 0:
         after = at + len(head) + 2
         if executable[after:after + len(tail)] == tail:
+            parts_at = after + len(tail)
+        elif (executable[after:after + len(frame)] == frame
+              and executable[after + len(frame) + 2:
+                             after + len(frame) + 2 + len(frame_tail)]
+                == frame_tail):
+            parts_at = after + len(frame) + 2 + len(frame_tail)
+        else:
+            parts_at = None
+        if parts_at is not None:
             entry = struct.unpack_from(">h", executable, at + len(head))[0]
-            parts = struct.unpack_from(">h", executable,
-                                       after + len(tail))[0]
+            parts = struct.unpack_from(">h", executable, parts_at)[0]
             found.append((entry, parts))
         at = executable.find(head, at + 2, code.file_offset + code.size)
     if len(set(found)) != 1:
@@ -441,7 +472,9 @@ def recolour_tables(executable: bytes) -> tuple[bytes, bytes]:
             raise LaterArtError("a recolour table lies outside the data hunk")
         tables.append(executable[start:start + length])
     entry, parts = tables
-    if sorted(entry) != list(range(16)) or not all(1 <= p < 8 for p in parts):
+    ordered = (sorted(entry) == list(range(16)) if entries == PALETTE_COLOURS
+               else len(set(entry)) == 16 and max(entry) < entries)
+    if not ordered or not all(1 <= p < 8 for p in parts):
         raise LaterArtError(f"the tables {entry.hex(' ')} and "
                             f"{parts.hex(' ')} are not a recolour")
     return entry, parts
@@ -490,19 +523,21 @@ def load_table(executable: bytes) -> bytes:
     return table
 
 
-def recolour_table(colours: bytes, entry: bytes,
-                   parts: bytes) -> tuple[int, ...]:
-    """The sixteen-entry table the loader builds from a record's colours.
+def recolour_table(colours: bytes, entry: bytes, parts: bytes,
+                   entries: int = PALETTE_COLOURS) -> tuple[int, ...]:
+    """The table over `entries` palette entries that the loader builds
+    from a record's colours.
 
     It starts as the identity over palette entries; then for each colour
     byte in record order, `entry[part]` becomes `entry[low nibble]` and
     `entry[part + 8]` becomes `entry[high nibble]` (`/Curse` `0x24EDC`-
-    `0x24F82`).  That is DOS's own recolour, translated into palette entries.
+    `0x24F82`; `/Pools of Darkness` `0x2567E`-`0x25724`, over 32 entries).
+    That is DOS's own recolour, translated into palette entries.
     """
     if len(colours) != len(parts):
         raise LaterArtError(f"icon_colours is {len(parts)} bytes, not "
                             f"{len(colours)}")
-    table = list(range(16))
+    table = list(range(entries))
     for part, chosen in zip(parts, colours):
         table[entry[part]] = entry[chosen & 0x0F]
         table[entry[part + 8]] = entry[chosen >> 4]
@@ -525,20 +560,25 @@ def block_ids(option: int, size: int) -> tuple[int, int]:
 
 def compose(heads: dict[int, Tile], bodies: dict[int, Tile], icon_head: int,
             icon_body: int, size: int, colours: bytes, entry: bytes,
-            parts: bytes, load: bytes | None = None) -> tuple[Pose, Pose]:
+            parts: bytes, load: bytes | None = None,
+            entries: int = PALETTE_COLOURS,
+            head_action: int = ACTION) -> tuple[Pose, Pose]:
     """The `(ready, action)` poses the ICON screen draws for a record.
 
     Each pose is the body tile with the head tile of the same pose drawn
     over it from row 0, both passed through `load` (:func:`load_table`,
     the identity when None) and then recoloured through
-    :func:`recolour_table`; a head pixel replaces the body pixel wherever
-    the head is opaque.
+    :func:`recolour_table` over `entries` palette entries; a head pixel
+    replaces the body pixel wherever the head is opaque.  `head_action` is
+    what the loader adds to the head's art id for the action pose: 0 in
+    Pools of Darkness, whose `CHEAD.TLB` has one head for both.
     """
-    recolour = recolour_table(colours, entry, parts)
-    load = bytes(range(16)) if load is None else load
-    table = tuple(recolour[load[v]] for v in range(16))
+    recolour = recolour_table(colours, entry, parts, entries)
+    load = bytes(range(entries)) if load is None else load
+    table = tuple(recolour[load[v]] for v in range(entries))
+    ready_head = block_ids(icon_head, size)[0]
     poses = []
-    for head_id, body_id in zip(block_ids(icon_head, size),
+    for head_id, body_id in zip((ready_head, ready_head + head_action),
                                 block_ids(icon_body, size)):
         if head_id not in heads:
             raise LaterArtError(f"{HEAD_FILE} holds no art {head_id}")
@@ -599,12 +639,15 @@ class LaterArt:
     entry: bytes
     parts: bytes
     load: bytes = bytes(range(16))
+    entries: int = PALETTE_COLOURS
+    head_action: int = ACTION
 
     def poses(self, icon_head: int, icon_body: int, size: int,
               colours: bytes) -> tuple[Pose, Pose]:
         """The record's ready and action poses, see :func:`compose`."""
         return compose(self.heads, self.bodies, icon_head, icon_body, size,
-                       bytes(colours), self.entry, self.parts, self.load)
+                       bytes(colours), self.entry, self.parts, self.load,
+                       self.entries, self.head_action)
 
     def drawn(self, icon_head: int, icon_body: int, size: int,
               colours: bytes) -> tuple[tuple[tuple[tuple[int, int, int], ...], ...], ...]:

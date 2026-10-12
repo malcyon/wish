@@ -182,6 +182,47 @@ Silver Blades' packed libraries inside `PIC.TLB` are stored at even lengths,
 so a pad byte follows the last chunk; the unpacker stops at the header's
 size rather than at the end of the block.
 
+## Pools of Darkness
+
+What a player sees after camp, Alt, Icon in Amiga Pools of Darkness, read
+from the code and drawn by `goldbox/amiga_pod_icons.py` off the player's own
+disks (`tools/icons/amigapodicons.py --palette`, `--dos`, `--sweep`,
+`--compose`, `--capture`; `tests/icons/test_amigapodicons.py`). The art is
+the tile system Curse and Silver Blades use, on a 32-colour screen, so the
+shared rules stay in `goldbox/amiga_later_icons.py`; the screen is the
+title's own. Addresses are file offsets into the English
+`/Pools of Darkness` on disk 1, a small-data executable like `/Curse`
+(`a4` = data hunk + `0x7FFE`). Every registered image holds the same five
+figure files byte for byte.
+
+| finding | grade | evidence |
+|---|---|---|
+| The files: `DISK1/COMSPR.TLB` and `DISK1/ALWAYS.TLB` beside `/Pools of Darkness` on disk 1, `Disk3/CHEAD.TLB` (28 tiles) and `Disk3/CBODY.TLB` (128) on disk 3. All four are `GLIB` tile libraries packed with method 5; the three figure ones are indexed by art id | CONFIRMED, measured | `amiga_later_icons.library` reads all four; the loader builds `CHEAD%c` and `CBODY%c` at `0x25620` and `0x25662` |
+| A tile whose type byte is `E1` is a mask plane then **five** colour planes; `E0` is five planes and no mask. The mask is inverted on load, as in Curse | CONFIRMED by code, and by length for all 200 tiles of the three figure libraries | the draw routine `0x40276` takes 5 planes for a high nibble of `E` and 4 for 0 (`0x402C0`-`0x402EA`); the colour translator `0x40A58` takes its five-plane path (`0x4574A`, plane 0 = bit 0) when the screen is five deep and the type's high nibble is `E` (`0x40AE6`-`0x40AF4`); start-up sets the five-plane flag unconditionally (`0x17414` calls `0x42D5C` with 1); the `TILE` hook `0x3FEC6` inverts the first plane of a type-1 tile (`0x3FED8`) |
+| Block ids: an option, plus 64 for size 2 (the library name ending `T`); a body's action pose is `+ 128`; the **same head tile** goes into both poses | CONFIRMED by code | block loader `0x36D12`: `addi.b #$40` on `T` at `0x36D7A`; `CHEAD` loads id into slot and slot + 37 (`0x36EAA`-`0x36ED8`), anything else id + 128 into slot + 37 (`0x36EE2`-`0x36F02`). `CHEAD.TLB` holds ids 0-13 and 64-77 only. A size other than 2 (including 0, which two NPC records hold) draws small |
+| The recolour is the Curse rule over 32 entries: identity over 0-31, then `t[e[p]] = e[low]`, `t[e[p + 8]] = e[high]` for the six parts `01 02 03 04 06 07` (`g1EA6`), `e` the sixteen-entry table `g234E`. It is applied to all four loaded tiles, mask plane skipped. No load table | CONFIRMED by code | builder `0x2567E`-`0x25724`, applied by `0x1C80C` to slots `+0`, `+0x25`, `+0x4A`, `+0x6F` (`0x25728`-`0x25790`); `0x36D12` calls no table. `e` holds entries up to 31: `00 11 05 1F 19 0D 13 06 04 12 0B 0A 1C 1B 09 0F` in every registered executable, the German one (crunched, unpacked by `goldbox/stonecracker.py`) included, whose builder reads its counter off the stack |
+| The head covers the body: the slot draw blits the body, then the head at the same place | CONFIRMED by code that the head is drawn second at the same place; PROBABLE that the blit goes through the mask, as Curse's does | `0x36F5A`: body at `pose * 37 + slot` (`0x3705A`), head at `+ 0x4A` when the slot has one (`0x37090`); the masked blit sets minterm `$CA` (`0x445DE`), and the path from `0x40276` to it was not read. It matters in 37 `(head, body, size, pose)` figures, 64 pixels, at both sizes; none of the six capture members uses one |
+| The record fields are `0x0BB` head, `0x0BC` body, `0x0BD` figure slot, `0x0BE` size, `0x0BF`-`0x0C4` colours (`goldbox/amiga_pod.py`) | CONFIRMED by code | loader `0x255EA` reads exactly these |
+| The ICON screen draws slot 15, with the record's slot byte set to 15 while it is open | CONFIRMED by code | ICON entry `0x0D9CC` saves `0x0BD`, stores 15 (`0x0D9EA`) and reloads the figure through `0x0CF20`; the exit puts the byte back (`0x0DA88`) |
+| Boxes: `COMSPR.TLB` art 15 behind the ready pose and art 16 behind the action pose, both 24x24 and opaque. DOS Pools of Darkness uses its block 15 for both | CONFIRMED by code that start-up loads them and the ICON screen draws them; PROBABLE that nothing reloads slots 30 and 31 before camp | start-up loads art `n - 15` into slot `n` for 15-36 (`0x1DB54`-`0x1DBAA`); the ICON draw `0x0C81C` draws slot 30 and slot 31, pose 0 each, at the two places |
+| Places: one row, ready at (32, 56) and action at (104, 56) on the 320x200 screen | CONFIRMED by code; the screen origin in a capture PROBABLE | `0x0C81C` is called with cell (1, 2) and draws the action pose 3 cells right; a cell's word is `0x1F44 + 12 * cell` (`0x36F5A`), a pixel `2 * (word - 0x1F40)` (`0x4A38A`) |
+| The palette: `ALWAYS.TLB` block 0, all 32 entries (type byte `E8`, 96 colour bytes). Start-up opens `always` as library 0 and installs its block 0; the ICON screen clears the current picture, and with no picture the flush installs library 0's block 0 whole. A channel byte becomes the nibble `(byte + 8) // 17` | CONFIRMED by code for the camp route, which sets a picture first; PROBABLE until captured | `0x1D8F2`-`0x1D904`; `0x0D27E` calls `0x1C5A6` with none, which marks the palette changed; flush `0x1C610` reaches `0x408B8(0, 0, ...)` at `0x1C6C4` / `0x1C704`; setter `0x43E50`. With a picture, entries 1-3 and 19-31 come from the picture and 0 and 4-18 from block 0 (`0x1C654`-`0x1C6A2`) |
+| The art is DOS's re-encoded, but for three values: 110 of 156 tiles equal DOS Pools of Darkness's block of the same id through `e`; the other 46 differ only where DOS has 4 in a body (149 pixels, the tile holds `e[13]`), 13 in a head (23, `e[4]`) or 15 in a head (8, entry 0) | CONFIRMED, measured | `amigapodicons.py --dos`; `test_the_tiles_are_dos_s_blocks_through_the_entry_table_but_for_three_values` |
+
+Because `e[13]` is never recoloured, a body pixel DOS draws in the hair
+colour stays one fixed colour on the Amiga, and the head's 23 pixels that
+DOS never recolours follow the hair colour here. The capture of members with
+body 65 (jimmi hendrixs, DONALD DUCK) shows which the screen does.
+
+The ICON screen's keys: camp `Alt` is `A` (bar `View Magic Rest Alt Fix Load
+Save Exit`), Alter's `Icon` is `I` (`Order Drop Speed Icon Level Exit`), and
+the ICON bar is `Body Pick Head Pick Undo Done Exit`. On leaving, the screen
+puts back the record it copied on entry when `g6E82` is set
+(`0x0DA6A`-`0x0DA80`), and no question was found on that path (PROBABLE;
+the key that sets `g6E82`, `0x0CFA6`, was not matched to its gadget).
+Still open: a capture of the ICON screen, which settles the palette, the
+boxes and the places.
+
 ## What this means for a conversion
 
 **An Amiga Curse or Silver Blades figure converts to the DOS one by copying

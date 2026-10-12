@@ -2169,6 +2169,8 @@ graph LR
   amiga_pod --> spell_names
   amiga_pod --> spells
   amiga_pod --> titles
+  amiga_pod_icons --> amiga_later_icons
+  amiga_pod_icons --> stonecracker
   amiga_por -.->|deferred| amiga_later
   amiga_por --> amiga_port
   amiga_por --> c64_codec
