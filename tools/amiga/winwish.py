@@ -7,7 +7,8 @@ fetches it with `gh`, copies it to `C:\\Amiga\\wish\\<sha>\\`, starts `wish.exe`
 through an Interactive scheduled task (an ssh login is session 0 and cannot show a
 window; see `winuae.ps1`), grabs the Wish window, stops and restarts it, and brings
 the debug log back.  `up` claims one lane and names its emulator's pipe to Wish through
-`WISH_WINUAE_PIPE`; with `--keep-lanes`, with no `--df0` or for a build that does not read that variable it takes every lane.
+`WISH_WINUAE_PIPE`.  It takes every lane, kept until `down`, with `--keep-lanes`, with no
+`--df0`, and for a build that does not read that variable.
 WinUAE itself is started through `winuaesession.WinGuest`, so
 the lane claim, the audio proof and the receipts are the ones every other WinUAE
 run uses.
@@ -1859,8 +1860,8 @@ def _parser() -> argparse.ArgumentParser:
                    help="wait up to this long for the claim, one lane or, with --keep-lanes, "
                    "every lane (default: claim once and fail)")
     p.add_argument("--keep-lanes", action="store_true",
-                   help="claim every lane and keep them until `down`, for a run that uses `display --set`, "
-                   "which changes the whole desktop")
+                   help="claim every lane and keep them until `down`, for a run that restarts its emulator "
+                   "or uses `display --set`, which changes the whole desktop")
 
     p = sub.add_parser("stage-save", help="copy a save to the guest and check its hash there")
     holder(p)

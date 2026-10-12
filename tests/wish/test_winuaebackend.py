@@ -189,6 +189,13 @@ def test_without_the_pipe_switch_the_first_pipe_is_opened(monkeypatch, value):
     assert _opened(monkeypatch, value) == ["WinUAE"]
 
 
+def test_no_pipe_at_all_wins_over_a_pipe_switch(monkeypatch):
+    monkeypatch.setenv(winuae.PIPE_ENV, "WinUAE_1")
+    with pytest.raises(amiga.PipeError) as caught:
+        winuae.connect(pipes=lambda: [], factory=lambda pipe: pytest.fail("opened"))
+    assert str(caught.value) == "There is no WinUAE pipe."
+
+
 @pytest.mark.parametrize("value", ["WinUAE_3", "WinUAE_x", "pipe\\\\other"])
 def test_a_pipe_switch_that_names_no_listed_pipe_opens_nothing(monkeypatch, value):
     asked = []

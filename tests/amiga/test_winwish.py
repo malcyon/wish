@@ -497,6 +497,24 @@ def _two_lanes_one_holder(holder):
     return f"1: held by {holder} since t | 2: free"
 
 
+def test_each_start_reads_the_pipe_from_the_holders_current_receipt():
+    pipes = iter(["WinUAE_1", "WinUAE_2"])
+    seen = []
+
+    def answer(argv, timeout):
+        if argv[1] == "ssh":
+            return 0, "ok lane=1 pid=1 started=t pipe=" + next(pipes)
+        if argv[1] == "ps":
+            seen.append(argv[2])
+        return 0, "ok"
+
+    guest = winwish.Guest(answer)
+    winwish.start_wish(guest, "h")
+    winwish.start_wish(guest, "h")
+    starts = [_task_text(t) for t in seen if "task.ps1" in t]
+    assert "'WinUAE_1'" in starts[0] and "'WinUAE_2'" in starts[1]
+
+
 def test_start_without_a_pipe_needs_every_lane():
     run = FakeRun([(lambda a: a[1] == "ssh", 1, "no emulator"),
                    (lambda a: a[1] == "lane", 0, _two_lanes_one_holder("h"))])
