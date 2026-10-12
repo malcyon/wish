@@ -51,8 +51,7 @@ RECORD_SIZE = 0x1AC
 #: it at 0x2BB6, before 0x2C24 picks the command bar or the computer's turn.
 CURRENT = 0x3CFC
 
-#: The screens this route adds to the Curse guard map, cut from capture boot 1
-#: (`~/.cache/wish/acceptance/WISH-303/cfight/cap1/grabs`). The load error is the one a slot
+#: The screens this route adds to the Curse guard map. The load error is the one a slot
 #: holding a Pool import shows four times while it loads (`Invalid item (%d/%d)`, printed by
 #: 0x39FCA, which waits for a key and goes on unless it is `q`).
 FIGHT_GUARDS = {
@@ -98,12 +97,13 @@ FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure": "E",
 #: Facing steps (0 N, 1 E, 2 S, 3 W) and the key that turns the party by each.
 TURN_KEYS = {1: ("NP6",), 2: ("NP6", "NP6"), 3: ("NP4",)}
 STEP = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
-#: Load errors a run answers before it stops; capture boot 1 met four.
+#: Load errors a run answers before it stops; a slot holding a Pool import shows four.
 LOAD_ERRORS = 8
-#: Seconds one screen no guard knows may stay unchanged mid-fight before the run stops: the
-#: QUICK turns redraw the field all the time, and a still screen is a question nobody answers.
+#: Seconds any screen may stay unchanged mid-fight before the run stops: the QUICK turns
+#: redraw the field all the time, and a still screen is a key the game ignores or a question
+#: nobody answers.
 FIGHT_STALL = 90.0
-#: Seconds the whole fight may take; capture boot 1's QUICK turns took about ten minutes.
+#: Seconds the whole fight may take; a fight of QUICK turns takes about ten minutes.
 FIGHT_LIMIT = 1500.0
 #: Seconds after a key before the next grab, so a screen the key replaces is not read again.
 AFTER_KEY = 3.0
@@ -318,9 +318,14 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
             screens.sleep(2.0)
             continue
         settle_from = None
+        if state == "world" and not bars and screens.clock() - started < TAVERN_LINGER:
+            # The map still showing while the brawl starts after PUNCH.
+            screens.sleep(1.5)
+            continue
+        named = "a screen no guard knows" if state is None else f"the {state} screen"
+        require(screens.clock() - still_since < FIGHT_STALL,
+                f"{named} stayed {FIGHT_STALL:.0f}s unchanged mid-fight; shot {shot}")
         if state is None:
-            require(screens.clock() - still_since < FIGHT_STALL,
-                    f"a screen no guard knows stayed {FIGHT_STALL:.0f}s mid-fight; shot {shot}")
             screens.sleep(1.5)
             continue
         if state == "combat_bar":
@@ -405,6 +410,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
     found["members"] = check_members(found["after"], manifest, members)
     if not save:
         return found
+    screens.wait(("world",), 30, past=())
     screens.press("E", "world")
     screens.wait(("camp",), 60, past=("world",))
     screens.press("S", "camp")
@@ -583,6 +589,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "run":
                 print(json.dumps(run(args), indent=1, sort_keys=True))
                 return 0
+            require(bool(args.member), "name at least one --member")
             manifest = json.loads(args.manifest.read_text())
             found = read_back(args.disk, manifest)
             problems = verdict(found, manifest, args.member)

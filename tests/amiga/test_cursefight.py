@@ -272,6 +272,35 @@ def test_fight_waits_through_unknown_screens_that_keep_changing(tmp_path, monkey
     assert found["bars"][0]["owner"] == "EVOKER"
 
 
+@pytest.mark.parametrize("screen", ["combat_bar", "continue_battle", "treasure"])
+def test_fight_stops_on_a_known_screen_that_never_changes(tmp_path, screen):
+    clock = Clock()
+    owners = [_owner("EVOKER") for _ in range(200)]
+    game = Game(clock, [None, screen], owners=owners)
+    game.walking = False
+    with pytest.raises(RouteError, match="unchanged mid-fight"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert len(game.keys) < cursefight.FIGHT_STALL / cursefight.AFTER_KEY + 5
+
+
+def test_fight_waits_for_the_first_bar_on_the_map_shortly_after_punch(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["world", "world", "tavern", "combat_bar", "combat_bar", "world"],
+                owners=[_owner("EVOKER")])
+    game.walking = False
+    found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert game.keys == ["Q"] and found["bars"][0]["owner"] == "EVOKER"
+
+
+def test_fight_stops_on_a_map_that_stays_after_punch(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["world"])
+    game.walking = False
+    with pytest.raises(RouteError, match="world showed mid-fight"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert game.keys == []
+
+
 def test_fight_stops_at_its_time_limit(tmp_path, monkeypatch):
     clock = Clock()
     game = Game(clock, [None])
@@ -323,11 +352,11 @@ DRIVE = [None, "intro", "front_end", "title", "load_picker", None, "load_error",
          "camp_save_picker", None, "exit_game", "exit_game", "camp"]
 
 
-def _drive(tmp_path, monkeypatch, save=True, parties=None):
+def _drive(tmp_path, monkeypatch, save=True, parties=None, script=DRIVE):
     clock = Clock()
     loaded = [_member(name) for name in NAMES]
     after = [_member(name, quickfight=1) for name in NAMES]
-    game = Game(clock, DRIVE, parties=parties or [loaded, after])
+    game = Game(clock, script, parties=parties or [loaded, after])
     game.walking = False
     walked = []
     monkeypatch.setattr(cursefight, "walk", lambda *a: walked.append(a) or [])
@@ -344,6 +373,18 @@ def test_drive_loads_walks_fights_and_saves_once(tmp_path, monkeypatch):
     assert found["load_errors"] == 2 and walked
     assert found["members"]["EVOKER"]["quickfight"] == 1
     _keys_allowed(screens, game)
+
+
+def test_drive_looks_at_the_map_before_pressing_e(tmp_path, monkeypatch):
+    script = [*DRIVE[:11], "tavern", "camp", *DRIVE[14:]]
+    with pytest.raises(RouteError, match="expected world, saw"):
+        _drive(tmp_path, monkeypatch, script=script)
+
+
+def test_read_needs_a_member(tmp_path, capsys):
+    assert cursefight.main(["read", "--manifest", str(tmp_path / "m.json"),
+                            "--disk", str(tmp_path / "d.adf")]) == 2
+    assert "at least one --member" in capsys.readouterr().err
 
 
 def test_drive_with_no_save_stops_after_the_checks(tmp_path, monkeypatch):
