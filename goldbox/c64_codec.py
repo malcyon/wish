@@ -717,24 +717,23 @@ ANIMATED_STATUS_TITLES = frozenset({"pool-of-radiance",
                                    "curse-of-the-azure-bonds"})
 
 #: What every Curse `MON` file holds at `0x0E6`, the place a conversion keeps
-#: a companion's DOS and Amiga combat picture: 70 of the 70 on the six game
-#: disks.  No C64 Curse code reads or writes `0x0E6`, so a companion who
-#: joined on the C64 keeps the fill, and no picture id is `$FF`.
+#: a companion's DOS and Amiga combat picture.  No C64 Curse code reads or
+#: writes `0x0E6`, so a companion who joined on the C64 keeps the fill, and
+#: no picture id is `$FF`.
 CURSE_NO_PICTURE = 0xFF
 
-#: What a Curse or Silver Blades player made on the C64 holds at `0x0E6`:
-#: neither GEN writes the pair, and every player holds `00` in the 16 Curse
-#: and 13 Silver Blades saves here with no converted member.  A conversion
-#: writes the player's own draw there, and the C64 games' own saves keep it
-#: (50 Curse and 19 Silver Blades saves here hold a converted party's draws,
-#: game resaves among them).  A draw of 0 is read as absent and gets the
-#: digest, which also keeps a DOS party's 0 from colliding.
+#: What a Curse or Silver Blades player made on the C64 holds at `0x0E6`,
+#: because neither GEN writes the pair.  A conversion writes the player's
+#: own draw there and the C64 games keep it, so a conversion back returns
+#: it; a draw of 0 is read as absent and gets the digest, which also keeps a
+#: DOS party's 0 from colliding.
 NO_PLAYER_DRAW = 0x00
 
 #: What a companion who joined on the C64 holds at `0x0E6`, per title: the
-#: `MON` file's fill, `$FF` in 70 of 70 Curse files and `00` in 71 of 71
-#: Silver Blades files.  No C64 code of either title reads or writes
+#: title's `MON` fill.  No C64 code of either title reads or writes
 #: `0x0E6`, so any other value is the picture a conversion wrote there.
+#: Silver Blades' GEN keeps a Curse companion out of its import (`GEN $21A0`,
+#: CAN'T ADD NPCS), so no `$FF` from Curse reaches a Silver Blades companion.
 NO_COMPANION_PICTURE = {"curse-of-the-azure-bonds": CURSE_NO_PICTURE,
                         "secret-of-the-silver-blades": 0x00}
 

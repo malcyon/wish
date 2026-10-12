@@ -295,15 +295,20 @@ def test_an_amiga_player_comes_back_from_the_c64_with_his_own_draw():
 
 
 def test_the_party_tie_break_still_moves_a_returned_duplicate():
-    """Two same-named players back from the C64 with one draw: one moves."""
-    record = _dos_curse(0x00, 0x42, b"DUPLICO")
-    char = dos_codec.to_neutral(dos_codec.DosCharacter(record))
-    rec, _ = c64_codec.write(char)
-    back, _, _, _ = dos_codec.write(c64_codec.read(rec, game=char.game),
-                                    deltas=CURSE)
-    out = dos_codec._deduplicate_party_identities(
-        [(None, back, b"", b"", None), (None, back, b"", b"", None)], CURSE)
-    assert len({r[PICTURE.offset] for _, r, *_ in out}) == 2
+    """Two same-named players come back from the C64 with the same draw: the
+    first keeps it and the tie-break moves the second."""
+    built = []
+    for _ in range(2):
+        record = _dos_curse(0x00, 0x42, b"DUPLICO")
+        char = dos_codec.to_neutral(dos_codec.DosCharacter(record))
+        rec, _ = c64_codec.write(char)
+        back, _, _, _ = dos_codec.write(c64_codec.read(rec, game=char.game),
+                                        deltas=CURSE)
+        built.append((None, back, b"", b"", None))
+    out = dos_codec._deduplicate_party_identities(built, CURSE)
+    first, second = (r[PICTURE.offset] for _, r, *_ in out)
+    assert first == 0x42
+    assert second != 0x42
 
 
 # --- The editor's rewrite keeps a raised player's picture -------------------

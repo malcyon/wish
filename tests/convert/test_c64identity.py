@@ -83,7 +83,7 @@ def test_curse_and_silver_blades_return_a_player_s_own_draw():
 
 def test_a_player_made_on_the_c64_has_no_draw_to_read():
     """The `00 00` every GEN-made Curse and Silver Blades player holds is not
-    a draw, so the record gets a digest rather than 0 (#216)."""
+    a draw, so the record gets a digest rather than 0."""
     for game in ("curse-of-the-azure-bonds", "secret-of-the-silver-blades"):
         out = c64_codec.read(_c64_record(0x00, 0x00), game=game)
         assert "unnamed_0ab" not in out, game
