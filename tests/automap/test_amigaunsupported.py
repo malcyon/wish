@@ -1,5 +1,6 @@
 """An attached Amiga greys Fast Travel, Level up and any unbuilt Action with the approved sentence."""
 
+import dataclasses
 import os
 
 import pytest
@@ -7,7 +8,7 @@ from gamedata import synthetic_geo
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from automap import amiga, c64
+from automap import amiga, amigafasttravel, amigatrip, c64
 from automap.area import RESIDENT_GEO
 from automap.state import Automapper
 from automap.target import MemoryTarget
@@ -81,8 +82,11 @@ def test_level_up_names_its_own_title_on_every_card(key, title):
         assert not card.level_up.isEnabled() and not card.level_up.isVisible()
 
 
-def test_a_title_whose_trip_is_not_confirmed_greys_all_of_fast_travel():
+def test_a_title_whose_trip_is_not_confirmed_greys_all_of_fast_travel(monkeypatch):
     key, title = "secret-of-the-silver-blades", TITLES["secret-of-the-silver-blades"]
+    monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, "1")
+    monkeypatch.setitem(amigatrip.ROWS, key,
+                        dataclasses.replace(amigatrip.ROWS[key], confirmed=False))
     window = ticked(window_on(FakeAmiga(memory(), amiga.MACHINES[key])))
     ft = window.fasttravel_bar
     assert ft.unsupported == f"ERROR: Action unsupported on {title} (Amiga)."

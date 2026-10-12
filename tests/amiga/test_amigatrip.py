@@ -1215,11 +1215,37 @@ def test_a_pods_trip_from_the_hand_over_areas_has_the_two_saves():
                                    False) == b""
 
 
-def test_a_silver_blades_trip_out_of_area_32_is_held_with_the_row_confirmed():
+#: Silver Blades' script lengths on the player's disks for the departures
+#: with no room for a trip (`BUFFER_SIZE` is 7680) and for area 16, which has
+#: room (docs/96 lists the same four departures as not tier 1).
+SILVER_LENGTHS = {16: 7014, 32: 7676, 50: 7662, 65: 7664, 66: 7672}
+
+
+@pytest.mark.parametrize("here", [32, 50, 65, 66])
+def test_a_silver_blades_departure_with_no_room_in_its_script_is_held(here):
     row = trip.ROWS["secret-of-the-silver-blades"]
-    assert row.confirmed
-    lengths = {32: trip.BUFFER_SIZE, 16: 1}
-    assert trip.leg_held(row, 32, 16, False, lengths)
+    assert trip.leg_held(row, here, 16, False, SILVER_LENGTHS)
+
+
+def test_a_silver_blades_departure_with_room_in_its_script_is_not_held():
+    row = trip.ROWS["secret-of-the-silver-blades"]
+    assert not trip.leg_held(row, 16, 32, False, SILVER_LENGTHS)
+
+
+def test_a_silver_blades_trip_to_area_4_is_held_because_the_disks_have_no_script():
+    row = trip.ROWS["secret-of-the-silver-blades"]
+    assert 4 not in SILVER_LENGTHS
+    assert trip.leg_held(row, 16, 4, False, SILVER_LENGTHS)
+
+
+def test_the_silver_blades_lengths_above_are_the_players_disks():
+    found = [lengths for image in _images()
+             if (lengths := trip.script_lengths("secret-of-the-silver-blades", [image]))]
+    if not found:
+        pytest.skip("needs the player's Amiga Silver Blades disks")
+    assert all(lengths[a] == n for lengths in found
+               for a, n in SILVER_LENGTHS.items())
+    assert all(4 not in lengths for lengths in found)
 
 
 def test_the_hand_over_saves_are_counted_in_the_room_a_trip_needs():
