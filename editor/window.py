@@ -35,6 +35,7 @@ from PyQt6.QtWidgets import (
 
 from goldbox import (
     amiga_pod,
+    amiga_por,
     amiga_port,
     amiga_savegame,
     backstab,
@@ -65,7 +66,7 @@ from goldbox.savegame import SaveGame0, SaveGame1, store_save, tail_damage
 from goldbox.spells import capacity_by_class, load_spell_names
 from goldbox.spells import for_game as spell_table
 
-from . import activeeffects, changes, files, inventory, podsheet, saveplan
+from . import activeeffects, amigafigure, changes, files, inventory, podsheet, saveplan
 from . import effects as trait_effects
 from .binding import (
     COMBAT_FIELDS,
@@ -955,6 +956,7 @@ class EditorBinding(QObject):
         self.game_disk_found: str | None = None
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
+        self.figure_art: amigafigure.FigureArt | None = None
         self.item_names: dict[int, str] = {}
         self.templates: dict[str, bytes] = {}
         self.item_types: dict[int, object] = {}
@@ -2166,6 +2168,21 @@ class EditorBinding(QObject):
                            where, exc)
         return False
 
+    def _port_folders(self, game, source=None) -> list[pathlib.Path]:
+        """The folders a DOS game or Amiga disks may be in, in the order
+        `_disk_candidates` uses: the title's folder in Preferences, the shared
+        Game directory, then beside the save and the folder above it."""
+        folders = []
+        for folder in (self._own_disk_folder(game), self.disks):
+            expanded = saveplan.expand_folder(folder) if folder else None
+            if expanded is not None:
+                folders.append(expanded)
+        beside = getattr(source, "path", None) or self.path
+        if beside:
+            here = files.source_folder(beside)
+            folders += [here, here.parent]
+        return folders
+
     def _port_names(self, read_dos, read_amiga, game, source=None,
                     assets=None) -> "dict[int, str]":
         """Names off a DOS game folder or Amiga disks, for a player with no
@@ -2178,15 +2195,7 @@ class EditorBinding(QObject):
         item spells as it will on the Amiga, and otherwise the DOS game
         folder it names comes first.
         """
-        folders = []
-        for folder in (self._own_disk_folder(game), self.disks):
-            expanded = saveplan.expand_folder(folder) if folder else None
-            if expanded is not None:
-                folders.append(expanded)
-        beside = getattr(source, "path", None) or self.path
-        if beside:
-            here = files.source_folder(beside)
-            folders += [here, here.parent]
+        folders = self._port_folders(game, source)
         # The folder the dialog names was picked for this conversion; the
         # others are guesses and must hold this title, or another title's
         # launcher would name the items.
@@ -2601,6 +2610,7 @@ class EditorBinding(QObject):
         self._load_movement_items()
         self.charset, self.item_names, self.templates = b"", {}, {}
         self.spell_names, self.item_types = {}, {}
+        self.figure_art = self._load_figure_art()
         if self._is_pod():
             # No C64 disk of this title exists, and another title's icon
             # parts or charset would draw the wrong game: the icon box stays
@@ -2657,6 +2667,22 @@ class EditorBinding(QObject):
             if member.inventory is not None:
                 member.inventory.names = self.item_names
         self._apply_spell_table()
+
+    def _load_figure_art(self) -> "amigafigure.FigureArt | None":
+        """The Amiga Pool of Radiance combat-figure art off the player's
+        disks, or None for any other party or when the disks are not found."""
+        party = self.party
+        if (party is None or party.port != "amiga"
+                or party.game.key != por_games.POOL_OF_RADIANCE.key):
+            return None
+        return amigafigure.load(self._port_folders(party.game))
+
+    def _figure_of(self, member) -> "amigafigure.Figure | None":
+        """`member`'s combat figure drawn from the Amiga disks, or None."""
+        if (self.figure_art is None
+                or not isinstance(member.native, amiga_por.AmigaPorCharacter)):
+            return None
+        return self.figure_art.figure(member.native)
 
     def _spell_table(self):
         """The open title's spell table -- names, groups and mask width."""
@@ -3698,6 +3724,7 @@ class EditorBinding(QObject):
             icon_widget.setEnabled(self.party.save0 is not None)
             icon_widget.set_icon(member.icon if self.charset else None,
                                  self.charset)
+            icon_widget.set_figure(self._figure_of(member))
             size = "large" if (member.record.get("size_small") or 0) & 1 else "small"
             icon_widget.set_parts(getattr(self, "icon_parts", None), size)
             icon_widget.setMaximumWidth(ICON_MAX_WIDTH)

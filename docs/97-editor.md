@@ -475,6 +475,14 @@ Selecting a player character restores the normal preview and controls, subject
 to the existing save-file editing restrictions. Hiding an NPC icon does not
 change its stored bytes.
 
+An Amiga Pool of Radiance party shows each member's ready and action poses in
+the same box, drawn from the player's own game disks as the game's ICON screen
+draws them (`editor/amigafigure.py`, `goldbox/amiga_por_icons.py`). The disks
+are looked for where `_port_names` looks for Amiga disks. When they do not
+hold the art the box stays empty. The controls stay greyed and `Member.icon`
+stays `None`, since nothing edits a native figure. DOS saves, the later Amiga
+titles and Pools of Darkness keep the empty box.
+
 ### What is known
 
 `goldbox/icons.py` has it: 36 bytes per character in a shared table at `$4BE0`,

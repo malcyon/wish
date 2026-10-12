@@ -17,8 +17,10 @@ cannot display.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtGui import QColor, QImage, QPainter, QPen
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -54,6 +56,21 @@ FRAME_WIDE = PIXELS_WIDE * POSES     # two poses
 FRAME_HIGH = POSE_ROWS * 8
 
 
+#: One pose as rows of `(r, g, b)`.
+Rows = tuple[tuple[tuple[int, int, int], ...], ...]
+
+
+@dataclass(frozen=True)
+class Figure:
+    """A native character's two poses, ready then action, already resolved to
+    colours and laid over their own box, and the colour filled behind them.
+    Whatever composes a figure for a port hands one to `IconPreview.set_figure`.
+    """
+
+    poses: tuple[Rows, Rows]
+    background: tuple[int, int, int]
+
+
 class IconPreview(QWidget):
 
     """Shows one character's combat icon and lets its colours be changed."""
@@ -65,6 +82,8 @@ class IconPreview(QWidget):
         self._pixels: list[list[int]] = []
         self._parts = None
         self._size = "small"
+        self._figure: Figure | None = None
+        self._figure_image: QImage | None = None
         self.setMinimumSize(int(FRAME_WIDE * ZOOM), int(FRAME_HIGH * ZOOM))
         self.setMaximumWidth(int(FRAME_WIDE * ZOOM * 2))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -84,6 +103,29 @@ class IconPreview(QWidget):
             self._pixels = []
         self.update()
 
+    def set_figure(self, figure: Figure | None) -> None:
+        """Show a native character's two poses, or the empty box for None.
+
+        The poses come already coloured, so this only draws them.
+        """
+        self._figure = figure
+        self._figure_image = None
+        if figure is not None:
+            high = len(figure.poses[0])
+            wide = len(figure.poses[0][0])
+            image = QImage(wide * len(figure.poses), high,
+                           QImage.Format.Format_RGB32)
+            for pose, rows in enumerate(figure.poses):
+                for y, row in enumerate(rows):
+                    for x, rgb in enumerate(row):
+                        image.setPixelColor(pose * wide + x, y, QColor(*rgb))
+            self._figure_image = image
+        self.update()
+
+    @property
+    def figure(self) -> Figure | None:
+        return self._figure
+
     @property
     def icon(self) -> Icon | None:
         return self._icon
@@ -92,11 +134,15 @@ class IconPreview(QWidget):
 
     def _geometry(self) -> tuple[int, int, int]:
         """`(scale, x0, y0)` -- an integer zoom, centred, aspect preserved."""
-        if not self._pixels:
+        if self._figure_image is not None:
+            wide, high = self._figure_image.width(), self._figure_image.height()
+        elif self._pixels:
+            wide, high = FRAME_WIDE, FRAME_HIGH
+        else:
             return 1, 0, 0
-        scale = max(1, min(self.width() // FRAME_WIDE, self.height() // FRAME_HIGH))
-        x0 = (self.width() - FRAME_WIDE * scale) // 2
-        y0 = (self.height() - FRAME_HIGH * scale) // 2
+        scale = max(1, min(self.width() // wide, self.height() // high))
+        x0 = (self.width() - wide * scale) // 2
+        y0 = (self.height() - high * scale) // 2
         return scale, x0, y0
 
     def _cell_at(self, px: float, py: float) -> int | None:
@@ -114,6 +160,13 @@ class IconPreview(QWidget):
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
+        if self._figure_image is not None:
+            p.fillRect(self.rect(), QColor(*self._figure.background))
+            scale, x0, y0 = self._geometry()
+            p.drawImage(QRect(x0, y0, self._figure_image.width() * scale,
+                              self._figure_image.height() * scale),
+                        self._figure_image)
+            return
         if not self._pixels:
             p.fillRect(self.rect(), QColor("#ffffff"))
             return
@@ -179,6 +232,9 @@ class IconEditor(QWidget):
             self._charset = charset
         self.preview.set_icon(icon, charset)
         self._update_color_combo()
+
+    def set_figure(self, figure: Figure | None) -> None:
+        self.preview.set_figure(figure)
 
     @property
     def icon(self) -> Icon | None:

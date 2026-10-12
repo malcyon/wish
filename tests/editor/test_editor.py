@@ -6900,3 +6900,258 @@ def test_a_curse_multi_class_line_counts_per_class_and_level(app):
     line = widget.capacity.text()
     assert "cleric: L1 1/2, L2 0/1" in line
     assert "magic-user: L1 1/3, L2 0/0" in line
+
+
+# ---------------------------------------------------------------------------
+# An Amiga Pool of Radiance character's combat figure
+# ---------------------------------------------------------------------------
+
+#: Pixel values the generated art uses, none of them one the recolour touches.
+_FIGURE_PALETTE = tuple((16 * i, 255 - 16 * i, 9 * i) for i in range(16))
+
+
+def _generated_figure_art():
+    """Art for the two members `_amiga_pool_party_editor` builds: size 2, so
+    heads are blocks 64 and 67 and bodies 64/192 and 68/196."""
+    from editor.amigafigure import FigureArt
+    from goldbox.amiga_por_icons import ArtBlock
+
+    def block(height, *pixels):
+        rows = [[0] * 24 for _ in range(height)]
+        for y, x, value in pixels:
+            rows[y][x] = value
+        return ArtBlock(height, 24, tuple(tuple(r) for r in rows))
+
+    art = FigureArt(b"", b"", ArtBlock(24, 24, ((4,) * 24,) * 24),
+                    _FIGURE_PALETTE)
+    for kind, block_id, made in (
+            ("head", 64, block(8, (0, 5, 12))),
+            ("head", 67, block(8, (0, 6, 12))),
+            ("body", 64, block(24, (10, 3, 13))),
+            ("body", 192, block(24, (10, 4, 13))),
+            ("body", 68, block(24, (10, 7, 13))),
+            ("body", 196, block(24, (10, 8, 13)))):
+        art._decoded[(kind, block_id)] = made
+    return art
+
+
+def _amiga_pool_party_editor(tmp_path):
+    """Two characters who differ only in `icon_head` and `icon_body`."""
+    from support.neutralrecords import _filled
+
+    from editor.window import EditorBinding
+    from goldbox import amiga_savegame, c64_port
+    pool = c64_port.by_key("pool-of-radiance")
+    first, second = _filled(pool), _filled(pool)
+    first.set("icon_head", 0, "made up")
+    first.set("icon_body", 0, "made up")
+    second.set("icon_head", 3, "made up")
+    second.set("icon_body", 4, "made up")
+    savgam = bytearray(amiga_savegame.POR_SAVEGAME_SIZE)
+    at = amiga_savegame.POOL_OF_RADIANCE.party_at
+    savgam[at:at + 8] = b"CHRDATA1"
+    disk = amiga_savegame.make_por_save_disk("A", [first, second],
+                                             bytes(savgam))
+    path = tmp_path / "pool.adf"
+    disk.save(str(path))
+    return EditorBinding(make_root(), str(path)), path
+
+
+def test_an_amiga_pool_member_shows_his_two_poses_in_the_figure_box(
+        app, tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders:
+                        _generated_figure_art())
+    w, _path = _amiga_pool_party_editor(tmp_path)
+    icon = w._widgets["icon"]
+    seen = []
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        figure = icon.preview.figure
+        assert figure is not None
+        seen.append(figure)
+    first, second = seen
+    palette = _FIGURE_PALETTE
+    ready, action = first.poses
+    assert ready[0][5] == palette[12] and ready[10][3] == palette[13]
+    assert action[10][4] == palette[13] and action[10][3] == palette[4]
+    assert second.poses[0][0][6] == palette[12]
+    assert second.poses[0][0][5] == palette[4]
+    assert first.poses != second.poses
+    assert first.background == second.background == palette[0]
+    assert icon.preview.figure is second
+
+
+def test_the_figure_box_draws_the_poses_at_a_whole_number_zoom(
+        app, tmp_path, monkeypatch):
+    from PyQt6.QtGui import QColor
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders:
+                        _generated_figure_art())
+    w, _path = _amiga_pool_party_editor(tmp_path)
+    preview = w._widgets["icon"].preview
+    w.roster.selectRow(0)
+    preview.grab()                  # the first grab settles the size
+    scale, x0, y0 = preview._geometry()
+    shot = preview.grab().toImage()
+    palette = _FIGURE_PALETTE
+
+    def at(x, y):
+        return shot.pixelColor(x0 + x * scale + scale // 2,
+                               y0 + y * scale + scale // 2)
+    assert scale >= 1
+    assert at(5, 0) == QColor(*palette[12])         # ready: the head
+    assert at(3, 10) == QColor(*palette[13])        # ready: the body
+    assert at(24 + 4, 10) == QColor(*palette[13])   # action: the body
+    assert at(24 + 3, 10) == QColor(*palette[4])    # action: the box
+    w.roster.selectRow(1)
+    assert preview.grab().toImage() != shot
+
+
+def test_the_figure_controls_stay_greyed_and_the_record_stays_empty(
+        app, tmp_path, monkeypatch):
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders:
+                        _generated_figure_art())
+    w, _path = _amiga_pool_party_editor(tmp_path)
+    icon = w._widgets["icon"]
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        assert icon.preview.figure is not None
+        assert not icon.isEnabled()
+        assert not icon.btn_change.isEnabled()
+        assert not icon.group_box.isEnabled()
+        assert icon.icon is None
+        assert w.party.member(row).icon is None
+        assert icon.toolTip() == icon.btn_change.toolTip() == ""
+
+
+def test_opening_and_selecting_never_changes_the_save_image(
+        app, tmp_path, monkeypatch):
+    import hashlib
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders:
+                        _generated_figure_art())
+    from editor.window import EditorBinding
+    _w, path = _amiga_pool_party_editor(tmp_path)
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    w = EditorBinding(make_root(), str(path))
+    for row in (0, 1, 0):
+        w.roster.selectRow(row)
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+
+
+def test_a_missing_companion_disk_leaves_the_figure_box_empty(
+        app, tmp_path):
+    from PyQt6.QtGui import QColor
+    w, _path = _amiga_pool_party_editor(tmp_path)
+    assert w.figure_art is None
+    preview = w._widgets["icon"].preview
+    for row in (0, 1):
+        w.roster.selectRow(row)
+        assert preview.figure is None
+    shot = preview.grab().toImage()
+    assert shot.pixelColor(shot.width() // 2, shot.height() // 2) == QColor(
+        "#ffffff")
+
+
+def test_art_that_does_not_hold_the_members_blocks_leaves_the_box_empty(
+        app, tmp_path, monkeypatch):
+    art = _generated_figure_art()
+    del art._decoded[("head", 67)]
+    art.heads = b"not a dax"
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders: art)
+    w, _path = _amiga_pool_party_editor(tmp_path)
+    preview = w._widgets["icon"].preview
+    w.roster.selectRow(0)
+    assert preview.figure is not None
+    w.roster.selectRow(1)
+    assert preview.figure is None
+
+
+@pytest.mark.parametrize("make", ["_dos_pool_editor", "_dos_curse_editor",
+                                  "_dos_silver_blades_editor",
+                                  "_amiga_curse_editor"])
+def test_no_other_party_gets_a_figure_even_when_the_art_is_there(
+        app, tmp_path, monkeypatch, make):
+    monkeypatch.setattr("editor.amigafigure.load", lambda folders:
+                        _generated_figure_art())
+    w = globals()[make](tmp_path)
+    assert w.figure_art is None
+    w.roster.selectRow(0)
+    assert w._widgets["icon"].preview.figure is None
+
+
+def test_the_figure_art_is_gathered_from_every_disk_in_the_folder(tmp_path):
+    from editor import amigafigure
+    from goldbox.amiga_adf import AmigaDisk
+    one, two = AmigaDisk.blank("ONE"), AmigaDisk.blank("TWO")
+    one.write_file("/program", b"program")
+    for name in ("CHEAD.DAX", "cbody.dax", "ComSpr.Dax"):
+        two.write_file(f"/{name}", name.lower().encode())
+    folder = tmp_path / "disks"
+    folder.mkdir()
+    two.save(str(folder / "Disk-2.ADF"))
+    assert amigafigure._files(folder) is None
+    one.save(str(folder / "Disk-1.adf"))
+    (folder / "notes.txt").write_text("not a disk")
+    found = amigafigure._files(folder)
+    assert found == {"chead.dax": b"chead.dax", "cbody.dax": b"cbody.dax",
+                     "comspr.dax": b"comspr.dax", "program": b"program"}
+    assert amigafigure.load([folder]) is None       # not art: no exception
+    assert amigafigure.load([tmp_path / "absent", tmp_path / "notes"]) is None
+
+
+def _registered_figure_window(tmp_path, beside=True):
+    """The registered Pool disk 1, with its saved game, copied to a folder of
+    its own with disk 2 beside it or not; `(window, disk 2 bytes)`."""
+    from editor.window import EditorBinding
+    one, two = _shipped_amiga_pool_disks()
+    save = tmp_path / "save"
+    save.mkdir()
+    image = save / "PoolOfRadiance-1.adf"
+    image.write_bytes(one)
+    if beside:
+        (save / "PoolOfRadiance-2.adf").write_bytes(two)
+    return EditorBinding(make_root(), str(image)), one, two
+
+
+def _expected_poses(name):
+    """The composer's own poses for `name`, as rows of `(r, g, b)`."""
+    from tools.icons import amigaporicons
+    amiga = amigaporicons.amiga_art()
+    code = amigaporicons.program()
+    if amiga is None or code is None:
+        pytest.skip("needs the Amiga Pool of Radiance disks")
+    char = amigaporicons.find_record(name)
+    if char is None:
+        pytest.skip(f"no {name} on the registered disks")
+    return amigaporicons.drawn_poses(char, amiga, code)
+
+
+def test_the_registered_save_shows_garwans_and_stonebeards_composed_figures(
+        app, tmp_path):
+    w, _one, _two = _registered_figure_window(tmp_path)
+    shown = {}
+    for name in ("GARWAN", "STONEBEARD"):
+        row = next(r for r in range(len(w.party))
+                   if w.party.member(r).name == name)
+        w.roster.selectRow(row)
+        figure = w._widgets["icon"].preview.figure
+        assert figure is not None, name
+        assert figure.poses == _expected_poses(name), name
+        shown[name] = figure.poses
+    assert shown["GARWAN"] != shown["STONEBEARD"]
+    assert not w._widgets["icon"].isEnabled()
+    assert all(m.icon is None for m in w.party.members)
+
+
+def test_the_registered_save_without_disk_2_shows_an_empty_box_until_the_game_folder_has_it(
+        app, tmp_path):
+    w, one, two = _registered_figure_window(tmp_path, beside=False)
+    preview = w._widgets["icon"].preview
+    w.roster.selectRow(0)
+    assert preview.figure is None
+    game = tmp_path / "game"
+    game.mkdir()
+    (game / "PoolOfRadiance-1.adf").write_bytes(one)
+    (game / "PoolOfRadiance-2.adf").write_bytes(two)
+    w.set_disks(str(game))
+    assert w.figure_art is not None
+    assert preview.figure is not None
