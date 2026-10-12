@@ -385,7 +385,7 @@ def test_the_party_arrives_with_its_own_combat_figures(shipped_adf, tmp_path):
         if char.name == "GARWAN":
             assert record.get("icon_head") == 8
         # Colours still copy across: converting them waits on the Amiga
-        # palette being settled (Part C of the plan on WISH-382).
+        # palette being settled.
         assert record.raw("icon_colours") == char.raw("icon_colours"), char.name
         heads.add(record.get("icon_head"))
         bodies.add(record.get("icon_body"))

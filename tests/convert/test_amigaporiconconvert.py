@@ -243,3 +243,26 @@ def test_dos_to_amiga_direction_writes_the_amiga_number_of_the_same_drawing(
         AmigaDisk.open(str(out_dir / convert.POOLSAVE_FILENAME)), "D")
     assert [(c.get("icon_head"), c.get("icon_body")) for c in party] == [
         (10, 28)]
+
+
+def test_the_figure_source_says_what_happened_to_each_part():
+    """The line quoted beside `icon_head` and `icon_body` in the byte
+    accounting must not call a renumbered part copied unchanged."""
+    from goldbox.iconparts import amiga_por_icon_from_dos, amiga_por_icon_to_dos
+
+    icon = DosIcon(head=10, body=30, colours=bytes(6),
+                   figure_source="the source's own figure",
+                   colours_source="test colours")
+    to_dos = amiga_por_icon_to_dos(icon, 2)
+    assert (to_dos.head, to_dos.body) == (8, 30)
+    assert "head 10 became 8, the number of the identical drawing" \
+        in to_dos.figure_source
+    assert "body 30 kept its number because no identical drawing exists" \
+        in to_dos.figure_source
+    assert "unchanged" not in to_dos.figure_source
+
+    back = amiga_por_icon_from_dos(to_dos, 2)
+    assert (back.head, back.body) == (10, 30)
+    assert "head 8 became 10" in back.figure_source
+    assert "body 30 kept its number" in back.figure_source
+    assert back.figure_source.startswith(to_dos.figure_source)
