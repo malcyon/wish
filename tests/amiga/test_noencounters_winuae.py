@@ -1069,8 +1069,12 @@ def test_ecl02_second_roll_is_reached_only_past_its_step_roll():
     from any entry reaches `$8748`."""
     from tools.amiga import amigasaves, tripspace
 
-    model, skip = tripspace.glib_model(CURSE, amigasaves.images())
-    body = curse_scripts()[2]
+    scripts = curse_scripts()
+    got = tripspace.glib_model(CURSE, amigasaves.images())
+    if got is None:
+        pytest.skip("needs the player's Amiga Curse script model")
+    model, skip = got
+    body = scripts[2]
     roll = tripspace.decode(model, body, 0x8739 - SCRIPT_BASE)
     compare = tripspace.decode(model, body, roll.end)
     condition = tripspace.decode(model, body, compare.end)
@@ -1102,6 +1106,15 @@ def test_ecl02_second_roll_is_reached_only_past_its_step_roll():
 
     assert 0x8748 - SCRIPT_BASE in reached(None)
     assert 0x8748 - SCRIPT_BASE not in reached(exit_.at)
+
+
+def test_ecl02_second_roll_test_skips_without_the_player_s_disks(monkeypatch):
+    from tools.amiga import amigasaves, tripspace
+
+    monkeypatch.setattr(amigasaves, "images", lambda: [])
+    monkeypatch.setattr(tripspace, "disk_files", lambda *_a, **_k: iter(()))
+    with pytest.raises(pytest.skip.Exception):
+        test_ecl02_second_roll_is_reached_only_past_its_step_roll()
 
 
 def test_tilverton_step_roll_cannot_start_a_fight():
