@@ -419,6 +419,9 @@ class ResidentGeo:
     def __init__(self, target, address: int | None = RESIDENT_GEO):
         self.target = target
         self.address = address
+        #: The 1024 bytes the last `read` returned, None when it found no
+        #: block, so a caller can ask whether two verdicts saw the same block.
+        self.block: bytes | None = None
 
     def identify(self, maps: dict[str, Geo]) -> str | None:
         """The name of the map the game currently has loaded, or None.
@@ -530,11 +533,15 @@ class ResidentGeo:
         return self.address if own is None else own()
 
     def read(self) -> Geo | None:
+        self.block = None
         try:
             address = self.address_now()
             if address is None:
                 return None
-            return Geo(self.target.read(address, GEO_SIZE))
+            raw = self.target.read(address, GEO_SIZE)
+            geo = Geo(raw)
+            self.block = bytes(raw)
+            return geo
         except Exception as exc:
             # Read on every poll, and the map moves out from under us on every
             # area change, so one line and no traceback.

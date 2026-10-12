@@ -409,6 +409,14 @@ class Automapper:
     #: not enough: a single odd read costs a player their Level up button, and
     #: `_check_resident` runs every `RESIDENT_EVERY` polls, so two is about
     #: four seconds and no player notices the difference.
+    #:
+    #: **They must be readings of the same block, at least `RESIDENT_EVERY`
+    #: polls apart.** A block caught while the game is still writing it is
+    #: half the old map and half the new one, which is a Gold Box map and none
+    #: of ours: 270 of the 272 ordered pairs of Silver Blades' own maps read
+    #: `NOT_OURS` torn at byte 512. A load that is being read once a poll
+    #: changes between readings, or finishes inside the span; somebody else's
+    #: map sits still, and two ordinary periodic checks see the same bytes.
     CONTRADICTIONS_BEFORE_DISABLING = 2
 
     def __init__(self, target, maps: dict[str, Geo] | None = None,
@@ -424,6 +432,10 @@ class Automapper:
         #: `area.OURS`, `area.NOT_OURS` or `area.UNKNOWN`. See `_check_resident`.
         self.title_check = UNKNOWN
         self._contradictions = 0
+        #: The block the current run of contradictions read, and the poll it
+        #: was first read on. See `_contradicted`.
+        self._contradicting: bytes | None = None
+        self._contradicting_since = 0
         self.fingerprint = Fingerprint(maps) if maps else None
         self._maps = maps or {}
         self.resident = ResidentGeo(target) if maps else None
@@ -478,6 +490,7 @@ class Automapper:
         self.resident = ResidentGeo(self.target) if self._maps else None
         self.title_check = UNKNOWN
         self._contradictions = 0
+        self._contradicting = None
         if title:
             self.state.title = title
             self.game = c64_port.by_title(title)
@@ -884,6 +897,7 @@ class Automapper:
         self._resumed = False
         self.title_check = UNKNOWN
         self._contradictions = 0
+        self._contradicting = None
 
     def _running(self, fix: Fix) -> bool:
         """Is a Gold Box game actually in memory? Nothing is recorded until it is.
@@ -1105,7 +1119,7 @@ class Automapper:
         verdict, name = self.resident.verdict(self._maps)
         self._verdict = verdict
         if verdict is NOT_OURS:
-            self._contradicted()
+            self._contradicted(self.resident.block)
             return False
         if verdict is not OURS:
             return False            # no map loaded: combat, a menu, the title
@@ -1115,19 +1129,23 @@ class Automapper:
         self._proved = self._ticks
         self.title_check = OURS
         self._contradictions = 0
+        self._contradicting = None
         self.state.candidates = Candidates([name], "resident $0400", certain=True)
         if name != self.state.area:
             self.set_area(name)
             return True
         return False
 
-    def _contradicted(self) -> None:
+    def _contradicted(self, block: bytes | None) -> None:
         """The block at `$0400` is a Gold Box map and it is not one of ours.
 
         Counted rather than obeyed on sight. The map is 1024 bytes of the
         player's own disk read through an emulator monitor, and one bad read
         that took a control away would be a worse bug than the one this is
-        for; `CONTRADICTIONS_BEFORE_DISABLING` is how many it takes.
+        for; `CONTRADICTIONS_BEFORE_DISABLING` is how many it takes, and they
+        count only while they read the same `block` and only once they span
+        `RESIDENT_EVERY` polls, so a map read while the game is loading it
+        never takes the controls off. A different block starts the count again.
 
         The rejection then **stands until it is positively contradicted**. Two
         things lift it and neither is the absence of evidence: one of our own
@@ -1139,8 +1157,14 @@ class Automapper:
         """
         if self.title_check is NOT_OURS:
             return
+        if block is None or block != self._contradicting:
+            self._contradicting = block
+            self._contradicting_since = self._ticks
+            self._contradictions = 0
         self._contradictions += 1
-        if self._contradictions >= self.CONTRADICTIONS_BEFORE_DISABLING:
+        if (self._contradictions >= self.CONTRADICTIONS_BEFORE_DISABLING
+                and self._ticks - self._contradicting_since
+                >= self.RESIDENT_EVERY):
             self.title_check = NOT_OURS
             _log.info(
                 "the map at $0400 is not one of %s's %d, so the machine is not "

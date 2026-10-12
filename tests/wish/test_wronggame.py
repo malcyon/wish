@@ -239,9 +239,89 @@ def test_one_odd_reading_does_not_take_the_controls_off(ours, theirs,
     """A control taken away by a single bad read would be a worse bug than the
     one this is for."""
     mapper = Automapper(machine(theirs), ours, title=POOL)
-    mapper._contradicted()
+    mapper._contradicted(theirs.to_bytes())
     assert Automapper.CONTRADICTIONS_BEFORE_DISABLING > 1
     assert mapper.title_check is not NOT_OURS
+
+
+def loading(old: Geo, new: Geo) -> list[bytes]:
+    """The block at `$0400` caught at five moments while `new` overwrites `old`.
+
+    Each is the head of the new map over the tail of the old one, which is a
+    Gold Box map and none of ours -- the precondition is asserted where these
+    are used, so a change to `walled_geo` cannot quietly empty the test.
+    """
+    return [new.to_bytes()[:cut] + old.to_bytes()[cut:]
+            for cut in (128, 192, 256, 320, 384)]
+
+
+def counting_contradictions(mapper, monkeypatch) -> list[tuple]:
+    """Every call `_check_resident` made for a contradiction."""
+    seen: list[tuple] = []
+    real = mapper._contradicted
+
+    def spy(*args):
+        seen.append(args)
+        real(*args)
+    monkeypatch.setattr(mapper, "_contradicted", spy)
+    return seen
+
+
+def test_a_map_read_while_the_game_loads_it_is_no_wrong_disk(
+        app, ours, notes_elsewhere, monkeypatch):
+    """A trip moves the party and the game loads the new area's map. Reads
+    taken while it is still writing the block see half of each map, and the
+    window used to say the wrong-disk error for two of them and take every
+    control away until the finished map turned up a moment later."""
+    target = machine(ours["GEO00"])
+    window = ticked(window_on(target, ours, SILVER))
+    assert window.mapper.title_check is OURS
+    seen = counting_contradictions(window.mapper, monkeypatch)
+    torn = loading(ours["GEO00"], ours["GEO01"])
+    assert {ResidentGeo(machine(b)).verdict(ours)[0] for b in torn} == {NOT_OURS}
+
+    target.memory[c64.DEFAULT.live_position] = bytes((12, 12, 0))
+    for block in torn:
+        target.memory[RESIDENT_GEO] = block
+        window.tick()
+    target.memory[RESIDENT_GEO] = ours["GEO01"].to_bytes()
+    ticked(window)
+
+    assert len(seen) >= Automapper.CONTRADICTIONS_BEFORE_DISABLING
+    said = [line.split("  ", 1)[-1] for line in window.messages.lines()]
+    assert WRONG_GAME not in said
+    assert window.mapper.title_check is OURS
+    assert window.mapper.state.area == "GEO01"
+    assert window.fasttravel_bar.target is target
+
+
+def test_a_load_that_pauses_on_a_half_written_map_is_no_wrong_disk(
+        ours, notes_elsewhere, monkeypatch):
+    """The same half-written block read on every poll for just under the
+    span two periodic checks are apart, as a load waiting on the disk would
+    leave it, and then the finished map."""
+    target = machine(ours["GEO00"])
+    mapper = polled(Automapper(target, ours, title=SILVER))
+    seen = counting_contradictions(mapper, monkeypatch)
+    target.memory[c64.DEFAULT.live_position] = bytes((12, 12, 0))
+    target.memory[RESIDENT_GEO] = loading(ours["GEO00"], ours["GEO01"])[2]
+    polled(mapper, Automapper.RESIDENT_EVERY - 1)
+    assert len(seen) >= Automapper.CONTRADICTIONS_BEFORE_DISABLING
+    assert mapper.title_check is not NOT_OURS
+    target.memory[RESIDENT_GEO] = ours["GEO01"].to_bytes()
+    polled(mapper)
+    assert mapper.title_check is OURS
+
+
+def test_somebody_elses_map_is_caught_within_two_periodic_checks(
+        ours, theirs, notes_elsewhere):
+    """The real wrong disk: the stranger's map does not change, so the same
+    block read across `RESIDENT_EVERY` polls takes the controls off."""
+    mapper = polled(Automapper(playing(theirs), ours, title=SILVER),
+                    Automapper.RESIDENT_EVERY)
+    assert mapper.title_check is not NOT_OURS
+    polled(mapper, Automapper.RESIDENT_EVERY)
+    assert mapper.title_check is NOT_OURS
 
 
 def test_nothing_is_recorded_once_the_game_is_the_wrong_one(ours, theirs,

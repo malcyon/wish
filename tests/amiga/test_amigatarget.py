@@ -574,8 +574,8 @@ def test_a_stranger_s_map_is_not_drawn_as_ours(tmp_path):
     assert looks_like_a_map(theirs) and ours.to_bytes() != theirs.to_bytes()
     t, _ = _resident(block=theirs.to_bytes(), extra=square(6, 9, 2))
     mapper = _mapper(t, block=ours.to_bytes())
-    for _ in range(mapper.CONTRADICTIONS_BEFORE_DISABLING):
-        mapper._check_resident()                              # noqa: SLF001
+    for _ in range(2 * mapper.RESIDENT_EVERY):
+        mapper.poll()
     assert mapper.title_check is NOT_OURS
 
 
