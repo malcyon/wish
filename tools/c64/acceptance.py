@@ -9414,8 +9414,8 @@ class CurseRun(PoolRun):
             if not gate["script_idle"]:
                 raise self.fail("wander-gate", (
                     f"the script did not wait at the move or world bar within "
-                    f"{CURSE_PIT_SETTLE_SECONDS:g} s of the fight, so $4C2D may "
-                    f"have gone back before ECL11 read it"))
+                    f"{self.settle_window:g} s of the fight; $4C2D is written "
+                    f"back to {was} as the step fails"))
         except BaseException as e:
             self.put_gate_back(gate, was, e)
             raise
@@ -9472,9 +9472,12 @@ class CurseRun(PoolRun):
         within `CURSE_PIT_SETTLE_SECONDS`, pressing nothing: the script has
         ended, past the compare after `COMBAT`, so the gate may go back without
         changing the arm it takes.  A script's own page or menu waits in the
-        same key window, so the key wait alone does not say so."""
-        end = self.clock() + self.budget(CURSE_PIT_SETTLE_SECONDS,
+        same key window, so the key wait alone does not show that.  The wait
+        used, which the run's deadline can shorten, is kept as
+        `settle_window`."""
+        self.settle_window = self.budget(CURSE_PIT_SETTLE_SECONDS,
                                          "the script after the fight")
+        end = self.clock() + self.settle_window
         while True:
             bar = self.bar()
             if (self.sess.mode() == S.DUNGEON

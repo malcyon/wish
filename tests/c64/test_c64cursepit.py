@@ -425,3 +425,23 @@ def test_an_unreadable_gate_stops_the_silver_blades_step_before_any_write(
     with pytest.raises(A.StepFailed, match=r"\$4C2D could not be read before the walk"):
         run.fight("600", "I", 40)
     assert sess.gate_writes == [] and sess.moves == []
+
+
+def test_the_failure_names_the_wait_the_deadline_left_and_the_write_back(
+        monkeypatch, tmp_path):
+    sess = PitSession(post_pages=10**9)
+    run, _, _ = _pit_run(monkeypatch, tmp_path, sess)
+    run.clock = iter(range(0, 10_000)).__next__
+    run.deadline = 1_000
+    original = run.script_idle_after_fight
+
+    def with_twenty_seconds_left():
+        run.deadline = run.clock() + 20
+        return original()
+
+    run.script_idle_after_fight = with_twenty_seconds_left
+    with pytest.raises(A.StepFailed, match=(
+            r"within 19 s of the fight; \$4C2D is written back to 0 as the step fails")):
+        run.fight("300", "I", 40)
+    assert run.settle_window == 19
+    assert sess.memory[A.CURSE_WANDER_GATE] == 0
