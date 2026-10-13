@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import pathlib
 
 import pytest
 
 from automap import gamedisks
 from tools.amiga import amigakeys, cursefight
+from tools.amiga.screens import PixelGuards
 from tools.amiga.winuaesession import RouteError
 from tools.registry import specimens
 
@@ -373,6 +375,31 @@ def test_drive_loads_walks_fights_and_saves_once(tmp_path, monkeypatch):
     assert found["load_errors"] == 2 and walked
     assert found["members"]["EVOKER"]["quickfight"] == 1
     _keys_allowed(screens, game)
+
+
+def test_drive_answers_the_injuries_question_before_the_punch_bar(tmp_path, monkeypatch):
+    script = [*DRIVE[:11], "injuries", "injuries", "tavern", *DRIVE[12:]]
+    found, game, screens, _walked = _drive(tmp_path, monkeypatch, script=script)
+    assert game.keys == ["ESC", "ESC", "L", "D", "RET", "RET", "B", "I", "P", "E", "S", "F", "N"]
+    assert game.pressed_on[7:9] == ["injuries", "tavern"]
+    _keys_allowed(screens, game)
+
+
+def test_drive_stops_when_the_injuries_question_stays(tmp_path, monkeypatch):
+    script = [*DRIVE[:11], "injuries"]
+    with pytest.raises(RouteError, match="tavern did not show"):
+        _drive(tmp_path, monkeypatch, script=script)
+    # One answer only: a screen that does not go is not pressed again.
+
+
+def test_injuries_guard_matches_the_captured_bar_and_not_the_punch_bar(tmp_path):
+    shot = pathlib.Path.home() / ".cache/wish/acceptance/WISH-390/run1/screens/051-tavern.png"
+    if not shot.is_file():
+        pytest.skip("the WISH-390 injuries capture is not on this machine")
+    rules = tmp_path / "guards.json"
+    rules.write_text(json.dumps(cursefight.guard_rules()))
+    guards = PixelGuards(rules)
+    assert guards("injuries", shot) and not guards("tavern", shot)
 
 
 def test_drive_looks_at_the_map_before_pressing_e(tmp_path, monkeypatch):

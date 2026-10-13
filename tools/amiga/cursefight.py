@@ -59,6 +59,12 @@ FIGHT_GUARDS = {
                    "sha256": "4a6806c8d6012a5bbd5ded17d87c260f61d5fcd05ec2e2cd025ffa4418a1fa71"},
     "tavern": {"box": [72, 404, 592, 426],
                "sha256": "729a8de7b9157b080928e2e212f775c0738ffd23b20344ddbc82aa2b75f9ae17"},
+    # ASK ABOUT INJURIES / IGNORE THEM, which a save whose brawl already happened shows
+    # before the PUNCH bar; the text line above it (the bartender's black eye) is the `and`.
+    "injuries": {"box": [72, 404, 556, 426],
+                 "sha256": "43f01d090eccc05783eeedda1c69823ad0474432caf91960c4fbb6370f76f71d",
+                 "and": [{"box": [74, 302, 690, 318],
+                          "sha256": "67c4990b5d5d9b01fabe5b7b710219be9e0bcdacf41f882e9a72ba2ed4d2098b"}]},
     # MOVE VIEW AIM, the start of every member's command bar.
     "combat_bar": {"box": [72, 404, 288, 426],
                    "sha256": "140a5633d4aa744c3cf0bcf3d4a1bd5870f0ca7701590fa635ddd66abdff61df"},
@@ -77,15 +83,15 @@ FIGHT_GUARDS = {
                              "sha256": "62e2c5b54a7168bf15231eb25872aa96f17c857a1994d07fcecf3c381750cdd2"}]},
 }
 KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
-         "continue", "tavern", "combat_bar", "continue_battle", "treasure", "treasure_left",
-         "investigate", "camp", "camp_save_picker", "exit_game")
+         "continue", "tavern", "injuries", "combat_bar", "continue_battle", "treasure",
+         "treasure_left", "investigate", "camp", "camp_save_picker", "exit_game")
 #: The only keys each screen may receive. The tavern's L(EAVE) is for a bar shown again after
 #: the fight; the investigate question is answered NO, which keeps the party out of a second fight.
 ALLOWED_KEYS = {
     "intro": frozenset({"ESC"}), "front_end": frozenset({"ESC"}), "title": frozenset({"L"}),
     "load_picker": frozenset("ABCDEFGHIJ"), "load_error": frozenset({"RET"}),
     "loaded_menu": frozenset({"B"}), "world": frozenset({"NP4", "NP6", "NP8", "E"}),
-    "continue": frozenset({"RET"}), "tavern": frozenset({"P", "L"}),
+    "continue": frozenset({"RET"}), "tavern": frozenset({"P", "L"}), "injuries": frozenset({"I"}),
     "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
     "investigate": frozenset({"N"}), "camp": frozenset({"S"}),
@@ -295,6 +301,15 @@ def walk(screens: Screens, memory: Memory, start: dict, route: list[int]) -> lis
     return steps
 
 
+def reach_tavern(screens: Screens) -> None:
+    """Wait for the PUNCH bar, answering the injuries question that comes first on a save
+    whose brawl already happened with IGNORE THEM."""
+    if screens.wait(("tavern", "injuries"), 60, past=("world", "continue")) == "injuries":
+        screens.press("I", "injuries")
+        screens.sleep(AFTER_KEY)
+        screens.wait(("tavern",), 60, past=("world", "continue", "injuries"))
+
+
 def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
     """Answer every screen from the first bar to the map; log each bar with its owner."""
     bars: list[dict] = []
@@ -401,7 +416,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
     screens.wait(("world",), 90, past=("loaded_menu",))
     screens.sleep(AFTER_KEY)
     found["walk"] = walk(screens, memory, fight_["place"], fight_["route"])
-    screens.wait(("tavern",), 60, past=("world", "continue"))
+    reach_tavern(screens)
     screens.press("P", "tavern")
     screens.sleep(AFTER_KEY)
     found.update(fight(screens, memory, members))
