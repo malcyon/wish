@@ -10418,9 +10418,10 @@ def test_an_ambush_bar_that_attack_does_not_change_fails_the_step(
         tmp_path, fight_now):
     game, d = _fighter(tmp_path)
     game.ambush = game.stuck = True
-    with pytest.raises(da.StepFailed, match="ATTACK changed nothing"):
+    with pytest.raises(da.StepFailed, match="a changed nothing at the ambush bar"):
         d.fight()
-    assert game.keys.count("a") == 1
+    pressed = game.keys[3:]
+    assert pressed == ["a"] * da.FIGHT_PRESSES
 
 
 def test_the_silver_blades_treasure_bar_is_known_by_its_letters():
@@ -10902,10 +10903,13 @@ class LaterFight(CampFight):
     with QUICK carried over only an unclassified message bar shows until
     `space` hands GUY back at his command bar."""
 
-    def __init__(self, tmp_path, detour=False, quick=False, straight=False):
+    def __init__(self, tmp_path, detour=False, quick=False, straight=False,
+                 ambush=False):
         super().__init__(tmp_path)
         self.detour, self.quick, self.second = detour, quick, False
         self.straight = straight
+        #: The second fight opens `ATTACK EVADE`, then a blank computer turn.
+        self.ambush_second = ambush
 
     def frame(self):
         if self.state == "all_quick":
@@ -10928,7 +10932,12 @@ class LaterFight(CampFight):
             s = self.state
             if s == "camp" and k == "e":
                 self.second = True
-            if (self.second and self.detour and s == "move" and k == "Up"
+                self.ambush = self.ambush_second
+            if self.second and self.ambush_second and s == "ambush" and k == "a":
+                self.keys.append(k)
+                self.state, self.actor, self.fought = "blank1", "GUY", True
+                _select(self.ds, self.ptrs["GUY"])
+            elif (self.second and self.detour and s == "move" and k == "Up"
                     and self.square == 1):
                 self.keys.append(k)
                 self.state, self.square, self.detour = "pre_unknown", 3, False
@@ -10989,6 +10998,14 @@ def test_the_hand_back_goes_out_at_the_first_combat_screen_after_the_encounter(
     after = {c["name"]: c["quickfight"] for c in got["placement"]}
     assert after["PAINE"] == 0 and after["EPONA"] == 1
     assert got["handed_back_to"] == ["GUY", "PAINE"]
+
+
+def test_a_later_fights_ambush_bar_counts_as_combat_begun_for_the_hand_back(
+        tmp_path, clock):
+    game, d, got, keys = _later(tmp_path, ambush=True)
+    assert keys == ["m", "Up", "Up", "a", "space", "q", "q", "e", "n"]
+    assert [e["kind"] for e in _events(d, "hand-back")] == ["blank"]
+    assert got["encounters"] == 1 and got["handed_back"] is True
 
 
 def test_a_later_fight_with_no_encounter_menu_gets_its_hand_back_once_combat_begins(
