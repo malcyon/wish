@@ -198,16 +198,22 @@ def test_the_joined_companions_are_companions_on_the_whole_route():
         assert _figure(save0, party, index) == _parts().default_icon()
 
 
-def test_a_players_size_outside_one_and_two_is_reported_not_rounded():
+def test_a_players_zero_crosses_dos_unchanged_and_is_no_companion():
+    """A player's 0 names no figure for the C64, which stops on it (above),
+    but DOS and the Amiga store the byte as it is, so it crosses back raw and
+    is not taken for a companion's."""
     party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
     player = next(c for c in party if c.name not in JOINED)
     neutral = dos_codec.to_neutral(_edited(player, size=0))
-    assert neutral.get("size_small") is None
-    assert any("figure's size" in line for line in neutral.dropped)
+    assert not c64_codec.picture_companion(neutral)
+    assert dos_codec.creature_source(neutral, "size") == 0
+    assert neutral.dropped == dos_codec.to_neutral(player).dropped
+    back, _itm, _spc, _rep = dos_codec.write(neutral, deltas=player.deltas)
+    assert back[FIELDS["size"].offset] == 0
     companion = next(c for c in party if c.name == "ALIAS")
     neutral = dos_codec.to_neutral(companion)
+    assert c64_codec.picture_companion(neutral)
     assert neutral.get("size_small") == 0
-    assert not any("figure's size" in line for line in neutral.dropped)
 
 
 def _unmatched_by_name(party):

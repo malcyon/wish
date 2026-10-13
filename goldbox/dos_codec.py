@@ -110,7 +110,6 @@ from .dos_port import (
 from .encoding import combat_byte
 from .iconparts import (
     DOS_COMPANION_SIZE,
-    DOS_SIZES,
     DosIcon,
     DosIconTables,
     IconParts,
@@ -3321,23 +3320,22 @@ def to_neutral(dos: DosCharacter,
 
     # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
     # A companion's 0 is the game's own (DOS_COMPANION_SIZE) and becomes
-    # small; any other value outside 1 and 2 names no figure and is reported
-    # rather than turned into the nearest size.  Read here, once `npc` and
-    # `npc_control_byte` are set, because `c64_codec.picture_companion`
-    # decides from them who is drawn from CPIC rather than from his size.
+    # small.  Any other value outside 1 and 2 is floored the same way, and the
+    # raw byte crosses beside it (`_CREATURE_SOURCE`), so DOS and the Amiga,
+    # which store it identically, get it back unchanged; the C64 writer, which
+    # composes a figure from it, stops on it (`_figure_size`).  Read here,
+    # once `npc` and `npc_control_byte` are set, because
+    # `c64_codec.picture_companion` decides from them who is drawn from CPIC.
     raw_size = dos.get("size")
     size_at = dos.fields["size"].offset
     if c64_codec.picture_companion(out) and raw_size == DOS_COMPANION_SIZE:
         out.set("size_small", 0,
                 f"DOS size @{size_at:#05x} = 0, a companion's, which names "
                 f"no figure: small", FIELDS_BY_NAME["size"].confidence)
-    elif raw_size in DOS_SIZES:
-        out.set("size_small", raw_size - 1,
-                f"DOS size @{size_at:#05x}, less one",
-                FIELDS_BY_NAME["size"].confidence)
     else:
-        out.drop(f"The combat figure's size: this save holds {raw_size} "
-                 f"there, and a player's figure is 1 (small) or 2 (medium)")
+        out.set("size_small", max(0, raw_size - 1),
+                f"DOS size @{size_at:#05x}, less one, floored at 0",
+                FIELDS_BY_NAME["size"].confidence)
 
     share_index = control_index + 1
     share_offset = f83.offset + share_index
