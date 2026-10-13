@@ -2551,7 +2551,7 @@ class PoolRun:
                 index = route_pool.line_number(who, len(rows) if s else None)
                 # A line number needs no name column; the sheet wait does.
                 try:
-                    names = route_pool.panel_names(s, rows)[0]
+                    names = route_pool.panel_names(s, rows)[0] if s else []
                 except route_pool.PanelError:
                     names = []
             else:

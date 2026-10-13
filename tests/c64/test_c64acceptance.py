@@ -6413,7 +6413,22 @@ def test_a_view_by_line_number_on_a_panel_without_its_heading_fails(
     run = _live_panel_run(tmp_path, monkeypatch, {
         4: " " * 16 + "ALIAS           5  31"})
     try:
-        with pytest.raises(A.StepFailed, match="shows no name|no AC heading|panel"):
+        with pytest.raises(A.StepFailed, match=re.escape(
+                "Party line 1 is not on the panel, which has 0 lines.")):
+            run.view("1")
+    finally:
+        run.log.close()
+    assert not any(k[0] == "bar" and k[1] == "VIEW" for k in run.sess.sent)
+
+
+def test_a_view_by_line_number_on_an_unreadable_screen_fails_with_no_name(
+        tmp_path, monkeypatch):
+    run = _live_panel_run(tmp_path, monkeypatch, {
+        **LIVE_HEAD, 4: " " * 16 + "ALIAS           5  31"})
+    run.to_camp = lambda: True
+    run.sess.screen = lambda: None
+    try:
+        with pytest.raises(A.StepFailed, match="shows no name for 1"):
             run.view("1")
     finally:
         run.log.close()
