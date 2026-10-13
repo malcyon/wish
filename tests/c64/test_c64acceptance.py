@@ -15035,15 +15035,19 @@ def test_animate_specimen_registers_under_the_wish_303_name(tmp_path, monkeypatc
 
 # --- Curse's tavern: the bartender's injuries question -----------------------------
 
-def _tavern_fight(monkeypatch, tmp_path, screens):
+def _tavern_fight(monkeypatch, tmp_path, screens, blank_reads=0):
     """A Curse fight step whose session shows `screens` (row 24) in turn, one
-    step on each key press; returns the labels pressed and the run."""
+    step on each key press, after `blank_reads` reads that show the street;
+    returns the labels pressed and the run."""
     from types import SimpleNamespace
 
     from tools.c64 import laterbattle
     from tools.curse_of_the_azure_bonds import cursethac0
 
     pressed = []
+    monkeypatch.setattr(A.CurseRun, "TAVERN_BAR_WAIT", 0.0 if not blank_reads else 5.0,
+                        raising=False)
+    monkeypatch.setattr(A.time, "sleep", lambda seconds: None)
 
     class Route:
         last_goto_steps = 1
@@ -15059,13 +15063,16 @@ def _tavern_fight(monkeypatch, tmp_path, screens):
 
         def __init__(self):
             self.at = 0
+            self.reads = 0
 
         def in_combat(self):
             return self.fought
 
         def screen(self):
             rows = [""] * 25
-            rows[24] = screens[self.at]
+            self.reads += 1
+            rows[24] = ("I,J,K,M, RETURN OR BUTTON" if self.reads <= blank_reads
+                        else screens[self.at])
             return FakeScreen(rows)
 
         def press_bar(self, label, row=24, timeout=0):
@@ -15111,3 +15118,13 @@ def test_curse_fight_stops_at_a_bar_that_only_partly_matches_the_injuries_bar(
     with pytest.raises(A.StepFailed, match="PUNCH BARKEEP was not selectable"):
         run.fight("10", "I", 5)
     assert pressed == []
+
+
+def test_curse_fight_waits_for_an_injuries_bar_drawn_after_the_tavern_capture(
+        monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, [
+        "ASK ABOUT INJURIES IGNORE THEM",
+        "PUNCH BARKEEP HAVE A DRINK LEAVE",
+        "MOVE VIEW AIM"], blank_reads=2)
+    run.fight("10", "I", 5)
+    assert pressed == ["IGNORE THEM", "PUNCH BARKEEP"]

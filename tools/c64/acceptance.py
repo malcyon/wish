@@ -9245,15 +9245,27 @@ class CurseRun(PoolRun):
     def fight_cast(self, arg: str, walk: str, steps: int) -> dict:
         raise self.fail("fight-cast", "Pool of Radiance only")
 
+    TAVERN_BAR_WAIT = 10.0
+
     def _answer_tavern_injuries(self) -> bool:
         """Answer `IGNORE THEM` when row 24 holds exactly the bartender's
         `CURSE_TAVERN_INJURIES_BAR`, which a save whose brawl was already
         fought shows before the tavern's bar, and wait for the row to change.
-        A row showing only some of those words is left alone."""
-        screen = self.sess.screen()
-        row = "" if screen is None else screen.row(24)
-        if tuple(row.split()) != CURSE_TAVERN_INJURIES_BAR:
-            return False
+        A row showing only some of those words is left alone.  The bar is drawn
+        a few frames after the tavern is reached, so the row is read until it
+        shows the injuries bar or the `PUNCH BARKEEP` bar, within
+        `TAVERN_BAR_WAIT` seconds."""
+        from tools.c64 import laterbattle
+
+        wait_until = time.time() + self.TAVERN_BAR_WAIT
+        while True:
+            screen = self.sess.screen()
+            row = "" if screen is None else screen.row(24)
+            if tuple(row.split()) == CURSE_TAVERN_INJURIES_BAR:
+                break
+            if laterbattle.PUNCH in row or time.time() >= wait_until:
+                return False
+            time.sleep(0.5)
         if not self.sess.press_bar(CURSE_TAVERN_IGNORE, timeout=20):
             raise self.fail("fight", "IGNORE THEM was not selectable")
         deadline = time.time() + 20.0
