@@ -354,12 +354,14 @@ DRIVE = [None, "intro", "front_end", "title", "load_picker", None, "load_error",
          "camp_save_picker", None, "exit_game", "exit_game", "camp"]
 
 
-def _drive(tmp_path, monkeypatch, save=True, parties=None, script=DRIVE):
+def _drive(tmp_path, monkeypatch, save=True, parties=None, script=DRIVE, games=None):
     clock = Clock()
     loaded = [_member(name) for name in NAMES]
     after = [_member(name, quickfight=1) for name in NAMES]
     game = Game(clock, script, parties=parties or [loaded, after])
     game.walking = False
+    if games is not None:
+        games.append(game)
     walked = []
     monkeypatch.setattr(cursefight, "walk", lambda *a: walked.append(a) or [])
     monkeypatch.setattr(cursefight, "fight",
@@ -387,9 +389,11 @@ def test_drive_answers_the_injuries_question_before_the_punch_bar(tmp_path, monk
 
 def test_drive_stops_when_the_injuries_question_stays(tmp_path, monkeypatch):
     script = [*DRIVE[:11], "injuries"]
+    games = []
     with pytest.raises(RouteError, match="tavern did not show"):
-        _drive(tmp_path, monkeypatch, script=script)
+        _drive(tmp_path, monkeypatch, script=script, games=games)
     # One answer only: a screen that does not go is not pressed again.
+    assert games[0].keys.count("I") == 1
 
 
 def test_injuries_guard_matches_the_captured_bar_and_not_the_punch_bar(tmp_path):
