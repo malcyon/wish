@@ -5,7 +5,8 @@ hands the screens the square's script puts up to `JoinAnswerer`.  Every key is
 pressed only on a screen whose text is the one the site's script draws next
 (`JOIN_SITES`, read from the area script with `tools/areas/ecllist.py --walk`
 and `tools/areas/ecltext.py`); any other screen stops the step with nothing
-pressed on it.  Keys go into the KERNAL buffer, the codes `LIBRARY $31F1`
+pressed on it.  The bar the walk left up (the world bar or the move sub-bar)
+stands while the script prints its first text, and gets no key.  Keys go into the KERNAL buffer, the codes `LIBRARY $31F1`
 compares: `$0D` chooses, `$1D` and `$9D` move a bar's highlight right and left.
 """
 from __future__ import annotations
@@ -28,9 +29,17 @@ KEY_SECONDS = 8.0
 PRESSES_BETWEEN = 8
 #: Game-side disk prompts answered in one join.
 PROMPTS = 2
-#: Seconds the world bar may stand after the last move before the square's
-#: first screen is drawn; the script loads its picture and prints first.
+#: Seconds the bar the walk left up (the world bar, or the move sub-bar) may
+#: stand unchanged after the last move before the square's first screen is
+#: drawn.  The script loads its picture and prints its text under that bar
+#: (`ECL11 $89EC`-`$8A6B`: 144 characters before the first continue bar), so
+#: the wait counts from the last change anywhere on the screen, never past
+#: `SCREEN_SECONDS` in all.
 FIRST_SCREEN_GRACE = 15.0
+#: The dungeon's move sub-bar, word for word: the walk's last move is a key on
+#: it, and it stays drawn while the square's script prints, and comes back when
+#: the script ends (`tools/c64/session.py`, `MOVE_SUBBAR`).
+MOVE_BAR = ("I,J,K,M,", "RETURN", "OR", "BUTTON")
 #: The one-option bar the script's continue subroutine draws (`ECL11 $96A7`).
 SCRIPT_CONTINUE = ("PRESS", "BUTTON", "OR", "RETURN", "TO", "CONTINUE.")
 POLL = 0.3
@@ -175,6 +184,11 @@ def is_world(screen) -> bool:
     return "ENCAMP" in row and "ENCAMP:" not in row
 
 
+def is_move_bar(screen) -> bool:
+    """Row 24 is the move sub-bar, word for word."""
+    return tuple(screen.row(24).split()) == MOVE_BAR
+
+
 def matches(screen, want) -> bool:
     """Whether SCREEN is the one WANT describes, by its text alone."""
     if isinstance(want, Bar):
@@ -197,7 +211,8 @@ def describe(want) -> str:
 
 
 class JoinAnswerer:
-    """Drive one join site from the square's first screen to the world bar.
+    """Drive one join site from the square's first screen to the world bar
+    or the move sub-bar.
 
     SCREEN returns the current screen (or None), PRESS puts one PETSCII code in
     the KERNAL buffer, PROMPT answers a game-side disk prompt and returns
@@ -267,14 +282,19 @@ class JoinAnswerer:
             self._changed(screen, describe(want))
 
     def run(self, site: JoinSite) -> dict:
-        """Answer SITE's screens in order, then wait for the world bar."""
+        """Answer SITE's screens in order, then wait for the world bar or
+        the move sub-bar."""
         presses = 0
         queue = list(site.screens)
-        started = self.clock()
-        until = started + SCREEN_SECONDS
+        until = self.clock() + SCREEN_SECONDS
         odd_since = None
+        last, changed = None, self.clock()
         while True:
             screen = self.screen()
+            if screen is not None and (last is None
+                                       or screen.codes != last.codes
+                                       or screen.colours != last.colours):
+                last, changed = screen, self.clock()
             if screen is None:
                 if self.clock() >= until:
                     raise JoinStopped(f"the screen could not be read before "
@@ -288,7 +308,7 @@ class JoinAnswerer:
                 presses, odd_since = 0, None
                 until = self.clock() + SCREEN_SECONDS
                 continue
-            if want is None and is_world(screen):
+            if want is None and (is_world(screen) or is_move_bar(screen)):
                 return {"site": site.script, "area": site.area,
                         "joins": list(site.joins), "screens": self.seen,
                         "keys": [{"key": f"${k:02X}", "row24": r}
@@ -315,12 +335,21 @@ class JoinAnswerer:
                                       "answer", screen)
                 self.prompts += 1
                 continue
-            if is_world(screen):
-                if (not self.keys
-                        and self.clock() - started < FIRST_SCREEN_GRACE):
-                    self.sleep(POLL)
-                    continue
-                raise JoinStopped(f"the world bar came back before "
+            if is_world(screen) or is_move_bar(screen):
+                which = "world bar" if is_world(screen) else "move bar"
+                if not self.keys:
+                    if self.clock() >= until:
+                        raise JoinStopped(f"the {which} stood "
+                                          f"{SCREEN_SECONDS:.0f} s and "
+                                          f"{self._next(want)} never came "
+                                          f"up", screen)
+                    if self.clock() - changed < FIRST_SCREEN_GRACE:
+                        self.sleep(POLL)
+                        continue
+                    raise JoinStopped(f"the {which} stood unchanged "
+                                      f"{FIRST_SCREEN_GRACE:.0f} s before "
+                                      f"{self._next(want)}", screen)
+                raise JoinStopped(f"the {which} came back before "
                                   f"{self._next(want)}", screen)
             if screen.row(24).strip():
                 odd_since = self.clock() if odd_since is None else odd_since
@@ -336,4 +365,5 @@ class JoinAnswerer:
 
     @staticmethod
     def _next(want) -> str:
-        return "the world bar" if want is None else describe(want)
+        return ("the world bar or the move bar" if want is None
+                else describe(want))

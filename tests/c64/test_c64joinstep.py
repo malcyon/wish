@@ -361,7 +361,7 @@ def test_the_world_bar_lasting_past_the_grace_stops_with_nothing_pressed(
     game = Game(pit_script())
     sess = FakeSession(game, world_reads=10 ** 6)
     run = _run(monkeypatch, sess, [])
-    with pytest.raises(A.StepFailed, match="world bar came back"):
+    with pytest.raises(A.StepFailed, match="world bar stood unchanged"):
         run.join("I")
     assert game.keys == [] and game.now >= J.FIRST_SCREEN_GRACE
 
@@ -416,3 +416,96 @@ def test_a_stopped_join_puts_the_encounter_gates_back(monkeypatch):
     with pytest.raises(A.StepFailed):
         run.join("I")
     assert restored == ["join I"] and sess.no_encounters is False
+
+
+# --- the Pit square's text printing under the walk's move sub-bar ---------------
+
+MOVE = "I,J,K,M, RETURN OR BUTTON"
+#: What `ECL11 $89EF`-`$8A44` prints before its first continue bar, in the
+#: rows the Pit run's frames show it (`07-lost-join`).
+PIT_TEXT = ("YOU SEE A FEMALE FIGHTER AND A", "STRANGE-LOOKING LIZARD MAN.",
+            "THE SHARP SCENTS OF VIOLETS, BRIMSTONE",
+            "AND HONEYSUCKLE FOLLOW RAPIDLY UPON EACH",
+            "OTHER.")
+
+
+def printing(per_poll: int = 2, bottom: str = MOVE) -> list:
+    """The square's text appearing PER_POLL characters a poll under BOTTOM,
+    each frame giving way to the next on its own."""
+    frames, shown = [], 0
+    total = sum(len(line) for line in PIT_TEXT)
+    while shown <= total:
+        rows, left = {24: bottom}, shown
+        for r, line in enumerate(PIT_TEXT):
+            rows[17 + r] = line[:max(left, 0)]
+            left -= len(line)
+        frames.append((screen(rows), {None: len(frames) + 1}))
+        shown += per_poll
+    return frames
+
+
+def pit_after_printing(per_poll: int = 2, end: Screen | None = None) -> list:
+    """`printing`, then the Pit's screens from the first continue bar, ending
+    on END in place of the world bar."""
+    head = printing(per_poll)
+    rest = pit_script()[1:]
+    if end is not None:
+        rest[-1] = (end, {})
+    shift = len(head) - 1
+    rest = [(s, {k: v + shift for k, v in moves.items()}) for s, moves in rest]
+    return head + rest
+
+
+def test_the_pit_text_printing_under_the_move_bar_gets_no_key_and_the_join_goes_on():
+    # The Pit run stopped here: row 24 still the move sub-bar from the walk,
+    # the square's text half printed, after UNEXPECTED_SECONDS.
+    game = Game(pit_after_printing())
+    got = game.answerer().run(PIT)
+    printed = len(printing())
+    assert game.now > J.UNEXPECTED_SECONDS and printed * J.POLL > 20
+    assert game.keys == PIT_KEYS
+    assert got["keys"][0] == {"key": "$0D", "row24": CONTINUE}
+
+
+def test_the_join_ends_on_the_move_bar_the_script_comes_back_to():
+    game = Game(pit_after_printing(end=screen({24: MOVE})))
+    got = game.answerer().run(PIT)
+    assert game.keys == PIT_KEYS and len(got["screens"]) > 5
+
+
+def test_a_move_bar_left_standing_unchanged_stops_within_the_grace():
+    game = Game([(screen({24: MOVE}), {R: 0})])
+    with pytest.raises(J.JoinStopped, match="move bar stood unchanged"):
+        game.answerer().run(PIT)
+    assert game.keys == []
+    assert J.FIRST_SCREEN_GRACE <= game.now < J.FIRST_SCREEN_GRACE + 1
+
+
+def test_a_move_bar_over_text_that_never_ends_stops_within_the_screen_wait():
+    frames = [(screen({17: "X" * (i % 40 + 1), 24: MOVE}), {None: i + 1})
+              for i in range(1000)]
+    game = Game(frames)
+    with pytest.raises(J.JoinStopped, match="never came up"):
+        game.answerer().run(PIT)
+    assert game.keys == [] and game.now <= J.SCREEN_SECONDS + 1
+
+
+def test_the_move_bar_after_a_key_stops_the_step():
+    script = pit_script()
+    script[6] = (bar("COMBAT ADVANCE WAIT FLEE PARLAY", "PARLAY"),
+                 {R: 19, LT: 5})
+    script.append((screen({24: MOVE}), {R: 19}))
+    game = Game(script)
+    with pytest.raises(J.JoinStopped, match="move bar came back before "
+                                            "PICK SPEAKER"):
+        game.answerer().run(PIT)
+    assert game.keys == PIT_KEYS[:6]
+
+
+def test_the_join_step_answers_the_pit_after_its_text_under_the_move_bar(
+        monkeypatch):
+    game = Game(pit_after_printing())
+    sess = FakeSession(game, world_reads=0)
+    run = _run(monkeypatch, sess, [])
+    got = run.join("I")
+    assert game.keys == PIT_KEYS and got["square"] == [1, 4, 2]
