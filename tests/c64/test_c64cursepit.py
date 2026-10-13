@@ -13,6 +13,7 @@ from tools.c64 import acceptance as A
 MOVE_BAR = "I,J,K,M, RETURN OR BUTTON"
 WORLD_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
 SLUG_BAR = "ATTACK EVADE"
+PRESS_PAGE = "PRESS BUTTON OR RETURN TO CONTINUE."
 
 
 class FakeScreen:
@@ -82,11 +83,16 @@ class PitSession:
     """A Pit walk that commits to a fight after COMMIT move keys, showing the
     slugs' `ATTACK EVADE` first when SLUGS; then one fight with OUTCOME, after
     which the machine is in DUNGEON idling in a key wait (a win) or in the
-    party menu (a loss)."""
+    party menu (a loss).  POST_PAGES screen reads after the fight show a
+    script's own page in DUNGEON first, the key wait idle all the while; the
+    first UNREADABLE monitor reads fail; WHERE is the party's triple."""
 
-    def __init__(self, commit=4, slugs=False, outcome=A.S.WON, sticky_gate=False):
+    def __init__(self, commit=4, slugs=False, outcome=A.S.WON, sticky_gate=False,
+                 post_pages=0, unreadable=0, where=(1, 3, 3)):
         self.memory = {A.CURSE_WANDER_GATE: 0, A.CURSE_SIDE: 3}
         self.gate_writes = []
+        self.write_bars = []
+        self.post_pages, self.unreadable, self.where = post_pages, unreadable, where
         self.moves = []
         self.moves_at_commit = None
         self.commit, self.slugs, self.outcome = commit, slugs, outcome
@@ -120,8 +126,13 @@ class PitSession:
     def screen(self):
         if self.mode() != A.S.DUNGEON:
             return FakeScreen([""] * 25)
-        bar = (WORLD_BAR if self.fought else SLUG_BAR if self.asking()
-               else MOVE_BAR)
+        if self.fought and self.post_pages:
+            self.post_pages -= 1
+            bar = PRESS_PAGE
+        else:
+            bar = (WORLD_BAR if self.fought else SLUG_BAR if self.asking()
+                   else MOVE_BAR)
+        self.last_bar = bar
         return FakeScreen([""] * 24 + [bar])
 
     def press_bar(self, word, timeout=0):
@@ -147,10 +158,14 @@ class PitSession:
                 return False
 
             def read(self, addr, n):
+                if sess.unreadable:
+                    sess.unreadable -= 1
+                    raise ConnectionError("no answer")
                 return bytes([sess.memory.get(addr, 0)])
 
             def write(self, addr, data):
                 sess.gate_writes.append((addr, data[0], sess.mode()))
+                sess.write_bars.append(getattr(sess, "last_bar", None))
                 if not sess.sticky_gate:
                     sess.memory[addr] = data[0]
 
@@ -167,7 +182,7 @@ class PitSession:
         return A.S.FightResult(self.outcome, 3, 1.0, [], [])
 
 
-def _pit_run(monkeypatch, tmp_path, sess, geo=CORNER, start=(1, 4)):
+def _stub_route(monkeypatch):
     from tools.c64 import laterbattle
 
     class Route:
@@ -195,10 +210,17 @@ def _pit_run(monkeypatch, tmp_path, sess, geo=CORNER, start=(1, 4)):
             self.sess.moves.append(key)
             return True
 
+        def triple(self):
+            return self.sess.where
+
         def clear_bar(self, accept=False):
             return None
 
     monkeypatch.setattr(laterbattle, "Battle", Route)
+
+
+def _pit_run(monkeypatch, tmp_path, sess, geo=CORNER, start=(1, 4)):
+    _stub_route(monkeypatch)
     monkeypatch.setattr(A, "curse_geo", lambda name, disks: geo)
     events, captures = [], []
     run = A.CurseRun.__new__(A.CurseRun)
@@ -345,3 +367,61 @@ def test_a_run_with_no_title_reads_no_live_area():
     assert run.live_area() is None
     run.game = SimpleNamespace(key="secret-of-the-silver-blades")
     assert run.live_area() is None
+
+
+def test_the_gate_goes_back_only_at_the_world_bar_after_the_scripts_own_pages(
+        monkeypatch, tmp_path):
+    sess = PitSession(post_pages=3)
+    run, _, _ = _pit_run(monkeypatch, tmp_path, sess)
+    got = run.fight("300", "I", 40)
+    assert got["wander_gate"]["script_idle"] is True
+    assert sess.write_bars[-1] == WORLD_BAR
+    assert sess.memory[A.CURSE_WANDER_GATE] == 0
+
+
+def test_a_script_that_never_reaches_the_bar_fails_the_step_after_the_gate_goes_back(
+        monkeypatch, tmp_path):
+    sess = PitSession(post_pages=10**9)
+    run, events, _ = _pit_run(monkeypatch, tmp_path, sess)
+    run.clock = iter(range(0, 10_000, 5)).__next__
+    with pytest.raises(A.StepFailed, match="did not wait at the move or world bar"):
+        run.fight("300", "I", 40)
+    assert sess.memory[A.CURSE_WANDER_GATE] == 0
+    last = [kw for kind, kw in events if kind == "wander-gate"][-1]
+    assert last["script_idle"] is False and last["restored"] == 0
+
+
+def test_a_forward_key_onto_a_script_square_fails_with_no_key_sent(monkeypatch, tmp_path):
+    sess = PitSession(where=(1, 3, 2))
+    run, _, _ = _pit_run(monkeypatch, tmp_path, sess)
+    with pytest.raises(A.StepFailed, match="1,4, runs a script other than the wandering roll"):
+        run.fight("300", "I", 40)
+    assert sess.moves == [] and not sess.fought
+    assert sess.memory[A.CURSE_WANDER_GATE] == 0
+
+
+def test_an_unreadable_gate_stops_the_pit_step_before_any_write(monkeypatch, tmp_path):
+    sess = PitSession(unreadable=1)
+    run, _, _ = _pit_run(monkeypatch, tmp_path, sess)
+    with pytest.raises(A.StepFailed, match=r"\$4C2D could not be read before the walk"):
+        run.fight("300", "I", 40)
+    assert sess.gate_writes == [] and sess.moves == []
+
+
+def test_an_unreadable_gate_stops_the_silver_blades_step_before_any_write(
+        monkeypatch, tmp_path):
+    from tools.curse_of_the_azure_bonds import cursethac0
+
+    _stub_route(monkeypatch)
+    monkeypatch.setattr(cursethac0, "area_geo", lambda *a: ("GEO10", object()))
+    sess = PitSession(unreadable=1)
+    run = A.SilverRun.__new__(A.SilverRun)
+    run.sess, run.out = sess, tmp_path
+    run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
+    run.log = SimpleNamespace(emit=lambda kind, **kw: None)
+    run.capture = lambda tag, rows=None: None
+    run.to_world = lambda: True
+    run.key_idle = sess.key_idle
+    with pytest.raises(A.StepFailed, match=r"\$4C2D could not be read before the walk"):
+        run.fight("600", "I", 40)
+    assert sess.gate_writes == [] and sess.moves == []

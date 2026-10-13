@@ -77,7 +77,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` or a `memorize` it rests in the camp that step left open, since every camp exit cancels the scribe queue and the memorize choice, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (an `I` or `M` that leaves the square unchanged with a `PRESS` bar or a blank row 24 fails the walk as an encounter or a square's text, not as `blocked`; Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]`; with `--cross-edge`, a disk prompt on the route's last forward move is an area edge: the side the prompt names is answered once and the move is judged by the area byte `$49F2` changing, not the square (a second prompt, or one on any other move, fails the walk), recorded as `crossing` |
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
-| `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep, except in the Pit of Moander (area `$11`), where it sets the wandering roll's fight gate `$4C2D` to `$80`, walks between two of `GEO11`'s roll squares (id 0) the party reaches without entering any other square with a script (at most `--walk-steps` moves), answers the slugs' `ATTACK EVADE` with ATTACK, sends no key from `COM.PREP` until the first command bar, captures that bar as `first-bar` with `$7F12` (`first_bar` in the result), and puts `$4C2D` back once the script waits for a key again (`wander_gate`, with `script_idle`); Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
+| `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep, except in the Pit of Moander (area `$11`), where it sets the wandering roll's fight gate `$4C2D` to `$80`, walks between two of `GEO11`'s roll squares (id 0) the party reaches without entering any other square with a script (at most `--walk-steps` moves), answers the slugs' `ATTACK EVADE` with ATTACK, sends no key from `COM.PREP` until the first command bar, captures that bar as `first-bar` with `$7F12` (`first_bar` in the result), and puts `$4C2D` back once the script waits at the move or world bar again (`wander_gate`, with `script_idle`), failing the step when that takes over 60 s; a forward key onto any other script square, or a gate it cannot read before the walk, fails the step with nothing sent or written; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:SPELL`, `cast CASTER:SPELL>TARGET` | Pool, any other spell, `>TARGET` naming the member a spell's target question (`CURE LIGHT WOUNDS`, `PROTECTION FROM EVIL`) is answered with: camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), `CAST SPELL ON WHOM` captured and TARGET chosen on it as the camp list chooses a member, the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question with no TARGET, a TARGET not on it or never asked for, or a pick that spends nothing fails the step. The result has `target`, `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
@@ -9399,7 +9399,7 @@ class CurseRun(PoolRun):
         if tour is None:
             raise self.fail("geo", f"no two joined squares next to "
                                    f"{start[0]},{start[1]} roll for a wandering monster")
-        was = self.wander_gate()
+        was = self.gate_before_walk()
         gate = {"address": f"${CURSE_WANDER_GATE:04X}", "was": was,
                 "now": (was if was == CURSE_PIT_GATE
                         else self.wander_gate(CURSE_PIT_GATE))}
@@ -9411,6 +9411,11 @@ class CurseRun(PoolRun):
             walked, result, before, seen, first_bar = self._pit_walk_and_fight(
                 arg, steps, PitGeo(geo), tour, flee)
             gate["script_idle"] = self.script_idle_after_fight()
+            if not gate["script_idle"]:
+                raise self.fail("wander-gate", (
+                    f"the script did not wait at the move or world bar within "
+                    f"{CURSE_PIT_SETTLE_SECONDS:g} s of the fight, so $4C2D may "
+                    f"have gone back before ECL11 read it"))
         except BaseException as e:
             self.put_gate_back(gate, was, e)
             raise
@@ -9425,7 +9430,8 @@ class CurseRun(PoolRun):
 
     def _pit_walk_and_fight(self, arg: str, steps: int, geo, tour, flee: bool):
         answers = ((CURSE_PIT_SLUG_BAR, CURSE_PIT_ATTACK),)
-        walked = self.walk_tour(steps, geo, tour, answers)
+        walked = self.walk_tour(steps, geo, tour, answers,
+                                keep_off=lambda x, y: pit_square_id(geo.geo, x, y) != 0)
         if not self.fight_committed():
             # The last move's encounter may still wait on its message.
             if (self.answer_bar(answers) is None
@@ -9462,13 +9468,18 @@ class CurseRun(PoolRun):
         return walked, result, before, seen, first_bar
 
     def script_idle_after_fight(self) -> bool:
-        """Whether DUNGEON waits for a key again within
-        `CURSE_PIT_SETTLE_SECONDS`, pressing nothing: past the compare after
-        `COMBAT`, so the gate may go back without changing the arm it takes."""
+        """Whether DUNGEON waits for a key at the move or world bar again
+        within `CURSE_PIT_SETTLE_SECONDS`, pressing nothing: the script has
+        ended, past the compare after `COMBAT`, so the gate may go back without
+        changing the arm it takes.  A script's own page or menu waits in the
+        same key window, so the key wait alone does not say so."""
         end = self.clock() + self.budget(CURSE_PIT_SETTLE_SECONDS,
                                          "the script after the fight")
         while True:
-            if self.sess.mode() == S.DUNGEON and self.key_idle():
+            bar = self.bar()
+            if (self.sess.mode() == S.DUNGEON
+                    and ("I,J,K,M" in bar or self.at_world(bar))
+                    and self.key_idle()):
                 return True
             if self.clock() >= end:
                 return False
@@ -9499,6 +9510,16 @@ class CurseRun(PoolRun):
         except Exception:                   # noqa: BLE001
             return None
         return got
+
+    def gate_before_walk(self) -> int:
+        """The gate as read before the walk; an unanswered read fails the step
+        before anything is written, since nothing could be put back."""
+        was = self.wander_gate()
+        if was is None:
+            raise self.fail("wander-gate", (
+                f"${self.wander_gate_address:04X} could not be read before the "
+                f"walk; nothing was written"))
+        return was
 
     def put_gate_back(self, gate: dict, was: int, failing: BaseException | None
                       ) -> None:
@@ -9578,11 +9599,26 @@ class CurseRun(PoolRun):
                 return word if pressed else None
         return None
 
-    def walk_tour(self, steps: int, geo, tour, answers=()) -> int:
+    def stop_before_square(self, triple, keep_off) -> None:
+        """Fail the step, sending no key, when the square ahead of TRIPLE is
+        one KEEP_OFF names; a square off the map is a wall and passes."""
+        x, y, facing = triple
+        dx, dy = STEP[facing]
+        ahead = (x + dx, y + dy)
+        if 0 <= ahead[0] < 16 and 0 <= ahead[1] < 16 and keep_off(*ahead):
+            raise self.fail("walk", (
+                f"the square ahead of {x},{y}, {ahead[0]},{ahead[1]}, runs a "
+                f"script other than the wandering roll; no key was sent"))
+
+    def walk_tour(self, steps: int, geo, tour, answers=(), keep_off=None) -> int:
         """Walk to TOUR's squares in turn over GEO, again and again, until a
         fight is committed or STEPS moves are spent; each key waits for
         `ready_to_move`, and a row 24 matching one of ANSWERS is answered
-        (`answer_bar`) before the ordinary `clear_bar`.  The moves taken."""
+        (`answer_bar`) before the ordinary `clear_bar`.  `KEEP_OFF(x, y)`,
+        when given, is asked before every forward key about the square ahead,
+        and a True fails the step with no key sent: `Battle.goto` steps
+        greedily, ignoring GEO, when it finds no planned route.  The moves
+        taken."""
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
 
@@ -9593,6 +9629,8 @@ class CurseRun(PoolRun):
                 return owner.fight_committed()
 
             def press(self, key):
+                if key == "I" and keep_off is not None:
+                    owner.stop_before_square(self.triple(), keep_off)
                 return owner.ready_to_move(self) and super().press(key)
 
             def clear_bar(self, accept=False):
@@ -9760,7 +9798,7 @@ class SilverRun(CurseRun):
         if str(area) != SILVER_FIGHT_AREA or geo is None:
             raise self.fail("geo", f"the party is in {area}; the Silver Blades "
                                    f"fight walks {SILVER_FIGHT_AREA}")
-        was = self.wander_gate()
+        was = self.gate_before_walk()
         gate = {"address": f"${SILVER_WANDER_GATE:04X}", "was": was,
                 "now": was if was == 1 else self.wander_gate(1)}
         self.log.emit("wander-gate", **gate)
