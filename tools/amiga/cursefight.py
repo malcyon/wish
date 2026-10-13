@@ -15,6 +15,7 @@ slot back. `--no-save` stops after that check. Memory is only read, never writte
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import pathlib
@@ -224,7 +225,16 @@ def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, out: pathlib.P
 
 
 class Memory:
-    """Reads of the running game through WinUAE's pipe: never a write."""
+    """Reads of the running game through WinUAE's pipe: never a write.
+
+    The class attributes name the title, the global holding the record in turn and the
+    record's fields; a subclass for another title replaces them.
+    """
+
+    title = TITLE
+    current = CURRENT
+    record = RECORD
+    record_size = RECORD_SIZE
 
     def __init__(self, holder: str):
         self.holder = holder
@@ -235,29 +245,36 @@ class Memory:
             from automap import amiga  # noqa: PLC0415
 
             target = amiga.AmigaTarget(amiga.WinuaePipe(holder=self.holder),
-                                       amiga.MACHINES[TITLE])
+                                       amiga.MACHINES[self.title])
             target.locate()
             self._target = target
         return self._target
+
+    def fields(self, raw: bytes) -> dict[str, int]:
+        return {field: raw[at] for field, at in self.record.items()}
 
     def fix(self) -> tuple[int, int, int] | None:
         fix = self.target().fix()
         return None if fix is None else (fix.x, fix.y, fix.facing)
 
-    def owner(self) -> dict | None:
+    def turn_pointer(self) -> int:
+        """The address the global names as the record in turn; 0 before any turn."""
         target = self.target()
-        address = int.from_bytes(target.read(target.data_base + CURRENT, 4), "big")
+        return int.from_bytes(target.read(target.data_base + self.current, 4), "big")
+
+    def owner(self) -> dict | None:
+        address = self.turn_pointer()
         if not address:
             return None
-        raw = bytes(target.read(address, RECORD_SIZE))
-        return {"address": address, "name": _name(raw), **member_fields(raw)}
+        raw = bytes(self.target().read(address, self.record_size))
+        return {"address": address, "name": _name(raw), **self.fields(raw)}
 
     def party(self) -> list[dict]:
         from automap import amigaparty  # noqa: PLC0415
 
         members = amigaparty.read_party(self.target())
         require(members is not None, "the party list does not read")
-        return [{"name": m.name, **member_fields(m.raw)} for m in members]
+        return [{"name": m.name, **self.fields(m.raw)} for m in members]
 
 
 def walk(screens: Screens, memory: Memory, start: dict, route: list[int]) -> list[dict]:
@@ -316,7 +333,44 @@ def reach_tavern(screens: Screens) -> None:
         screens.wait(("tavern",), 60, past=("world", "continue", "injuries"))
 
 
-def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
+def _same(name: str) -> str:
+    return name
+
+
+@dataclasses.dataclass(frozen=True)
+class FightRules:
+    """What one title's fight loop recognises and answers."""
+
+    #: The states told apart, in the order a grab's first match names it.
+    known: tuple[str, ...]
+    #: The key each answered screen gets.
+    answers: dict[str, str]
+    #: The record-in-turn fields each bar's log keeps.
+    bar_fields: tuple[str, ...]
+    #: Seconds the map, or a screen in `starting`, may show before the first bar.
+    linger: float
+    #: Screens still drawn while the fight starts, waited out for `linger`.
+    starting: tuple[str, ...] = ()
+    #: Screens that get a key only once a bar has shown.
+    after_bars: dict[str, str] = dataclasses.field(default_factory=dict)
+    #: Screens answered with their key that mean the fight was lost; the map then ends it.
+    lost_answered: tuple[str, ...] = ()
+    #: Screens that end the fight as lost at once, with no key.
+    defeat: tuple[str, ...] = ()
+    #: How a bar owner's name and a `--member` name are compared.
+    name_key: Callable[[str], str] = _same
+
+
+#: The tavern brawl: the PUNCH bar may still show as the brawl starts and gets LEAVE after it,
+#: and the "tossed outside" text marks a lost brawl.
+CURSE_FIGHT = FightRules(
+    known=KNOWN, answers=FIGHT_ANSWERS,
+    bar_fields=("control", "status", "quickfight", "hit_points"), linger=TAVERN_LINGER,
+    starting=("tavern",), after_bars={"tavern": "L"}, lost_answered=("tossed",))
+
+
+def fight(screens: Screens, memory: Memory, members: list[str],
+          rules: FightRules = CURSE_FIGHT) -> dict:
     """Answer every screen from the first bar to the map; log each bar with its owner."""
     bars: list[dict] = []
     answered: list[dict] = []
@@ -328,7 +382,7 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
         require(screens.clock() - started < FIGHT_LIMIT,
                 f"the fight was still going after {FIGHT_LIMIT:.0f}s")
         seen, shot = screens.look("fight")
-        state = next((s for s in KNOWN if s in seen), None)
+        state = next((s for s in rules.known if s in seen), None)
         digest = _digest(shot)
         # A grab with no crop counts as one more of the same, so a stuck one stops the run too.
         if digest != last:
@@ -342,10 +396,14 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
             screens.sleep(2.0)
             continue
         settle_from = None
-        if state == "world" and not bars and screens.clock() - started < TAVERN_LINGER:
-            # The map still showing while the brawl starts after PUNCH.
+        if state == "world" and not bars and screens.clock() - started < rules.linger:
+            # The map still showing while the fight starts.
             screens.sleep(1.5)
             continue
+        if state in rules.defeat:
+            answered.append({"screen": state, "shot": str(shot)})
+            lost = True
+            break
         named = "a screen no guard knows" if state is None else f"the {state} screen"
         require(screens.clock() - still_since < FIGHT_STALL,
                 f"{named} stayed {FIGHT_STALL:.0f}s unchanged mid-fight; shot {shot}")
@@ -359,31 +417,32 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
             require("combat_bar" in again, f"the command bar went before its owner was read; {shot}")
             require(owner is not None, f"a command bar with no record in turn; {shot}")
             bars.append({"owner": owner["name"], "address": owner["address"],
-                         "control": owner["control"], "status": owner["status"],
-                         "quickfight": owner["quickfight"], "hit_points": owner["hit_points"],
+                         **{field: owner[field] for field in rules.bar_fields},
                          "shot": str(shot), "number": len(bars) + 1})
             screens.events.append({"bar": bars[-1]})
-        elif state == "tavern" and bars:
-            screens.press("L", "tavern")
-            answered.append({"screen": state, "key": "L", "shot": str(shot)})
+        elif state in rules.after_bars and bars:
+            key = rules.after_bars[state]
+            screens.press(key, state)
+            answered.append({"screen": state, "key": key, "shot": str(shot)})
             screens.sleep(AFTER_KEY)
             continue
-        elif state == "tavern":
-            # The bar PUNCH went out on, still drawn while the brawl starts.
-            require(screens.clock() - started < TAVERN_LINGER,
-                    f"the tavern bar stayed {TAVERN_LINGER:.0f}s after PUNCH; shot {shot}")
+        elif state in rules.starting:
+            # The bar the fight began on, still drawn while it starts.
+            require(screens.clock() - started < rules.linger,
+                    f"the {state} bar stayed {rules.linger:.0f}s after the fight began; "
+                    f"shot {shot}")
             screens.sleep(1.5)
             continue
-        elif state not in FIGHT_ANSWERS:
+        elif state not in rules.answers:
             raise RouteError(f"{state} showed mid-fight; shot {shot}")
-        if state == "tossed":
+        if state in rules.lost_answered:
             lost = True
-        key = FIGHT_ANSWERS[state]
+        key = rules.answers[state]
         screens.press(key, state)
         answered.append({"screen": state, "key": key, "shot": str(shot)})
         screens.sleep(AFTER_KEY)
-    owners = {bar["owner"] for bar in bars}
-    missing = [name for name in members if name not in owners]
+    owners = {rules.name_key(bar["owner"]) for bar in bars}
+    missing = [name for name in members if rules.name_key(name) not in owners]
     require(lost or not missing, f"{missing} had no command bar; bars went to {sorted(owners)}")
     return {"bars": bars, "answered": answered, "outcome": "lost" if lost else "won"}
 

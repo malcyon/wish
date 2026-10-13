@@ -68,6 +68,8 @@ class Game:
         self.holder = "holder"
         self.walking = True
         self.frame = 0
+        self.gate = 1
+        self.pointer = 0
 
     # Guest
     def grab(self, label, raw, crop, timeout):
@@ -107,6 +109,13 @@ class Game:
 
     def party(self):
         return self.parties.pop(0)
+
+    def variable(self, var):
+        assert var == ssbfight.GATE
+        return self.gate
+
+    def turn_pointer(self):
+        return self.pointer
 
 
 def _screens(tmp_path, game, clock, budget=100_000):
@@ -160,6 +169,18 @@ def test_the_short_treasure_rule_reads_both_kept_treasure_bars(tmp_path):
     guards = PixelGuards(path)
     assert all(guards("short", crop) for crop in crops)
     assert not guards("short", world)
+
+
+def test_the_combat_bar_rule_reads_the_captured_bar_and_not_the_encounter_page(tmp_path):
+    shots = scratch.cache_dir("acceptance") / "WISH-391" / "cap1" / "screens"
+    bar, page = shots / "097-capture.png", shots / "088-step.png"
+    if not (bar.is_file() and page.is_file()):
+        pytest.skip("the WISH-391 combat-bar capture is not on this machine")
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps(ssbfight.guard_rules()))
+    guards = PixelGuards(path)
+    assert guards("combat_bar", bar) and not guards("combat_bar", page)
+    assert guards("continue", page)
 
 
 # -- staging ----------------------------------------------------------------------------------
@@ -395,7 +416,7 @@ def test_fight_stops_when_the_map_comes_back_with_no_bar(tmp_path):
     clock = Clock()
     game = Game(clock, ["continue", "world"])
     game.walking = False
-    with pytest.raises(RouteError, match="no command bar"):
+    with pytest.raises(RouteError, match="world showed mid-fight"):
         ssbfight.fight(_screens(tmp_path, game, clock), game, ["PAINE"])
     assert game.keys == ["RET"]
 
@@ -408,7 +429,7 @@ def test_capture_waits_out_a_monster_turn_and_keeps_a_members_bar(tmp_path, monk
     game = Game(clock, ["continue", *still], owners=[_owner("BC WIZARD", side=1)] * 12
                 + [_owner("PAINE")])
     game.walking = False
-    found = ssbfight.capture(_screens(tmp_path, game, clock), game)
+    found = ssbfight.capture(_screens(tmp_path, game, clock), game, before=0)
     assert found["outcome"] == "bar" and found["owner"]["name"] == "PAINE"
     assert game.keys == ["RET"]
 
@@ -418,15 +439,41 @@ def test_capture_does_not_take_a_companions_turn_for_a_bar(tmp_path):
     game = Game(clock, [None], owners=[_owner("SIEGLINDA", control=0xB3)])
     game.walking = False
     with pytest.raises(RouteError, match="no member's command bar"):
-        ssbfight.capture(_screens(tmp_path, game, clock), game)
+        ssbfight.capture(_screens(tmp_path, game, clock), game, before=0)
     assert game.keys == []
+
+
+def test_capture_does_not_take_a_stale_turn_pointer_for_a_bar(tmp_path):
+    # The pointer still names PAINE's record from a fight before the walk.
+    clock = Clock()
+    game = Game(clock, [None], owners=[_owner("PAINE")])
+    game.walking = False
+    with pytest.raises(RouteError, match="no member's command bar"):
+        ssbfight.capture(_screens(tmp_path, game, clock), game, before=0xC50000)
+    assert game.keys == []
+
+
+def test_capture_marks_a_bar_known_only_by_stillness_unconfirmed(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None], owners=[_owner("PAINE")])
+    game.walking = False
+    found = ssbfight.capture(_screens(tmp_path, game, clock), game, before=0)
+    assert found["outcome"] == "bar" and found["confirmed"] is False
+
+
+def test_capture_confirms_a_bar_the_guard_knows(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["combat_bar"], owners=[_owner("PAINE")])
+    game.walking = False
+    found = ssbfight.capture(_screens(tmp_path, game, clock), game, before=0)
+    assert found["outcome"] == "bar" and found["confirmed"] is True
 
 
 def test_capture_records_a_party_destroyed_before_any_bar(tmp_path):
     clock = Clock()
     game = Game(clock, ["continue", None, "party_menu"], owners=[None])
     game.walking = False
-    found = ssbfight.capture(_screens(tmp_path, game, clock), game)
+    found = ssbfight.capture(_screens(tmp_path, game, clock), game, before=0)
     assert found["outcome"] == "lost" and game.keys == ["RET"]
 
 
@@ -468,6 +515,17 @@ def test_drive_loads_begins_fights_and_saves_once(tmp_path, monkeypatch):
     assert answers == ["journal", "journal"]
     assert found["members"]["PAINE"]["quickfight"] == 1
     _keys_allowed(screens, game)
+
+
+def test_drive_reads_the_gate_and_the_turn_pointer_before_the_walk(tmp_path, monkeypatch):
+    found, _, _, _ = _drive(tmp_path, monkeypatch)
+    assert found["gate"] == 1 and found["turn_before"] == 0
+
+
+def test_drive_stops_on_the_map_when_the_running_gate_is_not_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(Game, "variable", lambda self, var: 0)
+    with pytest.raises(RouteError, match="4C2D"):
+        _drive(tmp_path, monkeypatch)
 
 
 def test_drive_with_capture_stops_after_the_walk(tmp_path, monkeypatch):
@@ -575,7 +633,8 @@ def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
     guest = LaneGuest()
     with pytest.raises(RouteError):
         ssbfight.run(_args(tmp_path, manifest, **kwargs), guest=guest, guards=object(),
-                     boot=pytest.fail, halt=pytest.fail, memory=object())
+                     boot=pytest.fail, halt=pytest.fail, memory=object(),
+                     preflight=lambda python: None)
     assert guest.calls == []
 
 
@@ -597,6 +656,7 @@ def _run(tmp_path, monkeypatch, *, drive, problems=(), no_save=False, capture=Fa
         receipt = ssbfight.run(
             _args(tmp_path, manifest, no_save=no_save, capture=capture), guest=LaneGuest(),
             guards=object(), boot=lambda *a, **k: {"claim": "ok"}, memory=object(),
+            preflight=lambda python: None,
             halt=lambda *a, **k: halted.append(k) or {"fetched": {"df0": {"path": str(fetched)}}})
     finally:
         written = json.loads((tmp_path / "run" / "receipt.json").read_text())
@@ -644,7 +704,32 @@ def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeyp
     assert receipt["success"] and "read_back" not in receipt
 
 
+def test_run_checks_the_journal_interpreter_before_the_boot(tmp_path, monkeypatch):
+    manifest = _staged(tmp_path)
+    monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present", lambda disk, title: ["D"])
+
+    def preflight(python):
+        raise RouteError(f"the journal interpreter {python!r} cannot import numpy and PIL")
+
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="numpy"):
+        ssbfight.run(_args(tmp_path, manifest, capture=True), guest=guest, guards=object(),
+                     boot=pytest.fail, halt=pytest.fail, memory=object(), preflight=preflight)
+    assert guest.calls == []
+
+
 def test_read_needs_a_member(tmp_path, capsys):
     assert ssbfight.main(["read", "--manifest", str(tmp_path / "m.json"),
                           "--disk", str(tmp_path / "d.adf")]) == 2
     assert "at least one --member" in capsys.readouterr().err
+
+
+def test_memory_reads_silver_blades_records_through_the_shared_reader():
+    raw = bytearray(ssbfight.RECORD_SIZE)
+    for field, at in ssbfight.RECORD.items():
+        raw[at] = len(field)
+    memory = ssbfight.Memory("holder")
+    assert memory.fields(bytes(raw)) == {field: len(field) for field in ssbfight.RECORD}
+    assert (memory.title, memory.current) == (ssbfight.TITLE, 0x516C)
+    assert ssbfight.cursefight.Memory("holder").current == ssbfight.cursefight.CURRENT

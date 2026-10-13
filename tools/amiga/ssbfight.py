@@ -11,8 +11,8 @@ question, and steps between the two squares until a step brings up a screen that
 map. From there it answers every command bar with QUICK, as `cursefight.py` does, logging whose
 bar it is from memory. A won fight is checked and saved once; a fight the party loses is
 recorded and nothing is saved. `--capture` stops at the fight's first command bar instead and
-presses nothing on it, so the bar's screen can be cut into the `combat_bar` guard, which no
-capture has shown yet (`UNCAPTURED`). Memory is only read, never written.
+presses nothing on it, keeping the frame for a guard to be cut from. Memory is only read,
+never written.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
 
@@ -69,10 +69,10 @@ RECORD_SIZE = 0x154
 #: it at 0x3D26, before 0x3DB2 picks the command bar or the computer's turn.
 CURRENT = 0x516C
 
-#: Screens a run must recognise that no capture has shown yet; each takes its guard from the
-#: Silver Blades guard map once `guardmaps.py add --title ssb` cuts it from a capture.
+#: Fight screens no capture has shown yet; each takes its guard from the Silver Blades guard
+#: map once `guardmaps.py add --title ssb` cuts it from a capture. A run that meets one stops
+#: there, unchanged, and keeps the frame.
 UNCAPTURED = {
-    "combat_bar": "MOVE VIEW AIM, the start of a member's command bar",
     "continue_battle": "CONTINUE BATTLE: with YES NO",
     "party_destroyed": "THE MONSTERS REJOICE, FOR THE PARTY HAS BEEN DESTROYED! and its prompt",
 }
@@ -151,10 +151,7 @@ class Screens(curseadd.Screens):
 
 def guard_rules() -> dict:
     """The Silver Blades guard map, with the treasure bar's short rule as an alternative."""
-    keep = ("box", "sha256", "and")
-    rules = {state: {k: v for k, v in rule.items() if k in keep} if isinstance(rule, dict) else
-             [{k: v for k, v in r.items() if k in keep} for r in rule]
-             for state, rule in json.loads(GUARDS.read_text())["guards"].items()}
+    rules = curseadd.load_guard_map(GUARDS)
     treasure = rules["treasure_bar"]
     rules["treasure_bar"] = [*(treasure if isinstance(treasure, list) else [treasure]),
                              TREASURE_SHORT]
@@ -302,29 +299,16 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
 class Memory(cursefight.Memory):
     """Reads of the running game through WinUAE's pipe: never a write."""
 
-    def target(self) -> Any:
-        if self._target is None:
-            from automap import amiga  # noqa: PLC0415
+    title = TITLE
+    current = CURRENT
+    record = RECORD
+    record_size = RECORD_SIZE
 
-            target = amiga.AmigaTarget(amiga.WinuaePipe(holder=self.holder), amiga.MACHINES[TITLE])
-            target.locate()
-            self._target = target
-        return self._target
+    def variable(self, var: int) -> int | None:
+        """A script variable's value in the running game, None when it does not read."""
+        from automap import amigavars  # noqa: PLC0415
 
-    def owner(self) -> dict | None:
-        target = self.target()
-        address = int.from_bytes(target.read(target.data_base + CURRENT, 4), "big")
-        if not address:
-            return None
-        raw = bytes(target.read(address, RECORD_SIZE))
-        return {"address": address, "name": cursefight._name(raw), **member_fields(raw)}
-
-    def party(self) -> list[dict]:
-        from automap import amigaparty  # noqa: PLC0415
-
-        members = amigaparty.read_party(self.target())
-        require(members is not None, "the party list does not read")
-        return [{"name": m.name, **member_fields(m.raw)} for m in members]
+        return amigavars.read_variable(self.target(), self.title, var).value
 
 
 def wander(screens: Screens, memory: Any, start: dict, plan: dict,
@@ -383,77 +367,26 @@ def wander(screens: Screens, memory: Any, start: dict, plan: dict,
     raise RouteError(f"{limit} steps between the two squares met no fight")
 
 
-def _owner_bar(screens: Screens, memory: Any, shot) -> dict:
-    owner = curseadd.bounded(lambda _h: memory.owner(), memory.holder, screens.left(READ_LIMIT))
-    require(owner is not None, f"a command bar with no record in turn; {shot}")
-    return owner
+#: The wandering fight: the map may still show while its monsters load, and a lost fight ends
+#: on the destroyed screen or a menu, with no key pressed.
+SSB_FIGHT = cursefight.FightRules(
+    known=KNOWN, answers=FIGHT_ANSWERS, bar_fields=tuple(RECORD), linger=NO_BAR_LIMIT,
+    defeat=DEFEAT, name_key=name_key)
 
 
 def fight(screens: Screens, memory: Any, members: list[str]) -> dict:
     """Answer every screen from the encounter to the map; log each bar with its owner."""
-    bars: list[dict] = []
-    answered: list[dict] = []
-    started = still_since = screens.clock()
-    settle_from = None
-    last: object = object()
-    while True:
-        require(screens.clock() - started < FIGHT_LIMIT,
-                f"the fight was still going after {FIGHT_LIMIT:.0f}s")
-        seen, shot = screens.look("fight")
-        state = next((s for s in KNOWN if s in seen), None)
-        digest = cursefight._digest(shot)
-        if digest != last:
-            last, still_since = digest, screens.clock()
-        if state == "world" and bars:
-            settle_from = settle_from if settle_from is not None else screens.clock()
-            if screens.clock() - settle_from >= MAP_SETTLE:
-                outcome = "won"
-                break
-            screens.sleep(2.0)
-            continue
-        settle_from = None
-        if state == "world":
-            # The map still drawn while the encounter's monsters load.
-            require(screens.clock() - started < NO_BAR_LIMIT,
-                    f"the map came back with no command bar; shot {shot}")
-            screens.sleep(1.5)
-            continue
-        if state in DEFEAT:
-            answered.append({"screen": state, "shot": str(shot)})
-            outcome = "lost"
-            break
-        named = "a screen no guard knows" if state is None else f"the {state} screen"
-        require(screens.clock() - still_since < FIGHT_STALL,
-                f"{named} stayed {FIGHT_STALL:.0f}s unchanged mid-fight; shot {shot}")
-        if state is None:
-            screens.sleep(1.5)
-            continue
-        if state == "combat_bar":
-            owner = _owner_bar(screens, memory, shot)
-            again, _ = screens.look("bar-again")
-            require("combat_bar" in again, f"the command bar went before its owner was read; {shot}")
-            bars.append({"owner": owner["name"], "address": owner["address"],
-                         **{field: owner[field] for field in RECORD},
-                         "shot": str(shot), "number": len(bars) + 1})
-            screens.events.append({"bar": bars[-1]})
-        elif state not in FIGHT_ANSWERS:
-            raise RouteError(f"{state} showed mid-fight; shot {shot}")
-        key = FIGHT_ANSWERS[state]
-        screens.press(key, state)
-        answered.append({"screen": state, "key": key, "shot": str(shot)})
-        screens.sleep(AFTER_KEY)
-    if outcome == "won":
-        owners = {name_key(bar["owner"]) for bar in bars}
-        absent = [name for name in members if name_key(name) not in owners]
-        require(not absent, f"{absent} had no command bar; bars went to {sorted(owners)}")
-    return {"outcome": outcome, "bars": bars, "answered": answered}
+    return cursefight.fight(screens, memory, members, SSB_FIGHT)
 
 
-def capture(screens: Screens, memory: Any) -> dict:
+def capture(screens: Screens, memory: Any, before: int) -> dict:
     """Wait, pressing only RETURN on a continue page, for a member's command bar; press nothing on it.
 
     A bar is a screen held `CAPTURE_STILL` seconds while the record in turn is a party member
-    the player controls, or a screen the `combat_bar` guard knows, once it has one.
+    the player controls and the turn pointer has moved off `before`, its value before the walk,
+    or a screen the `combat_bar` guard knows. Only the guard confirms it: this repository has no
+    reader for the title's font, so a bar known by stillness alone is returned unconfirmed, for
+    the crop to be read by eye before it becomes a guard.
     """
     started = still_since = screens.clock()
     last: object = object()
@@ -475,12 +408,18 @@ def capture(screens: Screens, memory: Any) -> dict:
         if state == "combat_bar" or (state is None and held):
             owner = curseadd.bounded(lambda _h: memory.owner(), memory.holder,
                                      screens.left(READ_LIMIT))
-            if owner is not None and (state == "combat_bar"
-                                      or (owner["side"] == 0 and owner["control"] < 0x80)):
+            guarded = state == "combat_bar"
+            if owner is not None and (guarded or (owner["address"] != before
+                                                  and owner["side"] == 0
+                                                  and owner["control"] < 0x80)):
                 again, again_shot = screens.look("capture-again")
                 if cursefight._digest(again_shot) == digest:
-                    screens.events.append({"capture": str(shot), "owner": owner})
-                    return {"outcome": "bar", "shot": str(shot), "owner": owner}
+                    found = {"outcome": "bar", "shot": str(shot), "owner": owner,
+                             "turn_before": before, "confirmed": guarded,
+                             "support": "the combat_bar guard" if guarded else
+                             "stillness and the turn pointer only; read the crop by eye"}
+                    screens.events.append({"capture": found})
+                    return found
         screens.sleep(2.0)
 
 
@@ -525,10 +464,16 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
             f"the loaded party is {names}, not {fight_['names']}")
     screens.press("B", "loaded_menu")
     wait_past_journal(screens, ("world",), 120, answer, adf, past=("loaded_menu",))
+    found["gate"] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
+                                     screens.left(READ_LIMIT))
+    require(found["gate"] == GATE_ON,
+            f"the gate ${GATE:04X} reads {found['gate']} in the running game, not {GATE_ON}")
+    found["turn_before"] = curseadd.bounded(lambda _h: memory.turn_pointer(), memory.holder,
+                                            screens.left(READ_LIMIT))
     screens.sleep(AFTER_KEY)
     found["walk"] = wander(screens, memory, fight_["place"], fight_)
     if capture_only:
-        found["capture"] = capture(screens, memory)
+        found["capture"] = capture(screens, memory, found["turn_before"])
         return found
     found.update(fight(screens, memory, members))
     if found["outcome"] != "won":
@@ -590,6 +535,7 @@ def verdict(found: dict, manifest: dict, members: list[str]) -> list[str]:
 def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         boot: Callable = acceptance.boot_lane, halt: Callable = acceptance.halt_lane,
         memory: Any = None, answer: Callable | None = None,
+        preflight: Callable[[str], None] = route_silver_blades.journal_preflight,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep) -> dict:
     """Boot a staged manifest, walk to the fight, fight or capture, save once unless told not to."""
@@ -610,6 +556,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                                        "capture the bar with --capture first")
     require(answer is not None or bool(args.journal_python),
             "--journal-python is needed to answer the journal question at BEGIN")
+    if args.journal_python:
+        preflight(args.journal_python)
     if answer is None:
         answer = lambda holder, adf, timeout: route_silver_blades.run_journal_answer(  # noqa: E731
             args.journal_python, holder, adf, timeout)

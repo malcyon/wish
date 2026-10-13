@@ -305,12 +305,17 @@ POST_WRITE_WAIT = 20.0
 TITLE = route_curse.CURSE_KEY
 
 
+def load_guard_map(path: pathlib.Path) -> dict:
+    """A title's guard map file as `PixelGuards` rules: each rule's box, digest and `and` boxes."""
+    keep = ("box", "sha256", "and")
+    return {state: {k: v for k, v in rule.items() if k in keep} if isinstance(rule, dict) else
+            [{k: v for k, v in r.items() if k in keep} for r in rule]
+            for state, rule in json.loads(path.read_text())["guards"].items()}
+
+
 def guard_rules() -> dict:
     """The Curse guard map with the ADD screens added."""
-    rules = {state: {k: v for k, v in rule.items() if k in ("box", "sha256", "and")}
-             if isinstance(rule, dict) else
-             [{k: v for k, v in r.items() if k in ("box", "sha256", "and")} for r in rule]
-             for state, rule in json.loads(GUARDS.read_text())["guards"].items()}
+    rules = load_guard_map(GUARDS)
     require(not set(ADD_GUARDS) & set(rules), "an ADD guard name is already a Curse guard")
     return {**rules, **ADD_GUARDS}
 

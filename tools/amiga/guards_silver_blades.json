@@ -1473,6 +1473,17 @@
         "sha256": "c03df7368109b44da08e7295004b99268f79efe75455f474fe86f466efb93521"
       }
     ],
+    "combat_bar": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        288,
+        426
+      ],
+      "example": "amiga-grab-crops/wish391-cap1__097-capture.png",
+      "sha256": "16a4c5a15aaa726e2919885e0245267ff90f18a70b5a9afe32170d963eff7f30"
+    },
     "continue": {
       "also": [],
       "box": [
@@ -3018,6 +3029,9 @@
     ],
     "amiga-grab-crops/52__walk-c64toamiga-ssb-3__22-view.png": [
       "sheet"
+    ],
+    "amiga-grab-crops/wish391-cap1__097-capture.png": [
+      "combat_bar"
     ],
     "amiga-grab-crops/wish4-b1__a_camp3-00.png": [
       "camp"
