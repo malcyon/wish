@@ -28,7 +28,7 @@ run uses.
     winwish.py down   --holder H
 
 Wish runs with `WISH_EXPERIMENTAL_AMIGA_WINUAE=1` (`--no-flag` leaves it unset, for
-the control; `--map-only` sets it but leaves the action and Fast Travel flags unset)
+the control; `--map-only` sets it but leaves the action flag unset)
 and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
 `fast_travel_targets`, because the tab cannot pick a destination from the drop-down.
 Its `APPDATA` and `LOCALAPPDATA` point at a private folder per holder, seeded with `diagnostics: true` because `WISH_DEBUG`
@@ -72,12 +72,10 @@ ROOT = r"C:\Amiga\wish"
 ARTIFACT = "frozen-windows"
 WORKFLOW = "release.yml"
 FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
-#: The spelling of `automap.amigaactions.ACTIONS_ENV` and
-#: `automap.amigafasttravel.FAST_TRAVEL_ENV`; a test pins them equal.
+#: The spelling of `automap.amigaactions.ACTIONS_ENV`; a test pins them equal.
 ACTIONS_FLAG = "WISH_EXPERIMENTAL_AMIGA_ACTIONS"
 #: Pinned equal to `wish.winuae.PIPE_ENV` by a test; `wish` is not imported here.
 PIPE_ENV = "WISH_WINUAE_PIPE"
-FAST_TRAVEL_FLAG = "WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL"
 HOLDER = winvmguest.HOLDER
 #: DF0 and DF1 hold a title's game disks; Wish reads its maps from those. DF2 and up
 #: are the save disk and extras, which the game writes and Wish never reads maps from.
@@ -180,8 +178,8 @@ def environment(flag: bool, holder: str, features: bool = True,
                 pipe: str | None = None) -> dict[str, str]:
     """What `wish.exe` is started with; the flag is left unset for the control.
 
-    With `features` false the backend flag is set but the action and Fast Travel
-    flags are not, so the map attaches with those controls greyed. `pipe` names the
+    With `features` false the backend flag is set but the action flag is not, so
+    the map attaches with the action controls greyed. `pipe` names the
     WinUAE pipe Wish opens, so it cannot attach to another lane's emulator.
     """
     env = {"APPDATA": rf"{run_dir(holder)}\appdata",
@@ -191,7 +189,6 @@ def environment(flag: bool, holder: str, features: bool = True,
         env[FLAG] = "1"
     if flag and features:
         env[ACTIONS_FLAG] = "1"
-        env[FAST_TRAVEL_FLAG] = "1"
     if flag and pipe:
         env[PIPE_ENV] = pipe
     return env
@@ -199,7 +196,7 @@ def environment(flag: bool, holder: str, features: bool = True,
 
 #: Cleared in the task whatever the holder's own session has, so the window can
 #: reach no other backend and the flag-off control really has no Amiga row.
-CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, FAST_TRAVEL_FLAG, PIPE_ENV, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
+CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, PIPE_ENV, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
            "POR_ULTIMATE", "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
 
 
@@ -2014,8 +2011,8 @@ def _parser() -> argparse.ArgumentParser:
     g.add_argument("--no-flag", action="store_true",
                    help=f"leave {FLAG} unset (the control)")
     g.add_argument("--map-only", action="store_true",
-                   help="set the backend flag but not the action and Fast Travel flags, "
-                   "so the map attaches with those controls greyed")
+                   help="set the backend flag but not the action flag, "
+                   "so the map attaches with the action controls greyed")
     p.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
                    help="wait up to this long for the claim, one lane or, with --keep-lanes, "
                    "every lane (default: claim once and fail)")
@@ -2040,8 +2037,8 @@ def _parser() -> argparse.ArgumentParser:
         g.add_argument("--no-flag", action="store_true",
                        help=f"leave {FLAG} unset (the control)")
         g.add_argument("--map-only", action="store_true",
-                       help="set the backend flag but not the action and Fast Travel flags, "
-                       "so the map attaches with those controls greyed")
+                       help="set the backend flag but not the action flag, "
+                       "so the map attaches with the action controls greyed")
         p.add_argument("--travel-targets", action="append", default=[], metavar="KEY=ID[,ID]",
                        help="with --reseed, the Fast Travel destinations the fresh settings hold, "
                        "as for `up`; repeatable")

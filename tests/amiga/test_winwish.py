@@ -174,32 +174,27 @@ def test_start_script_writes_settings_without_a_bom_and_blocks_session_zero():
     assert f"Remove-Item Env:{winwish.FLAG}" not in body
 
 
-def test_the_amiga_feature_flags_follow_the_backend_flag():
-    from automap import amigaactions, amigafasttravel
+def test_the_amiga_actions_flag_follows_the_backend_flag():
+    from automap import amigaactions
     assert winwish.ACTIONS_FLAG == amigaactions.ACTIONS_ENV
-    assert winwish.FAST_TRAVEL_FLAG == amigafasttravel.FAST_TRAVEL_ENV
     on = winwish.environment(True, "h")
     off = winwish.environment(False, "h")
-    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
-        assert on[name] == "1"
-        assert name not in off
-        assert name in winwish.CLEARED
+    assert on[winwish.ACTIONS_FLAG] == "1"
+    assert winwish.ACTIONS_FLAG not in off
+    assert winwish.ACTIONS_FLAG in winwish.CLEARED
     control = _task_text(winwish.start_script("h", off))
-    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
-        assert f"Remove-Item Env:{name}" in control
-        assert f"$env:{name}" not in control
+    assert f"Remove-Item Env:{winwish.ACTIONS_FLAG}" in control
+    assert f"$env:{winwish.ACTIONS_FLAG}" not in control
 
 
-def test_map_only_sets_the_backend_flag_and_neither_feature_flag():
+def test_map_only_sets_the_backend_flag_and_not_the_actions_flag():
     env = winwish.environment(True, "h", features=False)
     assert env[winwish.FLAG] == "1"
-    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
-        assert name not in env
+    assert winwish.ACTIONS_FLAG not in env
     body = _task_text(winwish.start_script("h", env))
     assert f"$env:{winwish.FLAG} = '1'" in body
-    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
-        assert f"Remove-Item Env:{name}" in body
-        assert f"$env:{name}" not in body
+    assert f"Remove-Item Env:{winwish.ACTIONS_FLAG}" in body
+    assert f"$env:{winwish.ACTIONS_FLAG}" not in body
 
 
 def test_the_control_start_script_has_no_flag():
@@ -753,8 +748,7 @@ def test_main_restart_passes_map_only_through():
                         guest=winwish.Guest(run)) == 0
     body = _task_text(run.calls[-1][2])
     assert f"$env:{winwish.FLAG} = '1'" in body
-    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
-        assert f"$env:{name}" not in body
+    assert f"$env:{winwish.ACTIONS_FLAG}" not in body
 
 
 @pytest.mark.parametrize("argv", [
@@ -774,8 +768,7 @@ def test_main_start_passes_map_only_through():
                         guest=winwish.Guest(run)) == 0
     body = _task_text(run.calls[-1][2])
     assert f"$env:{winwish.FLAG} = '1'" in body
-    for name in (winwish.ACTIONS_FLAG, winwish.FAST_TRAVEL_FLAG):
-        assert f"$env:{name}" not in body
+    assert f"$env:{winwish.ACTIONS_FLAG}" not in body
 
 
 def test_up_passes_map_only_through(tmp_path, monkeypatch):

@@ -877,9 +877,8 @@ The three live runs, the static reading per title and the open design
 questions are the R5 comments on #37 (Automap the Amiga version, not just the
 C64).
 
-**What the window offers.** The Amiga Fast Travel row first requires
-`WISH_EXPERIMENTAL_AMIGA_FAST_TRAVEL`; the mapping backend's separate flag does
-not enable travel. `automap/window.py` also requires a confirmed title row in
+**What the window offers.** The Amiga Fast Travel row is offered whenever an Amiga
+backend is enabled and `automap/window.py` finds a confirmed title row in
 `automap/amigatrip.py`. All four titles have confirmed rows, Silver Blades
 included. `automap/amigafasttravel.py` then requires a writable target, the
 game's gate, a `fasttravelable` destination with a script on the player's

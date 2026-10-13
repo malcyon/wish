@@ -1770,7 +1770,7 @@ WISH_UNSET = ("POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE", "POR_ULTIMATE",
 
 #: What the `wish` command sets for the window and puts back afterwards.
 WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
-WISH_ENV = (*WISH_UNSET, WISH_FLAG, winwish.FAST_TRAVEL_FLAG,
+WISH_ENV = (*WISH_UNSET, WISH_FLAG,
             "XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA", "XDG_RUNTIME_DIR",
             # Set by `mapmarker._offscreen`, which this process calls.
             "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
@@ -2115,8 +2115,7 @@ def wish(args) -> int:
     error rows: the window owns the only way to the game.  `--disks-for
     KEY=FOLDER` writes the title's folder where Preferences keeps it, in the
     run's own settings; `--travel-targets KEY=ID[,ID]` does the same for the
-    Fast Travel destinations, and the Fast Travel flag is on unless
-    `--no-travel-flag` is given.  `FSUAE_PORT` is set to `--port` for the run so the
+    Fast Travel destinations.  `FSUAE_PORT` is set to `--port` for the run so the
     window finds a pooled slot's port without a product change, and put back.
     """
     from tools.gui import mapmarker
@@ -2175,10 +2174,6 @@ def wish(args) -> int:
         for name in WISH_UNSET:
             os.environ.pop(name, None)
         os.environ[WISH_FLAG] = "1"
-        if args.no_travel_flag:
-            os.environ.pop(winwish.FAST_TRAVEL_FLAG, None)
-        else:
-            os.environ[winwish.FAST_TRAVEL_FLAG] = "1"
         # `wish.fsuae.listening` and `connect` read this at call time, so the
         # window finds the slot's port without a change to the product.
         amiga.FSUAE_PORT = args.port
@@ -2206,7 +2201,6 @@ def wish(args) -> int:
         if not args.closed:
             run.open()
         note(event="wish", port=args.port, disks=folders,
-             travel_flag=not args.no_travel_flag,
              travel_targets=travel_targets,
              window=run.window is not None)
 
@@ -3110,9 +3104,6 @@ def main(argv: list[str] | None = None) -> int:
                    help="repeatable: the Fast Travel destinations for a "
                         "title, written where Preferences keeps them "
                         "(e.g. pools-of-darkness=22)")
-    w.add_argument("--no-travel-flag", action="store_true",
-                   help="leave the Fast Travel flag unset, as a player "
-                        "without it would have it")
     w.add_argument("--closed", action="store_true",
                    help="start with no window; `open` makes one")
     w.add_argument("--display", default=os.environ.get("DISPLAY", ":0"),

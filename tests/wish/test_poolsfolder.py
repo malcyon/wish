@@ -15,7 +15,7 @@ import struct
 import pytest
 from gamedata import synthetic_geo
 
-from automap import amigafasttravel, c64, paths
+from automap import c64, paths
 from automap.area import RESIDENT_GEO
 from automap.config import Settings
 from automap.maps import AMIGA_ONLY_TITLES
@@ -53,14 +53,12 @@ def _clean_environment(monkeypatch):
     monkeypatch.delenv("POR_DISKS", raising=False)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
-    monkeypatch.delenv(amigafasttravel.FAST_TRAVEL_ENV, raising=False)
     preferences._scan.cache_clear()
 
 
 @pytest.fixture
 def amiga_on(monkeypatch):
     monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
-    monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, "1")
 
 
 @pytest.fixture
@@ -196,44 +194,10 @@ def test_the_travel_page_is_absent_by_default(app, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
-@pytest.mark.parametrize("value", ["0", "off"])
-def test_a_forgotten_setting_does_not_add_the_travel_page(
-        app, tmp_path, monkeypatch, env, value):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(env, value)
-    win = window(app)
-    try:
-        dialog = PreferencesDialog(win)
-        assert POD.title not in travel_tab_texts(dialog)
-        assert POD.key not in dialog.travel_tables
-    finally:
-        win.close()
-
-
-@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
-@pytest.mark.parametrize("value", [None, "0", "off"])
-def test_a_backend_flag_without_the_travel_flag_has_no_travel_page(
-        app, tmp_path, monkeypatch, env, value):
-    nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(env, "1")
-    if value is not None:
-        monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, value)
-    win = window(app)
-    try:
-        dialog = PreferencesDialog(win)
-        assert POD.title not in travel_tab_texts(dialog)
-        assert POD.key not in dialog.travel_tables
-        assert preferences.travel_titles() == preferences.TRAVEL_TITLES
-    finally:
-        win.close()
-
-
-@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
-def test_the_flag_adds_the_travel_page_after_silver_blades(
+def test_a_backend_flag_adds_the_travel_page_after_silver_blades(
         app, tmp_path, monkeypatch, env):
     nowhere(tmp_path, monkeypatch)
     monkeypatch.setenv(env, "1")
-    monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, "1")
     win = window(app)
     try:
         dialog = PreferencesDialog(win)

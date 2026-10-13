@@ -1539,9 +1539,8 @@ class AutomapBinding(QObject):
         else:
             self.actions_bar.attach_unsupported(reason)
         trip = amigatrip.ROWS.get(key)
-        if (trip is None or not trip.confirmed
-                or not amigafasttravel.enabled()):
-            # Nobody has measured this title's trip, or its flag is off: still greyed.
+        if trip is None or not trip.confirmed:
+            # Nobody has measured this title's trip: still greyed.
             self.fasttravel_bar.attach_unsupported(reason)
         else:
             self._enter_travel(key)

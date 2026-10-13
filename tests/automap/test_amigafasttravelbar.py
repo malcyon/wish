@@ -77,7 +77,6 @@ def amiga_features_on(monkeypatch):
     """These tests are about what the features do; `test_amigaflags.py` is
     about whether they are offered."""
     monkeypatch.setenv(amigaactions.ACTIONS_ENV, "1")
-    monkeypatch.setenv(amigafasttravel.FAST_TRAVEL_ENV, "1")
 
 
 @pytest.fixture
