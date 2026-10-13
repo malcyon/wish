@@ -200,10 +200,16 @@ DOS_PAIR_CLASSES = ("body", "arm", "leg", "hair", "shield", "weapon")
 #: touches, so a DOS hat is always magenta.  Purple is the C64's magenta.
 DOS_CAP_COLOUR = 4
 
-#: DOS `size` `@0x0C0` is 1 small and 2 medium; the C64 keeps the same
-#: distinction one lower at `0x099`.  Anything else is a record this reader
-#: does not understand, and a monster's zero is one of them.
+#: DOS `size` (Pool `0x0C0`, Curse `0x144`) is 1 small and 2 medium for a
+#: player; the C64 keeps the same distinction one lower at `0x099`.
 DOS_SIZES = {1: "small", 2: "large"}
+
+#: The DOS `size` of a monster record, and so of a story companion: every
+#: `MON*CHA.DAX` record the DOS games ship holds it, and a join copies it
+#: unchanged.  No DOS figure is composed from it: the load composes one only
+#: below control `$80` (Curse `GAME.OVR 0x1F3D9`) and draws a companion from
+#: `CPIC`, and the C64 gives a joining companion the default icon.
+DOS_COMPANION_SIZE = 0
 
 
 @dataclass(frozen=True)
@@ -1051,8 +1057,14 @@ def dos_part_colours(icon_colours: bytes,
     return out
 
 
+def dos_figure_size(size_byte: int) -> str | None:
+    """DOS `size` as the C64's own word for it, or None for a companion's 0,
+    whose figure is not composed from his record (`DOS_COMPANION_SIZE`)."""
+    return None if size_byte == DOS_COMPANION_SIZE else dos_size(size_byte)
+
+
 def dos_size(size_byte: int) -> str:
-    """DOS `size` `@0x0C0` as the C64's own word for it."""
+    """A player's DOS `size` as the C64's own word for it."""
     try:
         return DOS_SIZES[size_byte]
     except KeyError:

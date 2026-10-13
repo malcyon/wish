@@ -112,8 +112,8 @@ from .iconparts import (
     DosIconTables,
     IconParts,
     c64_icon_tables,
+    dos_figure_size,
     dos_icon_tables,
-    dos_size,
 )
 from .items import (
     ITEM_TYPE_COUNT,
@@ -3614,15 +3614,19 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
     `source`, when given, is the figure to compose instead of the one the
     record's own fields name: a source port whose numbers are not DOS's has
     already translated them.
+
+    A story companion's `size` is 0 and names no figure: he gets the default
+    icon, which is what the C64 join gives him (`DOS_COMPANION_SIZE`).
     """
     if not isinstance(icon, IconParts):
         return icon
+    size = dos_figure_size(char.get("size"))
+    if size is None:
+        return icon.default_icon()
     if source is not None:
-        return icon.dos_icon(source.head, source.body,
-                             dos_size(char.get("size")), source.colours,
+        return icon.dos_icon(source.head, source.body, size, source.colours,
                              tables=tables)
-    return icon.dos_icon(char.get("icon_head"), char.get("icon_body"),
-                         dos_size(char.get("size")),
+    return icon.dos_icon(char.get("icon_head"), char.get("icon_body"), size,
                          bytes(char.get("icon_colours")),
                          tables=tables)
 
@@ -8592,7 +8596,8 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             rec, one = to_c64_record(
                 char,
                 icon=_icon_for(char, icon,
-                               icon_tables.get(dos_size(char.get("size"))),
+                               icon_tables.get(
+                                   dos_figure_size(char.get("size"))),
                                source=source_icon),
                 portraits=portraits,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
