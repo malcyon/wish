@@ -107,3 +107,40 @@ def test_a_c64_player_character_keeps_the_plus_one():
     back, _, _, _ = dos_codec.write(char, deltas=c64_tests.DEFAULTS[key])
     f = dos_port.FIELDS_BY_NAME_FOR[key]["size"]
     assert back[f.offset] == 2
+
+
+def test_an_npc_who_is_not_a_joinable_companion_keeps_the_existing_rule():
+    """Only the joinable companions' sizes are measured, so another npc's
+    picture keeps the rule that converts a player's size."""
+    key = CURSE_KEY
+    table = _table(key)
+    stray = 0x01
+    assert stray not in JOINABLE[key]
+    char = c64_codec.read(c64_tests._join(key, 0x16), game=key, companions=table)
+    char.set("unnamed_0ab", stray, "test")
+    if "treasure_share" in char.fields:
+        char.set("treasure_share", 0, "test")
+    back, _, _, _ = dos_codec.write(char, deltas=c64_tests.DEFAULTS[key])
+    f = dos_port.FIELDS_BY_NAME_FOR[key]["size"]
+    assert back[f.offset] == 2
+
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    alias = next(c for c in party
+                 if str(dos_codec.to_neutral(c).get("name")) == "ALIAS")
+    neutral = dos_codec.to_neutral(alias)
+    neutral.set("unnamed_0ab", stray, "test")
+    rec, _ = c64_codec.write(neutral, icon=table.default_icon, companions=table)
+    assert rec.to_bytes()[SIZE_OFFSET] == 0
+
+
+@pytest.mark.parametrize("size_small", [0, 1])
+def test_a_c64_player_keeps_his_size_on_dos(size_small):
+    key = CURSE_KEY
+    rec = c64_tests._join(key, 0x16)
+    rec.set("flags_0b8", 0)
+    rec.set("size_small", size_small)
+    char = c64_codec.read(rec, game=key, companions=_table(key))
+    assert not char.get("npc")
+    back, _, _, _ = dos_codec.write(char, deltas=c64_tests.DEFAULTS[key])
+    f = dos_port.FIELDS_BY_NAME_FOR[key]["size"]
+    assert back[f.offset] == size_small + 1

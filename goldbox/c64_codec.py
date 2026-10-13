@@ -37,7 +37,7 @@ from . import (
     traits,
 )
 from . import levels as level_tables
-from .companions import companion_size
+from .companions import JOINABLE, companion_size
 from .encoding import COMBAT_BIAS
 from .items import TYPE_LOCATION, Item, ItemType
 from .layout import RECORD_SIZE, Confidence, Field
@@ -782,10 +782,16 @@ def zombie_player(char: NeutralCharacter) -> bool:
 
 
 def joined_companion(char: NeutralCharacter) -> bool:
-    """Whether `char` is a companion the game's join added: an `npc` the
-    engine has not taken over as a player character."""
-    return bool(char.get("npc")) and (
-        char.get("npc_control_byte") != DOS_PC_TAKEN_OVER)
+    """Whether `char` is one of the companions the game's join adds in its
+    title: an `npc` the engine has not taken over as a player character, whose
+    combat picture is the `MON` id of a joinable companion."""
+    if not char.get("npc"):
+        return False
+    if char.get("npc_control_byte") == DOS_PC_TAKEN_OVER:
+        return False
+    picture = char.get("unnamed_0ab")
+    return (picture is not None
+            and int(picture) in JOINABLE.get(deltas_for(char.game).key, ()))
 
 
 def companion_mon(char: NeutralCharacter,
