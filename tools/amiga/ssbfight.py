@@ -621,8 +621,15 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             pass
         elif args.capture:
             got = receipt.get("capture", {})
-            receipt["problems"] = [] if got.get("outcome") == "bar" else [
-                f"the party was destroyed before a member's bar; shot {got.get('shot')}"]
+            if got.get("outcome") != "bar":
+                receipt["problems"] = [
+                    f"the party was destroyed before a member's bar; shot {got.get('shot')}"]
+            elif not got.get("confirmed"):
+                receipt["problems"] = [
+                    f"the bar at {got.get('shot')} is known only by {got.get('support')}; "
+                    "nothing confirms it"]
+            else:
+                receipt["problems"] = []
         elif receipt.get("outcome") == "lost":
             receipt["problems"] = ["the party was destroyed, so nothing was saved"]
         elif args.no_save:

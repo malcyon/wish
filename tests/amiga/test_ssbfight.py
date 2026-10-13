@@ -697,11 +697,23 @@ def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeyp
 
     def drive(screens, manifest, members, memory, answer, *, save, capture_only):
         seen.update(save=save, capture_only=capture_only)
-        return {"capture": {"outcome": "bar", "shot": "s.png"}}
+        return {"capture": {"outcome": "bar", "shot": "s.png", "confirmed": True,
+                            "support": "the combat_bar guard"}}
 
     receipt, _written, _halted = _run(tmp_path, monkeypatch, drive=drive, capture=True)
     assert seen == {"save": False, "capture_only": True}
     assert receipt["success"] and "read_back" not in receipt
+
+
+def test_run_fails_a_capture_nothing_confirms(tmp_path, monkeypatch):
+    def drive(*args, **kwargs):
+        return {"capture": {"outcome": "bar", "shot": "s.png", "confirmed": False,
+                            "support": "stillness and the turn pointer only"}}
+
+    with pytest.raises(RouteError, match="nothing confirms"):
+        _run(tmp_path, monkeypatch, drive=drive, capture=True)
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert written["success"] is False and written["halt"]
 
 
 def test_run_checks_the_journal_interpreter_before_the_boot(tmp_path, monkeypatch):
