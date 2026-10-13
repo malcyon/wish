@@ -48,7 +48,7 @@ class Read:
 class Step:
     kind: Literal[
         "key", "turn", "move", "insert", "answer", "snapshot", "restore",
-        "encounters", "select", "observe", "type",
+        "encounters", "select", "observe", "type", "reset",
     ]
     state: str
     key: str | None = None
@@ -62,7 +62,8 @@ class Step:
     keys: tuple[str, ...] = ()
     #: The screen a `type` step's keys go to, recognized again before every key.
     screen: str | None = None
-    #: The step starts the game program again, so memory read before it is stale.
+    #: The step starts the game program again, so memory read before it is stale. A `reset`
+    #: step, which soft-resets the emulated Amiga, always does.
     relaunch: bool = False
     #: Read-only bytes recorded with the step's checkpoint.
     reads: tuple[Read, ...] = ()
@@ -120,6 +121,15 @@ _SLOT = re.compile(r"[A-Z]")
 _REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
 _POOL_OUTDOOR_SHA256 = "4c2bf105215976eaafaa89f07a5da3e06ff838357e07eacd13afe0d1376fddf3"
 _CURSE_WORLD_SHA256 = "c88dd261fb83772128a76e34cf09dc83dc6d5039c60c031a1432df5e48e04896"
+#: The registered Curse game save in Yulash, imported from its slot C into prepared slot B.
+_CURSE_YULASH_SHA256 = "8a28aaf5fe7226c81b0931fce22709c51e9648ae759f4b90fbb37f6bf8b24fdf"
+_CURSE_YULASH = {"area": 16, "x": 2, "y": 6, "facing": 1}
+#: Pools of Darkness slot B in Aerie. The save records area 2; the resident map is GEO21,
+#: which the controller reports as area 33.
+_POD_AERIE = {"area": 33, "x": 1, "y": 2, "facing": 1}
+#: Pool's travel grid at the New Phlan dock, map-window square 7,29 facing east. The resident
+#: grid map is no geo.dax block, so no area is expected on the grid.
+_POOL_DOCK = Expected(engine={"outdoors": True, "facing": 1}, window={"x": 7, "y": 29})
 
 
 def _slot_from(manifest: Mapping[str, object]) -> str:
@@ -166,18 +176,17 @@ def _missing(name: str, initial: str, reason: str) -> Phase:
     return Phase(name, initial, (), ready=False, reason=reason)
 
 
-def _load(title: str, slot: str, opening_scene: bool = False) -> Phase:
+def _load(title: str, slot: str, opening_scene: bool = False,
+          curse_yulash: bool = False) -> Phase:
     if title == "pool":
         return _phase(
             "load", "title",
             Step("key", "party_menu", key="RET"),
             Step("key", "save_path", key="L"),
             Step("key", "load_picker", key="RET"),
-            Step("key", "world", key=slot, checkpoint="loaded",
-                 expected=Expected(engine={"area": 26, "x": 20, "y": 29, "facing": 1},
-                                   window={"x": 7, "y": 29})),
+            Step("key", "grid", key=slot, checkpoint="loaded", expected=_POOL_DOCK),
             Step("key", "sheet", key="V", checkpoint="load_sheet"),
-            Step("key", "world", key="E"),
+            Step("key", "grid", key="E"),
         )
     if title == "curse":
         return _phase(
@@ -186,7 +195,8 @@ def _load(title: str, slot: str, opening_scene: bool = False) -> Phase:
             Step("key", "loaded_menu", key=slot),
             Step("key", "sheet", key="V", checkpoint="load_sheet"),
             Step("key", "loaded_menu", key="E"),
-            Step("key", "world", key="B", checkpoint="loaded"),
+            Step("key", "world", key="B", checkpoint="loaded",
+                 expected=Expected(engine=_CURSE_YULASH) if curse_yulash else None),
         )
     if title == "ssb":
         prefix = (
@@ -221,7 +231,7 @@ def _load(title: str, slot: str, opening_scene: bool = False) -> Phase:
         Step("key", "journal", key="B"),
         Step("key", "journal_answer", key="X"),
         Step("key", "world", key="RET", checkpoint="loaded",
-             expected=Expected(engine={"area": 21, "x": 1, "y": 2, "facing": 1})),
+             expected=Expected(engine=_POD_AERIE)),
     )
 
 
@@ -245,9 +255,11 @@ def _legacy_title(base: AmigaTitle, load: Phase) -> AmigaTitle:
             steps.append(((step.drive, step.media, step.key), step.state, "insert"))
         elif step.kind in ("key", "turn", "move", "answer"):
             steps.append((step.key, step.state, step.kind))
+    # A step that restarts the game waits for the title as long as the boot's own title wait.
     return dataclasses.replace(
         base, route=tuple(steps), measure_route=tuple(steps), control_letter=None,
         after_letter=None, kept_letters=(), plain_keys=(), interstitial_letters=(),
+        wait_limits={**base.wait_limits, "title": base.title_limit},
     )
 
 
@@ -385,46 +397,246 @@ def _ssb_reopen() -> Phase:
     )
 
 
-def _phases(title: str, load: Phase, slot: str) -> tuple[Phase, ...]:
+def _turns(prefix: str, compare: str, place: Mapping[str, int],
+           facings: tuple[int, int, int, int]) -> Phase:
+    """Left, left, right, right on one square, each checked against `compare` as stationary."""
+    names = ("turn_1", "turn_2", "turn_3", "turn_4")
+    return _phase("stationary", "world", *(
+        Step("turn", "world", key=key, checkpoint=f"{prefix}_{name}",
+             expected=Expected(engine={**place, "facing": facing}, compare_to=compare,
+                               relation="stationary"))
+        for key, name, facing in zip(("NP4", "NP4", "NP6", "NP6"), names, facings)))
+
+
+def _at(area: int, x: int, y: int, facing: int, compare: str,
+        relation: Literal["stationary", "moved", "area_changed", "view_changed"]) -> Expected:
+    return Expected(engine={"area": area, "x": x, "y": y, "facing": facing},
+                    compare_to=compare, relation=relation)
+
+
+def _pool_phases() -> tuple[Phase, ...]:
+    """The outdoor specimen from the New Phlan dock on the travel grid: a step north, the boat
+    into New Phlan, turns and a walk there, then a save to C, quit to the AmigaDOS prompt,
+    `program` typed there, and slot A loaded again."""
+    outdoor = _phase(
+        "outdoor", "grid",
+        Step("snapshot", "grid", snapshot="pool_grid"),
+        Step("encounters", "grid", encounters=True),
+        Step("move", "grid", key="NP8", checkpoint="pool_grid_north",
+             expected=Expected(engine={"outdoors": True, "facing": 0}, window={"x": 7, "y": 28},
+                               compare_to="loaded", relation="moved")),
+    )
+    transition = _phase(
+        "transition", "grid",
+        Step("move", "boat_question", key="NP2"),
+        Step("encounters", "boat_question", encounters=False),
+        Step("key", "world", key="T", checkpoint="pool_newphlan",
+             expected=_at(0, 15, 1, 3, "pool_grid_north", "area_changed")),
+    )
+    stationary = _turns("pool", "pool_newphlan", {"area": 0, "x": 15, "y": 1}, (2, 1, 2, 3))
+    walk = _phase(
+        "walk", "world",
+        Step("snapshot", "world", snapshot="pool_newphlan"),
+        Step("encounters", "world", encounters=True),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="pool_west_3",
+             expected=_at(0, 12, 1, 3, "pool_turn_4", "moved")),
+        Step("turn", "world", key="NP6"),
+        Step("turn", "world", key="NP6", checkpoint="pool_turned",
+             expected=_at(0, 12, 1, 1, "pool_west_3", "stationary")),
+        Step("move", "world", key="NP8", checkpoint="pool_walk_end",
+             expected=_at(0, 13, 1, 1, "pool_turned", "moved")),
+        Step("encounters", "world", encounters=False),
+    )
+    # The save to C is the only way back to the load picker: Pool's camp has no load.
+    reload = _phase(
+        "reload", "world",
+        Step("key", "camp", key="E"),
+        Step("key", "camp_save_picker", key="S"),
+        Step("key", "quit_prompt", key="C"),
+        Step("key", "cli", key="Y"),
+        Step("type", "title", keys=("P", "R", "O", "G", "R", "A", "M", "RET"), screen="cli",
+             relaunch=True),
+        Step("key", "party_menu", key="RET"),
+        Step("key", "save_path", key="L"),
+        Step("key", "load_picker", key="RET"),
+        Step("key", "grid", key="A", checkpoint="pool_reloaded",
+             expected=dataclasses.replace(_POOL_DOCK, compare_to="pool_walk_end",
+                                          relation="area_changed")),
+        pages=("wheel", "save_path"),
+    )
+    reopen = _phase(
+        "reopen_step", "grid",
+        Step("encounters", "grid", encounters=True),
+        Step("move", "grid", key="NP8"),
+        Step("move", "boat_question", key="NP2"),
+        Step("encounters", "boat_question", encounters=False),
+        Step("key", "world", key="T"),
+        Step("encounters", "world", encounters=True),
+        Step("move", "world", key="NP8", checkpoint="pool_reopen_step",
+             expected=_at(0, 14, 1, 3, "pool_reloaded", "area_changed")),
+        Step("encounters", "world", encounters=False),
+    )
+    return outdoor, transition, stationary, walk, reload, reopen
+
+
+def _curse_phases() -> tuple[Phase, ...]:
+    """The Yulash save at 2,6 facing east: turns, a walk west and back through the
+    checkpoint square, out to the world map, ENTER CITY and SNEAK IN, then a save to F, the
+    game's exit, a soft reset and slot B loaded again."""
+    yulash = {"area": 16, "y": 6}
+    stationary = _turns("curse", "loaded", {**yulash, "x": 2}, (0, 3, 0, 1))
+    walk = _phase(
+        "walk", "world",
+        Step("snapshot", "world", snapshot="curse_yulash"),
+        Step("encounters", "world", encounters=True),
+        Step("turn", "world", key="NP4"),
+        Step("turn", "world", key="NP4"),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="curse_west_2",
+             expected=_at(16, 0, 6, 3, "curse_turn_4", "moved")),
+        Step("turn", "world", key="NP6"),
+        Step("turn", "world", key="NP6", checkpoint="curse_turned_east",
+             expected=_at(16, 0, 6, 1, "curse_west_2", "stationary")),
+        # Facing east onto 1,6 asks ATTEMPT TO SNEAK PAST / MOVE NORMALLY; MOVE NORMALLY
+        # clears it with no further page.
+        Step("move", "yulash_checkpoint", key="NP8"),
+        Step("key", "world", key="M"),
+        Step("move", "world", key="NP8", checkpoint="curse_walk_end",
+             expected=_at(16, 2, 6, 1, "curse_turned_east", "moved")),
+        Step("encounters", "world", encounters=False),
+    )
+    transition = _phase(
+        "transition", "world",
+        Step("encounters", "world", encounters=True),
+        Step("turn", "world", key="NP4"),
+        Step("turn", "world", key="NP4"),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="curse_exit_square",
+             expected=_at(16, 0, 6, 3, "curse_walk_end", "moved")),
+        Step("encounters", "world", encounters=False),
+        Step("move", "dalelands", key="NP8", checkpoint="curse_world",
+             expected=Expected(engine={"world_map": True, "world_node": 10},
+                               compare_to="curse_exit_square", relation="view_changed")),
+    )
+    outdoor = _phase(
+        "outdoor", "dalelands",
+        Step("key", "yulash_arrival", key="E"),
+        Step("key", "world", key="S", checkpoint="curse_yulash_again",
+             expected=_at(16, 0, 6, 1, "curse_world", "view_changed")),
+    )
+    # Curse's camp has no load, and its exit leaves AmigaDOS asking for a reboot.
+    reload = _phase(
+        "reload", "world",
+        Step("key", "camp", key="E"),
+        Step("key", "camp_save_picker", key="S"),
+        Step("key", "exit_game", key="F"),
+        Step("key", "reboot", key="Y"),
+        Step("reset", "title", relaunch=True),
+        Step("key", "load_picker", key="L"),
+        Step("key", "loaded_menu", key="B"),
+        Step("key", "world", key="B", checkpoint="curse_reloaded",
+             expected=_at(16, 2, 6, 1, "curse_yulash_again", "moved")),
+        pages=("front_end", "intro"),
+    )
+    reopen = _phase(
+        "reopen_step", "world",
+        Step("encounters", "world", encounters=True),
+        Step("turn", "world", key="NP4"),
+        Step("turn", "world", key="NP4"),
+        Step("move", "world", key="NP8", checkpoint="curse_reopen_step",
+             expected=_at(16, 1, 6, 3, "curse_reloaded", "moved")),
+        Step("encounters", "world", encounters=False),
+    )
+    return stationary, walk, transition, outdoor, reload, reopen
+
+
+#: The overland party's flag, x and y: the long at data hunk +0x57AC points at them, +0x24.
+_POD_OVERLAND = (Read("overland", "base", 0x57AC, 3, hop=0x24),)
+
+
+def _darkness_phases() -> tuple[Phase, ...]:
+    """Slot B in Aerie: turns and a walk there, camp LOAD of slot D on the overland, four
+    overland steps to Mulmaster's question, YES and MOVE ON, then camp LOAD of slot B. The overland checkpoints
+    carry no verdict and keep the party bytes for the record."""
+    aerie = {"area": 33, "y": 2}
+    stationary = _turns("pod", "loaded", {**aerie, "x": 1}, (0, 3, 0, 1))
+    walk = _phase(
+        "walk", "world",
+        Step("snapshot", "world", snapshot="pod_aerie"),
+        Step("encounters", "world", encounters=True),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="pod_east_2",
+             expected=_at(33, 3, 2, 1, "pod_turn_4", "moved")),
+        Step("turn", "world", key="NP4"),
+        Step("turn", "world", key="NP4", checkpoint="pod_turned_west",
+             expected=_at(33, 3, 2, 3, "pod_east_2", "stationary")),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="pod_walk_end",
+             expected=_at(33, 1, 2, 3, "pod_turned_west", "moved")),
+        Step("encounters", "world", encounters=False),
+    )
+    camp_load = (
+        Step("key", "camp", key="E"),
+        Step("key", "load_anyway", key="L"),
+        Step("key", "load_from", key="Y"),
+        Step("key", "load_picker", key="P"),
+    )
+    transition = _phase(
+        "transition", "world", *camp_load,
+        Step("key", "loaded_menu", key="D"),
+        Step("key", "world", key="B", checkpoint="pod_overland", reads=_POD_OVERLAND),
+        Step("snapshot", "world", snapshot="pod_overland"),
+        Step("encounters", "world", encounters=True),
+        *(Step("move", "world", key="NP8", checkpoint=f"pod_overland_{n}", reads=_POD_OVERLAND)
+          for n in (1, 2, 3)),
+        Step("move", "yes_no", key="NP4", checkpoint="pod_overland_4", reads=_POD_OVERLAND),
+        Step("encounters", "yes_no", encounters=False),
+        Step("key", "mulmaster_guards", key="Y"),
+        Step("key", "world", key="M", checkpoint="pod_mulmaster",
+             expected=_at(19, 0, 3, 1, "pod_walk_end", "area_changed")),
+    )
+    reload = _phase(
+        "reload", "world", *camp_load,
+        Step("key", "loaded_menu", key="B"),
+        Step("key", "world", key="B", checkpoint="pod_reloaded",
+             expected=_at(33, 1, 2, 1, "pod_mulmaster", "area_changed")),
+    )
+    reopen = _phase(
+        "reopen_step", "world",
+        Step("encounters", "world", encounters=True),
+        Step("move", "world", key="NP8", checkpoint="pod_reopen_step",
+             expected=_at(33, 2, 2, 1, "pod_reloaded", "moved")),
+        Step("encounters", "world", encounters=False),
+    )
+    return stationary, walk, transition, reload, reopen
+
+
+def _phases(title: str, load: Phase, slot: str, curse_yulash: bool = False
+            ) -> tuple[Phase, ...]:
     if title == "pool":
-        needs = {
-            "stationary": "Indoor stationary turns after TAKE BOAT are not measured.",
-            "walk": "No guarded three-step route from the outdoor specimen is recorded.",
-            "transition": "TAKE BOAT into New Phlan lacks a measured prompt guard and key sequence.",
-            "reload": "The game's no-save return to the load picker is not measured.",
-            "reopen_step": "The post-restart step from the outdoor specimen is not measured.",
-        }
-    elif title == "curse":
-        needs = {
-            "stationary": "Sewer stationary turns after the journey and entry are not measured.",
-            "walk": "The guarded three-step sewer walk is not recorded.",
-            "transition": "JOURNEY ON meets a scripted battle, and SEARCH AREA has no measured prompt guard.",
-            "reload": "The game's no-save return to the load picker is not measured.",
-            "reopen_step": "The post-restart sewer step is not measured.",
-        }
-    elif title != "ssb":
-        needs = {
-            "stationary": "Two turns each way from GEO21 are not recorded.",
-            "walk": "Three guarded GEO21 movement checkpoints are not recorded.",
-            "transition": "No guarded on-foot entrance from the overland is established.",
-            "reload": "The recorded slot-D load is not an original-slot B reload route.",
-            "reopen_step": "The post-restart GEO21 step is not measured.",
-        }
+        return (load, *_pool_phases())
+    if title == "curse" and curse_yulash:
+        return (load, *_curse_phases())
+    if title == "darkness":
+        return (load, *_darkness_phases())
     if title == "ssb":
         return (
             load, _ssb_stationary(), _ssb_walk(), _ssb_transition(),
             _ssb_reload(slot), _ssb_reopen(),
         )
-    if title in ("pool", "curse"):
-        return (
-            load, _phase("outdoor", "world", Step("observe", "world", checkpoint="outdoor")),
-            _missing("transition", "world", needs["transition"]),
-            _missing("stationary", "world", needs["stationary"]),
-            _missing("walk", "world", needs["walk"]),
-            _missing("reload", "world", needs["reload"]),
-            _missing("reopen_step", "world", needs["reopen_step"]),
-        )
-    return (load, *(_missing(name, "world", needs[name]) for name in _REQUIRED[1:]))
+    # The Tilverton world-map slot reaches no indoor area by ordinary keys.
+    return (
+        load, _phase("outdoor", "world", Step("observe", "world", checkpoint="outdoor")),
+        _missing("transition", "world",
+                 "JOURNEY ON meets a scripted battle, and SEARCH AREA has no measured prompt guard."),
+        _missing("stationary", "world",
+                 "Sewer stationary turns after the journey and entry are not measured."),
+        _missing("walk", "world", "The guarded three-step sewer walk is not recorded."),
+        _missing("reload", "world", "The game's no-save return to the load picker is not measured."),
+        _missing("reopen_step", "world", "The post-restart sewer step is not measured."),
+    )
 
 
 def _source_provenance(manifest: Mapping[str, object]) -> dict[str, object]:
@@ -432,6 +644,13 @@ def _source_provenance(manifest: Mapping[str, object]) -> dict[str, object]:
     if not isinstance(source, Mapping):
         return {}
     return {key: source[key] for key in ("path", "sha256", "letter") if key in source}
+
+
+def _curse_yulash(manifest: Mapping[str, object], source: Mapping[str, object],
+                  slot: str) -> bool:
+    """Whether the prepared Curse party is the registered Yulash save at 2,6 facing east."""
+    return (slot == "B" and (source.get("letter"), source.get("sha256")) == ("C", _CURSE_YULASH_SHA256)
+            and manifest.get("state_a") == _CURSE_YULASH)
 
 
 def _specimen_gaps(title: str, manifest: Mapping[str, object],
@@ -442,9 +661,11 @@ def _specimen_gaps(title: str, manifest: Mapping[str, object],
                 "B", _POOL_OUTDOOR_SHA256):
             return ("Pool needs the registered outdoor source slot B imported into prepared slot A.",)
     elif title == "curse":
-        if slot != "B" or (source.get("letter"), source.get("sha256")) != (
-                "F", _CURSE_WORLD_SHA256):
-            return ("Curse needs the registered Tilverton world-map slot F imported into prepared slot B.",)
+        world_map = slot == "B" and (source.get("letter"), source.get("sha256")) == (
+            "F", _CURSE_WORLD_SHA256)
+        if not world_map and not _curse_yulash(manifest, source, slot):
+            return ("Curse needs the registered Yulash slot C or Tilverton world-map slot F "
+                    "imported into prepared slot B.",)
     elif title == "ssb":
         if slot != "D" or manifest.get("state_a") != {
                 "area": 16, "x": 3, "y": 3, "facing": 2}:
@@ -466,9 +687,10 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
     opening_scene = manifest.get("opening_scene") is True
     base = _base_title(title, slot, opening_scene)
     media = _media_for(title, manifest, base)
-    load = _load(title, slot, opening_scene)
-    phases = _phases(title, load, slot)
     source = _source_provenance(manifest)
+    curse_yulash = title == "curse" and _curse_yulash(manifest, source, slot)
+    load = _load(title, slot, opening_scene, curse_yulash)
+    phases = _phases(title, load, slot, curse_yulash)
     specimen_gaps = _specimen_gaps(title, manifest, source, media, slot)
     provenance: dict[str, object] = {
         "prepared_slot": slot,
@@ -476,16 +698,25 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
         "source_sha256": source.get("sha256"),
         "guard_source": _GUARD_NAMES[title],
         "route_evidence": {
-            "pool": "WISH-1 comment 01e40161; route_pool.py load prefix",
-            "curse": "WISH-1 comment 01e40161; route_curse.py load prefix",
+            "pool": "WISH-1 comments 01e40161 and 23bf5b91 (capture boot CP); route_pool.py load prefix",
+            "curse": ("WISH-1 comments 591c10fb (capture boot CC), 7fcffdf6 and 766cbc82; "
+                      "route_curse.py load prefix" if curse_yulash
+                      else "WISH-1 comment 01e40161; route_curse.py load prefix"),
             "ssb": "WISH-1 comment d7590a18; route_silver_blades.py load prefix",
-            "darkness": "WISH-1 comment 01e40161; route_darkness.py load prefix",
+            "darkness": ("WISH-1 comments 6ed8e2c1 (capture boot CD) and 7fcffdf6; "
+                         "route_darkness.py load prefix"),
         }[title],
         "confidence": {
-            "pool": "CONFIRMED: The prepared source letter and outdoor coordinates are recorded in WISH-1 and WISH-359.",
-            "curse": "CONFIRMED: The prepared source letter and Dalelands route are recorded in WISH-1.",
+            "pool": ("CONFIRMED: Every key, screen and fix up to the reload was matched in one WinUAE boot. "
+                     "PROBABLE: The plain-cut AmigaDOS guard, the reopen step composed from measured keys, "
+                     "and New Phlan read as area 0."),
+            "curse": ("CONFIRMED: Every key, screen and fix through the camp exit was matched in one WinUAE boot. "
+                      "PROBABLE: The soft reset through the pipe and the load after it, and Yulash read as area 16."
+                      if curse_yulash else
+                      "CONFIRMED: The prepared source letter and Dalelands route are recorded in WISH-1."),
             "ssb": "CONFIRMED: WISH-1 comment d7590a18 measured the walk from 3,3 to 15,8 in one boot. PROBABLE: The four-turn control composes its measured left/right keys and needs a live readback.",
-            "darkness": "CONFIRMED: The disk-2 prompt and GEO21 loading route are recorded in route_darkness.py.",
+            "darkness": ("CONFIRMED: Every key, screen, fix and resident map of the route was matched in one "
+                         "WinUAE boot."),
         }[title],
     }
     unresolved = (

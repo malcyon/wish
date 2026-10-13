@@ -81,6 +81,9 @@ DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
 #: The guard name of a title's code-wheel question, which `amigacursewheel.py` answers. The
 #: title wait answers it only where the guard source has a rule for it.
 WHEEL_SCREENS = {"curse": "curse_wheel"}
+#: The AmigaDOS windows a title leaves its player at after quitting, drawn in hires, so no
+#: exact crop exists: a wait for one guards the window as WinUAE drew it (`screens.plain_cut`).
+HIRES_SCREENS = {"pool": frozenset({"cli"}), "curse": frozenset({"reboot"})}
 #: Seconds `amigacursewheel.answer` waits after each of its two keys, and a `type` step before
 #: it grabs the guard frame for the next key.
 WHEEL_SETTLE = 2.0
@@ -230,6 +233,25 @@ def _key_effect_problem(kind: str, before: dict[str, Any] | None,
     return None
 
 
+def _plain_cut(raw: pathlib.Path, crop: pathlib.Path) -> bool:
+    """Write the 720x568 window of a known emulator frame to `crop` as drawn, with no check
+    that each Amiga pixel is doubled, for a hires AmigaDOS window `screens.canonical` cannot
+    cut; on an exact frame it is the same picture. False for a frame of no known size."""
+    from PIL import Image  # noqa: PLC0415
+
+    with Image.open(raw) as image:
+        rgb = image.convert("RGB")
+    if rgb.size != screens.CANONICAL:
+        known = screens.FRAMES.get(rgb.size)
+        if known is None:
+            return False
+        replication, origin = known
+        left, top = origin[0] * replication, origin[1] * replication
+        rgb = rgb.crop((left, top, left + screens.CANONICAL[0], top + screens.CANONICAL[1]))
+    rgb.save(crop)
+    return True
+
+
 class AcceptanceStop(RuntimeError):
     """A route failed closed; the run still collects evidence and cleans up."""
 
@@ -305,8 +327,10 @@ def _check_steps(route: Any) -> None:
                 raise AcceptanceStop(f"{phase.name}: a {step.kind} step needs a screen to wait for")
             if step.kind != "type" and keys:
                 raise AcceptanceStop(f"{phase.name}: only a type step has a key list")
-            if getattr(step, "relaunch", False) and step.kind not in ("key", "type"):
-                raise AcceptanceStop(f"{phase.name}: only a key or type step can relaunch the program")
+            if getattr(step, "relaunch", False) and step.kind not in ("key", "type", "reset"):
+                raise AcceptanceStop(f"{phase.name}: only a key, type or reset step can relaunch the program")
+            if step.kind == "reset" and not getattr(step, "relaunch", False):
+                raise AcceptanceStop(f"{phase.name}: a reset step restarts the program, so it relaunches")
             reads = tuple(getattr(step, "reads", ()) or ())
             if reads and not step.checkpoint:
                 raise AcceptanceStop(f"{phase.name}: checkpoint reads need a checkpoint")
@@ -712,6 +736,10 @@ class Controller:
         exact = self.game.grab(state, raw, crop, self.left(30))
         evidence = {"raw": str(raw), "crop": str(crop) if exact else None,
                     "shot_source": self.game.last_shot}
+        hires = HIRES_SCREENS.get(self.route.title, frozenset())
+        if not exact and raw.is_file() and hires.intersection(state.split("/")) and _plain_cut(raw, crop):
+            evidence.update(crop=str(crop), hires=True)
+            exact = True
         self.log("game_frame", state=state, **evidence)
         if not exact:
             if check:
@@ -1240,6 +1268,9 @@ class Controller:
                 self.game.insert(self.args.holder, step.drive, self.remotes[step.media],
                                  self.left(60), medium.sha256)
                 self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
+            elif kind == "reset":
+                self.game.reset(self.args.holder, self.left(60))
+                self.log("reset")
             elif kind == "snapshot":
                 if self.discovery or self.encounters_on:
                     self._switch(False)

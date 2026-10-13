@@ -1428,6 +1428,21 @@ Write-Output '<<end>>'
         out = self._execute(self._framed([f"DBG {command}"]))
         return self._replies(out, [command])[0][0][1].strip()
 
+    def soft_reset(self) -> str:
+        """Reset the emulated Amiga as a player's Ctrl-Amiga-Amiga does, with the drives kept.
+
+        One debugger `I` line hands WinUAE's own `AKS_SOFTRESET` input event to its input
+        layer (`handle_custom_event`, `evt` to `inputdevice_uaelib`), so no key or window is
+        involved. The reply is WinUAE's own, `404` for a line with no output.
+        """
+        if self.connection == "ssh" and self.holder is None:
+            raise ValueError("a reset over ssh needs the lane holder, because a pipe "
+                             "opened by name can be another lane's emulator")
+        command = 'I "evt AKS_SOFTRESET 1"'
+        self.sent.append(command)
+        out = self._execute(self._framed([f"DBG {command}"]))
+        return self._replies(out, [command])[0][0][1].strip()
+
     FLOPPY_PATH = FLOPPY_PATH
 
     #: The lane script that owns the ownership checks and the pipe for a floppy

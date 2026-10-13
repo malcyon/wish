@@ -3620,6 +3620,23 @@ def test_walk_tab_parser_and_computed_deadline(tmp_path):
         winwishaccept.preflight(args, guest=object(), route_for=None)
 
 
+def test_reset_soft_resets_the_holders_amiga_through_the_pipe_and_requires_its_reply(monkeypatch):
+    from automap import amiga
+
+    holders = []
+
+    def soft_reset(self):
+        holders.append(self.holder)
+        return "404"
+    monkeypatch.setattr(amiga.WinuaePipe, "soft_reset", soft_reset)
+    guest = winuaesession.WinGuest()
+    assert guest.reset("test-acw", 30) == "404"
+    assert holders == ["test-acw"]
+    monkeypatch.setattr(amiga.WinuaePipe, "soft_reset", lambda self: "Unknown command")
+    with pytest.raises(winuaesession.RouteError, match="Unknown command"):
+        guest.reset("test-acw", 30)
+
+
 def test_schedule_key_queues_one_key_through_the_pipe_and_requires_its_reply(monkeypatch):
     from automap import amiga
 
@@ -4037,3 +4054,128 @@ def test_a_type_step_settles_before_the_guard_frame_of_every_key_after_the_first
     assert len(settles) == len(_TYPED) - 1
     for at, _ in settles:
         assert events[at + 1][0] == "guard"
+
+
+def _reset_phase():
+    from tools.amiga import maproute
+
+    return maproute.Phase("reload", "reboot", (
+        maproute.Step("reset", "title", relaunch=True),
+        maproute.Step("key", "load_picker", key="L")), pages=("front_end",))
+
+
+def test_a_reset_step_resets_once_answers_the_boot_pages_and_forgets_the_old_program(tmp_path):
+    controller, game, screen = _screen_controller(
+        tmp_path, "curse", (("front_end", ("keys", "ESC"), frozenset({"title"}), 4),), "reboot")
+    resets = []
+    game.reset = lambda holder, timeout: (resets.append(holder), screen.update(show="front_end"))
+    game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
+        show={"ESC": "title", "L": "load_picker"}[key]))
+    controller.party_nodes = [(0xC60000, 340)]
+    controller.encounters = SimpleNamespace(state=SimpleNamespace(
+        load=lambda: {"on": False, "rows": []}))
+    controller.run_phase(_reset_phase())
+    assert resets == ["test-acw"]
+    assert game.keys == ["ESC", "L"]
+    assert controller.mapping_commands == 1
+    assert controller.party_nodes == [] and controller.encounters is None
+
+
+def test_a_reset_with_suppression_on_sends_nothing(tmp_path):
+    controller, game, _ = _screen_controller(tmp_path, "curse", (), "reboot")
+    resets = []
+    game.reset = lambda holder, timeout: resets.append(holder)
+    controller.encounters_on = True
+    with pytest.raises(winwishaccept.AcceptanceStop, match="restarts with encounter suppression"):
+        controller.run_phase(_reset_phase())
+    assert resets == [] and game.keys == []
+
+
+def test_a_reset_step_must_be_declared_a_relaunch():
+    from tools.amiga import maproute
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="a reset step restarts the program"):
+        winwishaccept._check_steps(SimpleNamespace(phases=(maproute.Phase(
+            "reload", "reboot", (maproute.Step("reset", "title"),)),)))
+    winwishaccept._check_steps(SimpleNamespace(phases=(_reset_phase(),)))
+
+
+def _hires_controller(tmp_path, title, raw_source):
+    """A controller whose grab keeps `raw_source` as the raw frame and, as `WinGuest.grab` does
+    for a hires window, writes no crop and answers False."""
+    controller, game, _ = _screen_controller(tmp_path, title, (), "unused")
+
+    def grab(state, raw, crop, timeout):
+        pathlib.Path(raw).write_bytes(pathlib.Path(raw_source).read_bytes())
+        return False
+
+    game.grab = grab
+    return controller
+
+
+def _hires_frame(path):
+    """A 752x574 frame whose window holds one-pixel columns, as a hires AmigaDOS window does."""
+    image = Image.new("RGB", (752, 574), (0, 0, 0))
+    for x in range(16, 736, 2):
+        for y in range(4, 572):
+            image.putpixel((x, y), (255, 255, 255))
+    image.save(path)
+    return path
+
+
+@pytest.mark.parametrize("title,state", [("pool", "cli"), ("curse", "reboot")])
+def test_a_hires_window_is_cut_plainly_only_for_its_titles_amigados_screen(tmp_path, title, state):
+    from tools.amiga import screens
+
+    raw = _hires_frame(tmp_path / "hires.png")
+    with pytest.raises(screens.NotExactCapture):
+        screens.canonical(Image.open(raw))
+    controller = _hires_controller(tmp_path, title, raw)
+    frame = controller._capture(state, check=False)
+    assert frame["hires"] is True
+    with Image.open(frame["crop"]) as crop:
+        assert crop.size == (720, 568)
+        assert crop.getpixel((0, 0)) == (255, 255, 255) and crop.getpixel((1, 0)) == (0, 0, 0)
+    assert controller._capture("world", check=False)["crop"] is None
+    other = _hires_controller(tmp_path / "other", "darkness", raw)
+    assert other._capture(state, check=False)["crop"] is None
+
+
+@pytest.mark.parametrize("title,frame,state", [
+    ("pool", "WISH-1/pool-cap1/31-afterY_t5.png", "cli"),
+    ("curse", "WISH-1/cc-cap1/36-afterY_5.png", "reboot"),
+])
+def test_the_captured_amigados_windows_are_recognised_from_the_raw_winuae_frame(
+        tmp_path, title, frame, state):
+    """Reads the capture boots' raw frames, so it skips on a machine without them."""
+    from tools.amiga import guardmaps, screens
+    from tools.registry import scratch
+
+    raw = scratch.cache_dir("acceptance") / frame
+    if not raw.is_file():
+        pytest.skip("the capture boots' raw frames are not on this machine")
+    out = tmp_path / "guards"
+    maps = pathlib.Path(guardmaps.__file__).parent
+    assert guardmaps.main(["--maps", str(maps), "export", "--title", title, "--out", str(out)]) == 0
+    controller = _hires_controller(tmp_path, title, raw)
+    controller.guards = screens.PixelGuards(out / "guards.json")
+    assert controller._still_on(state)
+    assert controller._await_first(("world",), limit=2)[0] is None
+
+
+def test_the_plain_cut_of_an_exact_frame_is_the_canonical_crop(tmp_path):
+    from tools.amiga import screens
+
+    native = Image.new("RGB", (376, 287), (0, 0, 0))
+    for x in range(376):
+        for y in range(0, 287, 3):
+            native.putpixel((x, y), ((x * 7) % 256, (y * 5) % 256, 90))
+    raw = tmp_path / "exact.png"
+    native.resize((752, 574), Image.NEAREST).save(raw)
+    crop = tmp_path / "cut.png"
+    assert winwishaccept._plain_cut(raw, crop)
+    with Image.open(raw) as image, Image.open(crop) as cut:
+        assert cut.tobytes() == screens.canonical(image).tobytes()
+    odd = tmp_path / "odd.png"
+    Image.new("RGB", (100, 100)).save(odd)
+    assert not winwishaccept._plain_cut(odd, tmp_path / "none.png")

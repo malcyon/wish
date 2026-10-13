@@ -436,6 +436,21 @@ class WinGuest:
             raise RouteError(f"WinUAE answered the queued {row.name} with {reply!r}")
         return reply
 
+    def reset(self, holder: str, timeout: float) -> str:
+        """Soft-reset the holder's emulated Amiga through its pipe, as a player's
+        Ctrl-Amiga-Amiga does; WinUAE's reply is 404."""
+        from automap import amiga  # noqa: PLC0415
+
+        self.holder = holder
+        pipe = amiga.WinuaePipe(holder=holder, timeout=timeout)
+        try:
+            reply = pipe.soft_reset()
+        except amiga.GuestError as exc:
+            raise RouteError(f"the reset was not sent: {exc}") from exc
+        if reply != "404":
+            raise RouteError(f"WinUAE answered the reset with {reply!r}")
+        return reply
+
     def stop(self, holder: str, timeout: float) -> str:
         return self._lane(holder, "stop", timeout)
 

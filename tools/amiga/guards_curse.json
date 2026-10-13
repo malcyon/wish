@@ -203,6 +203,17 @@
       "example": "677/offline-curse-dos/accept1/shots/07-world.png",
       "sha256": "1bf2400681523aa4dc95ae92305564fd26f826fa60277596e7801505cb6dd73c"
     },
+    "dalelands": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "amiga-grab-crops/wish1-cccap1__29-t_NP8_3.png",
+      "sha256": "987eec3b3b8bb5e999ef33998b6710625d5458f74e154dcc6da9bb272335e60d"
+    },
     "exit_game": {
       "also": [],
       "box": [
@@ -282,6 +293,17 @@
         "sha256": "26f435eae341090b23cd4937369451d96200c513319b2d9333450b5ecabd09e2"
       }
     ],
+    "reboot": {
+      "also": [],
+      "box": [
+        60,
+        66,
+        300,
+        86
+      ],
+      "example": "amiga-grab-crops/wish1-cccap1__36-afterY_5.png",
+      "sha256": "c73c6da4ee8537b789b4ab30d24136915ef4bcf7be4ef2f84e2294297e042c75"
+    },
     "rest_menu": {
       "also": [],
       "box": [
@@ -347,6 +369,28 @@
       ],
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/07-world.png",
       "sha256": "0f2f0883c8c4f4a7e2bc7096c22881891330a7c5ee32f6c3d88d7ff08cf45ea8"
+    },
+    "yulash_arrival": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "amiga-grab-crops/wish1-cccap1__30-enter.png",
+      "sha256": "09d70015cbf8423fd43c7e05134ac19bb3d18a546fbcbd52b51b78db5e7c48c6"
+    },
+    "yulash_checkpoint": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "amiga-grab-crops/wish1-cccap1__22-w_NP8_3.png",
+      "sha256": "8a8cba3ba82a77429562786a9027c87492879c0861c4827172453434253e4e33"
     }
   },
   "identity": {
@@ -436,6 +480,129 @@
     ],
     "amiga-grab-crops/37__pipe__07-second-boot.png": [
       "intro"
+    ],
+    "amiga-grab-crops/wish1-cccap1__03-esc1.png": [
+      "intro"
+    ],
+    "amiga-grab-crops/wish1-cccap1__04-esc2.png": [
+      "front_end"
+    ],
+    "amiga-grab-crops/wish1-cccap1__05-after_wheel.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-cccap1__06-L.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-cccap1__08-menu.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cccap1__09-V.png": [
+      "camp_sheet",
+      "camp_sheet_2",
+      "camp_sheet_3",
+      "camp_sheet_4",
+      "camp_sheet_5",
+      "camp_sheet_6",
+      "camp_sheet_heal",
+      "camp_sheet_spent",
+      "sheet"
+    ],
+    "amiga-grab-crops/wish1-cccap1__10-E.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cccap1__11-B.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__12-turn_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__13-turn_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__14-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__15-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__16-w_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__17-w_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__18-w_NP8_1.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__19-w_NP8_2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__20-w_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__21-w_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__22-w_NP8_3.png": [
+      "yulash_checkpoint"
+    ],
+    "amiga-grab-crops/wish1-cccap1__23-answer_M.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__24-w_NP8_4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__25-t_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__26-t_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__27-t_NP8_1.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__28-t_NP8_2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__29-t_NP8_3.png": [
+      "dalelands"
+    ],
+    "amiga-grab-crops/wish1-cccap1__30-enter.png": [
+      "yulash_arrival"
+    ],
+    "amiga-grab-crops/wish1-cccap1__31-sneak.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cccap1__32-camp.png": [
+      "camp"
+    ],
+    "amiga-grab-crops/wish1-cccap1__33-camp_S.png": [
+      "camp_save_picker",
+      "save_picker"
+    ],
+    "amiga-grab-crops/wish1-cccap1__34-save_F.png": [
+      "exit_game"
+    ],
+    "amiga-grab-crops/wish1-cccap1__35-exitY.png": [
+      "reboot"
+    ],
+    "amiga-grab-crops/wish1-cccap1__36-afterY_5.png": [
+      "reboot"
+    ],
+    "amiga-grab-crops/wish1-cccap1__37-afterY_8.png": [
+      "reboot"
+    ],
+    "amiga-grab-crops/wish1-cccap1__38-afterY_12.png": [
+      "reboot"
+    ],
+    "amiga-grab-crops/wish1-cccap1__39-stop1.png": [
+      "reboot"
+    ],
+    "amiga-grab-crops/wish1-cccap1__40-stop2.png": [
+      "reboot"
+    ],
+    "amiga-grab-crops/wish1-cccap1__41-stop3.png": [
+      "reboot"
     ]
   }
 }

@@ -1,5 +1,16 @@
 {
   "guards": {
+    "boat_question": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        588,
+        432
+      ],
+      "example": "amiga-grab-crops/wish1-pcap1__14-boat.png",
+      "sha256": "80037c2c157aa96139fcb3c4f4e0ed854df6b453435db3b8ff4e660999ba7802"
+    },
     "camp": {
       "also": [],
       "box": [
@@ -109,6 +120,17 @@
       "example": "WISH-303/s7-cap/cap1/shots/052-camp_sheet_items_7.png",
       "sha256": "eaae1c980f1d978804608e2ab1fdb83ef2a0cfbb41c69edd56e44067f5b8a1ab"
     },
+    "cli": {
+      "also": [],
+      "box": [
+        64,
+        56,
+        620,
+        380
+      ],
+      "example": "amiga-grab-crops/wish1-pcap1__31-afterY_t5.png",
+      "sha256": "8036b752fb597832813983faced290b0938ba1ed5147e17b5356eb7679f786bb"
+    },
     "combat_bar": {
       "also": [],
       "box": [
@@ -141,6 +163,17 @@
       ],
       "example": "amiga-grab-crops/wish303-a1__32-encounter.png",
       "sha256": "0701f120be8a8d62fb853c320872acc7d08fff84c3ae3b4b5e2b6321435e3668"
+    },
+    "grid": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        588,
+        432
+      ],
+      "example": "amiga-grab-crops/wish1-pcap1__10-after_A.png",
+      "sha256": "6ccf7dfe9657e84cba187e057c5e33c5dd74c10cc2149f43c786d6a3873229b1"
     },
     "load_picker": {
       "also": [],
@@ -561,6 +594,124 @@
     ],
     "amiga-grab-crops/3q__s07-view-c.png": [
       "sheet"
+    ],
+    "amiga-grab-crops/wish1-pcap1__01-boot.png": [
+      "wheel"
+    ],
+    "amiga-grab-crops/wish1-pcap1__05-wait2.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-pcap1__06-wait3.png": [
+      "party_menu"
+    ],
+    "amiga-grab-crops/wish1-pcap1__07-L.png": [
+      "save_path"
+    ],
+    "amiga-grab-crops/wish1-pcap1__08-save_path.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-pcap1__09-slotA.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-pcap1__10-after_A.png": [
+      "grid"
+    ],
+    "amiga-grab-crops/wish1-pcap1__11-V.png": [
+      "camp_sheet_items",
+      "sheet"
+    ],
+    "amiga-grab-crops/wish1-pcap1__12-E.png": [
+      "grid"
+    ],
+    "amiga-grab-crops/wish1-pcap1__13-grid_north.png": [
+      "grid"
+    ],
+    "amiga-grab-crops/wish1-pcap1__14-boat.png": [
+      "boat_question"
+    ],
+    "amiga-grab-crops/wish1-pcap1__16-newphlan_b.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__17-turn_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__18-turn_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__19-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__20-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__21-walk_NP8_1.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__22-walk_NP8_2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__23-walk_NP8_3.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__24-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__25-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__26-walk_NP8_4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pcap1__27-camp.png": [
+      "camp"
+    ],
+    "amiga-grab-crops/wish1-pcap1__28-save.png": [
+      "camp_save_picker"
+    ],
+    "amiga-grab-crops/wish1-pcap1__30-save_C_b.png": [
+      "quit_prompt"
+    ],
+    "amiga-grab-crops/wish1-pcap1__31-afterY_t10.png": [
+      "cli"
+    ],
+    "amiga-grab-crops/wish1-pcap1__31-afterY_t2.png": [
+      "cli"
+    ],
+    "amiga-grab-crops/wish1-pcap1__31-afterY_t20.png": [
+      "cli"
+    ],
+    "amiga-grab-crops/wish1-pcap1__31-afterY_t5.png": [
+      "cli"
+    ],
+    "amiga-grab-crops/wish1-pcap1__32-program_t20.png": [
+      "wheel"
+    ],
+    "amiga-grab-crops/wish1-pcap1__32-program_t40.png": [
+      "wheel"
+    ],
+    "amiga-grab-crops/wish1-pcap1__32-program_t60.png": [
+      "wheel"
+    ],
+    "amiga-grab-crops/wish1-pcap1__40-menu2.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-pcap1__41-menu2b.png": [
+      "party_menu"
+    ],
+    "amiga-grab-crops/wish1-pcap1__42-L2.png": [
+      "save_path"
+    ],
+    "amiga-grab-crops/wish1-pcap1__43-path2.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-pcap1__44-picker2.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-pcap1__45-slotA2.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-pcap1__46-reloaded.png": [
+      "grid"
     ],
     "amiga-grab-crops/wish16-a__01-party_menu.png": [
       "party_menu"

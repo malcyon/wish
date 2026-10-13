@@ -1845,6 +1845,17 @@
       "example": "679/0fecb2ffdc-amiga-darkness-accept-A/acceptA/shots/11-journal_answer.png",
       "sha256": "17903308f6cd91b211ccd9b04ebcddfb1716a3d9783cfb3ef504173f61200416"
     },
+    "load_anyway": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish1-cdcap1__28-camp_L.png",
+      "sha256": "7780158a66ceb6ad77599fcdee9331fc49d24af9f11a7c89bc0f48e8f291c0b2"
+    },
     "load_from": {
       "also": [],
       "box": [
@@ -1891,6 +1902,17 @@
         "sha256": "1eeb1eaa5aea1ab496173c9a50506b5b18231101312f7045119d95f6589fddf8"
       }
     ],
+    "mulmaster_guards": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "amiga-grab-crops/wish1-cdcap1__38-enterY.png",
+      "sha256": "c860445d1ade29ec04fb3b25fca6b6b9375feefcc162c0914fb107aa17ff86de"
+    },
     "party_menu": {
       "also": [],
       "box": [
@@ -3012,9 +3034,6 @@
     ]
   },
   "labels": {
-    "amiga-grab-crops/wish360-podret5__continue.png": [
-      "continue"
-    ],
     "628/darkness-P1a/accept2/shots/12-world.png": [
       "place_x1_y2_f1"
     ],
@@ -3481,6 +3500,157 @@
     "WISH-6/wish6-l1/measure2/shots/55-elminster_menu.png": [
       "elminster_menu"
     ],
+    "amiga-grab-crops/wish1-cdcap1__03-esc1.png": [
+      "intro"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__04-esc2.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__05-esc3.png": [
+      "party_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__06-L.png": [
+      "load_from"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__07-P.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__09-prompt.png": [
+      "disk2_prompt"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__10-space.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__11-menu.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__12-V.png": [
+      "camp_sheet",
+      "camp_sheet_2",
+      "camp_sheet_3",
+      "camp_sheet_4",
+      "camp_sheet_5",
+      "camp_sheet_6",
+      "camp_sheet_7",
+      "camp_sheet_heal",
+      "camp_sheet_items",
+      "camp_sheet_items_2",
+      "camp_sheet_items_3",
+      "camp_sheet_items_4",
+      "camp_sheet_items_5",
+      "camp_sheet_items_6",
+      "camp_sheet_spent",
+      "sheet"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__13-E.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__14-B.png": [
+      "journal"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__15-X.png": [
+      "journal",
+      "journal_answer"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__16-ret.png": [
+      "place_x1_y2_f1",
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__17-turn_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__18-turn_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__19-turn_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__20-turn_NP6.png": [
+      "place_x1_y2_f1",
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__21-w_NP8_1.png": [
+      "place_x2_y2_f1",
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__22-w_NP8_2.png": [
+      "place_x3_y2_f1",
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__23-w_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__24-w_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__25-w_NP8_3.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__26-w_NP8_4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__27-camp.png": [
+      "camp"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__28-camp_L.png": [
+      "load_anyway"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__29-Y.png": [
+      "load_from"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__30-P.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__31-D.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__32-after_D.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__33-B.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__34-ov_NP8_1.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__35-ov_NP8_2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__36-ov_NP8_3.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__37-ov_NP4.png": [
+      "yes_no"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__38-enterY.png": [
+      "mulmaster_guards"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__39-M.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__40-camp.png": [
+      "camp"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__41-camp_L.png": [
+      "load_anyway"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__42-Y.png": [
+      "load_from"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__43-P.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__45-after_B.png": [
+      "loaded_menu"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__46-B.png": [
+      "place_x1_y2_f1",
+      "world"
+    ],
+    "amiga-grab-crops/wish1-cdcap1__47-reopen_NP8.png": [
+      "place_x2_y2_f1",
+      "world"
+    ],
     "amiga-grab-crops/wish2-abagail__camp_cast_5-after.png": [
       "camp_cast_5"
     ],
@@ -3533,6 +3703,9 @@
     ],
     "amiga-grab-crops/wish347-podprobe__intro_summoned.png": [
       "intro"
+    ],
+    "amiga-grab-crops/wish360-podret5__continue.png": [
+      "continue"
     ],
     "amiga-grab-crops/wish9-b1__01-party_menu.png": [
       "party_menu"

@@ -46,8 +46,14 @@ def _manifest(title: str, root: Path) -> dict:
     }
 
 
+def _yulash_manifest(root: Path) -> dict:
+    return {**_manifest("curse", root),
+            "substitute": {"letter": "C", "sha256": maproute._CURSE_YULASH_SHA256},
+            "state_a": {"area": 16, "x": 2, "y": 6, "facing": 1}}
+
+
 @pytest.mark.parametrize("title,load_key,load_state", [
-    ("pool", "A", "world"),
+    ("pool", "A", "grid"),
     ("curse", "B", "loaded_menu"),
     ("ssb", "D", "loaded_menu"),
     ("darkness", "B", "disk2_prompt"),
@@ -67,28 +73,29 @@ def test_the_game_loads_the_prepared_slot_and_never_saves(
 
 
 @pytest.mark.parametrize("title", ("pool", "curse", "ssb", "darkness"))
-def test_an_unmeasured_transition_blocks_the_title_before_a_lane_is_claimed(
+def test_every_title_with_a_measured_source_is_ready_and_the_tilverton_curse_save_is_not(
         title: str, tmp_path: Path):
     route = maproute.route_for(title, _manifest(title, tmp_path))
     phases = {phase.name: phase for phase in route.phases}
 
     assert set(phases) == {"load", "stationary", "walk", "transition", "reload",
                            "reopen_step"} | ({"outdoor"} if title in ("pool", "curse") else set())
-    if title == "ssb":
-        assert all(phase.ready for phase in route.phases)
-        assert route.unresolved == ()
-    else:
+    if title == "curse":
         assert not phases["transition"].ready
         assert phases["transition"].reason in route.unresolved
-        assert route.unresolved
+        yulash = maproute.route_for("curse", _yulash_manifest(tmp_path))
+        assert all(phase.ready for phase in yulash.phases)
+        assert yulash.unresolved == ()
+    else:
+        assert all(phase.ready for phase in route.phases)
+        assert route.unresolved == ()
     assert [action.kind for action in route.actions] == [
         "heal", "spells", "identify", "quickfight", "levelup"]
     assert all(not action.enabled for action in route.actions)
 
 
-@pytest.mark.parametrize("title", ("pool", "curse"))
-def test_outdoor_routes_enter_an_area_before_indoor_checks(title: str, tmp_path: Path):
-    route = maproute.route_for(title, _manifest(title, tmp_path))
+def test_the_tilverton_curse_save_keeps_its_observe_only_outdoor_phase(tmp_path: Path):
+    route = maproute.route_for("curse", _manifest("curse", tmp_path))
 
     assert [phase.name for phase in route.phases] == [
         "load", "outdoor", "transition", "stationary", "walk", "reload", "reopen_step"]
@@ -96,10 +103,11 @@ def test_outdoor_routes_enter_an_area_before_indoor_checks(title: str, tmp_path:
     assert not route.phases[2].ready
 
 
-@pytest.mark.parametrize("title", ("pool", "curse", "ssb", "darkness"))
+@pytest.mark.parametrize("title", ("pool", "curse", "curse-yulash", "ssb", "darkness"))
 def test_every_ready_step_has_an_existing_screen_guard_and_unique_checkpoint(
         title: str, tmp_path: Path):
-    route = maproute.route_for(title, _manifest(title, tmp_path))
+    route = (maproute.route_for("curse", _yulash_manifest(tmp_path)) if title == "curse-yulash"
+             else maproute.route_for(title, _manifest(title, tmp_path)))
     guards = json.loads(route.guard_path.read_text())["guards"]
     ready = [phase for phase in route.phases if phase.ready]
     states = {phase.initial_state for phase in ready}
@@ -267,3 +275,210 @@ def test_pools_of_darkness_accepts_the_area_the_prepared_saves_record(tmp_path: 
     assert maproute._specimen_gaps("darkness", manifest, {}, media, "B")
     manifest["state_a"] = {"area": 21, "x": 1, "y": 2, "facing": 1}
     assert maproute._specimen_gaps("darkness", manifest, {}, media, "B")
+
+
+#: Each route key in order, as (phase, key, screen awaited after it, capture frame showing that
+#: screen). The frames are the WinUAE capture boots' own, cut to the Amiga screen and kept as
+#: `amiga-grab-crops/<run>__<frame>.png`; None where the boot never pressed that key. A frame
+#: from the first load stands in for the same screen after a restart.
+_POOL_KEYS = (
+    ("load", "RET", "party_menu", "06-wait3"), ("load", "L", "save_path", "07-L"),
+    ("load", "RET", "load_picker", "08-save_path"), ("load", "A", "grid", "10-after_A"),
+    ("load", "V", "sheet", "11-V"), ("load", "E", "grid", "12-E"),
+    ("outdoor", "NP8", "grid", "13-grid_north"),
+    ("transition", "NP2", "boat_question", "14-boat"),
+    ("transition", "T", "world", "16-newphlan_b"),
+    ("stationary", "NP4", "world", "17-turn_NP4"), ("stationary", "NP4", "world", "18-turn_NP4"),
+    ("stationary", "NP6", "world", "19-turn_NP6"), ("stationary", "NP6", "world", "20-turn_NP6"),
+    ("walk", "NP8", "world", "21-walk_NP8_1"), ("walk", "NP8", "world", "22-walk_NP8_2"),
+    ("walk", "NP8", "world", "23-walk_NP8_3"), ("walk", "NP6", "world", "24-turn_NP6"),
+    ("walk", "NP6", "world", "25-turn_NP6"), ("walk", "NP8", "world", "26-walk_NP8_4"),
+    ("reload", "E", "camp", "27-camp"), ("reload", "S", "camp_save_picker", "28-save"),
+    ("reload", "C", "quit_prompt", "30-save_C_b"), ("reload", "Y", "cli", "31-afterY_t5"),
+    ("reload", "PROGRAM", "title", "40-menu2"), ("reload", "RET", "party_menu", "41-menu2b"),
+    ("reload", "L", "save_path", "42-L2"), ("reload", "RET", "load_picker", "43-path2"),
+    ("reload", "A", "grid", "46-reloaded"),
+    ("reopen_step", "NP8", "grid", None), ("reopen_step", "NP2", "boat_question", None),
+    ("reopen_step", "T", "world", None), ("reopen_step", "NP8", "world", None),
+)
+_CURSE_KEYS = (
+    ("load", "L", "load_picker", "06-L"), ("load", "B", "loaded_menu", "08-menu"),
+    ("load", "V", "sheet", "09-V"), ("load", "E", "loaded_menu", "10-E"),
+    ("load", "B", "world", "11-B"),
+    ("stationary", "NP4", "world", "12-turn_NP4"), ("stationary", "NP4", "world", "13-turn_NP4"),
+    ("stationary", "NP6", "world", "14-turn_NP6"), ("stationary", "NP6", "world", "15-turn_NP6"),
+    ("walk", "NP4", "world", "16-w_NP4"), ("walk", "NP4", "world", "17-w_NP4"),
+    ("walk", "NP8", "world", "18-w_NP8_1"), ("walk", "NP8", "world", "19-w_NP8_2"),
+    ("walk", "NP6", "world", "20-w_NP6"), ("walk", "NP6", "world", "21-w_NP6"),
+    ("walk", "NP8", "yulash_checkpoint", "22-w_NP8_3"), ("walk", "M", "world", "23-answer_M"),
+    ("walk", "NP8", "world", "24-w_NP8_4"),
+    ("transition", "NP4", "world", "25-t_NP4"), ("transition", "NP4", "world", "26-t_NP4"),
+    ("transition", "NP8", "world", "27-t_NP8_1"), ("transition", "NP8", "world", "28-t_NP8_2"),
+    ("transition", "NP8", "dalelands", "29-t_NP8_3"),
+    ("outdoor", "E", "yulash_arrival", "30-enter"), ("outdoor", "S", "world", "31-sneak"),
+    ("reload", "E", "camp", "32-camp"), ("reload", "S", "camp_save_picker", "33-camp_S"),
+    ("reload", "F", "exit_game", "34-save_F"), ("reload", "Y", "reboot", "36-afterY_5"),
+    ("reload", "RESET", "title", "05-after_wheel"), ("reload", "L", "load_picker", "06-L"),
+    ("reload", "B", "loaded_menu", "08-menu"), ("reload", "B", "world", "11-B"),
+    ("reopen_step", "NP4", "world", None), ("reopen_step", "NP4", "world", None),
+    ("reopen_step", "NP8", "world", None),
+)
+_DARKNESS_KEYS = (
+    ("load", "P", "party_menu", "05-esc3"), ("load", "L", "load_from", "06-L"),
+    ("load", "P", "load_picker", "07-P"), ("load", "B", "disk2_prompt", "09-prompt"),
+    ("load", "SPACE", "loaded_menu", "10-space"), ("load", "V", "sheet", "12-V"),
+    ("load", "E", "loaded_menu", "13-E"), ("load", "B", "journal", "14-B"),
+    ("load", "X", "journal_answer", "15-X"), ("load", "RET", "world", "16-ret"),
+    ("stationary", "NP4", "world", "17-turn_NP4"), ("stationary", "NP4", "world", "18-turn_NP4"),
+    ("stationary", "NP6", "world", "19-turn_NP6"), ("stationary", "NP6", "world", "20-turn_NP6"),
+    ("walk", "NP8", "world", "21-w_NP8_1"), ("walk", "NP8", "world", "22-w_NP8_2"),
+    ("walk", "NP4", "world", "23-w_NP4"), ("walk", "NP4", "world", "24-w_NP4"),
+    ("walk", "NP8", "world", "25-w_NP8_3"), ("walk", "NP8", "world", "26-w_NP8_4"),
+    ("transition", "E", "camp", "27-camp"), ("transition", "L", "load_anyway", "28-camp_L"),
+    ("transition", "Y", "load_from", "29-Y"), ("transition", "P", "load_picker", "30-P"),
+    ("transition", "D", "loaded_menu", "31-D"), ("transition", "B", "world", "33-B"),
+    ("transition", "NP8", "world", "34-ov_NP8_1"), ("transition", "NP8", "world", "35-ov_NP8_2"),
+    ("transition", "NP8", "world", "36-ov_NP8_3"), ("transition", "NP4", "yes_no", "37-ov_NP4"),
+    ("transition", "Y", "mulmaster_guards", "38-enterY"), ("transition", "M", "world", "39-M"),
+    ("reload", "E", "camp", "40-camp"), ("reload", "L", "load_anyway", "41-camp_L"),
+    ("reload", "Y", "load_from", "42-Y"), ("reload", "P", "load_picker", "43-P"),
+    ("reload", "B", "loaded_menu", "45-after_B"), ("reload", "B", "world", "46-B"),
+    ("reopen_step", "NP8", "world", "47-reopen_NP8"),
+)
+_CAPTURES = {"pool": ("wish1-pcap1", _POOL_KEYS), "curse": ("wish1-cccap1", _CURSE_KEYS),
+             "darkness": ("wish1-cdcap1", _DARKNESS_KEYS)}
+
+
+def _capture_route(title: str, root: Path):
+    return maproute.route_for("curse", _yulash_manifest(root)) if title == "curse" else (
+        maproute.route_for(title, _manifest(title, root)))
+
+
+def _route_keys(route) -> list[tuple[str, str, str]]:
+    keys = []
+    for phase in route.phases:
+        for step in phase.steps:
+            if step.kind == "type":
+                keys.append((phase.name, "".join(step.keys).replace("RET", ""), step.state))
+            elif step.kind == "reset":
+                keys.append((phase.name, "RESET", step.state))
+            elif step.kind in ("key", "turn", "move", "insert"):
+                keys.append((phase.name, step.key, step.state))
+    return keys
+
+
+@pytest.mark.parametrize("title", ("pool", "curse", "darkness"))
+def test_each_route_presses_the_capture_boots_keys_and_waits_for_their_screens(
+        title: str, tmp_path: Path):
+    route = _capture_route(title, tmp_path)
+
+    assert _route_keys(route) == [(phase, key, state) for phase, key, state, _ in _CAPTURES[title][1]]
+    assert route.unresolved == ()
+
+
+def test_the_pool_reload_saves_to_c_quits_and_types_program_at_the_prompt(tmp_path: Path):
+    route = maproute.route_for("pool", _manifest("pool", tmp_path))
+    reload = {phase.name: phase for phase in route.phases}["reload"]
+    typed = next(step for step in reload.steps if step.kind == "type")
+
+    assert typed.keys == ("P", "R", "O", "G", "R", "A", "M", "RET")
+    assert (typed.screen, typed.state, typed.relaunch) == ("cli", "title", True)
+    assert reload.pages == ("wheel", "save_path")
+    loaded = route.phases[0].steps[3]
+    assert (dict(loaded.expected.engine), dict(loaded.expected.window)) == (
+        {"outdoors": True, "facing": 1}, {"x": 7, "y": 29})
+    final = reload.steps[-1]
+    assert (final.checkpoint, final.expected.compare_to, final.expected.relation) == (
+        "pool_reloaded", "pool_walk_end", "area_changed")
+
+
+def test_the_curse_reload_exits_the_game_and_soft_resets_the_amiga(tmp_path: Path):
+    route = maproute.route_for("curse", _yulash_manifest(tmp_path))
+    reload = {phase.name: phase for phase in route.phases}["reload"]
+    reset = next(step for step in reload.steps if step.kind == "reset")
+
+    assert (reset.state, reset.relaunch) == ("title", True)
+    assert reload.pages == ("front_end", "intro")
+    assert route.amiga_title.wait_limits["title"] == route.amiga_title.title_limit
+    world = next(s for p in route.phases for s in p.steps if s.checkpoint == "curse_world")
+    assert dict(world.expected.engine) == {"world_map": True, "world_node": 10}
+    assert world.expected.relation == "view_changed"
+    assert dict(route.phases[0].steps[-1].expected.engine) == {
+        "area": 16, "x": 2, "y": 6, "facing": 1}
+
+
+def test_a_curse_yulash_save_without_its_square_is_not_the_measured_source(tmp_path: Path):
+    manifest = {**_yulash_manifest(tmp_path), "state_a": {"area": 16, "x": 0, "y": 6, "facing": 1}}
+    route = maproute.route_for("curse", manifest)
+
+    assert route.unresolved[0].startswith("Curse needs the registered Yulash slot C")
+
+
+def test_pools_of_darkness_loads_into_geo21_and_keeps_the_overland_bytes(tmp_path: Path):
+    route = maproute.route_for("darkness", _manifest("darkness", tmp_path))
+    steps = [s for p in route.phases for s in p.steps if s.checkpoint]
+    loaded = next(s for s in steps if s.checkpoint == "loaded")
+
+    assert dict(loaded.expected.engine) == {"area": 33, "x": 1, "y": 2, "facing": 1}
+    overland = [s for s in steps if s.checkpoint.startswith("pod_overland")]
+    assert [s.checkpoint for s in overland] == [
+        "pod_overland", "pod_overland_1", "pod_overland_2", "pod_overland_3", "pod_overland_4"]
+    assert all(s.expected is None and s.reads == maproute._POD_OVERLAND for s in overland)
+    mulmaster = next(s for s in steps if s.checkpoint == "pod_mulmaster")
+    assert dict(mulmaster.expected.engine) == {"area": 19, "x": 0, "y": 3, "facing": 1}
+
+
+def _kept_crops(prefix: str):
+    from tools.registry import scratch
+
+    return scratch.cache_dir("acceptance") / "amiga-grab-crops", prefix
+
+
+def _exported_guards(title: str, tmp_path: Path):
+    from tools.amiga import guardmaps, screens
+
+    out = tmp_path / f"guards-{title}"
+    maps = Path(guardmaps.__file__).parent
+    assert guardmaps.main(["--maps", str(maps), "export", "--title", title, "--out", str(out)]) == 0
+    return screens.PixelGuards(out / "guards.json")
+
+
+@pytest.mark.parametrize("title", ("pool", "curse", "darkness"))
+def test_every_screen_a_route_waits_for_matches_the_capture_frame_that_showed_it(
+        title: str, tmp_path: Path):
+    """Reads the capture boots' frames, so it skips on a machine without them."""
+    crops, prefix = _kept_crops(_CAPTURES[title][0])
+    frames = [(state, crops / f"{prefix}__{frame}.png")
+              for _, _, state, frame in _CAPTURES[title][1] if frame]
+    if not all(path.is_file() for _, path in frames):
+        pytest.skip(f"the {title} capture frames are not on this machine")
+    guards = _exported_guards(title, tmp_path)
+
+    assert [(state, path.name) for state, path in frames if not guards(state, path)] == []
+
+
+#: Each guard the capture boots added, and every capture frame of its title that shows it.
+_NEW_GUARDS = {
+    "pool": {"grid": {"10-after_A", "12-E", "13-grid_north", "46-reloaded"},
+             "boat_question": {"14-boat"},
+             "cli": {"31-afterY_t2", "31-afterY_t5", "31-afterY_t10", "31-afterY_t20"}},
+    "curse": {"yulash_checkpoint": {"22-w_NP8_3"}, "dalelands": {"29-t_NP8_3"},
+              "yulash_arrival": {"30-enter"},
+              "reboot": {"35-exitY", "36-afterY_5", "37-afterY_8", "38-afterY_12", "39-stop1",
+                         "40-stop2", "41-stop3"}},
+    "darkness": {"load_anyway": {"28-camp_L", "41-camp_L"}, "mulmaster_guards": {"38-enterY"}},
+}
+
+
+@pytest.mark.parametrize("title", ("pool", "curse", "darkness"))
+def test_each_new_guard_matches_only_the_capture_frames_that_show_its_screen(
+        title: str, tmp_path: Path):
+    """Reads the capture boots' frames, so it skips on a machine without them."""
+    crops, prefix = _kept_crops(_CAPTURES[title][0])
+    frames = sorted(crops.glob(f"{prefix}__*.png"))
+    if len(frames) < 40:
+        pytest.skip(f"the {title} capture frames are not on this machine")
+    guards = _exported_guards(title, tmp_path)
+
+    for state, wanted in _NEW_GUARDS[title].items():
+        assert {path.stem.split("__", 1)[1] for path in frames if guards(state, path)} == wanted, state

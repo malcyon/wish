@@ -1709,3 +1709,17 @@ def test_press_later_over_ssh_without_a_holder_is_blocked():
     with pytest.raises(ValueError, match="lane holder"):
         amiga.WinuaePipe(runner=guest).press_later(0x3E, 10)
     assert guest.scripts == []
+
+
+def test_soft_reset_hands_winuaes_own_reset_event_to_its_input_layer_in_one_debugger_line():
+    p, guest = pipe(guest=KeyGuest())
+    assert p.soft_reset() == "404"
+    assert PipeGuest.commands(guest.scripts[0]) == ['DBG I "evt AKS_SOFTRESET 1"']
+    assert p.sent[-1] == 'I "evt AKS_SOFTRESET 1"'
+
+
+def test_soft_reset_over_ssh_without_a_holder_is_blocked():
+    guest = KeyGuest()
+    with pytest.raises(ValueError, match="lane holder"):
+        amiga.WinuaePipe(runner=guest).soft_reset()
+    assert guest.scripts == []
