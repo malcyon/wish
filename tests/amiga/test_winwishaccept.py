@@ -3959,3 +3959,81 @@ def test_checkpoint_reads_are_recorded_without_a_verdict(tmp_path, monkeypatch):
     with pytest.raises(winwishaccept.AcceptanceStop, match="reads need a checkpoint"):
         winwishaccept._check_steps(SimpleNamespace(phases=(maproute.Phase(
             "transition", "world", (maproute.Step("move", "world", key="NP8", reads=reads),)),)))
+
+
+def _echo_png(path, echoed):
+    """A 100x40 crop: fixed text in the top 20 rows, and a line below that shows `echoed` characters."""
+    image = Image.new("RGB", (100, 40), (0, 0, 0))
+    for x in range(50):
+        for y in range(20):
+            image.putpixel((x, y), (200, 200, 200) if (x + y) % 3 else (0, 0, 90))
+    for x in range(echoed * 4):
+        for y in range(25, 35):
+            image.putpixel((x, y), (255, 255, 255))
+    image.save(path)
+
+
+def _echo_controller(tmp_path, monkeypatch, rule_box):
+    from tools.amiga import screens
+
+    reference = tmp_path / "reference.png"
+    _echo_png(reference, 0)
+    rule = screens.guard_rule(reference, rule_box)
+    rules = tmp_path / "guards.json"
+    rules.write_text(json.dumps({"cli": rule}))
+    controller, game, screen = _screen_controller(
+        tmp_path, "pool", (), "cli", guards=screens.PixelGuards(rules))
+    typed = []
+
+    def grab(state, raw, crop, timeout):
+        pathlib.Path(raw).write_bytes(b"raw")
+        _echo_png(crop, len(typed))
+        return True
+
+    game.grab = grab
+    game.press = lambda holder, key, timeout: (game.keys.append(key), typed.append(key))
+    # The wheel state is matched by name only; the CLI crop above never equals it.
+    monkeypatch.setattr(controller, "_await", lambda state, **kwargs: {"crop": None})
+    return controller, game
+
+
+def test_a_type_step_on_an_echoing_screen_passes_with_a_guard_that_leaves_the_line_out(
+        tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game = _echo_controller(tmp_path, monkeypatch, [0, 0, 50, 20])
+    controller.run_phase(maproute.Phase("reload", "cli", (maproute.Step(
+        "type", "wheel", keys=_TYPED, screen="cli"),)))
+    assert game.keys == list(_TYPED)
+
+
+def test_a_type_step_on_an_echoing_screen_stops_at_key_2_when_the_guard_covers_the_line(
+        tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game = _echo_controller(tmp_path, monkeypatch, [0, 0, 100, 40])
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="cli was not recognized before typed key 2 of 8"):
+        controller.run_phase(maproute.Phase("reload", "cli", (maproute.Step(
+            "type", "wheel", keys=_TYPED, screen="cli"),)))
+    assert game.keys == ["P"]
+
+
+def test_a_type_step_settles_before_the_guard_frame_of_every_key_after_the_first(
+        tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game, waits, guards = _type_controller(tmp_path, monkeypatch)
+    events = []
+    real_sleep = controller.sleep
+    controller.sleep = lambda seconds: (events.append(("sleep", seconds)), real_sleep(seconds))[1]
+    real_first = controller._await_first
+    monkeypatch.setattr(controller, "_await_first", lambda states, **kwargs: (
+        events.append(("guard", len(game.keys))), real_first(states, **kwargs))[1])
+    controller.run_phase(maproute.Phase("reload", "cli", (maproute.Step(
+        "type", "wheel", keys=_TYPED, screen="cli"),)))
+    settles = [(at, e) for at, e in enumerate(events)
+               if e == ("sleep", winwishaccept.WHEEL_SETTLE)]
+    assert len(settles) == len(_TYPED) - 1
+    for at, _ in settles:
+        assert events[at + 1][0] == "guard"

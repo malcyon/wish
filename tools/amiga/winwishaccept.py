@@ -81,7 +81,8 @@ DISCOVERY_SNAPSHOT = "ssb_new_verdigris"
 #: The guard name of a title's code-wheel question, which `amigacursewheel.py` answers. The
 #: title wait answers it only where the guard source has a rule for it.
 WHEEL_SCREENS = {"curse": "curse_wheel"}
-#: Seconds `amigacursewheel.answer` waits after each of its two keys.
+#: Seconds `amigacursewheel.answer` waits after each of its two keys, and a `type` step before
+#: it grabs the guard frame for the next key.
 WHEEL_SETTLE = 2.0
 #: Seconds to recognize the screen again before each wheel key and each typed key.
 KEY_GUARD_WAIT = 30
@@ -870,8 +871,14 @@ class Controller:
 
     def _type(self, step: Any, *, action: bool) -> None:
         """A `type` step's keys in order, each counted and each sent only once a fresh
-        frame shows the step's `screen`."""
+        frame, grabbed `WHEEL_SETTLE` after the previous key, shows the step's `screen`.
+
+        Where the screen echoes the typed line, `screen` must name a guard whose boxes leave
+        that line out, or the frame change stops the step at key 2."""
         for number, key in enumerate(step.keys, 1):
+            if number > 1:
+                # A frame grabbed at once can predate the previous key's effect.
+                self.sleep(self.left(WHEEL_SETTLE))
             if not self._still_on(step.screen):
                 raise AcceptanceStop(f"{step.screen} was not recognized before typed key "
                                      f"{number} of {len(step.keys)}")
