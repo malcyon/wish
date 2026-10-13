@@ -3272,23 +3272,6 @@ def to_neutral(dos: DosCharacter,
     out.set("spells_castable", castable, f"DOS {where}",
             dos.fields["spells_castable_cleric"].confidence)
 
-    # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
-    # A companion's 0 is the game's own (DOS_COMPANION_SIZE) and becomes
-    # small; any other value outside 1 and 2 names no figure and is reported
-    # rather than turned into the nearest size.
-    raw_size = dos.get("size")
-    size_at = dos.fields["size"].offset
-    if _dos_companion(dos) and raw_size == DOS_COMPANION_SIZE:
-        out.set("size_small", 0,
-                f"DOS size @{size_at:#05x} = 0, a companion's, which names "
-                f"no figure: small", FIELDS_BY_NAME["size"].confidence)
-    elif raw_size in DOS_SIZES:
-        out.set("size_small", raw_size - 1,
-                f"DOS size @{size_at:#05x}, less one",
-                FIELDS_BY_NAME["size"].confidence)
-    else:
-        out.drop(f"The combat figure's size: this save holds {raw_size} "
-                 f"there, and a player's figure is 1 (small) or 2 (medium)")
     # The raw byte travels beside the vocabulary: size 0 is a story companion's
     # own value and `size_small` has no way to say it (see `_CREATURE_SOURCE`).
     _set_creature_source(out, "size", dos.get("size"))
@@ -3335,6 +3318,27 @@ def to_neutral(dos: DosCharacter,
                 f"DOS field_83_87 @{control_offset:#05x}, unchanged -- bit "
                 f"7 plus the low seven bits of morale, stored halved",
                 Confidence.PROBABLE)
+
+    # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
+    # A companion's 0 is the game's own (DOS_COMPANION_SIZE) and becomes
+    # small; any other value outside 1 and 2 names no figure and is reported
+    # rather than turned into the nearest size.  Read here, once `npc`,
+    # `npc_control_byte` and `unnamed_0ab` are set, because
+    # `c64_codec.joined_companion` decides who is a companion from them.
+    raw_size = dos.get("size")
+    size_at = dos.fields["size"].offset
+    if c64_codec.joined_companion(out) and raw_size == DOS_COMPANION_SIZE:
+        out.set("size_small", 0,
+                f"DOS size @{size_at:#05x} = 0, a companion's, which names "
+                f"no figure: small", FIELDS_BY_NAME["size"].confidence)
+    elif raw_size in DOS_SIZES:
+        out.set("size_small", raw_size - 1,
+                f"DOS size @{size_at:#05x}, less one",
+                FIELDS_BY_NAME["size"].confidence)
+    else:
+        out.drop(f"The combat figure's size: this save holds {raw_size} "
+                 f"there, and a player's figure is 1 (small) or 2 (medium)")
+
     share_index = control_index + 1
     share_offset = f83.offset + share_index
     out.set("treasure_share", control_raw[share_index],
@@ -3611,33 +3615,14 @@ def to_neutral(dos: DosCharacter,
     return out
 
 
-class _ControlView:
-    """The `npc` and `npc_control_byte` :func:`to_neutral` reads off a DOS
-    record's control byte, for a predicate written against a neutral one."""
-
-    def __init__(self, dos: "DosCharacter"):
-        raw = dos.raw("field_83_87")
-        control = raw[1 if len(raw) == 5 else 0]
-        self._fields = {"npc": bool(control & 0x80)}
-        if control & 0x80:
-            self._fields["npc_control_byte"] = control
-
-    def get(self, name: str, default=None):
-        return self._fields.get(name, default)
-
-
-def _dos_companion(dos: "DosCharacter") -> bool:
-    """`c64_codec.joined_companion` of this record: a member the game's join
-    added, whom DOS draws from `CPIC` and not from his size and parts."""
-    return c64_codec.joined_companion(_ControlView(dos))
-
-
 def _figure_size(char: "DosCharacter") -> str | None:
-    """:func:`dos_figure_size` of the record's `size`; the control byte is
-    read only for a 0, the one value it decides."""
+    """:func:`dos_figure_size` of the record's `size`.  Only a 0 needs to know
+    whether he is a companion, and :func:`c64_codec.joined_companion` answers
+    that from the whole record as :func:`to_neutral` reads it."""
     size = char.get("size")
     return dos_figure_size(
-        size, size == DOS_COMPANION_SIZE and _dos_companion(char))
+        size, size == DOS_COMPANION_SIZE
+        and c64_codec.joined_companion(to_neutral(char)))
 
 
 def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",

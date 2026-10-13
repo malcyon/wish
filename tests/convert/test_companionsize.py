@@ -169,8 +169,33 @@ def test_a_taken_over_player_with_size_zero_stops_the_conversion():
     raw[f83.offset + (1 if f83.size == 5 else 0)] = c64_codec.DOS_PC_TAKEN_OVER
     party[index] = dos_codec.DosCharacter(bytes(raw))
     assert party[index].get("size") == DOS_COMPANION_SIZE
+    # The control byte is the only difference: picture and title still name
+    # a joinable companion, and only `$B3` makes him a player.
+    taken_over = dos_codec.to_neutral(party[index])
+    assert taken_over.get("unnamed_0ab") == JOINED["ALIAS"][0]
+    assert taken_over.get("npc_control_byte") == c64_codec.DOS_PC_TAKEN_OVER
+    assert not c64_codec.joined_companion(taken_over)
     with pytest.raises(ValueError, match="DOS size 0 "):
         _convert(party, _table())
+
+
+def test_the_joined_companions_are_companions_on_the_whole_route():
+    """The game's own ALIAS and DRAGONBAIT, read through `to_neutral` and
+    written by `write_c64_save` with nothing built by hand: both are joined
+    companions, both read size_small 0 with no drop, and both get the
+    default icon."""
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    joined = [i for i, c in enumerate(party) if c.name in JOINED]
+    assert len(joined) == len(JOINED)
+    for index in joined:
+        neutral = dos_codec.to_neutral(party[index])
+        assert c64_codec.joined_companion(neutral), party[index].name
+        assert neutral.get("size_small") == 0, party[index].name
+        assert not any("figure's size" in line for line in neutral.dropped)
+    save0, report = _convert(party, _table())
+    assert report.unwritten == []
+    for index in joined:
+        assert _figure(save0, party, index) == _parts().default_icon()
 
 
 def test_a_players_size_outside_one_and_two_is_reported_not_rounded():
