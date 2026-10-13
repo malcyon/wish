@@ -781,17 +781,28 @@ def zombie_player(char: NeutralCharacter) -> bool:
             or char.get("npc") is False)
 
 
+def picture_companion(char: NeutralCharacter) -> bool:
+    """Whether the DOS engine draws `char` from `CPIC` by his picture: any
+    `npc` it has not taken over as a player character.  The load composes a
+    figure from size and parts only below control `$80` (Curse `GAME.OVR
+    0x1F3D9`, Pools of Darkness `0x12F52`), so such a member's size names no
+    figure, joinable or not."""
+    return bool(char.get("npc")) and (
+        char.get("npc_control_byte") != DOS_PC_TAKEN_OVER)
+
+
 def joined_companion(char: NeutralCharacter) -> bool:
     """Whether `char` is one of the companions the game's join adds in its
     title: an `npc` the engine has not taken over as a player character, whose
     combat picture is the `MON` id of a joinable companion."""
-    if not char.get("npc"):
-        return False
-    if char.get("npc_control_byte") == DOS_PC_TAKEN_OVER:
+    if not picture_companion(char):
         return False
     picture = char.get("unnamed_0ab")
+    # `deltas_for` raises for a title with no C64 port, and such a title has
+    # no JOINABLE row either, so the lookup goes by the title's own key.
+    key = getattr(char.game, "key", char.game)
     return (picture is not None
-            and int(picture) in JOINABLE.get(deltas_for(char.game).key, ()))
+            and int(picture) in JOINABLE.get(key, ()))
 
 
 def companion_mon(char: NeutralCharacter,

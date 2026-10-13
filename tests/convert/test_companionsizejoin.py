@@ -144,3 +144,13 @@ def test_a_c64_player_keeps_his_size_on_dos(size_small):
     back, _, _, _ = dos_codec.write(char, deltas=c64_tests.DEFAULTS[key])
     f = dos_port.FIELDS_BY_NAME_FOR[key]["size"]
     assert back[f.offset] == size_small + 1
+
+
+def test_a_pools_of_darkness_npc_is_not_a_joined_companion():
+    """Pools of Darkness has no C64 port, so it has no joinable row."""
+    from goldbox.neutral import NeutralCharacter
+
+    char = NeutralCharacter("DOS", source="made up", game="pools-of-darkness")
+    char.set("npc", True, "made up")
+    char.set("unnamed_0ab", 0x16, "made up")
+    assert c64_codec.joined_companion(char) is False

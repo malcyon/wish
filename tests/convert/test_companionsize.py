@@ -222,13 +222,25 @@ def _unmatched_by_picture(party):
     return party, index, _table()
 
 
+def _unjoinable_picture(party):
+    """A picture no join writes: not a joined companion, still drawn from
+    CPIC by the DOS load like any member above control `$80`."""
+    index = next(i for i, c in enumerate(party) if c.name == "ALIAS")
+    party[index] = _edited(party[index], unnamed_0ab=0x01)
+    neutral = dos_codec.to_neutral(party[index])
+    assert not c64_codec.joined_companion(neutral)
+    assert c64_codec.picture_companion(neutral)
+    return party, index, _table()
+
+
 def _no_table(party):
     return party, next(i for i, c in enumerate(party) if c.name == "ALIAS"), None
 
 
 @pytest.mark.parametrize("unmatch", [_unmatched_by_name, _unmatched_by_picture,
-                                     _no_table],
-                         ids=["name", "picture", "no-table"])
+                                     _unjoinable_picture, _no_table],
+                         ids=["name", "picture", "unjoinable-picture",
+                              "no-table"])
 def test_an_unmatched_companion_gets_the_default_icon(unmatch):
     """DOS draws every companion from `CPIC` by his picture, so his record's
     head, body and colours name no figure the game ever drew.  Unmatched by
@@ -239,3 +251,30 @@ def test_an_unmatched_companion_gets_the_default_icon(unmatch):
     save0, report = _convert(party, companions)
     assert report.unwritten == []
     assert _figure(save0, party, index) == _parts().default_icon()
+
+
+#: The Pools of Darkness party in which PRIAM joined through the developers'
+#: tester: control `$B2`, picture `$71`, size 0, written by the game.
+POD_PRIAM = ("pod-dos", "WISH-SPEC-wish331-pod-tester-anpc-113-dos",
+             "CHRDATE7.SAV")
+
+
+def test_a_pools_of_darkness_companion_keeps_his_size_zero():
+    """Pools of Darkness has no joinable table, but its load draws PRIAM from
+    CPIC as Curse's does (`GAME.OVR 0x12F52`), so his 0 is a companion's and
+    crosses unchanged rather than as a player's drop."""
+    root = gamedata.specimen_root()
+    path = root.joinpath(*POD_PRIAM) if root is not None else None
+    if path is None or not path.is_file():
+        pytest.skip(f"needs specimen {POD_PRIAM[1]}")
+    priam = dos_codec.read_character(path)
+    assert priam.get("size") == DOS_COMPANION_SIZE
+    neutral = dos_codec.to_neutral(priam)
+    assert c64_codec.picture_companion(neutral)
+    assert not c64_codec.joined_companion(neutral)
+    assert neutral.get("size_small") == 0
+    assert not any("figure's size" in line for line in neutral.dropped)
+    deltas = dos_port.POOLS_OF_DARKNESS
+    back, _, _, _ = dos_codec.write(neutral, deltas=deltas)
+    size = dos_port.FIELDS_BY_NAME_FOR[deltas.key]["size"]
+    assert back[size.offset] == DOS_COMPANION_SIZE

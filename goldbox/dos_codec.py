@@ -3322,12 +3322,12 @@ def to_neutral(dos: DosCharacter,
     # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
     # A companion's 0 is the game's own (DOS_COMPANION_SIZE) and becomes
     # small; any other value outside 1 and 2 names no figure and is reported
-    # rather than turned into the nearest size.  Read here, once `npc`,
-    # `npc_control_byte` and `unnamed_0ab` are set, because
-    # `c64_codec.joined_companion` decides who is a companion from them.
+    # rather than turned into the nearest size.  Read here, once `npc` and
+    # `npc_control_byte` are set, because `c64_codec.picture_companion`
+    # decides from them who is drawn from CPIC rather than from his size.
     raw_size = dos.get("size")
     size_at = dos.fields["size"].offset
-    if c64_codec.joined_companion(out) and raw_size == DOS_COMPANION_SIZE:
+    if c64_codec.picture_companion(out) and raw_size == DOS_COMPANION_SIZE:
         out.set("size_small", 0,
                 f"DOS size @{size_at:#05x} = 0, a companion's, which names "
                 f"no figure: small", FIELDS_BY_NAME["size"].confidence)
@@ -3617,12 +3617,12 @@ def to_neutral(dos: DosCharacter,
 
 def _figure_size(char: "DosCharacter") -> str | None:
     """:func:`dos_figure_size` of the record's `size`.  Only a 0 needs to know
-    whether he is a companion, and :func:`c64_codec.joined_companion` answers
-    that from the whole record as :func:`to_neutral` reads it."""
+    whether he is drawn from CPIC, and :func:`c64_codec.picture_companion`
+    answers that from the whole record as :func:`to_neutral` reads it."""
     size = char.get("size")
     return dos_figure_size(
         size, size == DOS_COMPANION_SIZE
-        and c64_codec.joined_companion(to_neutral(char)))
+        and c64_codec.picture_companion(to_neutral(char)))
 
 
 def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
