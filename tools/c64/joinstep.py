@@ -65,7 +65,9 @@ class Bar:
 class Speaker:
     """The party-member pick a `PARLAY` opens (`LIBRARY $4486`, prompt at
     `DUNGEON $0BF0`), matched only on a row holding the prompt alone; Return
-    takes the highlighted member."""
+    takes the highlighted member.  The pick is the party panel with an `EXIT`
+    row under the last name, and it stays drawn under the `PARLAY:` bar that
+    follows."""
     prompt: str = "PICK SPEAKER"
 
 
@@ -90,10 +92,15 @@ class JoinSite:
 
 
 #: Curse `ECL11`, entry 1, square id 5 (`$89DC`; squares 1,4 11,13 9,15
-#: 11,15), gated on `$4C2E` = 0 and `$4C5B` = 0: the opening menu at `$8A9B`
-#: (PARLAY, index 4, to `$8B6B`), `PARLAY` (`$2C`, whose operands give 1 only
-#: for ABUSIVE), the list at `$8C0B` (line 0 or 1 to `$8C73`), the yes/no at
-#: `$96CB` (index 1, YES, to `$8CF0`), then `ADDNPC` 22 and 23 at `$8D0F`.
+#: 11,15), gated on `$4C2E` = 0 and `$4C5B` = 0.  In order: text and a
+#: continue bar (`$96A7`); text and the opening menu at `$8A9B` (PARLAY,
+#: index 4, to `$8B6B`); `PARLAY` (`$2C`) draws the speaker pick and then its
+#: own bar `PARLAY:HAUGHTY SLY NICE MEEK ABUSIVE`, whose operands give 1 only
+#: for ABUSIVE; text and a continue bar; the list at `$8C0B` (line 0 or 1 to
+#: `$8C73`); text and a continue bar; the yes/no at `$96CB` (index 1, YES, to
+#: `$8CF0`); `ADDNPC` 22 and 23 at `$8D0F`, text and a continue bar; `EXIT` at
+#: `$85A2`.  No opcode on this path draws row 24's move sub-bar, so it comes
+#: back only after that `EXIT` or after an early one (`$8589`, `$8597`).
 JOIN_SITES = (
     JoinSite("curse-of-the-azure-bonds", 0x11, "ECL11", ("ALIAS", "DRAGONBAIT"), (
         Bar(("COMBAT", "ADVANCE", "WAIT", "FLEE", "PARLAY"), "PARLAY"),
@@ -113,9 +120,25 @@ def site_for(title: str, area: int) -> JoinSite | None:
     return None
 
 
+def tokens(row: str) -> list[tuple[str, int]]:
+    """ROW's words with the column each starts at.  A heading ending in `:`
+    is a word of its own even when the next word follows it with no blank, as
+    the `PARLAY` bar draws it: `PARLAY:HAUGHTY SLY NICE MEEK ABUSIVE`."""
+    out, col = [], 0
+    for word in row.split():
+        col = row.index(word, col)
+        head, colon, rest = word.partition(":")
+        if not out and colon and head and rest:
+            out += [(head + colon, col), (rest, col + len(head) + 1)]
+        else:
+            out.append((word, col))
+        col += len(word)
+    return out
+
+
 def bar_words(screen) -> tuple[str, ...]:
     """Row 24's words, a leading heading ending in `:` dropped."""
-    words = tuple(screen.row(24).split())
+    words = tuple(word for word, _ in tokens(screen.row(24)))
     if words and words[0].endswith(":"):
         words = words[1:]
     return words
@@ -124,15 +147,11 @@ def bar_words(screen) -> tuple[str, ...]:
 def word_at(row: str, label: str) -> int:
     """The column LABEL's words start at on ROW, whole words only, or -1."""
     want = label.upper().split()
-    words, cols, col = [], [], 0
-    for word in row.split():
-        col = row.index(word, col)
-        words.append(word)
-        cols.append(col)
-        col += len(word)
+    found = tokens(row)
+    words = [word for word, _ in found]
     for i in range(len(words) - len(want) + 1):
         if words[i:i + len(want)] == want:
-            return cols[i]
+            return found[i][1]
     return -1
 
 
@@ -349,6 +368,8 @@ class JoinAnswerer:
                     raise JoinStopped(f"the {which} stood unchanged "
                                       f"{FIRST_SCREEN_GRACE:.0f} s before "
                                       f"{self._next(want)}", screen)
+                # After a key the script has drawn over row 24; the move
+                # sub-bar is redrawn only once it has ended (`JOIN_SITES`).
                 raise JoinStopped(f"the {which} came back before "
                                   f"{self._next(want)}", screen)
             if screen.row(24).strip():

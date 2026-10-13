@@ -87,7 +87,7 @@ R, RT, LT = J.RETURN, J.RIGHT, J.LEFT
 def pit_script(after_yes: Screen | None = None) -> list:
     """The Pit join as ECL11 `$89DC`-`$8D89` draws it."""
     first = "COMBAT ADVANCE WAIT FLEE PARLAY"
-    parlay = "PARLAY: HAUGHTY SLY NICE MEEK ABUSIVE"
+    parlay = "PARLAY:HAUGHTY SLY NICE MEEK ABUSIVE"
     listing = screen({17: "WHAT DO YOU DO?", 18: "TELL HER YOUR STORY",
                       19: "TELL HER YOU'RE HUNTING CULTISTS",
                       20: "TELL HER IT'S NONE OF HER AFFAIR"}, (18, 0, 18))
@@ -509,3 +509,45 @@ def test_the_join_step_answers_the_pit_after_its_text_under_the_move_bar(
     run = _run(monkeypatch, sess, [])
     got = run.join("I")
     assert game.keys == PIT_KEYS and got["square"] == [1, 4, 2]
+
+
+# --- the PARLAY bar as the Pit run drew it ---------------------------------------
+
+#: Row 24 at the run's stop (`07-lost-join`): the heading glued to the first
+#: word, HAUGHTY highlighted, with the speaker pick (the panel and its EXIT
+#: row) and the text before the opening menu still drawn above it.
+PARLAY_ROW = "PARLAY:HAUGHTY SLY NICE MEEK ABUSIVE"
+
+
+def parlay_at_stop(lit_word: str) -> Screen:
+    col = J.word_at(PARLAY_ROW, lit_word)
+    return screen({10: " " * A.S.PARTY_COLUMN + "EXIT",
+                   17: "THE FEMALE FIGHTER GASPS,",
+                   18: "'THEY'RE BONDED!'", 19: "WHAT DO YOU DO?",
+                   24: PARLAY_ROW}, (24, col, col + len(lit_word) - 1),
+                  panel=("MATHEW", "MARK", "TRAVIS", "LEDERA", "SHARA",
+                         "PHILIPPE"))
+
+
+def test_a_heading_glued_to_its_first_word_is_split_off():
+    assert J.word_at(PARLAY_ROW, "HAUGHTY") == 7
+    assert J.word_at(PARLAY_ROW, "NICE") == 19
+    assert J.word_at(PARLAY_ROW, "PARLAY:HAUGHTY") == -1
+    assert J.bar_words(parlay_at_stop("HAUGHTY")) == (
+        "HAUGHTY", "SLY", "NICE", "MEEK", "ABUSIVE")
+    assert J.highlight(parlay_at_stop("HAUGHTY")) == 7
+
+
+def test_the_parlay_bar_the_pit_run_stopped_on_is_answered_nice():
+    # The run's keys up to the stop: continue, four rights to PARLAY, PARLAY,
+    # the speaker; then this bar, which the step stopped on unanswered.
+    script = pit_script()
+    script[8] = (parlay_at_stop("HAUGHTY"), {RT: 9})
+    script[9] = (parlay_at_stop("SLY"), {RT: 10, LT: 8})
+    script[10] = (parlay_at_stop("NICE"), {R: 11, LT: 9})
+    game = Game(script)
+    got = game.answerer().run(PIT)
+    assert game.keys[:7] == [R, RT, RT, RT, RT, R, R]
+    assert game.keys == PIT_KEYS
+    assert {"screen": "the bar HAUGHTY SLY NICE MEEK ABUSIVE",
+            "row24": PARLAY_ROW} in got["screens"]
