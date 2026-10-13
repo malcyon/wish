@@ -9300,7 +9300,7 @@ class FakeFight:
     """
 
     FRAMES = {"map": "MOVE AREA CAST VIEW ENCAMP SEARCH LOOK", "move": "EXIT",
-              "encounter": "COMBAT WAIT FLEE ADVANCE",
+              "encounter": "COMBAT WAIT FLEE ADVANCE", "ambush": "ATTACK EVADE",
               "bar": "MOVE VIEW AIM USE CAST QUICK DONE",
               "treasure": "VIEW TAKE POOL SHARE EXIT", "left": "YES NO",
               "archway": "YES NO", "blank1": "",
@@ -9326,6 +9326,9 @@ class FakeFight:
         #: With `prompt`, the cheat's end of the fight asks `CONTINUE BATTLE`
         #: first, and only `n` gets past it.
         self.prompt = False
+        #: With `ambush`, the encounter opens `ATTACK EVADE` and only `a`
+        #: leaves it for the first command bar; with `stuck` it does not.
+        self.ambush = self.stuck = False
         self.looks = 0
         self.fought = False
         self.map_after = 0
@@ -9423,7 +9426,9 @@ class FakeFight:
                 elif self.square == 1:
                     self.square = 3
                 else:
-                    self.state = "encounter"
+                    self.state = "ambush" if self.ambush else "encounter"
+            elif s == "ambush" and k == "a" and not self.stuck:
+                self.state, self.actor, self.fought = "bar1", "GUY", True
             elif s == "archway" and k == "n":
                 self.state = "move"
             elif s == "encounter" and k == "c":
@@ -10382,6 +10387,40 @@ def test_the_captured_continue_battle_bar_is_not_the_command_bar():
     assert da.fight_bar_kind(da.loose_halve(prompt)) == "continue_battle"
     command = _capture("5713d952cb-f1-dos-won", "013-first-bar-key", issue="733")
     assert da.fight_bar_kind(da.loose_halve(command)) == "command"
+
+
+def test_the_ambush_bar_is_known_by_its_letters():
+    assert da.ambush_words(_words("ATTACK EVADE"))
+    for text in ("ATTACK EVADE DONE", "ATTACK", "ATTACK EVADS",
+                 "COMBAT WAIT FLEE", "MOVE VIEW AIM QUICK DONE", "CONTINUE BATTLEHYES NO",
+                 "VIEW TAKE POOL EXIT"):
+        assert not da.ambush_words(_words(text)), text
+    assert da.fight_bar_kind(_screen(_bar("ATTACK EVADE"), b"")) == "ambush"
+    assert da.FIGHT_KEYS["ambush"] == "a"
+
+
+def test_the_captured_attack_evade_bar_is_the_ambush():
+    shot = _capture("b341fcad4c-d0-native-pit-fight2",
+                    "012-lost-fight-unknown-de20d05ae00ce745", issue="387")
+    assert da.fight_bar_kind(da.loose_halve(shot)) == "ambush"
+
+
+def test_an_ambush_bar_is_answered_attack_once_and_never_evade(tmp_path, fight_now):
+    game, d = _fighter(tmp_path, intervene=True)
+    game.ambush = True
+    d.fight()
+    assert game.keys[:4] == ["m", "Up", "Up", "a"]
+    assert game.keys.count("a") == 1 and "e" not in game.keys[:5]
+    assert game.fought and d.where == "map"
+
+
+def test_an_ambush_bar_that_attack_does_not_change_fails_the_step(
+        tmp_path, fight_now):
+    game, d = _fighter(tmp_path)
+    game.ambush = game.stuck = True
+    with pytest.raises(da.StepFailed, match="ATTACK changed nothing"):
+        d.fight()
+    assert game.keys.count("a") == 1
 
 
 def test_the_silver_blades_treasure_bar_is_known_by_its_letters():
