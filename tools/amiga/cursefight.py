@@ -65,6 +65,10 @@ FIGHT_GUARDS = {
                  "sha256": "43f01d090eccc05783eeedda1c69823ad0474432caf91960c4fbb6370f76f71d",
                  "and": [{"box": [74, 302, 690, 318],
                           "sha256": "67c4990b5d5d9b01fabe5b7b710219be9e0bcdacf41f882e9a72ba2ed4d2098b"}]},
+    # The lost brawl's last text line, which sits over the same RETURN bar as every other
+    # `continue` box and so is told apart by its text.
+    "tossed": {"box": [74, 302, 690, 318],
+               "sha256": "c0673a24f91bb7991f3c3139ce81fbc68556aee0ae50230a88d853ad4fe9c8f8"},
     # MOVE VIEW AIM, the start of every member's command bar.
     "combat_bar": {"box": [72, 404, 288, 426],
                    "sha256": "140a5633d4aa744c3cf0bcf3d4a1bd5870f0ca7701590fa635ddd66abdff61df"},
@@ -82,8 +86,9 @@ FIGHT_GUARDS = {
                     "and": [{"box": [74, 302, 690, 318],
                              "sha256": "62e2c5b54a7168bf15231eb25872aa96f17c857a1994d07fcecf3c381750cdd2"}]},
 }
+#: "tossed" comes before "continue": the first known screen a grab matches names it.
 KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
-         "continue", "tavern", "injuries", "combat_bar", "continue_battle", "treasure",
+         "tossed", "continue", "tavern", "injuries", "combat_bar", "continue_battle", "treasure",
          "treasure_left", "investigate", "camp", "camp_save_picker", "exit_game")
 #: The only keys each screen may receive. The tavern's L(EAVE) is for a bar shown again after
 #: the fight; the investigate question is answered NO, which keeps the party out of a second fight.
@@ -91,7 +96,8 @@ ALLOWED_KEYS = {
     "intro": frozenset({"ESC"}), "front_end": frozenset({"ESC"}), "title": frozenset({"L"}),
     "load_picker": frozenset("ABCDEFGHIJ"), "load_error": frozenset({"RET"}),
     "loaded_menu": frozenset({"B"}), "world": frozenset({"NP4", "NP6", "NP8", "E"}),
-    "continue": frozenset({"RET"}), "tavern": frozenset({"P", "L"}), "injuries": frozenset({"I"}),
+    "continue": frozenset({"RET"}), "tossed": frozenset({"RET"}),
+    "tavern": frozenset({"P", "L"}), "injuries": frozenset({"I"}),
     "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
     "investigate": frozenset({"N"}), "camp": frozenset({"S"}),
@@ -99,7 +105,7 @@ ALLOWED_KEYS = {
 }
 #: Answers to the screens that come between the first command bar and the map.
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure": "E",
-                 "treasure_left": "N", "investigate": "N", "continue": "RET"}
+                 "treasure_left": "N", "investigate": "N", "continue": "RET", "tossed": "RET"}
 #: Facing steps (0 N, 1 E, 2 S, 3 W) and the key that turns the party by each.
 TURN_KEYS = {1: ("NP6",), 2: ("NP6", "NP6"), 3: ("NP4",)}
 STEP = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
@@ -316,6 +322,7 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
     answered: list[dict] = []
     started = still_since = screens.clock()
     settle_from = None
+    lost = False
     last: object = object()
     while True:
         require(screens.clock() - started < FIGHT_LIMIT,
@@ -326,7 +333,9 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
         # A grab with no crop counts as one more of the same, so a stuck one stops the run too.
         if digest != last:
             last, still_since = digest, screens.clock()
-        if state == "world" and bars:
+        # A lost brawl goes from the "tossed outside" text straight to the street, with or
+        # without a command bar having come first.
+        if state == "world" and (bars or lost):
             settle_from = settle_from if settle_from is not None else screens.clock()
             if screens.clock() - settle_from >= MAP_SETTLE:
                 break
@@ -367,14 +376,16 @@ def fight(screens: Screens, memory: Memory, members: list[str]) -> dict:
             continue
         elif state not in FIGHT_ANSWERS:
             raise RouteError(f"{state} showed mid-fight; shot {shot}")
+        if state == "tossed":
+            lost = True
         key = FIGHT_ANSWERS[state]
         screens.press(key, state)
         answered.append({"screen": state, "key": key, "shot": str(shot)})
         screens.sleep(AFTER_KEY)
     owners = {bar["owner"] for bar in bars}
     missing = [name for name in members if name not in owners]
-    require(not missing, f"{missing} had no command bar; bars went to {sorted(owners)}")
-    return {"bars": bars, "answered": answered}
+    require(lost or not missing, f"{missing} had no command bar; bars went to {sorted(owners)}")
+    return {"bars": bars, "answered": answered, "outcome": "lost" if lost else "won"}
 
 
 def check_members(party: list[dict], manifest: dict, members: list[str]) -> dict:

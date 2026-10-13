@@ -332,6 +332,52 @@ def test_fight_does_not_end_on_a_map_that_does_not_hold(tmp_path):
     assert found["answered"][-1]["screen"] == "continue"
 
 
+#: Run 2's ending: the brawl's end screens, then the lost brawl's text and the street, with no
+#: command bar having come first.
+LOST = [None, "tavern", None, "continue_battle", "continue", "treasure", "treasure_left",
+        "tossed", "world"]
+
+
+def test_fight_ends_as_lost_on_the_tossed_outside_text_and_the_map(tmp_path):
+    clock = Clock()
+    game = Game(clock, LOST)
+    game.walking = False
+    screens = _screens(tmp_path, game, clock)
+    found = cursefight.fight(screens, game, ["EVOKER"])
+    assert found["outcome"] == "lost" and found["bars"] == []
+    assert game.keys == ["N", "RET", "E", "N", "RET"]
+    assert game.pressed_on[-1] == "tossed"
+    _keys_allowed(screens, game)
+
+
+def test_fight_without_the_tossed_text_still_stops_on_a_map_with_no_bar(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None, "continue_battle", "continue", "world"])
+    game.walking = False
+    with pytest.raises(RouteError, match="world showed mid-fight"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+
+
+def test_fight_reports_a_won_brawl_as_won(tmp_path):
+    clock = Clock()
+    game = Game(clock, FIGHT, owners=[_owner("SUNDRA"), _owner("EVOKER")])
+    game.walking = False
+    assert cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])["outcome"] == "won"
+
+
+def test_tossed_guard_matches_the_captured_text_and_not_the_frames_around_it(tmp_path):
+    shots = pathlib.Path.home() / ".cache/wish/acceptance/WISH-390/run2/screens"
+    frames = {n: shots / f"{n}-fight.png" for n in (113, 114, 115)}
+    if not all(f.is_file() for f in frames.values()):
+        pytest.skip("the WISH-390 run 2 capture is not on this machine")
+    rules = tmp_path / "guards.json"
+    rules.write_text(json.dumps(cursefight.guard_rules()))
+    guards = PixelGuards(rules)
+    assert guards("tossed", frames[114])
+    assert guards("continue", frames[114])
+    assert not guards("tossed", frames[113]) and not guards("tossed", frames[115])
+
+
 @pytest.mark.parametrize("change, match", [
     ({"quickfight": 0}, "quickfight 0"), ({"hit_points": 0}, "fell"),
     ({"status": 6}, "fell"), ({"control": 0}, "fell")])
