@@ -9243,7 +9243,7 @@ class CurseRun(PoolRun):
     def fight_cast(self, arg: str, walk: str, steps: int) -> dict:
         raise self.fail("fight-cast", "Pool of Radiance only")
 
-    TAVERN_BAR_WAIT = 10.0
+    TAVERN_BAR_WAIT = 20.0
 
     def _answer_tavern_injuries(self) -> bool:
         """Answer `IGNORE THEM` when row 24 holds exactly the bartender's
@@ -9255,7 +9255,7 @@ class CurseRun(PoolRun):
         `TAVERN_BAR_WAIT` seconds."""
         from tools.c64 import laterbattle
 
-        wait_until = time.time() + self.TAVERN_BAR_WAIT
+        wait_until = time.time() + self.budget(self.TAVERN_BAR_WAIT, "the tavern's bar")
         while True:
             screen = self.sess.screen()
             row = "" if screen is None else screen.row(24)

@@ -15098,9 +15098,23 @@ def _tavern_fight(monkeypatch, tmp_path, screens, blank_reads=0):
     from tools.curse_of_the_azure_bonds import cursethac0
 
     pressed = []
-    monkeypatch.setattr(A.CurseRun, "TAVERN_BAR_WAIT", 0.0 if not blank_reads else 5.0,
-                        raising=False)
-    monkeypatch.setattr(A.time, "sleep", lambda seconds: None)
+    now = [1000.0]
+
+    class FakeTime:
+        """The clock `_answer_tavern_injuries` waits on, advanced by its sleeps."""
+
+        @staticmethod
+        def time():
+            return now[0]
+
+        @staticmethod
+        def sleep(seconds):
+            now[0] += seconds
+
+        def __getattr__(self, name):
+            return getattr(time, name)
+
+    monkeypatch.setattr(A, "time", FakeTime())
 
     class Route:
         last_goto_steps = 1
@@ -15124,6 +15138,7 @@ def _tavern_fight(monkeypatch, tmp_path, screens, blank_reads=0):
         def screen(self):
             rows = [""] * 25
             self.reads += 1
+            assert self.reads < 10_000, "the wait for the tavern bar never gave up"
             rows[24] = ("I,J,K,M, RETURN OR BUTTON" if self.reads <= blank_reads
                         else screens[self.at])
             return FakeScreen(rows)
@@ -15181,3 +15196,11 @@ def test_curse_fight_waits_for_an_injuries_bar_drawn_after_the_tavern_capture(
         "MOVE VIEW AIM"], blank_reads=2)
     run.fight("10", "I", 5)
     assert pressed == ["IGNORE THEM", "PUNCH BARKEEP"]
+
+
+def test_curse_fight_stops_when_the_tavern_bar_never_draws(monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, [
+        "MOVE VIEW AIM"], blank_reads=10**6)
+    with pytest.raises(A.StepFailed, match="PUNCH BARKEEP was not selectable"):
+        run.fight("10", "I", 5)
+    assert pressed == []
