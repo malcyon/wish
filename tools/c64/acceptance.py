@@ -8550,20 +8550,34 @@ class CurseRun(PoolRun):
         return self.sess.press_bar(word, timeout=self.budget(timeout, word))
 
     # -- the sheet and the save, on the routes `curedrive.py` measured ---------------
+    def panel_name_at(self, index: int) -> str:
+        """The name on panel row INDEX as the screen draws it now: a member
+        who joined or left after the load has moved the rows, so the load's
+        marching order is only the fallback for a panel that cannot be read."""
+        s = self.sess.screen()
+        try:
+            if s is not None:
+                names, _ = route_pool.panel_names(s, self.sess.party_rows(s))
+                if 0 <= index < len(names) and names[index]:
+                    return names[index].upper()
+        except route_pool.PanelError:
+            pass
+        return (screens.as_drawn(self.panel[index])
+                if 0 <= index < len(self.panel) else "")
+
     def open_sheet(self, who: str) -> list[str]:
         """`VIEW` from camp, waited for as `EXIT` on row 24 with the member's
         name on row 1: Curse's and Silver Blades' sheet bar is not Pool's."""
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         index = self.panel_index(who)
+        name = self.panel_name_at(index)
         if not self.sess.select_party(index):
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
         if not self.choose_bar("VIEW", timeout=20):
             raise self.fail("view", "VIEW could not be chosen")
         # `as_drawn` yields only glyphs (a lower-case letter becomes a symbol
         # below `@`), so it never needs upper-casing to match row 1.
-        name = (screens.as_drawn(self.panel[index])
-                if 0 <= index < len(self.panel) else "")
         rows = self.wait_rows(
             lambda r: "EXIT" in r[24] and CAMP_BAR not in r[24]
             and name in r[1].upper() and bool(r[1].strip()),

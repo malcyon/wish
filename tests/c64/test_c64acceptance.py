@@ -6345,6 +6345,29 @@ def test_a_view_waits_for_a_mixed_case_name_as_the_c64_draws_it(tmp_path, monkey
     assert got["who"] == "1"
 
 
+def test_a_view_by_name_waits_for_the_member_the_panel_lists_now_not_the_one_at_load(
+        tmp_path, monkeypatch):
+    """A member who joined after the load put MATHEW first at load and ALIAS
+    first now; viewing ALIAS must wait for ALIAS's sheet."""
+    live = {2: " " * 16 + "NAME            AC HP",
+            4: " " * 16 + "ALIAS           5  31",
+            5: " " * 16 + "MATHEW          2  22"}
+    sess = SheetFake({"camp": _window(live, "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"),
+                      "sheet": _window({1: "ALIAS  FEMALE HUMAN"}, "EXIT")},
+                     {("camp", ("party", 0)): "camp", ("camp", ("bar", "VIEW")): "sheet",
+                      ("sheet", ("bar", "EXIT")): "camp"}, "camp")
+    run = _curse_run(tmp_path, sess)
+    run.panel = ["MATHEW", "ALIAS"]
+    run.panel_index = lambda who: 0
+    run.to_world = lambda tries=10: True
+    run.clock = _Clock(monkeypatch)
+    try:
+        got = run.view("ALIAS")
+    finally:
+        run.log.close()
+    assert any("ALIAS" in r for r in got["sheet"])
+
+
 def _fake_disk(monkeypatch, marching):
     monkeypatch.setattr(A, "marching_names", lambda path: list(marching))
     monkeypatch.setattr(A, "saved_characters", lambda path: {
