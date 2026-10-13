@@ -87,6 +87,7 @@ from . import (
 from . import levels as level_tables
 from .c64_codec import Report
 from .c64_codec import c64_share_from_dos as c64_share_from_dos
+from .companions import companion_size
 from .dos_port import (
     CLASS_NUMBERS,
     CURSE_OF_THE_AZURE_BONDS,
@@ -6452,10 +6453,20 @@ def write(char: NeutralCharacter,
         raw_size = creature_source(char, "size")
         keeps = (raw_size is not None
                  and max(0, raw_size - 1) == int(size_small.value))
-        put(size_small, "size",
-            " unchanged, the source's own byte" if keeps else
-            " plus one -- DOS stores 1 small / 2 medium",
-            value=raw_size if keeps else int(size_small.value) + 1)
+        # A C64 companion's 1 is the size his own join copied; DOS's join
+        # gives a companion his `MON*CHA.DAX` record's size instead.
+        joined = (companion_size(deltas.key, "DOS")
+                  if into == "DOS" and char.port == "C64"
+                  and c64_codec.joined_companion(char) else None)
+        if joined is not None:
+            put(size_small, "size",
+                f", written as {joined}, the size the DOS join gives a "
+                f"companion", value=joined)
+        else:
+            put(size_small, "size",
+                " unchanged, the source's own byte" if keeps else
+                " plus one -- DOS stores 1 small / 2 medium",
+                value=raw_size if keeps else int(size_small.value) + 1)
 
     # -- two blocks the ports share byte for byte ----------------------------
     forms = use("attack_forms")

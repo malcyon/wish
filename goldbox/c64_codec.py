@@ -37,6 +37,7 @@ from . import (
     traits,
 )
 from . import levels as level_tables
+from .companions import companion_size
 from .encoding import COMBAT_BIAS
 from .items import TYPE_LOCATION, Item, ItemType
 from .layout import RECORD_SIZE, Confidence, Field
@@ -778,6 +779,13 @@ def zombie_player(char: NeutralCharacter) -> bool:
         return False
     return (char.get("npc_control_byte") == DOS_PC_TAKEN_OVER
             or char.get("npc") is False)
+
+
+def joined_companion(char: NeutralCharacter) -> bool:
+    """Whether `char` is a companion the game's join added: an `npc` the
+    engine has not taken over as a player character."""
+    return bool(char.get("npc")) and (
+        char.get("npc_control_byte") != DOS_PC_TAKEN_OVER)
 
 
 def companion_mon(char: NeutralCharacter,
@@ -2327,8 +2335,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # -- size ----------------------------------------------------------------
     size = use("size_small")
     if size is not None:
-        rec.set("size_small", size.value)
-        emit(size, "size_small", 0x099, 1)
+        # A DOS companion's size is 0, which names no figure; the C64 join
+        # gives a companion the size his own `MON` file holds.
+        joined = (companion_size(deltas.key, "C64")
+                  if char.port == "DOS" and joined_companion(char) else None)
+        if joined is None:
+            rec.set("size_small", size.value)
+            emit(size, "size_small", 0x099, 1)
+        else:
+            rec.set("size_small", joined)
+            emit(size, "size_small", 0x099, 1,
+                 f", written as {joined}, the size the C64 join gives a "
+                 f"companion")
 
     # -- turning: the C64 has two bytes --------------------------------------
     # The caster's byte is **computed and not copied** (#288). No port a

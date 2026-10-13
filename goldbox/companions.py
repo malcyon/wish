@@ -58,6 +58,24 @@ JOINABLE: dict[str, frozenset[int]] = {
 }
 
 
+#: The figure-size byte a companion's own join writes, per title and port.
+#: The C64 join copies `0x099` of his `MON` file (1 in all twelve joinable
+#: Curse and Silver Blades files); the DOS join copies the size of his
+#: `MON*CHA.DAX` record (0 in all 81 Curse records).  A title absent here has
+#: no measured companion value, so its companions' size is converted as a
+#: player's is.
+COMPANION_SIZE: dict[str, dict[str, int]] = {
+    CURSE_KEY: {"C64": 1, "DOS": 0},
+    SILVER_BLADES_KEY: {"C64": 1, "DOS": 0},
+}
+
+
+def companion_size(key: str, port: str) -> int | None:
+    """The size byte `port`'s join gives a companion of title `key`, or None
+    when none is measured."""
+    return COMPANION_SIZE.get(key, {}).get(port)
+
+
 def _name_from(raw: bytes) -> str:
     """A NUL-padded name field as text, cut at the first NUL."""
     return raw[:NAME_SIZE].split(b"\0", 1)[0].decode("latin-1").strip()
