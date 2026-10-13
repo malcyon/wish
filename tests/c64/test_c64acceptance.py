@@ -6065,12 +6065,18 @@ def _sheet_screens(named):
             "sheet": _window({1: named}, "EXIT")}
 
 
+def _row_named_by_run_panel(run, index_of):
+    """A stand-in for `panel_row` whose name is the run's own `panel` entry."""
+    return lambda who: (index_of(who), A.screens.as_drawn(
+        run.panel[index_of(who)]).upper())
+
+
 def _sheet_run(tmp_path, named, monkeypatch):
     sess = SheetFake(_sheet_screens(named),
                      {("camp", ("party", 4)): "camp", ("camp", ("bar", "VIEW")): "sheet",
                       ("sheet", ("bar", "EXIT")): "camp"}, "camp")
     run = _curse_run(tmp_path, sess)
-    run.panel_index = lambda who: int(who) - 1
+    run.panel_row = _row_named_by_run_panel(run, lambda who: int(who) - 1)
     run.to_world = lambda tries=10: True
     run.clock = _Clock(monkeypatch)
     return run, sess
@@ -6345,27 +6351,73 @@ def test_a_view_waits_for_a_mixed_case_name_as_the_c64_draws_it(tmp_path, monkey
     assert got["who"] == "1"
 
 
-def test_a_view_by_name_waits_for_the_member_the_panel_lists_now_not_the_one_at_load(
-        tmp_path, monkeypatch):
-    """A member who joined after the load put MATHEW first at load and ALIAS
-    first now; viewing ALIAS must wait for ALIAS's sheet."""
-    live = {2: " " * 16 + "NAME            AC HP",
-            4: " " * 16 + "ALIAS           5  31",
-            5: " " * 16 + "MATHEW          2  22"}
-    sess = SheetFake({"camp": _window(live, "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"),
-                      "sheet": _window({1: "ALIAS  FEMALE HUMAN"}, "EXIT")},
+def _live_panel_run(tmp_path, monkeypatch, panel_lines, sheet="ALIAS  FEMALE HUMAN"):
+    """The real `panel_index` over a camp screen whose panel disagrees with the
+    load order MATHEW, ALIAS."""
+    sess = SheetFake({"camp": _window(panel_lines, "ENCAMP:SAVE VIEW MAGIC REST ALTER FIX EXIT"),
+                      "sheet": _window({1: sheet}, "EXIT")},
                      {("camp", ("party", 0)): "camp", ("camp", ("bar", "VIEW")): "sheet",
                       ("sheet", ("bar", "EXIT")): "camp"}, "camp")
     run = _curse_run(tmp_path, sess)
     run.panel = ["MATHEW", "ALIAS"]
-    run.panel_index = lambda who: 0
+    del run.panel_index
     run.to_world = lambda tries=10: True
     run.clock = _Clock(monkeypatch)
+    return run
+
+
+LIVE_HEAD = {2: " " * 16 + "NAME            AC HP"}
+
+
+def test_a_view_by_name_waits_for_the_member_the_panel_lists_now_not_the_one_at_load(
+        tmp_path, monkeypatch):
+    run = _live_panel_run(tmp_path, monkeypatch, {
+        **LIVE_HEAD, 4: " " * 16 + "ALIAS           5  31",
+        5: " " * 16 + "MATHEW          2  22"})
     try:
         got = run.view("ALIAS")
     finally:
         run.log.close()
     assert any("ALIAS" in r for r in got["sheet"])
+
+
+def test_a_view_by_line_number_waits_for_the_name_that_line_shows_now(
+        tmp_path, monkeypatch):
+    run = _live_panel_run(tmp_path, monkeypatch, {
+        **LIVE_HEAD, 4: " " * 16 + "ALIAS           5  31",
+        5: " " * 16 + "MATHEW          2  22"})
+    try:
+        got = run.view("1")
+    finally:
+        run.log.close()
+    assert any("ALIAS" in r for r in got["sheet"])
+
+
+def test_a_view_of_a_line_with_no_name_fails_instead_of_matching_any_sheet(
+        tmp_path, monkeypatch):
+    run = _live_panel_run(tmp_path, monkeypatch, {
+        **LIVE_HEAD, 4: " " * 16 + "ALIAS           5  31"})
+    real = A.route_pool.panel_names
+    monkeypatch.setattr(A.route_pool, "panel_names",
+                        lambda s, rows: ([""] * len(rows), real(s, rows)[1]))
+    try:
+        with pytest.raises(A.StepFailed, match="shows no name"):
+            run.view("1")
+    finally:
+        run.log.close()
+    assert not any(k[0] == "bar" and k[1] == "VIEW" for k in run.sess.sent)
+
+
+def test_a_view_by_line_number_on_a_panel_without_its_heading_fails(
+        tmp_path, monkeypatch):
+    run = _live_panel_run(tmp_path, monkeypatch, {
+        4: " " * 16 + "ALIAS           5  31"})
+    try:
+        with pytest.raises(A.StepFailed, match="shows no name|no AC heading|panel"):
+            run.view("1")
+    finally:
+        run.log.close()
+    assert not any(k[0] == "bar" and k[1] == "VIEW" for k in run.sess.sent)
 
 
 def _fake_disk(monkeypatch, marching):
@@ -12182,6 +12234,7 @@ def _scribe_run(tmp_path, sess):
     run.game = c64_port.by_key(getattr(sess, "key", "secret-of-the-silver-blades"))
     run.box = c64_save.CONTAINERS[run.game.key]
     run.panel_index = SCRIBE_PARTY.index
+    run.panel_row = _row_named_by_run_panel(run, SCRIBE_PARTY.index)
     return run
 
 

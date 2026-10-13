@@ -2537,16 +2537,30 @@ class PoolRun:
         The names are read from a frame taken after the panel has settled,
         with that frame's own rows: a world screen still redrawing after a
         disk prompt shows only its first names."""
+        return self.panel_row(who)[0]
+
+    def panel_row(self, who: str) -> tuple[int, str]:
+        """`panel_index` and the name that row shows, upper-cased, both read
+        from one frame: a member who joined after the load has moved the rows,
+        so the load's marching order cannot name the row."""
         self.sess.stable_party_rows()
         s = self.sess.screen()
         rows = [] if s is None else self.sess.party_rows(s)
         try:
             if route_pool.is_line_number(who):
-                return route_pool.line_number(who, len(rows) if s else None)
-            return route_pool.pick_panel_row(
-                *route_pool.panel_names(s, rows) if s else ([], 0), who)
+                index = route_pool.line_number(who, len(rows) if s else None)
+                # A line number needs no name column; the sheet wait does.
+                try:
+                    names = route_pool.panel_names(s, rows)[0]
+                except route_pool.PanelError:
+                    names = []
+            else:
+                names, width = route_pool.panel_names(s, rows) if s else ([], 0)
+                index = route_pool.pick_panel_row(names, width, who)
         except route_pool.PanelError as e:
             raise self.fail("panel", str(e)) from None
+        name = names[index].upper() if 0 <= index < len(names) else ""
+        return index, name
 
     # -- readings after every step ---------------------------------------------
     def reading(self) -> dict:
@@ -8550,40 +8564,24 @@ class CurseRun(PoolRun):
         return self.sess.press_bar(word, timeout=self.budget(timeout, word))
 
     # -- the sheet and the save, on the routes `curedrive.py` measured ---------------
-    def panel_name_at(self, index: int) -> str:
-        """The name on panel row INDEX as the screen draws it now: a member
-        who joined or left after the load has moved the rows, so the load's
-        marching order is only the fallback for a panel that cannot be read."""
-        s = self.sess.screen()
-        try:
-            if s is not None:
-                names, _ = route_pool.panel_names(s, self.sess.party_rows(s))
-                if 0 <= index < len(names) and names[index]:
-                    return names[index].upper()
-        except route_pool.PanelError:
-            pass
-        return (screens.as_drawn(self.panel[index])
-                if 0 <= index < len(self.panel) else "")
-
     def open_sheet(self, who: str) -> list[str]:
         """`VIEW` from camp, waited for as `EXIT` on row 24 with the member's
         name on row 1: Curse's and Silver Blades' sheet bar is not Pool's."""
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
-        index = self.panel_index(who)
-        name = self.panel_name_at(index)
+        index, name = self.panel_row(who)
+        if not name:
+            raise self.fail("panel", f"panel row {index + 1} shows no name for {who}")
         if not self.sess.select_party(index):
             raise self.fail("panel", f"the panel highlight would not go onto {who}")
         if not self.choose_bar("VIEW", timeout=20):
             raise self.fail("view", "VIEW could not be chosen")
-        # `as_drawn` yields only glyphs (a lower-case letter becomes a symbol
-        # below `@`), so it never needs upper-casing to match row 1.
         rows = self.wait_rows(
             lambda r: "EXIT" in r[24] and CAMP_BAR not in r[24]
             and name in r[1].upper() and bool(r[1].strip()),
-            self.budget(30, "the sheet"), f"{name or who}'s sheet")
+            self.budget(30, "the sheet"), f"{name}'s sheet")
         if rows is None:
-            raise self.fail("view", f"no sheet naming {name or who} came up")
+            raise self.fail("view", f"no sheet naming {name} came up")
         self.sess.settle(0.8)
         return self.capture(f"sheet-{who}")
 
