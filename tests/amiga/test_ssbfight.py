@@ -1,0 +1,650 @@
+"""The Silver Blades wandering-fight driver: the stage, the walk, the fight's answers, the capture
+mode and their fail-closed paths."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+
+import pytest
+
+from goldbox import amiga_adf, amiga_savegame
+from tools.amiga import amigakeys, ssbfight
+from tools.amiga.screens import PixelGuards
+from tools.amiga.winuaesession import RouteError
+from tools.registry import scratch, specimens
+
+START = {"area": 16, "x": 3, "y": 7, "facing": 2}
+#: Two street squares, 3,7 and 3,6 north of it.
+PLAN = {"route": [], "square": [3, 7], "facing": 0}
+NAMES = ["Guy de Valois", "PAINE", "EPONA", "MALACHITE", "DOMINIC", "MORGAINE"]
+
+
+def _member(name, **fields):
+    row = {"name": name, "control": 0, "status": 0, "side": 0, "quickfight": 0,
+           "hit_points": 8}
+    row.update(fields)
+    return row
+
+
+def _manifest(save="E"):
+    return {"title": "ssb", "issue": "391",
+            "disks": {"df0": {"path": "df0.adf"}},
+            "fight": {"load": "D", "save": save, "place": dict(START), **PLAN, "names": NAMES,
+                      "members": {name: {k: v for k, v in _member(name).items() if k != "name"}
+                                  for name in NAMES}}}
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += max(seconds, 0.5)
+
+
+class Game:
+    """A guest, guard map and memory over one scripted game.
+
+    While walking, NP8 steps, NP4 and NP6 turn, and a step onto a square in `fights` brings
+    up the encounter page. Otherwise every screen comes from `script`, one per grab, the last
+    one staying.
+    """
+
+    def __init__(self, clock, script=("world",), fights=(), owners=(), parties=()):
+        self.clock, self.script = clock, list(script)
+        self.x, self.y, self.facing = START["x"], START["y"], START["facing"]
+        self.fights = set(fights)
+        self.met = False
+        self.current = None
+        self.keys: list[str] = []
+        self.pressed_on: list[str | None] = []
+        self.owners = list(owners)
+        self.parties = list(parties)
+        self.holder = "holder"
+        self.walking = True
+        self.frame = 0
+
+    # Guest
+    def grab(self, label, raw, crop, timeout):
+        self.clock.now += 1
+        if self.walking:
+            self.current = "continue" if self.met else "world"
+        else:
+            self.current = self.script.pop(0) if len(self.script) > 1 else self.script[0]
+        crop.write_bytes(str(self.current).encode())
+        return True
+
+    def press(self, holder, key, timeout):
+        self.keys.append(key)
+        self.pressed_on.append(self.current)
+        if not self.walking or self.met:
+            return
+        if key == "NP8":
+            dx, dy = ssbfight.STEP[self.facing]
+            self.x, self.y = self.x + dx, self.y + dy
+            self.met = (self.x, self.y) in self.fights
+        elif key in ("NP4", "NP6"):
+            self.facing = (self.facing + (1 if key == "NP6" else -1)) % 4
+
+    # Guards
+    def __contains__(self, state):
+        return state in ssbfight.KNOWN
+
+    def __call__(self, state, crop):
+        return state == self.current
+
+    # Memory
+    def fix(self):
+        return (self.x, self.y, self.facing)
+
+    def owner(self):
+        return self.owners.pop(0) if len(self.owners) > 1 else self.owners[0]
+
+    def party(self):
+        return self.parties.pop(0)
+
+
+def _screens(tmp_path, game, clock, budget=100_000):
+    return ssbfight.Screens(game, "holder", tmp_path / "shots", game, budget,
+                            clock=clock, sleep=clock.sleep)
+
+
+def _keys_allowed(screens, game):
+    pressed = [event for event in screens.events if "key" in event]
+    assert [event["key"] for event in pressed] == game.keys
+    for event in pressed:
+        assert event["key"] in ssbfight.ALLOWED_KEYS[event["from"]], event
+
+
+def _owner(name, **fields):
+    return {"address": 0xC50000, **_member(name, **fields)}
+
+
+# -- the guard map ---------------------------------------------------------------------------
+
+def test_guard_rules_cover_every_known_screen_but_the_uncaptured_ones():
+    rules = ssbfight.guard_rules()
+    on_file = json.loads(ssbfight.GUARDS.read_text())["guards"]
+    assert ssbfight.missing(rules) == [s for s in ssbfight.UNCAPTURED if s not in on_file]
+    assert set(ssbfight.KNOWN) - set(ssbfight.UNCAPTURED) <= set(rules)
+    assert ssbfight.TREASURE_SHORT in rules["treasure_bar"]
+    assert set(ssbfight.ALLOWED_KEYS) <= set(ssbfight.KNOWN)
+
+
+def test_guard_rules_load_as_pixel_guards(tmp_path):
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps(ssbfight.guard_rules()))
+    assert "treasure_bar" in PixelGuards(path)
+
+
+def test_every_allowed_key_is_an_amiga_key():
+    for keys in ssbfight.ALLOWED_KEYS.values():
+        for key in keys:
+            assert amigakeys.lookup(key).amiga is not None, key
+
+
+def test_the_short_treasure_rule_reads_both_kept_treasure_bars(tmp_path):
+    root = scratch.cache_dir("acceptance")
+    crops = [root / "640/ssb2/accept1/shots/11-world.png",
+             root / "640/ssb2/accept2/shots/11-world.png"]
+    world = root / "672/26293716ee-amiga-accept1b/accept1b/shots/11-world.png"
+    if not all(p.is_file() for p in (*crops, world)):
+        pytest.skip("the kept Silver Blades treasure-bar crops are not on this machine")
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps({"short": ssbfight.TREASURE_SHORT}))
+    guards = PixelGuards(path)
+    assert all(guards("short", crop) for crop in crops)
+    assert not guards("short", world)
+
+
+# -- staging ----------------------------------------------------------------------------------
+
+class Geo:
+    """A 16x16 map of `STREET` squares with no walls, but for `other` squares."""
+
+    def __init__(self, other=(), walls=()):
+        self.other, self.walls = set(other), set(walls)
+
+    def attributes(self, x, y):
+        return 0x81 if (x, y) in self.other else ssbfight.STREET
+
+    def is_passable(self, x, y, facing):
+        return (x, y, facing) not in self.walls
+
+
+def test_wander_plan_stays_where_the_party_stands_on_a_street():
+    assert ssbfight.wander_plan(Geo(), (3, 7)) == {"route": [], "square": [3, 7], "facing": 0}
+
+
+def test_wander_plan_skips_a_walled_or_scripted_neighbour():
+    geo = Geo(other={(3, 6)}, walls={(3, 7, 1)})
+    assert ssbfight.wander_plan(geo, (3, 7))["facing"] == 2
+
+
+def test_wander_plan_walks_off_a_scripted_square_over_streets_only():
+    others = {(x, y) for x in range(16) for y in range(16) if x < 5} - {(4, 7)}
+    plan = ssbfight.wander_plan(Geo(other=others), (3, 7))
+    assert plan["route"] == [1] and plan["square"] == [4, 7]
+
+
+def test_wander_plan_stops_when_no_street_pair_is_reachable():
+    others = {(x, y) for x in range(16) for y in range(16)} - {(3, 7)}
+    with pytest.raises(RouteError, match="no street square"):
+        ssbfight.wander_plan(Geo(other=others), (3, 7))
+
+
+def test_with_word_changes_only_the_gate_word():
+    data = bytes(range(256)) * 40
+    staged = ssbfight.with_word(data, ssbfight.GATE, 1)
+    at = amiga_savegame.SILVER_BLADES.vm_offset(ssbfight.GATE - 0x200)
+    assert ssbfight.word(staged, ssbfight.GATE) == 1 and len(staged) == len(data)
+    assert {i for i in range(len(data)) if data[i] != staged[i]} <= {at, at + 1}
+
+
+def _specimen():
+    path = (specimens.tree_root() / "ssb-amiga" / "WISH-SPEC-amiga-ssb-foundation-walked"
+            / "fetched-df0.adf")
+    try:
+        diskb = ssbfight.route_silver_blades.find_disk_b()
+    except RouteError:
+        diskb = None
+    if not path.is_file() or diskb is None:
+        pytest.skip("the foundation-walked specimen or Silver Blades disk B is not on this machine")
+    return path, diskb
+
+
+def test_stage_sets_the_gate_in_a_copy_and_plans_the_walk(tmp_path):
+    source, diskb = _specimen()
+    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()  # noqa: E731
+    before = digest(source)
+    path = ssbfight.stage(source, tmp_path / "out", load="B", save="E", diskb=diskb)
+    staged = json.loads(path.read_text())
+    fight = staged["fight"]
+    assert fight["place"] == {"area": 16, "x": 3, "y": 5, "facing": 2}
+    # North of 3,5 is 3,4, a scripted square (0x87); east is the street square 4,5.
+    assert fight["route"] == [] and fight["square"] == [3, 5] and fight["facing"] == 1
+    assert fight["staged"] == {"4C2D": {"before": 0, "after": 1}}
+    assert fight["noted"]["4BF2"] == 16 and fight["noted"]["4CD9"] == 0
+    assert fight["names"][1:] == NAMES[1:]
+    assert digest(source) == before == fight["source"]["sha256"]
+    original = amiga_adf.AmigaDisk.open(source).read_file("/SAVE/savgamB.sav")
+    copy = amiga_adf.AmigaDisk.open(staged["disks"]["df0"]["path"])
+    assert not copy.verify()
+    written = copy.read_file("/SAVE/savgamB.sav")
+    changed = [i for i in range(len(original)) if original[i] != written[i]]
+    at = amiga_savegame.SILVER_BLADES.vm_offset(ssbfight.GATE - 0x200)
+    assert len(written) == len(original) and set(changed) <= {at, at + 1} and changed
+    assert ssbfight.word(written, ssbfight.GATE) == 1
+    assert copy.read_file("/SAVE/savgamC.sav") == amiga_adf.AmigaDisk.open(source).read_file(
+        "/SAVE/savgamC.sav")
+
+
+@pytest.mark.parametrize("load, save, match", [("B", "C", "already on"),
+                                               ("C", "E", "keeps for its own"),
+                                               ("A", "E", "not set out"),
+                                               ("G", "H", "not on")])
+def test_stage_stops_before_writing_anything(tmp_path, load, save, match):
+    source, diskb = _specimen()
+    with pytest.raises(RouteError, match=match):
+        ssbfight.stage(source, tmp_path / "out", load=load, save=save, diskb=diskb)
+    assert not (tmp_path / "out").exists()
+
+
+# -- the walk ---------------------------------------------------------------------------------
+
+def test_wander_turns_steps_and_stops_on_the_step_that_meets_the_fight(tmp_path):
+    clock = Clock()
+    game = Game(clock, fights={(3, 7)})
+    game.fights = set()
+    screens = _screens(tmp_path, game, clock)
+    original = game.press
+    steps = {"n": 0}
+
+    def press(holder, key, timeout):
+        original(holder, key, timeout)
+        if key == "NP8":
+            steps["n"] += 1
+            game.met = steps["n"] == 3
+
+    game.press = press
+    found = ssbfight.wander(screens, game, START, PLAN)
+    # North to 3,6, about and south to 3,7, about and north again, where the fight comes.
+    assert game.keys == ["NP6", "NP6", "NP8", "NP6", "NP6", "NP8", "NP6", "NP6", "NP8"]
+    assert [(s["x"], s["y"]) for s in found["steps"]] == [(3, 6), (3, 7), (3, 6)]
+    assert set(game.pressed_on) == {"world"} and found["met"]
+    _keys_allowed(screens, game)
+
+
+def test_wander_holds_the_map_before_each_next_key(tmp_path):
+    clock = Clock()
+    game = Game(clock)
+    screens = _screens(tmp_path, game, clock)
+    times = []
+    original = game.press
+
+    def press(holder, key, timeout):
+        times.append((key, clock.now))
+        original(holder, key, timeout)
+        game.met = len([k for k, _ in times if k == "NP8"]) == 2
+
+    game.press = press
+    ssbfight.wander(screens, game, START, PLAN)
+    step, after = times[2], times[3]
+    assert step[0] == "NP8" and after[1] - step[1] >= ssbfight.STEP_SETTLE
+
+
+def test_wander_walks_the_route_first(tmp_path):
+    clock = Clock()
+    game = Game(clock, fights={(5, 7)})
+    plan = {"route": [1, 1], "square": [5, 7], "facing": 1}
+    found = ssbfight.wander(_screens(tmp_path, game, clock), game, START, plan)
+    assert game.keys == ["NP4", "NP8", "NP8"] and found["steps"][-1]["x"] == 5
+
+
+def test_wander_stops_when_the_party_is_not_where_the_slot_put_it(tmp_path):
+    clock = Clock()
+    game = Game(clock)
+    game.y = 6
+    with pytest.raises(RouteError, match="stands at"):
+        ssbfight.wander(_screens(tmp_path, game, clock), game, START, PLAN)
+    assert game.keys == []
+
+
+def test_wander_stops_when_a_step_does_not_move_the_party(tmp_path):
+    clock = Clock()
+    game = Game(clock)
+    original = game.press
+    game.press = lambda holder, key, timeout: (game.keys.append(key) if key == "NP8"
+                                               else original(holder, key, timeout))
+    with pytest.raises(RouteError, match="NP8 left the party"):
+        ssbfight.wander(_screens(tmp_path, game, clock), game, START, PLAN)
+    assert game.keys == ["NP6", "NP6", "NP8"]
+
+
+def test_wander_stops_after_its_step_limit(tmp_path):
+    clock = Clock()
+    game = Game(clock)
+    with pytest.raises(RouteError, match="met no fight"):
+        ssbfight.wander(_screens(tmp_path, game, clock), game, START, PLAN, limit=4)
+    assert game.keys.count("NP8") == 4
+
+
+# -- the fight --------------------------------------------------------------------------------
+
+#: The encounter page, a monster turn, two bars each grabbed twice, the won fight's pages, the
+#: treasure bar, the offer to go back for the treasure, and the map.
+FIGHT = ["continue", None, "combat_bar", "combat_bar", None, "combat_bar", "combat_bar", None,
+         "continue", "continue", "treasure_bar", "treasure", "world"]
+
+
+def test_fight_answers_every_screen_and_logs_each_bar_owner(tmp_path):
+    clock = Clock()
+    game = Game(clock, FIGHT, owners=[_owner("PAINE"), _owner("Guy de Valois")])
+    game.walking = False
+    screens = _screens(tmp_path, game, clock)
+    found = ssbfight.fight(screens, game, ["GUY DE VALOIS"])
+    assert found["outcome"] == "won"
+    assert [bar["owner"] for bar in found["bars"]] == ["PAINE", "Guy de Valois"]
+    assert game.keys == ["RET", "Q", "Q", "RET", "RET", "E", "N"]
+    _keys_allowed(screens, game)
+
+
+@pytest.mark.parametrize("end", ["party_destroyed", "party_menu", "loaded_menu", "title"])
+def test_fight_records_a_lost_fight_and_presses_nothing_after(tmp_path, end):
+    clock = Clock()
+    game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, end],
+                owners=[_owner("PAINE")])
+    game.walking = False
+    found = ssbfight.fight(_screens(tmp_path, game, clock), game, ["Guy de Valois"])
+    assert found["outcome"] == "lost" and game.keys == ["RET", "Q"]
+
+
+def test_fight_stops_when_a_named_member_had_no_bar(tmp_path):
+    clock = Clock()
+    game = Game(clock, FIGHT, owners=[_owner("PAINE"), _owner("EPONA")])
+    game.walking = False
+    with pytest.raises(RouteError, match="no command bar"):
+        ssbfight.fight(_screens(tmp_path, game, clock), game, ["Guy de Valois"])
+
+
+@pytest.mark.parametrize("screen", ["camp", "exit_game", "camp_save_picker", "journal"])
+def test_fight_stops_on_a_known_screen_it_does_not_answer(tmp_path, screen):
+    clock = Clock()
+    game = Game(clock, [None, screen])
+    game.walking = False
+    with pytest.raises(RouteError, match="mid-fight"):
+        ssbfight.fight(_screens(tmp_path, game, clock), game, ["PAINE"])
+    assert game.keys == []
+
+
+def test_fight_stops_on_an_unknown_screen_that_stays_still(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None])
+    game.walking = False
+    with pytest.raises(RouteError, match="no guard knows stayed"):
+        ssbfight.fight(_screens(tmp_path, game, clock), game, ["PAINE"])
+    assert game.keys == []
+
+
+def test_fight_stops_when_the_map_comes_back_with_no_bar(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["continue", "world"])
+    game.walking = False
+    with pytest.raises(RouteError, match="no command bar"):
+        ssbfight.fight(_screens(tmp_path, game, clock), game, ["PAINE"])
+    assert game.keys == ["RET"]
+
+
+# -- the capture ------------------------------------------------------------------------------
+
+def test_capture_waits_out_a_monster_turn_and_keeps_a_members_bar(tmp_path, monkeypatch):
+    clock = Clock()
+    still = [None] * 40
+    game = Game(clock, ["continue", *still], owners=[_owner("BC WIZARD", side=1)] * 12
+                + [_owner("PAINE")])
+    game.walking = False
+    found = ssbfight.capture(_screens(tmp_path, game, clock), game)
+    assert found["outcome"] == "bar" and found["owner"]["name"] == "PAINE"
+    assert game.keys == ["RET"]
+
+
+def test_capture_does_not_take_a_companions_turn_for_a_bar(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None], owners=[_owner("SIEGLINDA", control=0xB3)])
+    game.walking = False
+    with pytest.raises(RouteError, match="no member's command bar"):
+        ssbfight.capture(_screens(tmp_path, game, clock), game)
+    assert game.keys == []
+
+
+def test_capture_records_a_party_destroyed_before_any_bar(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["continue", None, "party_menu"], owners=[None])
+    game.walking = False
+    found = ssbfight.capture(_screens(tmp_path, game, clock), game)
+    assert found["outcome"] == "lost" and game.keys == ["RET"]
+
+
+# -- the whole drive ---------------------------------------------------------------------------
+
+#: Boot to the title, load slot D, begin past the journal; the walk and the fight are replaced;
+#: then camp, the save with the journal before the picker, and the exit question.
+DRIVE = [None, "credits", "title", "party_menu", "load_picker", None, "scrolls_dropped",
+         "loaded_menu", "loaded_menu", "journal", "world", "world", "camp", "journal",
+         "camp_save_picker", None, "exit_game", "exit_game", "camp"]
+
+
+def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won",
+           parties=None, script=DRIVE):
+    clock = Clock()
+    loaded = [_member(name) for name in NAMES]
+    after = [_member(name, quickfight=1) for name in NAMES]
+    game = Game(clock, script, parties=parties or [loaded, after])
+    game.walking = False
+    answers = []
+    monkeypatch.setattr(ssbfight, "wander", lambda *a: {"steps": [], "met": "shot"})
+    monkeypatch.setattr(ssbfight, "fight", lambda *a: {"outcome": outcome,
+                                                       "bars": [{"owner": "PAINE"}]})
+    monkeypatch.setattr(ssbfight, "capture", lambda *a: {"outcome": "bar"})
+
+    def answer(holder, adf, timeout):
+        answers.append(game.current)
+        return 0, "answered"
+
+    screens = _screens(tmp_path, game, clock)
+    found = ssbfight.drive(screens, _manifest(), ["PAINE"], game, answer, save=save,
+                           capture_only=capture_only)
+    return found, game, screens, answers
+
+
+def test_drive_loads_begins_fights_and_saves_once(tmp_path, monkeypatch):
+    found, game, screens, answers = _drive(tmp_path, monkeypatch)
+    assert game.keys == ["ESC", "P", "L", "D", "B", "E", "S", "E", "N"]
+    assert answers == ["journal", "journal"]
+    assert found["members"]["PAINE"]["quickfight"] == 1
+    _keys_allowed(screens, game)
+
+
+def test_drive_with_capture_stops_after_the_walk(tmp_path, monkeypatch):
+    found, game, screens, _ = _drive(tmp_path, monkeypatch, capture_only=True)
+    assert game.keys == ["ESC", "P", "L", "D", "B"] and found["capture"] == {"outcome": "bar"}
+
+
+def test_drive_saves_nothing_after_a_lost_fight(tmp_path, monkeypatch):
+    found, game, _, _ = _drive(tmp_path, monkeypatch, outcome="lost")
+    assert game.keys[-1] == "B" and found["outcome"] == "lost" and "members" not in found
+
+
+def test_drive_stops_when_the_loaded_party_differs(tmp_path, monkeypatch):
+    loaded = [_member(name) for name in NAMES[:-1]]
+    with pytest.raises(RouteError, match="loaded party"):
+        _drive(tmp_path, monkeypatch, parties=[loaded, loaded])
+
+
+def test_drive_stops_before_saving_when_a_member_fell(tmp_path, monkeypatch):
+    loaded = [_member(name) for name in NAMES]
+    fallen = [_member(name, quickfight=1) for name in NAMES]
+    fallen[1]["hit_points"] = 0
+    with pytest.raises(RouteError, match="fell"):
+        _drive(tmp_path, monkeypatch, parties=[loaded, fallen])
+
+
+@pytest.mark.parametrize("on, key", [("world", "S"), ("camp", "E"), ("combat_bar", "D"),
+                                     ("combat_bar", "SPACE"), ("journal", "RET"),
+                                     ("party_destroyed", "RET"), ("loaded_menu", "D")])
+def test_a_key_outside_the_allowlist_is_never_sent(tmp_path, on, key):
+    clock = Clock()
+    game = Game(clock)
+    screens = _screens(tmp_path, game, clock)
+    with pytest.raises(RouteError, match="not a key"):
+        screens.press(key, on)
+    assert game.keys == [] and screens.events == []
+
+
+# -- the run ----------------------------------------------------------------------------------
+
+class LaneGuest:
+    def __init__(self):
+        self.calls = []
+
+    def _run(self, *args, timeout):
+        self.calls.append(args)
+        return '{"muted": true}'
+
+    def silence(self, proof):
+        return True
+
+
+def _staged(tmp_path):
+    manifest = _manifest()
+    disks = {}
+    for key in ("df0", "df1"):
+        path = tmp_path / f"{key}.adf"
+        path.write_bytes(key.encode())
+        disks[key] = {"path": str(path), "sha256": hashlib.sha256(key.encode()).hexdigest()}
+    source = tmp_path / "source.adf"
+    source.write_bytes(b"source")
+    manifest.update({"disks": disks, "registered": {}})
+    manifest["fight"]["source"] = {"path": str(source),
+                                   "sha256": hashlib.sha256(b"source").hexdigest()}
+    path = tmp_path / "prepare.json"
+    path.write_text(json.dumps(manifest))
+    return path
+
+
+def _args(tmp_path, manifest, members=("PAINE",), no_save=False, capture=False,
+          journal_python="python"):
+    return argparse.Namespace(manifest=manifest, holder="holder", out=tmp_path / "run",
+                              budget=600, wait_lane=0, member=list(members), no_save=no_save,
+                              capture=capture, journal_python=journal_python)
+
+
+@pytest.mark.parametrize("problem", ["out_exists", "not_staged", "hash", "slot_taken",
+                                     "no_member", "unknown_member", "no_journal", "no_bar_guard"])
+def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
+    manifest = _staged(tmp_path)
+    monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present", lambda disk, title: ["D"])
+    rules = {**ssbfight.guard_rules(), "combat_bar": ssbfight.TREASURE_SHORT}
+    monkeypatch.setattr(ssbfight, "guard_rules", lambda: rules)
+    kwargs = {}
+    if problem == "out_exists":
+        (tmp_path / "run").mkdir()
+    elif problem == "not_staged":
+        value = json.loads(manifest.read_text())
+        del value["fight"]
+        manifest.write_text(json.dumps(value))
+    elif problem == "hash":
+        (tmp_path / "df1.adf").write_bytes(b"changed")
+    elif problem == "slot_taken":
+        monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present",
+                            lambda disk, title: ["D", "E"])
+    elif problem == "no_member":
+        kwargs["members"] = ()
+    elif problem == "unknown_member":
+        kwargs["members"] = ("BRUTUS",)
+    elif problem == "no_journal":
+        kwargs["journal_python"] = None
+    else:
+        del rules["combat_bar"]
+    guest = LaneGuest()
+    with pytest.raises(RouteError):
+        ssbfight.run(_args(tmp_path, manifest, **kwargs), guest=guest, guards=object(),
+                     boot=pytest.fail, halt=pytest.fail, memory=object())
+    assert guest.calls == []
+
+
+def _run(tmp_path, monkeypatch, *, drive, problems=(), no_save=False, capture=False):
+    manifest = _staged(tmp_path)
+    monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present", lambda disk, title: ["D"])
+    monkeypatch.setattr(ssbfight.curseadd, "mute", lambda guest, out, timeout: out / "mute.json")
+    monkeypatch.setattr(ssbfight, "drive", drive)
+    rules = {**ssbfight.guard_rules(), "combat_bar": ssbfight.TREASURE_SHORT}
+    monkeypatch.setattr(ssbfight, "guard_rules", lambda: rules)
+    fetched = tmp_path / "fetched-df0.adf"
+    fetched.write_bytes(b"fetched")
+    monkeypatch.setattr(ssbfight, "read_back", lambda path, value: {"path": str(path)})
+    monkeypatch.setattr(ssbfight, "verdict", lambda found, value, members: list(problems))
+    halted = []
+    receipt = None
+    try:
+        receipt = ssbfight.run(
+            _args(tmp_path, manifest, no_save=no_save, capture=capture), guest=LaneGuest(),
+            guards=object(), boot=lambda *a, **k: {"claim": "ok"}, memory=object(),
+            halt=lambda *a, **k: halted.append(k) or {"fetched": {"df0": {"path": str(fetched)}}})
+    finally:
+        written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    return receipt, written, halted
+
+
+def test_run_halts_and_fails_when_the_route_stops(tmp_path, monkeypatch):
+    def drive(*args, **kwargs):
+        raise RouteError("expected world, saw ['camp']")
+
+    with pytest.raises(RouteError, match="saw"):
+        _run(tmp_path, monkeypatch, drive=drive)
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert written["success"] is False and "read_back" not in written
+
+
+@pytest.mark.parametrize("problems", [[], ["PAINE was saved with quickfight 0"]])
+def test_run_succeeds_only_on_a_clean_read_back(tmp_path, monkeypatch, problems):
+    drive = lambda *a, **k: {"outcome": "won", "bars": []}  # noqa: E731
+    if problems:
+        with pytest.raises(RouteError, match="quickfight"):
+            _run(tmp_path, monkeypatch, drive=drive, problems=problems)
+    else:
+        receipt, written, halted = _run(tmp_path, monkeypatch, drive=drive)
+        assert receipt["success"] and written["source_hashes"] == "unchanged" and halted
+
+
+def test_run_fails_a_lost_fight_and_reads_nothing_back(tmp_path, monkeypatch):
+    drive = lambda *a, **k: {"outcome": "lost", "bars": []}  # noqa: E731
+    with pytest.raises(RouteError, match="destroyed"):
+        _run(tmp_path, monkeypatch, drive=drive)
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert "read_back" not in written and written["halt"]
+
+
+def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeypatch):
+    seen = {}
+
+    def drive(screens, manifest, members, memory, answer, *, save, capture_only):
+        seen.update(save=save, capture_only=capture_only)
+        return {"capture": {"outcome": "bar", "shot": "s.png"}}
+
+    receipt, _written, _halted = _run(tmp_path, monkeypatch, drive=drive, capture=True)
+    assert seen == {"save": False, "capture_only": True}
+    assert receipt["success"] and "read_back" not in receipt
+
+
+def test_read_needs_a_member(tmp_path, capsys):
+    assert ssbfight.main(["read", "--manifest", str(tmp_path / "m.json"),
+                          "--disk", str(tmp_path / "d.adf")]) == 2
+    assert "at least one --member" in capsys.readouterr().err
