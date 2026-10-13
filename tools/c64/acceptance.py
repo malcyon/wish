@@ -77,7 +77,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `rest 5m`, `rest 8h`, `rest 1h30m` | camp `REST` for exactly that long (`tools/c64/route_pool.py`'s rest); straight after a `scribe` or a `memorize` it rests in the camp that step left open, since every camp exit cancels the scribe queue and the memorize choice, and adds `stayed_in_camp`; a city-watch `GO STAY` event that ends it is answered `GO`, logged as `random_event`, and the result's `rest_completed` says whether the clock ran the full time.  A rest the area's check interrupted (`$6DD3` = `$FF`, or `CAMP` already gone) waits for the prompt the area puts up sending no key apart from disk-swap answers, answers it, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `watch_seen`, which only an interrupted rest carries.  Whenever a watch was answered, interrupted or not, the result has `state_cleared` (the bytes `GO` clears).  A fight fails the step at once, and any other prompt fails it naming row 24.  A Curse or Silver Blades rest the game stopped (`rest_later`'s `interrupted`) answers each `PRESS ... TO CONTINUE` page with Return, keeps its text, and adds `ended: "interrupted"`, `interrupted`, `bar`, `prompts` and `text`; a fight after the event fails the step at once naming the event's text.  Under `--no-encounters` the area's rest interruption is zeroed before the rest starts and the result has `rest_interrupt_suppressed` |
 | `walk MOVES` | I forward, J left, K right, M turns about and tries the edge behind the original facing -- one square back keeping that facing where the edge carries no wall art, or held turned about where it does -- each judged by `position()` before and after (an `I` or `M` that leaves the square unchanged with a `PRESS` bar or a blank row 24 fails the walk as an encounter or a square's text, not as `blocked`; Pool's status line holds the clock, and a Pool area whose line shows no square, such as area 7, is judged by the live triple too; Curse's and Silver Blades' lags a step, so they are judged by the live triple `$C04B`-`$C04D`, and their one retry too): `blocked` when a forward move left x,y alone, a turn (`J`/`K`) must leave the square and change the facing by its amount, and `M` must leave the square either where it started or one square behind, facing either as it started or exactly reversed; a move that brings up a disk prompt, or lands anywhere else, fails the walk. Pool's travel grid takes the digits 1-8 instead, alone in the route (1 north, then clockwise to 8 north-west), each pressed once and judged by the travel pair `$49C3`/`$49C4` with the area `$49F2`, never by the lagging status line: a pair left alone is `blocked`, a pair moved by anything but the digit's compass step fails the walk unless the window (area) changed, and digits fail at once when the party is not on the travel grid; the result has `outdoors`, `area` and `position` `[x, y, None]`; with `--cross-edge`, a disk prompt on the route's last forward move is an area edge: the side the prompt names is answered once and the move is judged by the area byte `$49F2` changing, not the square (a second prompt, or one on any other move, fails the walk), recorded as `crossing` |
 | `snapshot NAME`, `restore NAME` | `snapshot` saves the whole machine, drive and disk included, under NAME (letters, digits, `-`, `_`); `restore` puts it back, attaches the drive's disk again so a later `save` works, and waits for the world bar. A `restore` needs an earlier `snapshot` of that name and no `save` before it, since the save stays on the disk image while memory goes back; the parser stops the run otherwise. Each is recorded in the run log and as a result in `summary.json`. `--walk-retry N` makes every `walk` step go through `Session.walk_with_retry`: after an encounter it restores and walks again, up to N more times, judged by its start and end squares only (the result adds `retries`); the step fails with the machine restored when every attempt met one. A `restore` also undoes the forward moves of the `walk` steps since its `snapshot`, so the `save` check that the party moved counts only the moves still standing |
-| `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep; Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
+| `fight [SECONDS]` | walk until a fight starts, then fight it with `Session.melee_turn` for at most SECONDS (120); a fight still going when SECONDS end, or one the party loses, fails the step (the run cannot continue from it), and the checkpoint counts read at that point are kept as `lost_reading` in the summary. Pool repeats `--walk`; Curse walks to Tilverton's tavern and punches the barkeep, except in the Pit of Moander (area `$11`), where it sets the wandering roll's fight gate `$4C2D` to `$80`, walks between two of `GEO11`'s roll squares (id 0) the party reaches without entering any other square with a script (at most `--walk-steps` moves), answers the slugs' `ATTACK EVADE` with ATTACK, sends no key from `COM.PREP` until the first command bar, captures that bar as `first-bar` with `$7F12` (`first_bar` in the result), and puts `$4C2D` back once the script waits for a key again (`wander_gate`, with `script_idle`); Silver Blades sets the wandering roll's fight gate `$4C2D` to 1, walks `GEO10` toward 12,0 and 12,15 in turn (at most `--walk-steps` moves), sends each key only once the move bar is up and the engine idles in its key wait, sends none from `COM.PREP` until the first command bar, and puts `$4C2D` back after the fight (`wander_gate` in the result); a party wiped back to the party menu fails the step at once |
 | `cast CASTER:SPELL>TARGET` | Curse: `ENCAMP > MAGIC > CAST`, the one spell named, on TARGET; the target's row of the cured id before and after (`CURE BLINDNESS`) |
 | `cast CASTER:ANIMATE DEAD` | Pool: camp cast without a target prompt; every party slot's roster status, trait slots, creature byte `0xD7`, and the effect arrays before and after |
 | `cast CASTER:SPELL`, `cast CASTER:SPELL>TARGET` | Pool, any other spell, `>TARGET` naming the member a spell's target question (`CURE LIGHT WOUNDS`, `PROTECTION FROM EVIL`) is answered with: camp `MAGIC > CAST` for CASTER (a name), the list `<NAME>'S MEMORIZED SPELLS` checked as CASTER's, its highlight moved onto SPELL with Down and Up (judged by the row drawn white), Return (then a KERNAL Return when nothing moved), `CAST SPELL ON WHOM` captured and TARGET chosen on it as the camp list chooses a member, the game's `<NAME> CASTS` message kept and any `PRESS ANY KEY` page answered, then the pick prompt's `EXIT` row, the list's `EXIT` and the MAGIC bar's `EXIT`, ending on the camp bar. Every action is a key and nothing is written. CASTER's memorised list, read from the live record, must lose exactly one entry of an id the title's spell table draws SPELL for and gain none; a caster without SPELL ready (a pick still pending does not count), a target question with no TARGET, a TARGET not on it or never asked for, or a pick that spends nothing fails the step. The result has `target`, `spell_id` (the id spent), `memorised_before`/`_after`, `messages`, `pages` and the party and effect arrays before and after |
@@ -8305,6 +8305,100 @@ class PoolRun:
 CURSE_TAVERN_INJURIES_BAR = ("ASK", "ABOUT", "INJURIES", "IGNORE", "THEM")
 CURSE_TAVERN_IGNORE = "IGNORE THEM"
 
+#: Curse's `fight` in the Pit of Moander, area `$11` (`GEO11` on side C), where
+#: `COM.PREP $1490` draws ALIAS and DRAGONBAIT with their own
+#: `COMPIC16`/`COMPIC17` art while `$7F12` is 3.  `ECL11` entry 1 masks the
+#: square byte with `$3F` (`$8523`) and sends id 0 to `$85A3`: with the gate
+#: `$4C2D` at `$80` every step onto such a square rolls `RANDOM #99` at `$85CA`
+#: and fights under 15 (30 when `$7ECA` is 1), at 0 it never rolls, and any
+#: other value rolls only while the counter `$4C0E` is under 8.  `$80` is a
+#: value the game writes itself (`ECL11 $8279`).
+CURSE_PIT_AREA = 0x11
+CURSE_WANDER_GATE = 0x4C2D
+CURSE_PIT_GATE = 0x80
+CURSE_PIT_SQUARE_MASK = 0x3F
+
+#: The one wandering arm that asks before its fight (`ECL11 $90DC`, giant
+#: slugs): ATTACK fights it, EVADE leaves.
+CURSE_PIT_SLUG_BAR = ("ATTACK", "EVADE")
+CURSE_PIT_ATTACK = "ATTACK"
+
+#: The side byte `COM.PREP $1490` compares (`fasttravel`'s `disk` for Curse).
+CURSE_SIDE = 0x7F12
+
+#: How long a Pit walk waits for the move bar before a key; how long the
+#: encounter may take to reach `COM.PREP`, and `COM.PREP` to reach COMBAT; and
+#: how long the script may take after the fight to wait for a key again, which
+#: is when the gate may go back (`ECL11 $8EB8` reads it after `COMBAT`).
+CURSE_PIT_MOVE_READY_SECONDS = 20.0
+CURSE_PIT_COMMIT_SECONDS = 15.0
+CURSE_PIT_PREP_SECONDS = 120.0
+CURSE_PIT_SETTLE_SECONDS = 60.0
+
+
+def pit_square_id(geo, x: int, y: int) -> int:
+    """The `ECL11` entry a Pit square runs: its attribute byte masked as `$8523` masks it."""
+    return geo.attributes(x, y) & CURSE_PIT_SQUARE_MASK
+
+
+class PitGeo:
+    """GEO11 for the route planner, with every edge into a square that runs a
+    script other than the wandering roll closed."""
+
+    def __init__(self, geo):
+        self.geo = geo
+
+    def is_passable(self, x: int, y: int, facing: int) -> bool:
+        dx, dy = STEP[facing]
+        nx, ny = x + dx, y + dy
+        return (0 <= nx < 16 and 0 <= ny < 16
+                and self.geo.is_passable(x, y, facing)
+                and pit_square_id(self.geo, nx, ny) == 0)
+
+
+def pit_distances(geo, start: tuple[int, int]) -> dict:
+    """Steps from START to each roll square reachable without entering any other."""
+    pit = PitGeo(geo)
+    dist = {start: 0}
+    queue = collections.deque([start])
+    while queue:
+        x, y = queue.popleft()
+        for facing, (dx, dy) in STEP.items():
+            nxt = (x + dx, y + dy)
+            if nxt not in dist and pit.is_passable(x, y, facing):
+                dist[nxt] = dist[(x, y)] + 1
+                queue.append(nxt)
+    return dist
+
+
+def pit_tour(geo, start: tuple[int, int]) -> tuple | None:
+    """Two roll squares to walk between: the farthest from START, then the
+    farthest from that, both reached over roll squares only; None when no
+    two roll squares START reaches are joined by roll squares."""
+    def farthest(dist):
+        return max(dist, key=lambda sq: (dist[sq], -sq[1], -sq[0]))
+
+    near = {sq: d for sq, d in pit_distances(geo, start).items()
+            if pit_square_id(geo, *sq) == 0}
+    if len(near) < 2:
+        return None
+    first = farthest(near)
+    second = farthest(pit_distances(geo, first))
+    return None if second == first else (first, second)
+
+
+def curse_geo(name: str, disks: str):
+    """The GEO file NAME off the Curse sides, or None."""
+    from goldbox.geo import Geo  # noqa: PLC0415
+
+    for side in sorted(pathlib.Path(disks).glob("*.[dD]64")):
+        image = D64.open(side)
+        entry = image.find(name.encode())
+        if entry is not None:
+            return Geo.from_bytes(image.read_file(entry))
+    return None
+
+
 class CurseRun(PoolRun):
     """Read Curse's effects with the shared reader and drive its measured fight route."""
 
@@ -8316,6 +8410,10 @@ class CurseRun(PoolRun):
     #: Whether the first bar of the run has been seen; the key and the
     #: `placement` event belong to the run's first fight, not to each `fight` step.
     first_bar_done = False
+    #: The gate `walk_tour` and `wander_gate` write, and the prefix of their events.
+    wander_gate_address = CURSE_WANDER_GATE
+    walk_event = "pit"
+    move_ready_seconds = CURSE_PIT_MOVE_READY_SECONDS
 
     #: Curse adds what the named-attack observation and the first bar keep.
     #: `names`, `panel` and `attack_owner` come from the staged disk in
@@ -9161,6 +9259,9 @@ class CurseRun(PoolRun):
         from tools.c64 import laterbattle
         from tools.curse_of_the_azure_bonds import cursethac0
 
+        live = self.live_area()
+        if live == CURSE_PIT_AREA:
+            return self.pit_fight(arg, steps, flee)
         if flee and self.attack_by:
             raise self.fail("fight-flee", "fight-flee: --attack-by watches a "
                                           "melee and cannot flee")
@@ -9171,7 +9272,11 @@ class CurseRun(PoolRun):
         diagnostic = bool(self.attack_by)
         if diagnostic:
             self.stop_at_first_loss()
-        area, geo = cursethac0.area_geo(str(self.staged_disk), self.disks)
+        if live is None:
+            area, geo = cursethac0.area_geo(str(self.staged_disk), self.disks)
+        else:
+            area = f"GEO{live:02X}"
+            geo = curse_geo(area, self.disks)
         if geo is None:
             raise self.fail("geo", f"{area} was absent from the Curse disks")
         route_type = laterbattle.Battle
@@ -9254,6 +9359,265 @@ class CurseRun(PoolRun):
                 **dataclasses.asdict(result)}
 
 
+    # -- the fight in the Pit: a wandering monster on side C ---------------------
+    def live_area(self) -> int | None:
+        """The area running now (`$7F1B`), or None when it cannot be read."""
+        game = getattr(self, "game", None)
+        if getattr(game, "key", None) != "curse-of-the-azure-bonds":
+            return None
+        try:
+            ft = auto_actions.FastTravel(game)
+            return ft.current_area(SessTarget(self.sess), ft.addresses)
+        except Exception:                   # noqa: BLE001
+            return None
+
+    def read_byte(self, address: int) -> int | None:
+        """One byte read in one monitor stop; None when the machine did not answer."""
+        try:
+            with self.sess.mon(8) as m:
+                got = m.read(address, 1)[0]
+                m.resume()
+        except Exception:                   # noqa: BLE001
+            return None
+        return got
+
+    def pit_fight(self, arg: str, steps: int, flee: bool = False) -> dict:
+        """Walk the Pit's roll squares (`pit_tour`) with the gate at
+        `CURSE_PIT_GATE` until a fight is committed, then fight it; the gate
+        goes back to what it read before the walk once the script waits for a
+        key again.  The first command bar is captured, with `$7F12` read."""
+        if self.attack_by:
+            raise self.fail("fight", "--attack-by watches the tavern brawl only")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        area = f"GEO{CURSE_PIT_AREA:02X}"
+        geo = curse_geo(area, self.disks)
+        if geo is None:
+            raise self.fail("geo", f"{area} was absent from the Curse disks")
+        start = tuple(self.position()[:2])
+        tour = pit_tour(geo, start)
+        if tour is None:
+            raise self.fail("geo", f"no two joined squares next to "
+                                   f"{start[0]},{start[1]} roll for a wandering monster")
+        was = self.wander_gate()
+        gate = {"address": f"${CURSE_WANDER_GATE:04X}", "was": was,
+                "now": (was if was == CURSE_PIT_GATE
+                        else self.wander_gate(CURSE_PIT_GATE))}
+        self.log.emit("wander-gate", **gate)
+        if gate["now"] != CURSE_PIT_GATE:
+            raise self.fail("wander-gate", f"$4C2D reads {gate['now']}, "
+                                           f"not {CURSE_PIT_GATE}")
+        try:
+            walked, result, before, seen, first_bar = self._pit_walk_and_fight(
+                arg, steps, PitGeo(geo), tour, flee)
+            gate["script_idle"] = self.script_idle_after_fight()
+        except BaseException as e:
+            self.put_gate_back(gate, was, e)
+            raise
+        self.put_gate_back(gate, was, None)
+        who = ({**self.flee_result(before, self.party_slots()),
+                "ran_line_seen": seen == S.RAN,
+                "outcome_seen": seen} if flee else {})
+        return {**who, "walked": walked, "area": area, "start": list(start),
+                "tour": [list(sq) for sq in tour], "wander_gate": gate,
+                "first_bar": first_bar, "acted": result.acted,
+                **dataclasses.asdict(result)}
+
+    def _pit_walk_and_fight(self, arg: str, steps: int, geo, tour, flee: bool):
+        answers = ((CURSE_PIT_SLUG_BAR, CURSE_PIT_ATTACK),)
+        walked = self.walk_tour(steps, geo, tour, answers)
+        if not self.fight_committed():
+            # The last move's encounter may still wait on its message.
+            if (self.answer_bar(answers) is None
+                    and "PRESS" in self.bar().split()):
+                self.sess.press_kernal(0x0D)
+        self.capture("fight-route")
+        if self.await_mode((S.COMBAT, COMBAT_PREP), CURSE_PIT_COMMIT_SECONDS,
+                           "an encounter") not in (S.COMBAT, COMBAT_PREP):
+            raise self.fail("fight", f"no fight in {walked} steps of "
+                                     f"GEO{CURSE_PIT_AREA:02X}")
+        if self.await_mode((S.COMBAT,), CURSE_PIT_PREP_SECONDS,
+                           "COM.PREP") != S.COMBAT:
+            raise self.fail("fight", "Curse never entered combat mode")
+        self.capture("fight-start")
+        shown = self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
+        first_bar = {"seen": shown is not None, "side": self.read_byte(CURSE_SIDE)}
+        self.capture("first-bar")
+        self.log.emit("pit-first-bar", **first_bar)
+        before = self.flee_before() if flee else None
+        result = self.sess.fight(budget=float(arg or 120),
+                                 tactic=(self.flight_tactic() if flee
+                                         else self.bar_tactic() if self.log_bars
+                                         else S.Session.melee_turn))
+        self.capture("fight-end")
+        seen = result.outcome
+        if flee:
+            result = self.flee_settled(result, before)
+            if (failed := self.flee_failure(arg, result)) is not None:
+                raise failed
+        elif result.outcome == S.BUDGET:
+            raise self.fight_over_budget(arg, result)
+        elif result.outcome == S.LOST:
+            raise self.fight_lost(result)
+        return walked, result, before, seen, first_bar
+
+    def script_idle_after_fight(self) -> bool:
+        """Whether DUNGEON waits for a key again within
+        `CURSE_PIT_SETTLE_SECONDS`, pressing nothing: past the compare after
+        `COMBAT`, so the gate may go back without changing the arm it takes."""
+        end = self.clock() + self.budget(CURSE_PIT_SETTLE_SECONDS,
+                                         "the script after the fight")
+        while True:
+            if self.sess.mode() == S.DUNGEON and self.key_idle():
+                return True
+            if self.clock() >= end:
+                return False
+            self.sess.settle(1.0)
+
+    # -- the wandering-gate walk, shared with Silver Blades ----------------------
+    def fight_committed(self) -> bool:
+        """COMBAT, or `COM.PREP` building it: no move key may be sent after either."""
+        return self.sess.mode() in (S.COMBAT, COMBAT_PREP)
+
+    def wander_gate(self, value: int | None = None) -> int | None:
+        """The gate at `wander_gate_address` as read, after writing VALUE when
+        one is given, in one monitor stop; None when the machine did not answer.
+
+        It writes in whatever mode the machine is in.  The gate is a variable
+        of the saved-game block at `$4B00`, which the scripts keep across
+        COMBAT (`ECL10` arm 16 sets `$4C2E` before `COMBAT` and it reads back
+        after the fight, #334), and after a wipe the party menu's next load
+        reads the block from disk again; no mode is known to hold other code
+        there."""
+        address = self.wander_gate_address
+        try:
+            with self.sess.mon(8) as m:
+                if value is not None:
+                    m.write(address, bytes([value]))
+                got = m.read(address, 1)[0]
+                m.resume()
+        except Exception:                   # noqa: BLE001
+            return None
+        return got
+
+    def put_gate_back(self, gate: dict, was: int, failing: BaseException | None
+                      ) -> None:
+        """Write the gate back to WAS and log it; a read-back that is not WAS
+        fails the step, naming the failure already under way if there is one."""
+        gate["restored"] = self.wander_gate(was)
+        gate["mode"] = self.sess.mode()
+        self.log.emit("wander-gate", **gate)
+        if gate["restored"] == was:
+            return
+        why = (f"${self.wander_gate_address:04X} was not put back to {was}: it "
+               f"reads {gate['restored']} in mode {gate['mode']}")
+        if failing is None:
+            raise self.fail("wander-gate", why)
+        if isinstance(failing, StepFailed):
+            raise StepFailed(f"{failing}; and {why}") from failing
+
+    def await_mode(self, want, seconds: float, what: str) -> int | None:
+        """Poll the mode byte until it is in WANT, pressing nothing; the last
+        value read either way, each change logged as `<walk_event>-mode`."""
+        end = self.clock() + self.budget(seconds, what)
+        last = self.sess.mode()
+        while last not in want and self.clock() < end:
+            self.sess.settle(1.0)
+            now = self.sess.mode()
+            if now != last:
+                self.log.emit(f"{self.walk_event}-mode", mode=now, was=last,
+                              what=what, row24=self.bar())
+            last = now
+        return last
+
+    def key_idle(self) -> bool:
+        """`DUNGEON`'s key wait or the `LIBRARY` fetcher under it
+        (`fasttravel`'s windows for this title), on three samples with the
+        screen still."""
+        from tools.secret_of_the_silver_blades import ssbsession
+
+        return ssbsession.idle_in_key_window(
+            self.sess, fasttravel.addresses_for(self.game),
+            samples=3, gap=0.5) is not None
+
+    def ready_to_move(self, route) -> bool:
+        """Whether a move key may go: the move or world bar is up and the
+        engine is waiting for a key.  The move bar stays drawn while an
+        encounter's `SETUPMON` loads, so the bar alone would let a key into the
+        encounter.  A script bar is answered on the way (`route.clear_bar`).
+        A committed fight says no, and the walk's next `in_combat` ends it; no
+        idle bar within `move_ready_seconds` raises `NoMoveKeySent`, because a
+        False from `press` would read to `goto` as a wall and ban a good edge."""
+        seconds = self.move_ready_seconds
+        end = self.clock() + self.budget(seconds, "move bar")
+        while True:
+            if self.fight_committed():
+                return False
+            bar = self.bar()
+            if ("I,J,K,M" in bar or self.at_world(bar)) and self.key_idle():
+                return True
+            if self.clock() >= end:
+                self.log.emit(f"{self.walk_event}-no-move-bar", row24=bar)
+                raise NoMoveKeySent(str(self.fail(
+                    "move-bar", f"no idle move bar in {seconds:g} s; "
+                                f"no key was sent")))
+            route.clear_bar()
+            self.sess.settle(1.0)
+
+    def answer_bar(self, answers) -> str | None:
+        """Press the word of the first of ANSWERS' `(bar words, word)` pairs
+        whose words are exactly row 24's; the word pressed, or None."""
+        if not answers:
+            return None
+        words = tuple(self.bar().split())
+        for bar, word in answers:
+            if words == bar:
+                pressed = self.sess.press_bar(word, timeout=20)
+                self.log.emit(f"{self.walk_event}-answer", bar=" ".join(bar),
+                              word=word, pressed=pressed)
+                return word if pressed else None
+        return None
+
+    def walk_tour(self, steps: int, geo, tour, answers=()) -> int:
+        """Walk to TOUR's squares in turn over GEO, again and again, until a
+        fight is committed or STEPS moves are spent; each key waits for
+        `ready_to_move`, and a row 24 matching one of ANSWERS is answered
+        (`answer_bar`) before the ordinary `clear_bar`.  The moves taken."""
+        from tools.c64 import laterbattle
+        from tools.curse_of_the_azure_bonds import cursethac0
+
+        owner = self
+
+        class Route(laterbattle.Battle):
+            def in_combat(self):
+                return owner.fight_committed()
+
+            def press(self, key):
+                return owner.ready_to_move(self) and super().press(key)
+
+            def clear_bar(self, accept=False):
+                return owner.answer_bar(answers) or super().clear_bar(accept)
+
+        route = Route(self.out, True)
+        walked = 0
+        try:
+            route.sess = self.sess
+            try:
+                while (walked < steps and not self.spent()
+                       and not self.fight_committed()):
+                    for stop in tour:
+                        if walked >= steps or self.fight_committed():
+                            break
+                        route.goto(stop, steps - walked, geo=geo)
+                        walked += route.last_goto_steps
+            except cursethac0.Unsettled:
+                if not self.fight_committed():
+                    raise self.fail("square", "the party's square did not settle")
+        finally:
+            route.file.close()
+        return walked
+
+
 #: Silver Blades' `fight` walks New Verdigris, where a party sets out.
 #: `ECL10` entry 1 rolls for a wandering monster on each forward or backward
 #: key onto a square of attribute `$00`, from the tenth such key on, and the
@@ -9287,6 +9651,10 @@ class SilverRun(CurseRun):
     silver_addr = None
     #: Consecutive readings of mode 0 (the party menu) during a fight.
     gen_reads = 0
+    #: The gate the shared walk helpers write, and the prefix of their events.
+    wander_gate_address = SILVER_WANDER_GATE
+    walk_event = "silver"
+    move_ready_seconds = SILVER_MOVE_READY_SECONDS
 
     #: `gen_reads` is the one Silver Blades adds; `silver_addr` is rebuilt
     #: from the disks, so only whether it was set is kept.
@@ -9358,59 +9726,6 @@ class SilverRun(CurseRun):
                 "checkpoints": {k: f"${v:04X}" for k, v in self.points.items()}}
 
     # -- the fight: a wandering monster in New Verdigris ---------------------------
-    def fight_committed(self) -> bool:
-        """COMBAT, or `COM.PREP` building it: no move key may be sent after either."""
-        return self.sess.mode() in (S.COMBAT, COMBAT_PREP)
-
-    def wander_gate(self, value: int | None = None) -> int | None:
-        """`$4C2D` as read, after writing VALUE when one is given, in one
-        monitor stop; None when the machine did not answer.
-
-        It writes in whatever mode the machine is in.  `$4C2D` is a variable of
-        the saved-game block at `$4B00`, which the scripts keep across COMBAT
-        (`ECL10` arm 16 sets `$4C2E` before `COMBAT` and it reads back after
-        the fight, #334), and after a wipe the party menu's next load reads the
-        block from disk again; no mode is known to hold other code there."""
-        try:
-            with self.sess.mon(8) as m:
-                if value is not None:
-                    m.write(SILVER_WANDER_GATE, bytes([value]))
-                got = m.read(SILVER_WANDER_GATE, 1)[0]
-                m.resume()
-        except Exception:                   # noqa: BLE001
-            return None
-        return got
-
-    def put_gate_back(self, gate: dict, was: int, failing: BaseException | None
-                      ) -> None:
-        """Write `$4C2D` back to WAS and log it; a read-back that is not WAS
-        fails the step, naming the failure already under way if there is one."""
-        gate["restored"] = self.wander_gate(was)
-        gate["mode"] = self.sess.mode()
-        self.log.emit("wander-gate", **gate)
-        if gate["restored"] == was:
-            return
-        why = (f"$4C2D was not put back to {was}: it reads {gate['restored']} "
-               f"in mode {gate['mode']}")
-        if failing is None:
-            raise self.fail("wander-gate", why)
-        if isinstance(failing, StepFailed):
-            raise StepFailed(f"{failing}; and {why}") from failing
-
-    def await_mode(self, want, seconds: float, what: str) -> int | None:
-        """Poll the mode byte until it is in WANT, pressing nothing; the last
-        value read either way, each change logged as `silver-mode`."""
-        end = self.clock() + self.budget(seconds, what)
-        last = self.sess.mode()
-        while last not in want and self.clock() < end:
-            self.sess.settle(1.0)
-            now = self.sess.mode()
-            if now != last:
-                self.log.emit("silver-mode", mode=now, was=last, what=what,
-                              row24=self.bar())
-            last = now
-        return last
-
     def key_idle(self) -> bool:
         """`DUNGEON`'s key wait (`$104C`, which the move prompt calls) or the
         `LIBRARY` fetcher under it, on three samples with the screen still."""
@@ -9418,29 +9733,6 @@ class SilverRun(CurseRun):
 
         return ssbsession.idle_in_key_window(self.sess, self.silver_addr,
                                              samples=3, gap=0.5) is not None
-
-    def ready_to_move(self, route) -> bool:
-        """Whether a move key may go: the move or world bar is up and the
-        engine is waiting for a key.  The move bar stays drawn while an
-        encounter's `SETUPMON` loads, so the bar alone would let a key into the
-        encounter.  A `PRESS` bar is answered on the way.  A committed fight
-        says no, and the walk's next `in_combat` ends it; no idle bar within
-        `SILVER_MOVE_READY_SECONDS` raises `NoMoveKeySent`, because a False
-        from `press` would read to `goto` as a wall and ban a good edge."""
-        end = self.clock() + self.budget(SILVER_MOVE_READY_SECONDS, "move bar")
-        while True:
-            if self.fight_committed():
-                return False
-            bar = self.bar()
-            if ("I,J,K,M" in bar or self.at_world(bar)) and self.key_idle():
-                return True
-            if self.clock() >= end:
-                self.log.emit("silver-no-move-bar", row24=bar)
-                raise NoMoveKeySent(str(self.fail(
-                    "move-bar", f"no idle move bar in {SILVER_MOVE_READY_SECONDS:g} s; "
-                                f"no key was sent")))
-            route.clear_bar()
-            self.sess.settle(1.0)
 
     def world_again(self, sess, screen) -> bool:
         """`Session.fight`'s stop: DUNGEON with the world bar on row 24, which
@@ -9489,35 +9781,7 @@ class SilverRun(CurseRun):
                 **dataclasses.asdict(result)}
 
     def _silver_walk_and_fight(self, arg: str, steps: int, geo, flee: bool = False):
-        from tools.c64 import laterbattle
-        from tools.curse_of_the_azure_bonds import cursethac0
-
-        owner = self
-
-        class Route(laterbattle.Battle):
-            def in_combat(self):
-                return owner.fight_committed()
-
-            def press(self, key):
-                return owner.ready_to_move(self) and super().press(key)
-
-        route = Route(self.out, True)
-        walked = 0
-        try:
-            route.sess = self.sess
-            try:
-                while (walked < steps and not self.spent()
-                       and not self.fight_committed()):
-                    for stop in SILVER_FIGHT_TOUR:
-                        if walked >= steps or self.fight_committed():
-                            break
-                        route.goto(stop, steps - walked, geo=geo)
-                        walked += route.last_goto_steps
-            except cursethac0.Unsettled:
-                if not self.fight_committed():
-                    raise self.fail("square", "the party's square did not settle")
-        finally:
-            route.file.close()
+        walked = self.walk_tour(steps, geo, SILVER_FIGHT_TOUR)
         self.capture("fight-route")
         if self.await_mode((S.COMBAT, COMBAT_PREP), SILVER_COMMIT_SECONDS,
                            "an encounter") not in (S.COMBAT, COMBAT_PREP):
