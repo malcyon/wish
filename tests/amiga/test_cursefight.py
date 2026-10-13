@@ -400,7 +400,8 @@ DRIVE = [None, "intro", "front_end", "title", "load_picker", None, "load_error",
          "camp_save_picker", None, "exit_game", "exit_game", "camp"]
 
 
-def _drive(tmp_path, monkeypatch, save=True, parties=None, script=DRIVE, games=None):
+def _drive(tmp_path, monkeypatch, save=True, parties=None, script=DRIVE, games=None,
+           outcome="won"):
     clock = Clock()
     loaded = [_member(name) for name in NAMES]
     after = [_member(name, quickfight=1) for name in NAMES]
@@ -411,7 +412,8 @@ def _drive(tmp_path, monkeypatch, save=True, parties=None, script=DRIVE, games=N
     walked = []
     monkeypatch.setattr(cursefight, "walk", lambda *a: walked.append(a) or [])
     monkeypatch.setattr(cursefight, "fight",
-                        lambda *a: {"bars": [{"owner": "EVOKER"}], "answered": []})
+                        lambda *a: {"bars": [{"owner": "EVOKER"}], "answered": [],
+                                    "outcome": outcome})
     screens = _screens(tmp_path, game, clock)
     found = cursefight.drive(screens, _manifest(), ["EVOKER"], game, save=save)
     return found, game, screens, walked
@@ -423,6 +425,16 @@ def test_drive_loads_walks_fights_and_saves_once(tmp_path, monkeypatch):
     assert found["load_errors"] == 2 and walked
     assert found["members"]["EVOKER"]["quickfight"] == 1
     _keys_allowed(screens, game)
+
+
+def test_drive_stops_after_a_lost_brawl_naming_who_stands_and_who_fell(tmp_path, monkeypatch):
+    loaded = [_member(name) for name in NAMES]
+    after = [_member(name) for name in NAMES]
+    after[0].update(hit_points=0, status=1)
+    games = []
+    with pytest.raises(RouteError, match=r"lost the brawl.*standing: \['HOLLAND'.*fallen: \['GALAIN'\]"):
+        _drive(tmp_path, monkeypatch, parties=[loaded, after], outcome="lost", games=games)
+    assert "E" not in games[0].keys
 
 
 def test_drive_answers_the_injuries_question_before_the_punch_bar(tmp_path, monkeypatch):

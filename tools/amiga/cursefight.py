@@ -433,6 +433,12 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
     found.update(fight(screens, memory, members))
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
                                       screens.left(READ_LIMIT))
+    if found["outcome"] == "lost":
+        loaded = manifest["fight"]["members"]
+        fallen = [m["name"] for m in found["after"]
+                  if m["hit_points"] == 0 or m["status"] != loaded[m["name"]]["status"]]
+        standing = [m["name"] for m in found["after"] if m["name"] not in fallen]
+        raise RouteError(f"the party lost the brawl; standing: {standing}, fallen: {fallen}")
     found["members"] = check_members(found["after"], manifest, members)
     if not save:
         return found
