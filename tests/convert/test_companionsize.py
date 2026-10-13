@@ -4,8 +4,9 @@ Every `MON*CHA.DAX` record the DOS game ships holds 0 in `size`, and a join
 copies it unchanged, so ALIAS and DRAGONBAIT hold 0 in any DOS party the game
 saves after the Pit of Moander.  No DOS figure is composed from that byte, and
 the C64 join gives a companion the default icon, so neither does the
-conversion.  The tables come from the player's own Curse disks and the
-specimen tree, and the tests skip without them.
+conversion.  A player's figure is 1 small or 2 medium, and any other value in
+a player's record stops the conversion.  The tables come from the player's own
+Curse disks and the specimen tree, and the tests skip without them.
 """
 
 from __future__ import annotations
@@ -15,7 +16,15 @@ import functools
 import gamedata
 import pytest
 
-from goldbox import c64_port, c64_save, dos_codec
+from goldbox import (
+    c64_codec,
+    c64_port,
+    c64_save,
+    dos_codec,
+    dos_port,
+    dos_savegame,
+    world_state,
+)
 from goldbox.companions import CURSE_KEY, Companions
 from goldbox.iconparts import (
     DOS_COMPANION_SIZE,
@@ -30,6 +39,8 @@ PIT_JOIN = "curse-pit-join-alias-dragonbait-dos"
 PIT_SLOT = "D"
 #: Name, `MON` id and the story byte his own C64 file holds.
 JOINED = {"ALIAS": (0x16, 0x16), "DRAGONBAIT": (0x17, 0x17)}
+FIELDS = dos_port.FIELDS_BY_NAME_FOR[CURSE_KEY]
+CURSE_C64 = c64_port.CURSE_OF_THE_AZURE_BONDS
 
 
 @functools.lru_cache(maxsize=None)
@@ -50,13 +61,52 @@ def _parts() -> IconParts:
     pytest.skip("no Curse side here carries the icon option tables")
 
 
-def test_a_companions_size_names_no_figure():
+def _edited(char: dos_codec.DosCharacter, **at: int) -> dos_codec.DosCharacter:
+    """`char`'s record with the named fields set to new bytes."""
+    raw = bytearray(char.to_bytes())
+    for name, value in at.items():
+        raw[FIELDS[name].offset] = value
+    return dos_codec.DosCharacter(bytes(raw))
+
+
+def _renamed(char: dos_codec.DosCharacter, name: bytes) -> dos_codec.DosCharacter:
+    raw = bytearray(char.to_bytes())
+    raw[0] = len(name)
+    raw[1:16] = name.ljust(15, b"\0")
+    return dos_codec.DosCharacter(bytes(raw))
+
+
+def _convert(party, companions):
+    """`new_save` for an edited party: the specimen's own place and clock."""
+    folder = gamedata.specimen(PIT_JOIN)
+    container = c64_save.container_for(CURSE_C64)
+    dos_container = dos_savegame.container_for(container.key)
+    path = dos_savegame.save_file(
+        folder, f"SAVGAM{PIT_SLOT}{dos_container.suffix}")
+    state = world_state.from_dos(path.read_bytes(), dos_container,
+                                 source=str(path))
+    save0, _save1, report = dos_codec.new_save_from(
+        state, party, _parts(), animate=None, game=CURSE_C64,
+        companions=companions)
+    return save0, report
+
+
+def _figure(save0, party, index: int) -> bytes:
+    container = c64_save.container_for(CURSE_C64)
+    at = container.icon(dos_codec.marching_slot(index, len(party)))
+    return bytes(save0[at:at + container.icon_size])
+
+
+def test_only_a_companions_zero_names_no_figure():
     assert DOS_COMPANION_SIZE == 0
-    assert dos_figure_size(DOS_COMPANION_SIZE) is None
-    assert dos_figure_size(1) == dos_size(1) == "small"
-    assert dos_figure_size(2) == dos_size(2) == "large"
-    with pytest.raises(ValueError, match="size 3"):
-        dos_figure_size(3)
+    assert dos_figure_size(DOS_COMPANION_SIZE, companion=True) is None
+    for companion in (False, True):
+        assert dos_figure_size(1, companion) == dos_size(1) == "small"
+        assert dos_figure_size(2, companion) == dos_size(2) == "large"
+        with pytest.raises(ValueError, match="size 3"):
+            dos_figure_size(3, companion)
+    with pytest.raises(ValueError, match="size 0"):
+        dos_figure_size(DOS_COMPANION_SIZE, companion=False)
 
 
 def test_the_game_saved_its_companions_with_size_zero():
@@ -70,8 +120,8 @@ def test_the_game_saved_its_companions_with_size_zero():
 
 
 def test_the_pit_join_party_converts_to_the_c64():
-    """Fails without the fix: `dos_size(0)` raised while composing ALIAS's
-    figure, so no C64 save was written for this party at all."""
+    """ALIAS and DRAGONBAIT arrive with their story bytes, pictures and the
+    default icon, and the players keep their own figures."""
     folder = gamedata.specimen(PIT_JOIN)
     table = _table()
     save0, _save1, report = dos_codec.new_save(
@@ -96,3 +146,71 @@ def test_the_pit_join_party_converts_to_the_c64():
     players = [icon for name, (_s, _p, icon) in seen.items()
                if name not in JOINED]
     assert len(set(players)) > 1, "the players lost their own figures"
+
+
+@pytest.mark.parametrize("size", [0, 3])
+def test_a_players_size_outside_one_and_two_stops_the_conversion(size):
+    """A player's figure is composed from his size, so a value naming no
+    figure stops the C64 save rather than becoming the default icon."""
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    index = next(i for i, c in enumerate(party) if c.name not in JOINED)
+    party[index] = _edited(party[index], size=size)
+    with pytest.raises(ValueError, match=f"DOS size {size} "):
+        _convert(party, _table())
+
+
+def test_a_taken_over_player_with_size_zero_stops_the_conversion():
+    """Control `$B3` is a player the engine drives, not a companion the join
+    added (`c64_codec.joined_companion`), so his 0 is a player's 0."""
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    index = next(i for i, c in enumerate(party) if c.name == "ALIAS")
+    raw = bytearray(party[index].to_bytes())
+    f83 = FIELDS["field_83_87"]
+    raw[f83.offset + (1 if f83.size == 5 else 0)] = c64_codec.DOS_PC_TAKEN_OVER
+    party[index] = dos_codec.DosCharacter(bytes(raw))
+    assert party[index].get("size") == DOS_COMPANION_SIZE
+    with pytest.raises(ValueError, match="DOS size 0 "):
+        _convert(party, _table())
+
+
+def test_a_players_size_outside_one_and_two_is_reported_not_rounded():
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    player = next(c for c in party if c.name not in JOINED)
+    neutral = dos_codec.to_neutral(_edited(player, size=0))
+    assert neutral.get("size_small") is None
+    assert any("figure's size" in line for line in neutral.dropped)
+    companion = next(c for c in party if c.name == "ALIAS")
+    neutral = dos_codec.to_neutral(companion)
+    assert neutral.get("size_small") == 0
+    assert not any("figure's size" in line for line in neutral.dropped)
+
+
+def _unmatched_by_name(party):
+    index = next(i for i, c in enumerate(party) if c.name == "ALIAS")
+    party[index] = _renamed(party[index], b"WORG")
+    return party, index, _table()
+
+
+def _unmatched_by_picture(party):
+    index = next(i for i, c in enumerate(party) if c.name == "ALIAS")
+    party[index] = _edited(party[index], unnamed_0ab=JOINED["DRAGONBAIT"][0])
+    return party, index, _table()
+
+
+def _no_table(party):
+    return party, next(i for i, c in enumerate(party) if c.name == "ALIAS"), None
+
+
+@pytest.mark.parametrize("unmatch", [_unmatched_by_name, _unmatched_by_picture,
+                                     _no_table],
+                         ids=["name", "picture", "no-table"])
+def test_an_unmatched_companion_gets_the_default_icon(unmatch):
+    """DOS draws every companion from `CPIC` by his picture, so his record's
+    head, body and colours name no figure the game ever drew.  Unmatched by
+    the companion table, he still has no figure of his own, and gets the icon
+    a C64 join leaves him."""
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    party, index, companions = unmatch(party)
+    save0, report = _convert(party, companions)
+    assert report.unwritten == []
+    assert _figure(save0, party, index) == _parts().default_icon()

@@ -1057,10 +1057,17 @@ def dos_part_colours(icon_colours: bytes,
     return out
 
 
-def dos_figure_size(size_byte: int) -> str | None:
+def dos_figure_size(size_byte: int, companion: bool) -> str | None:
     """DOS `size` as the C64's own word for it, or None for a companion's 0,
-    whose figure is not composed from his record (`DOS_COMPANION_SIZE`)."""
-    return None if size_byte == DOS_COMPANION_SIZE else dos_size(size_byte)
+    whose figure is not composed from his record (`DOS_COMPANION_SIZE`).
+
+    `companion` is bit 7 of the record's control byte.  A player's size goes
+    through :func:`dos_size`, so a player holding 0 raises like any other
+    value but 1 or 2.
+    """
+    if companion and size_byte == DOS_COMPANION_SIZE:
+        return None
+    return dos_size(size_byte)
 
 
 def dos_size(size_byte: int) -> str:

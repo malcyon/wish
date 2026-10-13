@@ -109,6 +109,8 @@ from .dos_port import (
 )
 from .encoding import combat_byte
 from .iconparts import (
+    DOS_COMPANION_SIZE,
+    DOS_SIZES,
     DosIcon,
     DosIconTables,
     IconParts,
@@ -3271,8 +3273,22 @@ def to_neutral(dos: DosCharacter,
             dos.fields["spells_castable_cleric"].confidence)
 
     # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
-    out.set("size_small", max(0, dos.get("size") - 1),
-            "DOS size @0x0C0, less one", FIELDS_BY_NAME["size"].confidence)
+    # A companion's 0 is the game's own (DOS_COMPANION_SIZE) and becomes
+    # small; any other value outside 1 and 2 names no figure and is reported
+    # rather than turned into the nearest size.
+    raw_size = dos.get("size")
+    size_at = dos.fields["size"].offset
+    if _dos_companion(dos) and raw_size == DOS_COMPANION_SIZE:
+        out.set("size_small", 0,
+                f"DOS size @{size_at:#05x} = 0, a companion's, which names "
+                f"no figure: small", FIELDS_BY_NAME["size"].confidence)
+    elif raw_size in DOS_SIZES:
+        out.set("size_small", raw_size - 1,
+                f"DOS size @{size_at:#05x}, less one",
+                FIELDS_BY_NAME["size"].confidence)
+    else:
+        out.drop(f"The combat figure's size: this save holds {raw_size} "
+                 f"there, and a player's figure is 1 (small) or 2 (medium)")
     # The raw byte travels beside the vocabulary: size 0 is a story companion's
     # own value and `size_small` has no way to say it (see `_CREATURE_SOURCE`).
     _set_creature_source(out, "size", dos.get("size"))
@@ -3595,6 +3611,35 @@ def to_neutral(dos: DosCharacter,
     return out
 
 
+class _ControlView:
+    """The `npc` and `npc_control_byte` :func:`to_neutral` reads off a DOS
+    record's control byte, for a predicate written against a neutral one."""
+
+    def __init__(self, dos: "DosCharacter"):
+        raw = dos.raw("field_83_87")
+        control = raw[1 if len(raw) == 5 else 0]
+        self._fields = {"npc": bool(control & 0x80)}
+        if control & 0x80:
+            self._fields["npc_control_byte"] = control
+
+    def get(self, name: str, default=None):
+        return self._fields.get(name, default)
+
+
+def _dos_companion(dos: "DosCharacter") -> bool:
+    """`c64_codec.joined_companion` of this record: a member the game's join
+    added, whom DOS draws from `CPIC` and not from his size and parts."""
+    return c64_codec.joined_companion(_ControlView(dos))
+
+
+def _figure_size(char: "DosCharacter") -> str | None:
+    """:func:`dos_figure_size` of the record's `size`; the control byte is
+    read only for a 0, the one value it decides."""
+    size = char.get("size")
+    return dos_figure_size(
+        size, size == DOS_COMPANION_SIZE and _dos_companion(char))
+
+
 def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
               tables: "DosIconTables | None" = None,
               source: "DosIcon | None" = None) -> bytes | None:
@@ -3617,11 +3662,14 @@ def _icon_for(char: "DosCharacter", icon: "bytes | IconParts | None",
     already translated them.
 
     A story companion's `size` is 0 and names no figure: he gets the default
-    icon, which is what the C64 join gives him (`DOS_COMPANION_SIZE`).
+    icon, which is what the C64 join gives him (`DOS_COMPANION_SIZE`).  DOS
+    draws every companion from `CPIC` by his picture, never from his head,
+    body and colours, so a companion the companion table does not match has
+    no figure of his own either, and gets the same icon.
     """
     if not isinstance(icon, IconParts):
         return icon
-    size = dos_figure_size(char.get("size"))
+    size = _figure_size(char)
     if size is None:
         return icon.default_icon()
     if source is not None:
@@ -8607,8 +8655,7 @@ def write_c64_save(save0: bytearray, save1: bytearray | None,
             rec, one = to_c64_record(
                 char,
                 icon=_icon_for(char, icon,
-                               icon_tables.get(
-                                   dos_figure_size(char.get("size"))),
+                               icon_tables.get(_figure_size(char)),
                                source=source_icon),
                 portraits=portraits,
                 payload=save0, party_slot=place, clock_minutes=clock_mins,
