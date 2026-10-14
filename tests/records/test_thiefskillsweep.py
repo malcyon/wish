@@ -325,7 +325,20 @@ def test_the_sweep_skips_an_emulator_instances_staged_tree(fake_sweep, monkeypat
     staged = fake_sweep / "inst" / "1" / "game"
     staged.mkdir(parents=True)
     (staged / "CHRDATA1.SAV").write_bytes(b"x")
-    monkeypatch.setattr(dostailsweep, "SCRATCH_DIRS", (f"{fake_sweep}/inst/",))
+    monkeypatch.setattr(dostailsweep, "SCRATCH_DIRS",
+                        ((fake_sweep / "inst").as_posix() + "/",))
     assert list(sweep.dos_records(POOL, extra=[staged])) == []
     monkeypatch.setattr(dostailsweep, "SCRATCH_DIRS", ())
     assert len(list(sweep.dos_records(POOL, extra=[staged]))) == 1
+
+
+def test_a_windows_path_inside_a_staged_tree_is_staged(monkeypatch):
+    import pathlib  # noqa: PLC0415
+
+    from tools.dos import dostailsweep  # noqa: PLC0415
+
+    monkeypatch.setattr(dostailsweep, "SCRATCH_DIRS", ("C:/scratch/dosbox/inst/",))
+    assert dostailsweep.is_staged(
+        pathlib.PureWindowsPath("C:\\scratch\\dosbox\\inst\\1\\CHRDATA1.SAV"))
+    assert not dostailsweep.is_staged(
+        pathlib.PureWindowsPath("C:\\scratch\\other\\CHRDATA1.SAV"))

@@ -117,7 +117,7 @@ NO_RECORDS = ("No DOS records on this machine: set $FR_ARCHIVES to the "
 
 def is_staged(path: pathlib.Path) -> bool:
     """Is `path` inside an emulator instance's staged game tree?"""
-    return any(d in pathlib.Path(path).as_posix() for d in SCRATCH_DIRS)
+    return any(d in pathlib.PurePath(path).as_posix() for d in SCRATCH_DIRS)
 
 
 def foreign_title(path: pathlib.Path) -> str | None:
