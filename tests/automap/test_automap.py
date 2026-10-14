@@ -3629,3 +3629,33 @@ def test_another_c64_title_lists_no_pool_commissions(app, tmp_path,
         window.tick()
     assert window.snapshot is not None
     assert _quest_rows(window) == []
+
+
+def _poll(window):
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+
+
+def test_an_unknown_title_lists_no_pool_commissions(app, tmp_path, monkeypatch):
+    """With no title the read falls back to Pool's addresses, which on a Curse
+    game are unrelated bytes."""
+    window = make_window(app, tmp_path, monkeypatch, live_machine())
+    window.state.title = None
+    _poll(window)
+    assert window.snapshot is not None
+    assert _quest_rows(window) == []
+
+
+def test_loading_curse_after_pool_takes_the_pool_rows_down(app, tmp_path,
+                                                         monkeypatch):
+    save0, roster = captured()
+    machine = MemoryTarget({0x4900: save0, 0x8300: roster,
+                            CURSE.save_load_address: save0 + roster})
+    window = make_window(app, tmp_path, monkeypatch, machine)
+    _poll(window)
+    assert _quest_rows(window)
+    window.state.title = CURSE.title
+    window._apply_title()
+    _poll(window)
+    assert window.snapshot is not None
+    assert _quest_rows(window) == []

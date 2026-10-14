@@ -1011,3 +1011,19 @@ def test_a_failure_with_nothing_written_that_is_not_a_trainer_stop_is_only_logge
         window._level_up(0)
     assert lines == [] and target.writes == []
     assert "level up for slot 0 failed" in caplog.text
+
+
+def test_switching_from_an_amiga_pool_game_to_a_c64_curse_game_takes_the_rows_down(
+        measured, amiga_regions):
+    page = bytes(flag_page(entry21=3, entry1=255))
+    target = FakeAmiga(c64_memory(), POOL)
+    lay_party(target, POOL)
+    pool_flags(target, page)
+    window = window_on(target)
+    window._refresh_roster()
+    assert any(quest_rows(window.questlog).values())
+
+    window.state.title = "Curse of the Azure Bonds"
+    window.mapper.target = MemoryTarget(c64_memory())
+    window._refresh_roster()
+    assert not any(quest_rows(window.questlog).values())

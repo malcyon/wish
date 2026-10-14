@@ -1511,10 +1511,14 @@ class AutomapBinding(QObject):
         self.snapshot = snap
         self.roster.show_snapshot(snap)
         self._show_strip(snap)
-        if game is None or game is game_named("Pool of Radiance"):
+        if game is game_named("Pool of Radiance"):
             # Only Pool's `$4A20` page holds quest flags we have mapped; the
             # same offsets in the other titles are unrelated bytes.
             self.questlog.update_from(save0_bytes)
+        else:
+            # An unknown title reads at Pool's addresses by default, so it is
+            # not fed either; rows another title left up must not stay.
+            self.questlog.clear()
         self.show_strength(save0_bytes, roster_bytes)
 
     def _refresh_amiga(self, target, title: str) -> None:
@@ -1600,6 +1604,7 @@ class AutomapBinding(QObject):
         self.fasttravel_bar.use_c64()
         self.roster.clear()
         self.snapshot = None
+        self.questlog.clear()
         self.roster.set_levelling(
             self._c64_title()
             and not actions.level_up_blockers(game=game_named(self.state.title)))
