@@ -1157,7 +1157,7 @@ class MessagesPanel(QObject):
         self._last = ""
 
     def say(self, text: str, detail: str = "", alarm: bool = False,
-            dedup: bool = True) -> None:
+            dedup: bool = True) -> QListWidgetItem | None:
         """One line, timestamped. Repeats of the last line are dropped.
 
         The connection says the same thing on every tick while it waits, and a
@@ -1167,10 +1167,12 @@ class MessagesPanel(QObject):
         **The combat log passes `dedup=False`**, because there the repeat is the
         point: "MAGNUS MISSES." twice running is two misses, and swallowing the
         second would defeat the feature that exists to catch them.
+
+        Returns the row added, or `None` when the line was dropped.
         """
         text = (text or "").strip()
         if not text or (dedup and text == self._last):
-            return
+            return None
         self._last = text
         row = QListWidgetItem(f"{datetime.now():%H:%M:%S}  {text}")
         font = row.font()
@@ -1199,6 +1201,22 @@ class MessagesPanel(QObject):
                 self.list.takeItem(0)
             if following:
                 self.list.scrollToBottom()
+        return row
+
+    def withdraw(self, row: QListWidgetItem | None) -> None:
+        """Remove `row` while it is still the newest line.
+
+        A line that something else was said after is history, not the current
+        state, and stays. Clearing the repeat guard lets the same line be said
+        again the next time it becomes true.
+        """
+        if row is None or self.list is None:
+            return
+        index = self.list.row(row)
+        if index < 0 or index != self.list.count() - 1:
+            return
+        self.list.takeItem(index)
+        self._last = ""
 
     def lines(self) -> list[str]:
         """Every line, oldest first. What a test reads."""

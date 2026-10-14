@@ -438,6 +438,50 @@ def test_the_machine_going_away_drops_to_waiting_and_comes_back(session):
     assert CountingTarget.built == 2     # a new connection, not the dead one
 
 
+def _pane(window):
+    return window.map.messages.lines()
+
+
+def test_the_waiting_line_is_withdrawn_when_the_game_connects(session, tmp_path,
+                                                              monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from wish.window import MAP_TAB, WishWindow
+    session.present["yes"] = False
+    w = WishWindow(maps={}, session=session)
+    w.tabs.setCurrentIndex(MAP_TAB)
+    w.session.poll()
+    assert _pane(w)[-1].endswith("Waiting to connect...")
+    session.present["yes"] = True
+    w.session.poll()
+    assert session.state == "connected"
+    assert not any(line.endswith("Waiting to connect...")
+                   for line in _pane(w))
+
+
+def test_a_disconnected_line_is_withdrawn_when_the_game_comes_back(
+        session, tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from wish.window import MAP_TAB, WishWindow
+    w = WishWindow(maps={}, session=session)
+    w.tabs.setCurrentIndex(MAP_TAB)
+    w.session.poll()
+    dying = {"on": True}
+
+    def reader(target):
+        if dying["on"]:
+            raise NotConnected("connection reset")
+
+    session.set_reader(reader)
+    w.session.poll()
+    assert _pane(w)[-1].endswith("Game disconnected.")
+    dying["on"] = False
+    w.session.poll()
+    assert session.state == "connected"
+    assert not any(line.endswith("Game disconnected.") for line in _pane(w))
+
+
 def test_a_bad_read_is_reported_and_survived(session):
     session.attach()
     session.set_reader(lambda t: 1 / 0)

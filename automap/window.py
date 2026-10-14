@@ -1076,6 +1076,9 @@ class AutomapBinding(QObject):
         if self.no_maps:
             self.messages.say(NO_DISKS)
         self._popover: NotePopover | None = None
+        #: The newest connection line said through `waiting`, so the connected
+        #: call can withdraw it.
+        self._connection_row = None
         self._waiting = "" if mapper.target is not None else "Waiting to connect..."
         #: The last swallowed poll failure, so its traceback is written once
         #: rather than on every tick.
@@ -1676,7 +1679,13 @@ class AutomapBinding(QObject):
         # The busy-monitor line is the one that matters, and it is the one that
         # used to be red text in a status bar and nothing else. It is a message
         # like any other now, and repeats are dropped by the panel.
-        self.messages.say(text, alarm=alarm)
+        if text:
+            row = self.messages.say(text, alarm=alarm)
+            if row is not None:
+                self._connection_row = row
+        else:
+            self.messages.withdraw(self._connection_row)
+            self._connection_row = None
         self._refresh()
 
     def _refresh(self) -> None:

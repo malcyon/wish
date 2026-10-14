@@ -105,3 +105,21 @@ def test_scrolling_back_to_the_bottom_by_hand_resumes_following(app):
     app.processEvents()
 
     assert _at_bottom(panel)
+
+
+def test_a_withdrawn_line_leaves_the_panel_and_can_be_said_again(app):
+    panel = _panel_with_room(app)
+    row = panel.say("Waiting to connect...")
+    panel.withdraw(row)
+    assert panel.lines() == []
+    panel.say("Waiting to connect...")
+    assert len(panel.lines()) == 1
+
+
+def test_a_line_that_is_no_longer_newest_is_not_withdrawn(app):
+    panel = _panel_with_room(app)
+    first = panel.say("Line A")
+    panel.say("Line B")
+    panel.withdraw(first)
+    assert [line.split("  ", 1)[1] for line in panel.lines()] == [
+        "Line A", "Line B"]
