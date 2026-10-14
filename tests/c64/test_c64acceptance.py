@@ -15183,7 +15183,7 @@ def _tavern_fight(monkeypatch, tmp_path, screens, blank_reads=0):
     run.await_combat = lambda: True
     run.events, run.shots_taken = [], []
     run.log = SimpleNamespace(emit=lambda kind, **kw: run.events.append((kind, kw)))
-    run.capture = lambda tag: run.shots_taken.append(tag)
+    run.capture = lambda tag, timeout=None: run.shots_taken.append(tag)
     run.observe_curse = lambda *a, **k: None
     return run, pressed
 
@@ -15204,12 +15204,37 @@ def test_curse_fight_records_each_tavern_bar_and_key(monkeypatch, tmp_path):
         "MOVE VIEW AIM"])
     run.fight("10", "I", 5)
     assert run.events == [
-        ("tavern-bar", {"row": "ASK ABOUT INJURIES IGNORE THEM"}),
+        ("tavern-bar", {"row": "ASK ABOUT INJURIES IGNORE THEM", "shot": True}),
         ("tavern-key", {"key": "IGNORE THEM", "pressed": True}),
-        ("tavern-bar", {"row": "PUNCH BARKEEP HAVE A DRINK LEAVE"}),
+        ("tavern-bar", {"row": "PUNCH BARKEEP HAVE A DRINK LEAVE", "shot": True}),
         ("tavern-key", {"key": "PUNCH BARKEEP", "pressed": True})]
-    assert [t for t in run.shots_taken if t.startswith("tavern-")] == ["tavern-bar", "tavern-key-IGNORE THEM",
-                               "tavern-bar", "tavern-key-PUNCH BARKEEP"]
+    assert [t for t in run.shots_taken if t.startswith("tavern-")] == [
+        "tavern-bar", "tavern-key-IGNORE THEM",
+        "tavern-bar", "tavern-key-PUNCH BARKEEP"]
+
+
+def test_curse_fight_logs_a_partial_tavern_row_as_text_and_the_unseen_press(
+        monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, ["ASK ABOUT INJURIES"])
+    with pytest.raises(A.StepFailed, match="PUNCH BARKEEP was not selectable"):
+        run.fight("10", "I", 5)
+    assert run.events == [
+        ("tavern-bar", {"row": "ASK ABOUT INJURIES", "shot": False}),
+        ("tavern-press-unseen", {"key": "PUNCH BARKEEP", "pressed": False})]
+    assert [t for t in run.shots_taken if t.startswith("tavern-bar")] == []
+
+
+def test_curse_fight_logs_a_tavern_key_whose_press_raises(monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, [
+        "PUNCH BARKEEP HAVE A DRINK LEAVE"])
+
+    def fail(label, row=24, timeout=0):
+        raise TimeoutError("press")
+
+    run.sess.press_bar = fail
+    with pytest.raises(TimeoutError):
+        run.fight("10", "I", 5)
+    assert run.events[-1] == ("tavern-key", {"key": "PUNCH BARKEEP", "pressed": None})
 
 
 def test_curse_fight_stops_at_a_bar_that_only_partly_matches_the_injuries_bar(

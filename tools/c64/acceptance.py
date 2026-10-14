@@ -2367,9 +2367,11 @@ class PoolRun:
         rows = self.rows()
         return rows[24] if rows else ""
 
-    def capture(self, tag: str, rows: list[str] | None = None) -> list[str]:
+    def capture(self, tag: str, rows: list[str] | None = None, *,
+                timeout: float | None = None) -> list[str]:
         """The text screen and a PNG of it, both kept, named in order.  ROWS,
-        when the caller already has them, are written without reading again."""
+        when the caller already has them, are written without reading again;
+        TIMEOUT, when given, bounds the screenshot."""
         self.shots += 1
         stem = f"{self.shots:02d}-{re.sub(r'[^A-Za-z0-9]+', '-', tag).strip('-')}"
         if rows is None:
@@ -2377,7 +2379,8 @@ class PoolRun:
         (self.out / f"{stem}.txt").write_text(
             "\n".join(r.rstrip() for r in rows) + "\n" if rows else "(bitmap)\n",
             encoding="utf-8")
-        self.sess.kbd.screenshot(str(self.out / f"{stem}.png"))
+        shot = {} if timeout is None else {"timeout": timeout}
+        self.sess.kbd.screenshot(str(self.out / f"{stem}.png"), **shot)
         self.last_stem = stem
         self.log.emit("screen", tag=tag, stem=stem,
                       rows=[r.rstrip() for r in rows if r.strip()])
@@ -9245,18 +9248,35 @@ class CurseRun(PoolRun):
 
     TAVERN_BAR_WAIT = 20.0
 
+    #: Seconds a tavern screenshot may take; each one comes out of the bar's wait.
+    TAVERN_SHOT_TIMEOUT = 3.0
+
     def _tavern_bar(self, row: str, seen: list) -> None:
-        """Record row 24 of a tavern bar not yet recorded, with a screenshot."""
+        """Log row 24 as text when not yet logged, and take a screenshot only
+        of the injuries bar or the `PUNCH BARKEEP` bar, which sets
+        `tavern_bar_seen`."""
+        from tools.c64 import laterbattle
+
+        expected = (tuple(row.split()) == CURSE_TAVERN_INJURIES_BAR
+                    or laterbattle.PUNCH in row)
+        if expected:
+            self.tavern_bar_seen = True
         if row.strip() and row not in seen:
             seen.append(row)
-            self.log.emit("tavern-bar", row=row.rstrip())
-            self.capture("tavern-bar")
+            self.log.emit("tavern-bar", row=row.rstrip(), shot=expected)
+            if expected:
+                self.capture("tavern-bar", timeout=self.TAVERN_SHOT_TIMEOUT)
 
-    def _tavern_key(self, label: str) -> bool:
-        """Press LABEL on the tavern's bar and record the key with a screenshot."""
-        pressed = self.sess.press_bar(label, timeout=20)
-        self.log.emit("tavern-key", key=label, pressed=bool(pressed))
-        self.capture(f"tavern-key-{label}")
+    def _tavern_key(self, label: str, event: str = "tavern-key") -> bool:
+        """Press LABEL and log EVENT with the outcome, even when the press
+        raises, then take a screenshot."""
+        pressed = None
+        try:
+            pressed = self.sess.press_bar(label, timeout=20)
+        finally:
+            self.log.emit(event, key=label,
+                          pressed=None if pressed is None else bool(pressed))
+        self.capture(f"{event}-{label}", timeout=self.TAVERN_SHOT_TIMEOUT)
         return pressed
 
     def _answer_tavern_injuries(self) -> bool:
@@ -9271,6 +9291,7 @@ class CurseRun(PoolRun):
 
         wait_until = time.time() + self.budget(self.TAVERN_BAR_WAIT, "the tavern's bar")
         seen: list = []
+        self.tavern_bar_seen = False
         while True:
             screen = self.sess.screen()
             row = "" if screen is None else screen.row(24)
@@ -9355,7 +9376,9 @@ class CurseRun(PoolRun):
             self.stop_at_first_loss()
         if not self.sess.in_combat():
             self._answer_tavern_injuries()
-            pressed = self._tavern_key(laterbattle.PUNCH)
+            pressed = self._tavern_key(
+                laterbattle.PUNCH,
+                "tavern-key" if self.tavern_bar_seen else "tavern-press-unseen")
             if diagnostic:
                 self.observe_curse("after-punch", chosen=laterbattle.PUNCH,
                                    pressed=pressed)
