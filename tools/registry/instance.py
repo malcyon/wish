@@ -767,7 +767,12 @@ def _proc_comm(pid: int) -> str | None:
 
 def _is_reaper(pid: int | None) -> bool:
     """Whether *pid* adopts orphans: init, or a `systemd` that is a subreaper
-    (a user manager, which is where orphans land on a systemd host)."""
+    (a user manager, which is where orphans land on a systemd host).
+
+    A process whose real parent is a systemd unit (`systemd-run --user Xvfb`)
+    also matches, so `stray_displays` can warn about a display that is not
+    orphaned; the warning is the only consequence.
+    """
     return pid == 1 or (pid is not None and _proc_comm(pid) == "systemd")
 
 
@@ -775,7 +780,7 @@ def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
     """Every X11 socket in *x11_dir* outside all three pools' bands, whose
     owner has already been reparented to a reaper (`_is_reaper`).
 
-    That reparenting -- the parent is init or a systemd subreaper -- is the specific case #266 found: the
+    That reparenting is the specific case reported: the
     launcher that started the display is gone, and the display is still
     running with nobody watching it. A socket whose owner still has a live
     parent is not reported here -- an ordinary launch still in progress, or
@@ -784,7 +789,7 @@ def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
     early would be noise on every ordinary run.
 
     **Reports and nothing else.** Nothing here kills what it finds --
-    `:7`, the display #266 was about, is the one number this project has
+    `:7`, the display this was written for, is the one number this project has
     deliberately never claimed the authority to touch, and this must not
     become a second way to reap it by another name.
     """
@@ -1030,10 +1035,10 @@ def main(argv: list[str] | None = None) -> int:
                 state = "held" if r["held"] else ("free" if r["exists"] else "no file")
                 print(f"{r['display']:>8} {r['pool']:<8} {state:<7} {r['pid'] or '-'}")
             for s in strays:
-                # Report only -- see `stray_displays()`. #266.
+                # Report only -- see `stray_displays()`.
                 print(f"warning: display {s['display']} is outside every pool's "
-                      f"band and its owner (pid {s['pid']}) has no live parent -- "
-                      f"reported, never reaped", file=sys.stderr)
+                      f"band and its owner (pid {s['pid']}) has no live parent or "
+                      f"was adopted by systemd -- reported, never reaped", file=sys.stderr)
         return 0
 
     if args.cmd == "status":

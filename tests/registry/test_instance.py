@@ -1079,7 +1079,9 @@ def test_stray_displays_reports_a_socket_whose_owner_has_been_orphaned(tmp_path)
             time.sleep(0.1)
         parent = instance._parent_pid(child_pid)
         assert parent != os.getpid(), "never orphaned"
-        assert instance._is_reaper(parent), f"adopted by non-reaper pid {parent}"
+        if not instance._is_reaper(parent):
+            pytest.skip(f"orphans on this host go to pid {parent} "
+                        f"({instance._proc_comm(parent)}), not init or systemd")
         assert instance.stray_displays(x11_dir) == [
             {"display": ":1097", "pid": child_pid}
         ]
