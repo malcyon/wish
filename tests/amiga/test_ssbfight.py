@@ -555,7 +555,7 @@ DRIVE = [None, "credits", "title", "party_menu", "load_picker", None, "scrolls_d
 
 
 def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won",
-           parties=None, script=DRIVE):
+           parties=None, script=DRIVE, retries=0):
     clock = Clock()
     loaded = [_member(name) for name in NAMES]
     after = [_member(name, quickfight=1) for name in NAMES]
@@ -563,7 +563,8 @@ def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won
     game.walking = False
     answers = []
     monkeypatch.setattr(ssbfight, "wander", lambda *a: {"steps": [], "met": "shot"})
-    monkeypatch.setattr(ssbfight, "fight", lambda *a, **k: {"outcome": outcome,
+    outcomes = [outcome] if isinstance(outcome, str) else list(outcome)
+    monkeypatch.setattr(ssbfight, "fight", lambda *a, **k: {"outcome": outcomes.pop(0),
                                                        "bars": [{"owner": "PAINE"}]})
     monkeypatch.setattr(ssbfight, "capture", lambda *a: {"outcome": "bar"})
 
@@ -573,8 +574,60 @@ def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won
 
     screens = _screens(tmp_path, game, clock)
     found = ssbfight.drive(screens, _manifest(), ["PAINE"], game, answer, save=save,
-                           capture_only=capture_only)
+                           capture_only=capture_only, retries=retries)
     return found, game, screens, answers
+
+
+def test_after_defeat_keeps_every_screen_and_names_where_it_rests(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None, "party_destroyed", None, "title", "title", "credits"])
+    game.walking = False
+    found = ssbfight.after_defeat(_screens(tmp_path, game, clock))
+    assert found["landing"] == "title" and len(found["screens"]) == 5
+    assert found["screens"][3]["states"] == ["title"] and game.keys == []
+
+
+def test_after_defeat_names_no_landing_when_none_holds(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None, "load_anyway"])
+    game.walking = False
+    found = ssbfight.after_defeat(_screens(tmp_path, game, clock))
+    assert found["landing"] is None and game.keys == []
+    assert clock.now >= ssbfight.AFTER_DEFEAT_LIMIT
+
+
+#: Attempt one to the map, a defeat that rests on the party menu, attempt two from the load
+#: picker to the map, then the won fight's camp save.
+RETRY = [None, "credits", "title", "party_menu", "load_picker", "loaded_menu", "journal",
+         "world", "party_menu", "party_menu", "load_picker", "loaded_menu", "journal", "world",
+         "world", "camp", "camp_save_picker", "exit_game", "camp"]
+
+
+def test_drive_retries_a_lost_fight_from_the_party_menu_and_saves_the_win(tmp_path,
+                                                                        monkeypatch):
+    loaded = [_member(name) for name in NAMES]
+    after = [_member(name, quickfight=1) for name in NAMES]
+    found, game, screens, answers = _drive(
+        tmp_path, monkeypatch, outcome=["lost", "won"], script=RETRY, retries=1,
+        parties=[loaded, loaded, after])
+    assert game.keys == ["ESC", "P", "L", "D", "B", "L", "D", "B", "E", "S", "E", "N"]
+    assert [a["outcome"] for a in found["attempts"]] == ["lost", "won"]
+    assert found["attempts"][0]["after_defeat"]["landing"] == "party_menu"
+    assert found["outcome"] == "won" and answers == ["journal", "journal"]
+    _keys_allowed(screens, game)
+
+
+def test_drive_without_retries_records_where_the_defeat_rested(tmp_path, monkeypatch):
+    found, game, _, _ = _drive(tmp_path, monkeypatch, outcome="lost", script=RETRY[:10])
+    assert game.keys == ["ESC", "P", "L", "D", "B"]
+    assert found["outcome"] == "lost"
+    assert found["attempts"][0]["after_defeat"]["landing"] == "party_menu"
+
+
+def test_drive_stops_retrying_on_a_landing_with_no_measured_way_back(tmp_path, monkeypatch):
+    script = [*RETRY[:8], "loaded_menu", "loaded_menu"]
+    with pytest.raises(RouteError, match="no measured way back"):
+        _drive(tmp_path, monkeypatch, outcome=["lost", "won"], script=script, retries=1)
 
 
 def test_drive_loads_begins_fights_and_saves_once(tmp_path, monkeypatch):
@@ -752,6 +805,18 @@ def test_run_succeeds_only_on_a_clean_read_back(tmp_path, monkeypatch, problems)
         assert receipt["success"] and written["source_hashes"] == "unchanged" and halted
 
 
+@pytest.mark.parametrize("retries, capture", [(4, False), (1, True), (-1, False)])
+def test_run_bounds_the_retries_before_the_guest(tmp_path, monkeypatch, retries, capture):
+    manifest = _staged(tmp_path)
+    args = _args(tmp_path, manifest, capture=capture)
+    args.retry_lost = retries
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="retry-lost"):
+        ssbfight.run(args, guest=guest, guards=object(), boot=pytest.fail, halt=pytest.fail,
+                     memory=object(), preflight=lambda python: None)
+    assert guest.calls == []
+
+
 def test_run_fails_a_lost_fight_and_reads_nothing_back(tmp_path, monkeypatch):
     drive = lambda *a, **k: {"outcome": "lost", "bars": []}  # noqa: E731
     with pytest.raises(RouteError, match="destroyed"):
@@ -763,13 +828,14 @@ def test_run_fails_a_lost_fight_and_reads_nothing_back(tmp_path, monkeypatch):
 def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeypatch):
     seen = {}
 
-    def drive(screens, manifest, members, memory, answer, *, save, capture_only, found):
-        seen.update(save=save, capture_only=capture_only)
+    def drive(screens, manifest, members, memory, answer, *, save, capture_only, retries,
+              found):
+        seen.update(save=save, capture_only=capture_only, retries=retries)
         return {"capture": {"outcome": "bar", "shot": "s.png", "confirmed": True,
                             "support": "the combat_bar guard"}}
 
     receipt, _written, _halted = _run(tmp_path, monkeypatch, drive=drive, capture=True)
-    assert seen == {"save": False, "capture_only": True}
+    assert seen == {"save": False, "capture_only": True, "retries": 0}
     assert receipt["success"] and "read_back" not in receipt
 
 

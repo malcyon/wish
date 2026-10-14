@@ -126,6 +126,16 @@ POST_WRITE_WAIT = cursefight.POST_WRITE_WAIT
 CAPTURE_LIMIT = 600.0
 #: Seconds a screen must stay unchanged, with a member's record in turn, to be taken as his bar.
 CAPTURE_STILL = 10.0
+#: Screens a defeat can come to rest on, told apart by their guards, and those with a measured
+#: route on to the load picker (the boot's own: ESC on the credits, P on the title, L on the
+#: party menu). The loaded party's menu has no measured way back to the picker, so a defeat
+#: that rests there stops the retries with its screens kept.
+LANDINGS = ("credits", "title", "party_menu", "loaded_menu", "load_picker")
+RELOAD_FROM = ("credits", "title", "party_menu", "load_picker")
+#: Seconds the screens after a defeat are watched, pressing nothing, for one of `LANDINGS`.
+AFTER_DEFEAT_LIMIT = 180.0
+#: Attempts a run may add after a lost fight.
+RETRY_LIMIT = 3
 #: Calls of the journal answerer that may find no challenge before the run stops.
 JOURNAL_TRIES = 4
 SLOT = curseadd.SLOT
@@ -450,41 +460,99 @@ def wait_past_journal(screens: Screens, want: tuple[str, ...], limit: float, ans
     return screens.wait(want, limit, past=("journal", *past))
 
 
-def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, answer: Callable,
-          *, save: bool, capture_only: bool = False, found: dict | None = None) -> dict:
-    """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
-    made, so a step that stops still leaves what came before it for the receipt."""
+def after_defeat(screens: Screens) -> dict:
+    """Watch the screens after a lost fight, pressing nothing, until one of `LANDINGS` shows on
+    two grabs running or `AFTER_DEFEAT_LIMIT` passes; every grab is kept with what it matched."""
+    shots: list[dict] = []
+    end = screens.clock() + screens.left(AFTER_DEFEAT_LIMIT)
+    previous = None
+    while screens.clock() < end:
+        seen, shot = screens.look("after-defeat")
+        state = next((s for s in KNOWN if s in seen), None)
+        shots.append({"shot": str(shot), "states": seen})
+        if state in LANDINGS and state == previous:
+            return {"landing": state, "screens": shots}
+        previous = state
+        screens.sleep(3.0)
+    return {"landing": None, "screens": shots}
+
+
+def to_load_picker(screens: Screens, landing: str) -> None:
+    """From the title, the credits, the party menu or the picker itself to the load picker."""
+    if landing == "credits":
+        screens.to_title(120)
+    if landing in ("credits", "title"):
+        screens.press("P", "title")
+        screens.wait(("party_menu",), 60, past=("title",))
+    if landing != "load_picker":
+        screens.press("L", "party_menu")
+        screens.wait(("load_picker",), 60, past=("party_menu",))
+
+
+def begin(screens: Screens, manifest: dict, memory: Any, answer: Callable,
+          into: dict) -> None:
+    """From the load picker: load the staged slot, check the party, begin past the journal,
+    and read the live gate and the turn pointer, each reading into `into` as it is made."""
     fight_ = manifest["fight"]
     adf = pathlib.Path(manifest["disks"]["df0"]["path"])
-    found = {} if found is None else found
-    screens.to_title(300)
-    screens.press("P", "title")
-    screens.wait(("party_menu",), 60, past=("title",))
-    screens.press("L", "party_menu")
-    screens.wait(("load_picker",), 60, past=("party_menu",))
     screens.press(fight_["load"], "load_picker")
     screens.wait(("loaded_menu",), 120, past=("load_picker", "scrolls_dropped"))
-    found["loaded"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
-                                       screens.left(READ_LIMIT))
-    names = [name_key(m["name"]) for m in found["loaded"]]
+    into["loaded"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
+                                      screens.left(READ_LIMIT))
+    names = [name_key(m["name"]) for m in into["loaded"]]
     require(names == [name_key(n) for n in fight_["names"]],
             f"the loaded party is {names}, not {fight_['names']}")
     screens.press("B", "loaded_menu")
     wait_past_journal(screens, ("world",), 120, answer, adf, past=("loaded_menu",))
-    found[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
-                                        screens.left(READ_LIMIT))
-    require(found[LIVE_GATE] == GATE_ON,
-            f"the gate ${GATE:04X} reads {found[LIVE_GATE]} in the running game, not {GATE_ON}")
-    found["turn_before"] = curseadd.bounded(lambda _h: memory.turn_pointer(), memory.holder,
-                                            screens.left(READ_LIMIT))
+    into[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
+                                       screens.left(READ_LIMIT))
+    require(into[LIVE_GATE] == GATE_ON,
+            f"the gate ${GATE:04X} reads {into[LIVE_GATE]} in the running game, not {GATE_ON}")
+    into["turn_before"] = curseadd.bounded(lambda _h: memory.turn_pointer(), memory.holder,
+                                           screens.left(READ_LIMIT))
     screens.sleep(AFTER_KEY)
-    found["walk"] = wander(screens, memory, fight_["place"], fight_)
-    if capture_only:
-        found["capture"] = capture(screens, memory, found["turn_before"])
-        return found
-    found.update(fight(screens, memory, members, found=found))
-    if found["outcome"] != "won":
-        return found
+
+
+def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, answer: Callable,
+          *, save: bool, capture_only: bool = False, retries: int = 0,
+          found: dict | None = None) -> dict:
+    """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
+    made, so a step that stops still leaves what came before it for the receipt.
+
+    A lost fight's following screens are kept (`after_defeat`). With `retries`, a defeat that
+    rests on a screen in `RELOAD_FROM` is followed back to the load picker, the staged slot is
+    loaded again and the walk repeated, at most `retries` more times; each attempt is one entry
+    of `attempts`, and the last one's readings are also `found`'s own.
+    """
+    fight_ = manifest["fight"]
+    adf = pathlib.Path(manifest["disks"]["df0"]["path"])
+    found = {} if found is None else found
+    attempts: list[dict] = found.setdefault("attempts", [])
+    screens.to_title(300)
+    landing = "title"
+    while True:
+        attempt: dict[str, Any] = {"number": len(attempts) + 1}
+        attempts.append(attempt)
+        to_load_picker(screens, landing)
+        begin(screens, manifest, memory, answer, attempt)
+        found.update({k: v for k, v in attempt.items() if k != "number"})
+        attempt["walk"] = found["walk"] = wander(screens, memory, fight_["place"], fight_)
+        if capture_only:
+            found["capture"] = capture(screens, memory, attempt["turn_before"])
+            return found
+        fought = fight(screens, memory, members, found=attempt)
+        attempt.update(fought)
+        found.update(fought)
+        if found["outcome"] == "won":
+            break
+        attempt["after_defeat"] = after_defeat(screens)
+        landing = attempt["after_defeat"]["landing"]
+        if len(attempts) > retries:
+            return found
+        require(landing in RELOAD_FROM,
+                f"the defeat came to rest on {landing or 'a screen no guard knows'}, which has "
+                f"no measured way back to the load picker; its screens are in attempt "
+                f"{attempt['number']}'s after_defeat")
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
                                       screens.left(READ_LIMIT))
     found["members"] = check_members(found["after"], manifest, members)
@@ -547,7 +615,11 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         sleep: Callable[[float], None] = time.sleep) -> dict:
     """Boot a staged manifest, walk to the fight, fight or capture, save once unless told not to."""
     require(0 <= args.wait_lane <= 1800, "lane wait exceeds 1800 seconds")
-    require(0 < args.budget <= 3600, "budget must be at most 3600 seconds")
+    retries = getattr(args, "retry_lost", 0)
+    require(0 <= retries <= RETRY_LIMIT, f"--retry-lost is 0 to {RETRY_LIMIT}")
+    require(not (retries and args.capture), "--retry-lost does not go with --capture")
+    require(0 < args.budget <= 3600 * (1 + retries),
+            f"budget must be at most {3600 * (1 + retries)} seconds")
     require(not args.out.exists(), f"{args.out} already exists")
     manifest = json.loads(args.manifest.read_text())
     require("fight" in manifest and manifest.get("title") == "ssb",
@@ -585,7 +657,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     command = [str(pathlib.Path(__file__)), "run", "--manifest", str(args.manifest),
                "--holder", args.holder, "--out", str(args.out),
                *(f"--member={name}" for name in args.member),
-               *(["--no-save"] if args.no_save else []), *(["--capture"] if args.capture else [])]
+               *(["--no-save"] if args.no_save else []), *(["--capture"] if args.capture else []),
+               *([f"--retry-lost={retries}"] if retries else [])]
     booted = False
     found: dict[str, Any] = {}
     screens = None
@@ -602,7 +675,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         screens = Screens(guest, args.holder, args.out / "screens", guards, clock() + args.budget,
                           clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory, answer,
-                             save=receipt["save"], capture_only=args.capture, found=found))
+                             save=receipt["save"], capture_only=args.capture,
+                             retries=retries, found=found))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
@@ -641,7 +715,9 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             else:
                 receipt["problems"] = []
         elif receipt.get("outcome") == "lost":
-            receipt["problems"] = ["the party was destroyed, so nothing was saved"]
+            tries = len(receipt.get("attempts") or [None])
+            receipt["problems"] = [f"the party was destroyed in each of {tries} attempt(s), "
+                                   "so nothing was saved"]
         elif args.no_save:
             receipt["problems"] = []
         elif fetched:
@@ -688,6 +764,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="stop after the fight's checks, saving nothing")
     g.add_argument("--capture", action="store_true",
                    help="stop at the fight's first member's command bar, pressing nothing on it")
+    g.add_argument("--retry-lost", type=int, default=0, metavar="N",
+                   help="after a lost fight, go back to the load picker by the boot's own route, "
+                        "load the staged slot again and walk again, at most N more times")
     g.add_argument("--budget", type=float, default=2700)
     g.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS")
     r = sub.add_parser("read", help="read a fetched disk's saved slot against a manifest")
