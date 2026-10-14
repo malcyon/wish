@@ -13,6 +13,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / 'ansible/roles/sandbox-network'
+# Interpreter start-up on a loaded Windows runner can exceed 5 s; a hung validator still stops.
+VALIDATOR_TIMEOUT = 60
 SERVICE = {
     'source': '10.77.0.10', 'destination': '192.0.2.20', 'protocol': 'tcp',
     'port': 80, 'scheme': 'http', 'hostname': 'plane.example.test', 'denied_tcp_ports': [22, 81, 3000],
@@ -26,7 +28,7 @@ def _validate(service, pinholes=()):
             'service_guest': 'agent-vm',
             'leases': {'agent-vm': {'ip': '10.77.0.10'}, 'win11': {'ip': '10.77.0.11'}}}
     return subprocess.run([sys.executable, *command[1:]], input=json.dumps(data),
-                          capture_output=True, text=True, timeout=5)
+                          capture_output=True, text=True, timeout=VALIDATOR_TIMEOUT)
 
 
 def test_scoped_http_permission_is_accepted():
