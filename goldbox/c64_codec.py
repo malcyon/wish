@@ -4446,8 +4446,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         fill = companion_fill(deltas.key, "C64")
         if is_npc and (rec.get("dual_class_slot"), level) == (
                 fill.get("dual_class_slot"), fill.get("dual_class_level")):
-            # What the C64 join copies from a companion's `MON` file: he has
-            # not changed class.
+            # Any npc holding the pair a companion's `MON` file holds, which
+            # the C64 join copies: read as no class left.
             level = 0
         if level:
             slot = rec.get("dual_class_slot")

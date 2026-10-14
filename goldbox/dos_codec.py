@@ -10242,10 +10242,10 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
             at = container.icon(char_slot.index)
             raw = bytes(save0[at:at + container.icon_size])
             # An all-zero entry converts as the seeded default, which every
-            # title's `INIT` writes into every icon slot before a character
-            # exists (Pool, Curse `$0ADF`, Silver Blades `$0C1A`), so no
-            # entry the game wrote is zero; an earlier Wish's writer left
-            # some.
+            # title's `INIT` writes into all eight icon entries before a
+            # character exists: Curse `$0ADF` and Silver Blades `$0BEF`, each
+            # copying 36 bytes eight times to `$4DE0` (from `$0B0A` and
+            # `$0C1A`), so no entry the game wrote is zero.
             zero_entry = not any(raw)
             if zero_entry:
                 raw = icon_parts.default_icon()
