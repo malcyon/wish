@@ -730,6 +730,12 @@ class Controller:
         self.log("map_tab")
 
     def _capture(self, state: str, *, check: bool = True) -> dict[str, Any]:
+        """Grab one frame and cut it to the Amiga screen.
+
+        For the title's AmigaDOS screens (`HIRES_SCREENS`: Pool's `cli`, Curse's `reboot`), a
+        frame of any size we know that is not an exact capture gets a plain cut instead, with the
+        doubled-pixel check dropped; the guard's sha256 still decides whether it is that screen.
+        """
         number = sum(1 for _ in self.out.glob("game-*.raw.png"))
         raw = self.out / f"game-{number:03d}.raw.png"
         crop = self.out / f"game-{number:03d}.png"

@@ -482,3 +482,17 @@ def test_each_new_guard_matches_only_the_capture_frames_that_show_its_screen(
 
     for state, wanted in _NEW_GUARDS[title].items():
         assert {path.stem.split("__", 1)[1] for path in frames if guards(state, path)} == wanted, state
+
+
+def test_only_a_title_whose_reload_restarts_the_game_waits_the_boots_title_limit_for_the_title(
+        tmp_path: Path):
+    from tools.amiga import route_silver_blades
+
+    ssb = maproute.route_for("ssb", _manifest("ssb", tmp_path)).amiga_title
+    assert ssb.wait_limits == route_silver_blades.published_title("D").wait_limits
+    assert "title" not in ssb.wait_limits
+    for title in ("pool", "darkness"):
+        route = maproute.route_for(title, _manifest(title, tmp_path)).amiga_title
+        assert route.wait_limits["title"] == route.title_limit
+    curse = maproute.route_for("curse", _yulash_manifest(tmp_path)).amiga_title
+    assert curse.wait_limits["title"] == curse.title_limit

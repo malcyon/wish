@@ -255,11 +255,13 @@ def _legacy_title(base: AmigaTitle, load: Phase) -> AmigaTitle:
             steps.append(((step.drive, step.media, step.key), step.state, "insert"))
         elif step.kind in ("key", "turn", "move", "answer"):
             steps.append((step.key, step.state, step.kind))
-    # A step that restarts the game waits for the title as long as the boot's own title wait.
+    # A Pool, Curse or Pools of Darkness reload restarts the game, and waits for the title as
+    # long as the boot's own title wait.
+    restarts = base in (route_pool.POOL, route_curse.CURSE, route_darkness.DARKNESS)
     return dataclasses.replace(
         base, route=tuple(steps), measure_route=tuple(steps), control_letter=None,
         after_letter=None, kept_letters=(), plain_keys=(), interstitial_letters=(),
-        wait_limits={**base.wait_limits, "title": base.title_limit},
+        wait_limits={**base.wait_limits, "title": base.title_limit} if restarts else base.wait_limits,
     )
 
 
