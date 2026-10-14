@@ -80,7 +80,11 @@ with `reloaded`).  No reload is made after a side prompt was answered on the
 key.  Each reload is a `walk-reload` event and a `summary.json`
 `walk_reloads` row (`reload` is `encounter` or `lost`; the move, key,
 square, area and the last screen); the gate
-checks go to `encounter_gates`.
+checks go to `encounter_gates`.  The key sent again logs `walk-reload-held`,
+kept as the row's `held`: the gate bytes read back once written, the
+generator bytes `$03C2`-`$03C8` read before and after the key, and `drew`,
+whether they changed.  `no_encounters` and the gate table are put back to
+what they were before the key.
 
 `--read-at PC=GUARD:ADDR:N[,ADDR:N...]` (hex, Pool only, repeatable) is a
 stopping exec checkpoint armed at `load`: at PC it checks the code bytes there
@@ -1448,6 +1452,11 @@ def panel_name(rows: list[str]) -> str:
                 return text
     return ""
 
+
+#: The C64 generator's six state bytes and its result (`LIBRARY $2D88` in
+#: Pool), which a reload's held key reads before and after to show the roll
+#: drew.  Read only: nothing here writes them.
+GENERATOR = (0x03C2, 7)
 
 #: The snapshot a `walk-fight` step under `--walk-reload` or
 #: `--reload-lost-fights` takes before each move key, and restores when that
@@ -7660,21 +7669,7 @@ class PoolRun:
         again after a reload, holds the area's encounter gate for that key
         alone, then puts it back and verifies it before the next key."""
         if held:
-            self.sess.no_encounters = self.sess.draw_keeping_gates = True
-            try:
-                # Taking MOVE runs the area's check once, before any key.
-                self.sess.suppress_encounters()
-                got = self._walk_fight_key(route, n, move, before, *rest)
-            except BaseException:
-                self.sess.no_encounters = self.sess.draw_keeping_gates = False
-                try:
-                    self.restore_gates(f"{self.walk_verb} move {n} after a reload")
-                except StepFailed as e:
-                    self.log.emit("encounter-gates-unrestored", why=str(e))
-                raise
-            self.sess.no_encounters = self.sess.draw_keeping_gates = False
-            self.restore_gates(f"{self.walk_verb} move {n} after a reload")
-            return got
+            return self._held_pass(route, n, move, before, *rest)
         if (self.walk_reload or self.reload_lost_fights) and not self.sess.in_combat():
             self.sess.snapshot(WALK_RELOAD_SNAPSHOT)
             self.walk_reload_armed = (n, move, list(before),
@@ -7683,6 +7678,83 @@ class PoolRun:
             return self._walk_fight_key(route, n, move, before, *rest)
         finally:
             self.walk_reload_armed = None
+
+    def _held_pass(self, route, n, move, before, *rest) -> bool:
+        """The key sent again after a reload, with the area's `RELOAD_GATES`
+        gate held for it alone; the gate is put back and verified after it,
+        and `no_encounters` and `draw_keeping_gates` go back to what they were.
+
+        A `walk-reload-held` event, also kept as `held` on the reload's row,
+        records the gate bytes read back once written and the generator
+        state before and after the key, read only: a gate that lets the roll
+        draw leaves the state changed (`drew`)."""
+        sess = self.sess
+        was = (sess.no_encounters, sess.draw_keeping_gates)
+        proof: dict = {"at_move": n, "move": move}
+        sess.no_encounters = sess.draw_keeping_gates = True
+        when = f"{self.walk_verb} move {n} after a reload"
+        try:
+            proof["generator_before"] = self.read_generator()
+            # Taking MOVE runs the area's check once, before any key.
+            sess.suppress_encounters()
+            proof["gate_bytes"] = self.read_reload_gate()
+            got = self._walk_fight_key(route, n, move, before, *rest)
+            proof["generator_after"] = self.read_generator()
+        except BaseException:
+            sess.draw_keeping_gates = False
+            try:
+                self.restore_gates(when)
+            except StepFailed as e:
+                self.log.emit("encounter-gates-unrestored", why=str(e))
+            finally:
+                sess.no_encounters, sess.draw_keeping_gates = was
+                self.keep_held_proof(proof)
+            raise
+        sess.draw_keeping_gates = False
+        try:
+            report = self.restore_gates(when)
+        finally:
+            sess.no_encounters, sess.draw_keeping_gates = was
+        proof["gates_restored"] = report["gates"]
+        self.keep_held_proof(proof)
+        return got
+
+    def keep_held_proof(self, proof: dict) -> None:
+        """Log a held key's proof and keep it on the run's last reload."""
+        before, after = proof.get("generator_before"), proof.get("generator_after")
+        proof["drew"] = (None if before is None or after is None
+                         else before != after)
+        self.log.emit("walk-reload-held", **proof)
+        if self.walk_reloads:
+            self.walk_reloads = [*self.walk_reloads[:-1],
+                                 {**self.walk_reloads[-1], "held": proof}]
+
+    def read_generator(self) -> str | None:
+        """The C64 generator's state and result bytes (`GENERATOR`), as hex;
+        read only.  None when the monitor cannot be read."""
+        at, length = GENERATOR
+        try:
+            with self.sess.mon(5) as m:
+                got = bytes(m.read(at, length))
+                m.resume()
+        except (OSError, S.MonitorError):
+            return None
+        return got.hex(" ")
+
+    def read_reload_gate(self) -> list[dict]:
+        """Each poke of the running area's `RELOAD_GATES` gate: its address,
+        the value written and the value read back."""
+        area, gate = self.reload_gate()
+        if gate is None:
+            return []
+        try:
+            with self.sess.mon(5) as m:
+                rows = [{"address": f"${a:04X}", "written": v,
+                         "read": m.read(a, 1)[0]} for a, v in gate.pokes]
+                m.resume()
+        except (OSError, S.MonitorError):
+            return []
+        return rows
 
     def _check_blank_resend(self, route, n, move) -> None:
         """Fail rather than send `walk_one` into a blank row 24: after an

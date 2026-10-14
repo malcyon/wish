@@ -123,8 +123,10 @@ class _Session:
         self.calls.append(("suppress", self.no_encounters))
 
     def restore_encounter_gates(self):
-        self.calls.append(("gates-restored", self.no_encounters))
-        return [{"address": 0x4A80, "verified": True}]
+        # As the real one: it turns the switch off itself.
+        self.calls.append(("gates-restored", self.draw_keeping_gates))
+        self.no_encounters = False
+        return [{"address": "$9B65", "verified": True}]
 
 
 def _run(tmp_path, monkeypatch, sess, watch="EVOKER"):
@@ -337,6 +339,55 @@ def test_a_held_pass_holds_the_gate_for_its_key_and_verifies_it_after(
     assert run.gate_reports[-1]["verified"] is True
 
 
+@pytest.mark.parametrize("fails", [False, True])
+def test_a_held_pass_leaves_an_outer_no_encounters_switch_on(tmp_path, monkeypatch, fails):
+    sess = _Session([], PARTY)
+    sess.no_encounters = True
+    run = _run(tmp_path, monkeypatch, sess)
+    run.walk_reload = 1
+
+    def key(*a):
+        if fails:
+            raise A.StepFailed("blocked")
+        return False
+
+    run._walk_fight_key = key
+    try:
+        run._walk_fight_pass(True, "I", 3, "I", [13, 7, 2], None, None, [])
+    except A.StepFailed:
+        assert fails
+    assert sess.no_encounters is True and sess.draw_keeping_gates is False
+
+
+def test_a_held_key_logs_the_gate_readback_and_whether_the_generator_drew(
+        tmp_path, monkeypatch):
+    sess = _Session([], PARTY)
+    limit = A.S.POOL_SLUMS_ROLL_AT + A.S.POOL_SLUMS_ROLL_LIMIT
+    sess.memory.update({limit: 0x0C, **{0x03C2 + i: i for i in range(7)}})
+    sess.suppress_encounters = lambda: sess.memory.update({limit: 0xFF})
+    run = _run(tmp_path, monkeypatch, sess)
+    run.walk_reload = 1
+    run.walk_reloads = [{"reload": "encounter", "at_move": 3}]
+    run._walk_fight_key = lambda *a: sess.memory.update({0x03C8: 0x63}) or False
+    run._walk_fight_pass(True, "I", 3, "I", [13, 7, 2], None, None, [])
+    (held,) = [e for e in _events(run, tmp_path) if e.get("kind") == "walk-reload-held"]
+    assert held["gate_bytes"] == [{"address": f"${limit:04X}", "written": 0xFF, "read": 0xFF}]
+    assert held["generator_before"] == "00 01 02 03 04 05 06"
+    assert held["generator_after"] == "00 01 02 03 04 05 63"
+    assert held["drew"] is True and held["gates_restored"][0]["verified"] is True
+    assert run.walk_reloads[-1]["held"]["drew"] is True
+
+
+def test_a_held_key_that_leaves_the_generator_alone_says_it_did_not_draw(
+        tmp_path, monkeypatch):
+    sess = _Session([], PARTY)
+    run = _run(tmp_path, monkeypatch, sess)
+    run._walk_fight_key = lambda *a: False
+    run._walk_fight_pass(True, "I", 3, "I", [13, 7, 2], None, None, [])
+    (held,) = [e for e in _events(run, tmp_path) if e.get("kind") == "walk-reload-held"]
+    assert held["drew"] is False
+
+
 def test_a_held_pass_puts_the_gate_back_when_its_key_fails(tmp_path, monkeypatch):
     sess = _Session([], PARTY)
     run = _run(tmp_path, monkeypatch, sess)
@@ -349,6 +400,8 @@ def test_a_held_pass_puts_the_gate_back_when_its_key_fails(tmp_path, monkeypatch
         run._walk_fight_pass(True, "I", 3, "I", [13, 7, 2], None, None, [])
     assert sess.calls[-1] == ("gates-restored", False) and sess.no_encounters is False
     assert sess.draw_keeping_gates is False
+    held = [e for e in _events(run, tmp_path) if e.get("kind") == "walk-reload-held"]
+    assert len(held) == 1 and held[0]["drew"] is None
 
 
 def test_the_walk_sends_a_reloaded_key_again_held_and_counts_one_send(
