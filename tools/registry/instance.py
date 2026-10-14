@@ -757,11 +757,25 @@ def _parent_pid(pid: int) -> int | None:
         return None
 
 
+def _proc_comm(pid: int) -> str | None:
+    """*pid*'s command name from `/proc/<pid>/comm`, or `None` if unreadable."""
+    try:
+        return Path(f"/proc/{pid}/comm").read_text().strip()
+    except OSError:
+        return None
+
+
+def _is_reaper(pid: int | None) -> bool:
+    """Whether *pid* adopts orphans: init, or a `systemd` that is a subreaper
+    (a user manager, which is where orphans land on a systemd host)."""
+    return pid == 1 or (pid is not None and _proc_comm(pid) == "systemd")
+
+
 def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
     """Every X11 socket in *x11_dir* outside all three pools' bands, whose
-    owner has already been reparented to init.
+    owner has already been reparented to a reaper (`_is_reaper`).
 
-    That reparenting -- `ppid == 1` -- is the specific case #266 found: the
+    That reparenting -- the parent is init or a systemd subreaper -- is the specific case #266 found: the
     launcher that started the display is gone, and the display is still
     running with nobody watching it. A socket whose owner still has a live
     parent is not reported here -- an ordinary launch still in progress, or
@@ -799,7 +813,7 @@ def stray_displays(x11_dir: Path = Path("/tmp/.X11-unix")) -> list[dict]:
         pid = _socket_owner(path)
         if pid is None:
             continue
-        if _parent_pid(pid) == 1:
+        if _is_reaper(_parent_pid(pid)):
             out.append({"display": f":{n}", "pid": pid})
     return out
 

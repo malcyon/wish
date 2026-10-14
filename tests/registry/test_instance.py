@@ -1039,7 +1039,7 @@ def test_stray_displays_ignores_a_socket_whose_owner_still_has_a_live_parent(tmp
     )
     try:
         assert proc.stdout.readline().strip() == "ready"
-        assert instance._parent_pid(proc.pid) not in (None, 1)  # still ours
+        assert not instance._is_reaper(instance._parent_pid(proc.pid))  # still ours
         assert instance.stray_displays(x11_dir) == []
     finally:
         proc.kill()
@@ -1047,10 +1047,10 @@ def test_stray_displays_ignores_a_socket_whose_owner_still_has_a_live_parent(tmp
 
 
 @posix
-def test_stray_displays_reports_a_socket_whose_owner_has_been_reparented_to_init(tmp_path):
+def test_stray_displays_reports_a_socket_whose_owner_has_been_orphaned(tmp_path):
     """#266's exact case: the process that launched the display has already
-    exited, the display itself was reparented to init, and it is still
-    running with nobody watching it."""
+    exited, the display itself was adopted by a reaper (init or a systemd
+    subreaper), and it is still running with nobody watching it."""
     _needs_proc_locks()  # both read /proc; skip together where neither exists
     x11_dir = tmp_path / "X11-unix"
     x11_dir.mkdir()
@@ -1074,15 +1074,34 @@ def test_stray_displays_reports_a_socket_whose_owner_has_been_reparented_to_init
     child_pid = int(pid_file.read_text())
     try:
         deadline = time.time() + 5
-        while instance._parent_pid(child_pid) != 1 and time.time() < deadline:
+        while (instance._parent_pid(child_pid) == os.getpid()
+               and time.time() < deadline):
             time.sleep(0.1)
-        assert instance._parent_pid(child_pid) == 1, "never reparented to init"
+        parent = instance._parent_pid(child_pid)
+        assert parent != os.getpid(), "never orphaned"
+        assert instance._is_reaper(parent), f"adopted by non-reaper pid {parent}"
         assert instance.stray_displays(x11_dir) == [
             {"display": ":1097", "pid": child_pid}
         ]
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.kill(child_pid, signal.SIGKILL)
+
+
+@posix
+def test_stray_displays_treats_a_parent_named_systemd_as_a_reaper(tmp_path, monkeypatch):
+    """On a host where a systemd user manager is a subreaper, an orphan's
+    parent is that manager rather than pid 1; a parent named anything else
+    is not."""
+    x11_dir = tmp_path / "X11-unix"
+    x11_dir.mkdir()
+    (x11_dir / "X1098").touch()
+    monkeypatch.setattr(instance, "_socket_owner", lambda path: 4242)
+    monkeypatch.setattr(instance, "_parent_pid", lambda pid: 777)
+    monkeypatch.setattr(instance, "_proc_comm", lambda pid: "systemd")
+    assert instance.stray_displays(x11_dir) == [{"display": ":1098", "pid": 4242}]
+    monkeypatch.setattr(instance, "_proc_comm", lambda pid: "bash")
+    assert instance.stray_displays(x11_dir) == []
 
 
 @posix
