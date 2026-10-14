@@ -9245,6 +9245,20 @@ class CurseRun(PoolRun):
 
     TAVERN_BAR_WAIT = 20.0
 
+    def _tavern_bar(self, row: str, seen: list) -> None:
+        """Record row 24 of a tavern bar not yet recorded, with a screenshot."""
+        if row.strip() and row not in seen:
+            seen.append(row)
+            self.log.emit("tavern-bar", row=row.rstrip())
+            self.capture("tavern-bar")
+
+    def _tavern_key(self, label: str) -> bool:
+        """Press LABEL on the tavern's bar and record the key with a screenshot."""
+        pressed = self.sess.press_bar(label, timeout=20)
+        self.log.emit("tavern-key", key=label, pressed=bool(pressed))
+        self.capture(f"tavern-key-{label}")
+        return pressed
+
     def _answer_tavern_injuries(self) -> bool:
         """Answer `IGNORE THEM` when row 24 holds exactly the bartender's
         `CURSE_TAVERN_INJURIES_BAR`, which a save whose brawl was already
@@ -9256,20 +9270,23 @@ class CurseRun(PoolRun):
         from tools.c64 import laterbattle
 
         wait_until = time.time() + self.budget(self.TAVERN_BAR_WAIT, "the tavern's bar")
+        seen: list = []
         while True:
             screen = self.sess.screen()
             row = "" if screen is None else screen.row(24)
+            self._tavern_bar(row, seen)
             if tuple(row.split()) == CURSE_TAVERN_INJURIES_BAR:
                 break
             if laterbattle.PUNCH in row or time.time() >= wait_until:
                 return False
             time.sleep(0.5)
-        if not self.sess.press_bar(CURSE_TAVERN_IGNORE, timeout=20):
+        if not self._tavern_key(CURSE_TAVERN_IGNORE):
             raise self.fail("fight", "IGNORE THEM was not selectable")
         deadline = time.time() + 20.0
         while time.time() < deadline:
             screen = self.sess.screen()
             if screen is not None and screen.row(24) != row:
+                self._tavern_bar(screen.row(24), seen)
                 return True
             time.sleep(0.5)
         raise self.fail("fight", "the bartender's question stayed after IGNORE THEM")
@@ -9338,7 +9355,7 @@ class CurseRun(PoolRun):
             self.stop_at_first_loss()
         if not self.sess.in_combat():
             self._answer_tavern_injuries()
-            pressed = self.sess.press_bar(laterbattle.PUNCH, timeout=20)
+            pressed = self._tavern_key(laterbattle.PUNCH)
             if diagnostic:
                 self.observe_curse("after-punch", chosen=laterbattle.PUNCH,
                                    pressed=pressed)

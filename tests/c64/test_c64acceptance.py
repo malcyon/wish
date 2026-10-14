@@ -15181,7 +15181,9 @@ def _tavern_fight(monkeypatch, tmp_path, screens, blank_reads=0):
     run.staged_disk, run.disks = tmp_path / "s.D64", "unused"
     run.to_world = lambda: True
     run.await_combat = lambda: True
-    run.capture = lambda tag: None
+    run.events, run.shots_taken = [], []
+    run.log = SimpleNamespace(emit=lambda kind, **kw: run.events.append((kind, kw)))
+    run.capture = lambda tag: run.shots_taken.append(tag)
     run.observe_curse = lambda *a, **k: None
     return run, pressed
 
@@ -15193,6 +15195,21 @@ def test_curse_fight_answers_the_tavern_injuries_bar_then_punches(monkeypatch, t
         "MOVE VIEW AIM"])
     run.fight("10", "I", 5)
     assert pressed == ["IGNORE THEM", "PUNCH BARKEEP"]
+
+
+def test_curse_fight_records_each_tavern_bar_and_key(monkeypatch, tmp_path):
+    run, pressed = _tavern_fight(monkeypatch, tmp_path, [
+        "ASK ABOUT INJURIES IGNORE THEM",
+        "PUNCH BARKEEP HAVE A DRINK LEAVE",
+        "MOVE VIEW AIM"])
+    run.fight("10", "I", 5)
+    assert run.events == [
+        ("tavern-bar", {"row": "ASK ABOUT INJURIES IGNORE THEM"}),
+        ("tavern-key", {"key": "IGNORE THEM", "pressed": True}),
+        ("tavern-bar", {"row": "PUNCH BARKEEP HAVE A DRINK LEAVE"}),
+        ("tavern-key", {"key": "PUNCH BARKEEP", "pressed": True})]
+    assert [t for t in run.shots_taken if t.startswith("tavern-")] == ["tavern-bar", "tavern-key-IGNORE THEM",
+                               "tavern-bar", "tavern-key-PUNCH BARKEEP"]
 
 
 def test_curse_fight_stops_at_a_bar_that_only_partly_matches_the_injuries_bar(
