@@ -21,7 +21,7 @@ Standalone entry points (`python -m editor`, `python -m automap`) are dropped.
 | CharacterCard | 8 max (party slots) | Created in a loop by `RosterPanel._card()` | 8 `QFrame`s in the `.ui`, hidden/shown by code |
 | HP Bar per card | 1 per card = 8 | Created in `CharacterCard.__init__` | 8 promoted `Bar` widgets in the `.ui` |
 | XP Bar per card | 3 per card = 24 | Created in `CharacterCard.__init__` | 24 promoted `Bar` widgets in the `.ui` |
-| Action buttons | 5 (Heal, Store, Restore, Identify, Clear QF) | Created in a loop by `ActionBar.__init__` | 5 `ElidingButton`s in the `.ui` (promoted) |
+| Action buttons | 5 (Heal, Store, Restore, Identify, Clear QF) | Created in a loop by `ActionBar.__init__` | 4 `ElidingButton`s and 1 `FullLabelButton` (`action_clear_qf`) in the `.ui` (promoted) |
 | FastTravelBar | 1 | From `fasttravelbar.ui` | Inlined |
 | BottomStrip labels | 4 (`where`, `clock`, `area`, `effects`) | From `bottomstrip.ui` | Inlined as `ElidingLabel`s (promoted) |
 | NotesPanel | 1 (`heading` + `QListWidget`) | From `notes.ui` | Inlined |
@@ -41,7 +41,8 @@ These are custom-painted widgets with no child layout to design — they draw vi
 |---|---|---|---|
 | `Bar` | `QWidget` | `automap.panel` | 32 (8 HP + 24 XP) |
 | `IconRow` | `QWidget` | `automap.panel` | 16 (8 conditions + 8 quickfight) |
-| `ElidingButton` | `QPushButton` | `automap.panel` | 5 action buttons + 2 FT buttons |
+| `ElidingButton` | `QPushButton` | `automap.panel` | 4 action buttons + 1 FT button (`ft_back_button`) |
+| `FullLabelButton` | `ElidingButton` | `automap.panel` | 2 (`action_clear_qf`, `ft_button`), which keep their full label |
 | `ElidingCheckBox` | `QCheckBox` | `automap.panel` | 1 (`watch_box`) |
 | `ElidingComboBox` | `QComboBox` | `automap.panel` | 1 (FT destination) |
 | `ElidingLabel` | `QLabel` | `automap.panel` | 4 (bottom strip) + card labels |
@@ -116,13 +117,13 @@ QMainWindow "WishWindow"
                 │       │       ├── (0,1) ElidingButton "action_store" ["Store spells"]
                 │       │       ├── (0,2) ElidingButton "action_restore" ["Restore spells"]
                 │       │       ├── (1,0) ElidingButton "action_identify" ["Identify items"]
-                │       │       ├── (1,1) ElidingButton "action_clear_qf" ["Clear quickfight"]
+                │       │       ├── (1,1) FullLabelButton "action_clear_qf" ["Clear quickfight"]
                 │       │       ├── (2,0) ElidingCheckBox "watch_box"
                 │       │       └── (2,1-2) QLabel "actions_note" [8pt]
                 │       ├── QWidget "fasttravel_bar" [AlignHCenter]
                 │       │   └── QGridLayout
                 │       │       ├── ElidingComboBox "ft_combo"
-                │       │       ├── ElidingButton "ft_button" ["Fast Travel"]
+                │       │       ├── FullLabelButton "ft_button" ["Fast Travel"]
                 │       │       ├── ElidingButton "ft_back_button" ["Travel Back"]
                 │       │       └── QLabel "ft_note" [8pt]
                 │       └── vertical spacer
