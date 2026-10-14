@@ -310,14 +310,13 @@ def test_the_wish_written_match_ignores_case(fake_sweep):
     assert [r[0] for r in sweep.dos_records(POOL)] == ["WISH-SPEC-x/CHRDATD1.SAV"]
 
 
-def test_a_specimen_whose_provenance_cannot_be_read_is_reported_and_skipped(
-        fake_sweep, capsys):
-    _specimen(fake_sweep, 'wish_written = "CHRDATA1.SAV"\n')
-    assert list(sweep.dos_records(POOL)) == []
-    assert "wish_written must be a list" in capsys.readouterr().err
-    (fake_sweep / "pool-dos" / "WISH-SPEC-x" / "provenance.toml").write_text("= nope")
-    assert list(sweep.dos_records(POOL)) == []
-    assert "cannot be read" in capsys.readouterr().err
+def test_a_specimen_whose_provenance_cannot_be_read_makes_the_sweep_raise(fake_sweep):
+    folder = _specimen(fake_sweep, 'wish_written = "CHRDATA1.SAV"\n')
+    with pytest.raises(ValueError, match="wish_written must be a list"):
+        list(sweep.dos_records(POOL))
+    (folder / "provenance.toml").write_text("= nope")
+    with pytest.raises(ValueError, match="cannot be read"):
+        list(sweep.dos_records(POOL))
 
 
 def test_the_sweep_skips_an_emulator_instances_staged_tree(fake_sweep, monkeypatch):

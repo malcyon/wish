@@ -326,11 +326,7 @@ def dos_records(title: str = "pool-of-radiance", extra=()):
     folders += [str(p) for p in extra]
     files: list[str] = []
     for folder in folders:
-        try:
-            ours = specimens.wish_written_files(pathlib.Path(folder))
-        except ValueError as exc:
-            print(f"  skipped {folder}: {exc}", file=sys.stderr)
-            continue
+        ours = specimens.wish_written_files(pathlib.Path(folder))
         files += [f for f in glob.glob(folder + "/CHRDAT*.SAV") + glob.glob(folder + "/*.CHA")
                   if pathlib.Path(f).name.casefold() not in ours]
     if dosbox.ARCHIVES.is_dir():

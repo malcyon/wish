@@ -962,3 +962,24 @@ def test_correct_wish_written_rejects_replacing_a_recorded_list(tree, one_source
     with pytest.raises(ValueError, match="already records"):
         specimens.correct_wish_written(
             "gnomf1", wish_written=["GNOMF1.SPC"], reason="x", root=tree)
+
+
+def test_correct_wish_written_rejects_a_file_the_manifest_lists_but_is_gone(
+        tree, one_source):
+    dest = _add(tree, one_source)
+    _unlock(tree)
+    (dest / "GNOMF1.CHA").unlink()
+    with pytest.raises(ValueError, match="GNOMF1.CHA"):
+        specimens.correct_wish_written(
+            "gnomf1", wish_written=["GNOMF1.CHA"], reason="x", root=tree)
+
+
+def test_correct_wish_written_rejects_an_empty_recorded_list(tree, one_source):
+    dest = _add(tree, one_source)
+    prov = dest / "provenance.toml"
+    _unlock(tree)
+    text = prov.read_text()
+    prov.write_text(text.replace("\n[sha256]", "\nwish_written = []\n\n[sha256]"))
+    with pytest.raises(ValueError, match="already records"):
+        specimens.correct_wish_written(
+            "gnomf1", wish_written=["GNOMF1.CHA"], reason="x", root=tree)

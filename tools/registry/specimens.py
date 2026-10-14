@@ -873,8 +873,8 @@ def correct_wish_written(name: str, *, wish_written: list[str], reason: str,
     """Record which of an existing specimen's files Wish wrote, leaving every
     file alone.
 
-    For a provenance written before `wish_written` existed.  The names are
-    matched case-insensitively against the specimen's manifest; the date and
+    Use it when a specimen's provenance has no `wish_written` list and some
+    of its files are Wish output.  The names are matched case-insensitively against the specimen's manifest; the date and
     `reason` are appended to `issue_note`.  A specimen already listing
     `wish_written` is rejected, since replacing it is not a correction.
     """
@@ -886,9 +886,11 @@ def correct_wish_written(name: str, *, wish_written: list[str], reason: str,
     entry = _one_entry(name, root)
     if entry.get("platform") == "c64":
         raise ValueError(f"{name}: a C64 specimen is one disk image")
-    if entry.get("wish_written"):
+    if "wish_written" in entry:
         raise ValueError(f"{name}: already records its wish_written")
-    names = _resolve_wish_written(wish_written, entry.get("sha256", {}))
+    base = pathlib.Path(entry["_provenance"]).parent
+    held = [f for f in entry.get("sha256", {}) if (base / f).is_file()]
+    names = _resolve_wish_written(wish_written, held)
     day = today or datetime.date.today().isoformat()
     record = (f"Corrected {day}: `wish_written` was not recorded. Reason: {reason}")
     fields = _plain_fields(entry)
