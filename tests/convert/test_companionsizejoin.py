@@ -250,3 +250,16 @@ def test_an_amiga_companion_edited_to_raw_size_1_is_small_on_the_c64():
     dos_codec.set_creature_source(neutral, "size", 1)
     assert neutral.get("size_small") == 0
     assert _c64_size(neutral, key) == 0
+
+
+def test_a_dos_companion_edited_to_raw_size_1_is_small_on_the_c64():
+    """Raw 1 and the join's raw 0 both read as `size_small` 0; only the raw
+    byte tells the player's edit from the join's own."""
+    party = dos_codec.read_party(gamedata.specimen(PIT_JOIN), PIT_SLOT)
+    alias = next(c for c in party
+                 if str(dos_codec.to_neutral(c).get("name")) == "ALIAS")
+    neutral = dos_codec.to_neutral(alias)
+    assert _c64_size(neutral, CURSE_KEY) == 1
+    dos_codec.set_creature_source(neutral, "size", 1)
+    assert neutral.get("size_small") == 0
+    assert _c64_size(neutral, CURSE_KEY) == 0

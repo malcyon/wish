@@ -2366,17 +2366,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     size = use("size_small")
     if size is not None:
         # A DOS or Amiga companion's size is 0, which names no figure; the C64
-        # join gives a companion the size his own `MON` file holds.  An Amiga
-        # companion's raw byte is read, not `size_small`, which is 0 for the
+        # join gives a companion the size his own `MON` file holds.  The
+        # source's raw byte is read, not `size_small`, which is 0 for the
         # join's 0 and for an edited 1 alike: only the join's own byte is
         # rewritten, and an edited one is the player's.
         from .dos_codec import creature_source
         joined = (companion_size(deltas.key, "C64")
                   if joined_companion(char)
-                  and (char.port == "DOS"
-                       or (char.port == "Amiga"
-                           and creature_source(char, "size")
-                           == companion_size(deltas.key, "Amiga")))
+                  and char.port in ("DOS", "Amiga")
+                  and creature_source(char, "size")
+                  == companion_size(deltas.key, char.port)
                   else None)
         if joined is None:
             rec.set("size_small", size.value)
