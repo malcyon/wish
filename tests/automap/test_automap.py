@@ -3148,6 +3148,41 @@ def test_an_action_reports_into_the_messages_panel_not_a_pop_up(app, tmp_path,
     assert window.messages.lines()[-1].endswith(outcome.message)
 
 
+def test_the_party_goes_dead_when_the_game_disconnects_and_comes_back(
+        app, tmp_path, monkeypatch):
+    save0, save1 = captured()
+    window = make_window(app, tmp_path, monkeypatch,
+                         MemoryTarget({0x4900: save0, 0x8300: save1}))
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    heal = window.actions_bar.buttons["heal"]
+    assert heal.isEnabled()
+    assert window.roster.heading.text() == "Party"
+    window.waiting("Game disconnected.")
+    for button in window.actions_bar.buttons.values():
+        assert not button.isEnabled()
+        assert button.toolTip() == ""
+    assert window.fasttravel_bar.target is None
+    assert not window.fasttravel_bar.button.isEnabled()
+    for card in window.roster.cards:
+        assert not card.level_up.isEnabled()
+        assert not card.level_up.isVisible()
+    assert window.roster.heading.text() == "Party - not readable right now"
+    assert window.roster.cards[0].frame.isVisibleTo(window.roster.column)
+    window.waiting("")
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert heal.isEnabled()
+    assert window.roster.heading.text() == "Party"
+
+
+def test_waiting_before_any_game_connected_keeps_the_startup_heading(
+        app, tmp_path, monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None)
+    window.waiting("Waiting to connect...")
+    assert window.roster.heading.text() == "Party - waiting for a game"
+
+
 def test_the_messages_panel_drops_repeats_and_keeps_the_alarm(app, tmp_path,
                                                               monkeypatch):
     """The connection says the same thing on every tick while it waits."""

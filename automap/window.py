@@ -1459,6 +1459,21 @@ class AutomapBinding(QObject):
             return
         self._refresh_roster()
 
+    def _drop_live(self) -> None:
+        """The game went away: grey the buttons and hold the cards as stale.
+
+        Only once a game had connected; the startup wait leaves the roster's
+        own heading alone. The tick that would detach the bars does not run
+        without a target, so this does it, as the wrong-game branch does.
+        """
+        if self.mapper.target is None:
+            return
+        self.actions_bar.attach(None)
+        self.fasttravel_bar.attach(None)
+        self.roster.set_unsupported()
+        if self.snapshot is not None:
+            self.roster.set_stale(True)
+
     def _refresh_roster(self) -> None:
         """Re-read the party and redraw the cards. Called by the poll, and
         straight after a write that changes what a card shows."""
@@ -1701,6 +1716,7 @@ class AutomapBinding(QObject):
             row = self.messages.say(text, alarm=alarm)
             if row is not None:
                 self._connection_row = row
+            self._drop_live()
         else:
             self.messages.withdraw(self._connection_row)
             self._connection_row = None
