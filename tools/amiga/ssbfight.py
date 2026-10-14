@@ -84,7 +84,8 @@ KNOWN = ("credits", "title", "party_menu", "load_picker", "load_anyway", "scroll
          "loaded_menu", "journal", "world", "continue", "combat_bar", "continue_battle",
          "treasure_bar", "treasure", "party_destroyed", "camp", "camp_save_picker", "exit_game")
 #: The only keys each screen may receive. The journal is answered by the answerer, which types
-#: through its own channel, so it takes none here; a lost fight's screens take none either.
+#: through its own channel, so it takes none here. Of a lost fight's screens only the destroyed
+#: message takes a key, RETURN at its PRESS ANY KEY prompt; the menus take none.
 ALLOWED_KEYS = {
     "credits": frozenset({"ESC"}), "title": frozenset({"P"}), "party_menu": frozenset({"L"}),
     "load_picker": frozenset("ABCDEFGHIJ"), "loaded_menu": frozenset({"B"}),
@@ -98,8 +99,8 @@ ALLOWED_KEYS = {
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure_bar": "E",
                  "treasure": "N", "continue": "RET", "party_destroyed": "RET"}
 #: Screens that mean the party was destroyed: the message, whose PRESS ANY KEY prompt gets
-#: RETURN and ends the step (the screen after it has not been seen), or a menu the game
-#: returns to, which gets no key.
+#: RETURN, or a menu the game returns to, which gets no key. Either ends the step there, and
+#: the step assumes nothing about the screen that follows.
 DEFEAT = ("party_destroyed", "loaded_menu", "party_menu", "title")
 TURN_KEYS = cursefight.TURN_KEYS
 STEP = cursefight.STEP
@@ -370,15 +371,15 @@ def wander(screens: Screens, memory: Any, start: dict, plan: dict,
 
 
 #: The wandering fight: the map may still show while its monsters load, and a lost fight ends
-#: on the destroyed screen or a menu, with no key pressed.
+#: on the destroyed message, after its one RETURN, or on a menu, with no key.
 SSB_FIGHT = cursefight.FightRules(
     known=KNOWN, answers=FIGHT_ANSWERS, bar_fields=tuple(RECORD), linger=NO_BAR_LIMIT,
     defeat=DEFEAT, name_key=name_key)
 
 
-def fight(screens: Screens, memory: Any, members: list[str]) -> dict:
+def fight(screens: Screens, memory: Any, members: list[str], found: dict | None = None) -> dict:
     """Answer every screen from the encounter to the map; log each bar with its owner."""
-    return cursefight.fight(screens, memory, members, SSB_FIGHT)
+    return cursefight.fight(screens, memory, members, SSB_FIGHT, found=found)
 
 
 def capture(screens: Screens, memory: Any, before: int) -> dict:
@@ -479,7 +480,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
     if capture_only:
         found["capture"] = capture(screens, memory, found["turn_before"])
         return found
-    found.update(fight(screens, memory, members))
+    found.update(fight(screens, memory, members, found=found))
     if found["outcome"] != "won":
         return found
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,

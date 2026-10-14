@@ -404,6 +404,29 @@ def test_the_party_destroyed_rule_reads_the_defeat_frame_only(tmp_path):
     assert not guards("party_destroyed", frames["070"])
 
 
+def test_fight_leaves_its_bars_and_answers_when_it_stops(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, "camp"],
+                owners=[_owner("PAINE")])
+    game.walking = False
+    found = {}
+    with pytest.raises(RouteError, match="camp showed mid-fight"):
+        ssbfight.fight(_screens(tmp_path, game, clock), game, ["PAINE"], found=found)
+    assert [bar["owner"] for bar in found["bars"]] == ["PAINE"]
+    assert [a["key"] for a in found["answered"]] == ["RET", "Q"]
+
+
+def test_run_keeps_a_stopped_fights_bars_in_the_receipt(tmp_path, monkeypatch):
+    def drive(*args, found, **kwargs):
+        found.update(bars=[{"owner": "PAINE"}], answered=[{"screen": "combat_bar", "key": "Q"}])
+        raise RouteError("a screen no guard knows stayed 90s unchanged mid-fight")
+
+    with pytest.raises(RouteError, match="unchanged"):
+        _run(tmp_path, monkeypatch, drive=drive)
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert written["bars"] == [{"owner": "PAINE"}] and written["answered"][0]["key"] == "Q"
+
+
 def test_fight_stops_when_a_named_member_had_no_bar(tmp_path):
     clock = Clock()
     game = Game(clock, FIGHT, owners=[_owner("PAINE"), _owner("EPONA")])
@@ -514,7 +537,7 @@ def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won
     game.walking = False
     answers = []
     monkeypatch.setattr(ssbfight, "wander", lambda *a: {"steps": [], "met": "shot"})
-    monkeypatch.setattr(ssbfight, "fight", lambda *a: {"outcome": outcome,
+    monkeypatch.setattr(ssbfight, "fight", lambda *a, **k: {"outcome": outcome,
                                                        "bars": [{"owner": "PAINE"}]})
     monkeypatch.setattr(ssbfight, "capture", lambda *a: {"outcome": "bar"})
 

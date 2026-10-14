@@ -371,10 +371,16 @@ CURSE_FIGHT = FightRules(
 
 
 def fight(screens: Screens, memory: Memory, members: list[str],
-          rules: FightRules = CURSE_FIGHT) -> dict:
-    """Answer every screen from the first bar to the map; log each bar with its owner."""
+          rules: FightRules = CURSE_FIGHT, found: dict | None = None) -> dict:
+    """Answer every screen from the first bar to the map; log each bar with its owner.
+
+    With `found`, its `bars` and `answered` are the lists the loop fills as it goes, so a
+    caller still holds them when a stop inside the fight raises.
+    """
     bars: list[dict] = []
     answered: list[dict] = []
+    if found is not None:
+        found.update(bars=bars, answered=answered)
     started = still_since = screens.clock()
     settle_from = None
     lost = False
