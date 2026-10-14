@@ -195,7 +195,8 @@ def write_provenance(path: pathlib.Path, fields: dict, sha256: dict[str, str]) -
     bool, one list of strings (`staged`), and one table of hashes, and nothing
     here should need a TOML writer's opinion about quoting a path."""
     lines = []
-    for key in REQUIRED_FIELDS + ("command", "source", "staged", "issue_note"):
+    for key in REQUIRED_FIELDS + ("command", "source", "staged", "wish_written",
+                                  "issue_note"):
         if key not in fields:
             continue
         value = fields[key]
@@ -217,6 +218,16 @@ def write_provenance(path: pathlib.Path, fields: dict, sha256: dict[str, str]) -
 def read_provenance(path: pathlib.Path) -> dict:
     with path.open("rb") as f:
         return tomllib.load(f)
+
+
+def wish_written_files(folder: pathlib.Path) -> set[str]:
+    """Names of the files in a specimen folder that Wish wrote rather than the
+    game, from its provenance `wish_written` list.  A sweep of what the game
+    wrote leaves these out; a folder with no provenance lists none."""
+    prov = pathlib.Path(folder) / PROVENANCE_NAME
+    if not prov.is_file():
+        return set()
+    return set(read_provenance(prov).get("wish_written", []))
 
 
 def make_read_only(path: pathlib.Path) -> None:
@@ -298,6 +309,7 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         title: str, issue: str, made_by: str, what: str,
         command: str | None = None, created: str | None = None,
         edited_afterwards: bool = False, staged: list[str] | None = None,
+        wish_written: list[str] | None = None,
         root: pathlib.Path | None = None) -> pathlib.Path:
     """Copy `sources` into the tree as one specimen and write its
     `provenance.toml`.  Rejects rather than overwriting: an existing
@@ -359,6 +371,16 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         fields["command"] = command
     if staged:
         fields["staged"] = list(staged)
+    if wish_written:
+        if platform == "c64":
+            raise ValueError("--wish-written names files inside a specimen "
+                             "folder; a C64 specimen is one disk image")
+        have = {s.name for s in sources}
+        missing = sorted(set(wish_written) - have)
+        if missing:
+            raise ValueError(f"--wish-written names {', '.join(missing)}, "
+                             f"which is not among the files being added")
+        fields["wish_written"] = sorted(set(wish_written))
 
     if platform == "c64":
         if len(sources) != 1:
@@ -490,6 +512,10 @@ def check_specimens(root: pathlib.Path | None = None) -> list[str]:
                     f"{name}: {fname} has changed -- recorded {expected[:12]}, "
                     f"now {actual[:12]}")
         covered.add(entry["_provenance"])
+        for fname in entry.get("wish_written", []):
+            if fname not in sha256 or not (base / fname).is_file():
+                problems.append(f"{name}: wish_written names {fname}, "
+                                f"which is not a file of this specimen")
         for field in REQUIRED_FIELDS:
             if field not in entry:
                 problems.append(f"{name}: provenance.toml is missing '{field}'")
@@ -683,7 +709,8 @@ def _one_entry(name: str, root: pathlib.Path) -> dict:
     entry = entries[0]
     if entry.get("_no_provenance"):
         raise ValueError(f"{name}: has no provenance.toml")
-    known = set(REQUIRED_FIELDS) | {"command", "source", "staged", "issue_note", "sha256"}
+    known = set(REQUIRED_FIELDS) | {"command", "source", "staged", "wish_written",
+                                    "issue_note", "sha256"}
     unknown = sorted(k for k in entry if not k.startswith("_") and k not in known)
     if unknown:
         raise ValueError(f"{name}: provenance.toml has key(s) "
@@ -843,7 +870,8 @@ def cmd_add(args: argparse.Namespace) -> int:
         dest = add(args.platform, args.name, args.sources,
                    title=args.title, issue=args.issue, made_by=args.made_by,
                    what=args.what, command=args.command, created=args.created,
-                   edited_afterwards=args.edited)
+                   edited_afterwards=args.edited,
+                   wish_written=args.wish_written)
     except (ValueError, FileExistsError) as exc:
         print(f"rejected: {exc}")
         return 1
@@ -970,6 +998,9 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--created", default=None, help="ISO date; defaults to today")
     a.add_argument("--edited", action="store_true",
                    help="has ever been opened in an editor afterwards")
+    a.add_argument("--wish-written", nargs="+", default=None, metavar="NAME",
+                   dest="wish_written",
+                   help="file names among the sources that Wish wrote, not the game")
     a.set_defaults(func=cmd_add)
 
     r = sub.add_parser("repair", help="close a directory entry the drive "

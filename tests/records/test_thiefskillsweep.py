@@ -266,3 +266,32 @@ def test_the_dos_dexterity_block_holds_two_bytes_the_c64_does_not():
     differ = [9 + i for i in range(len(dostab))
               if c64[i][:sweep.DEX_COLUMNS] != dostab[i]]
     assert differ == [10, 16]
+
+
+def test_the_dos_sweep_leaves_out_files_a_specimen_marks_as_wish_written(
+        tmp_path, monkeypatch):
+    """The game's slot of the same specimen stays in; Wish's own is skipped."""
+    from tools.registry import specimens  # noqa: PLC0415
+
+    folder = tmp_path / "pool-dos" / "WISH-SPEC-x"
+    folder.mkdir(parents=True)
+    for name in ("CHRDATA1.SAV", "CHRDATD1.SAV"):
+        (folder / name).write_bytes(b"x")
+    (folder / "provenance.toml").write_text('wish_written = ["CHRDATA1.SAV"]\n')
+
+    class Char:
+        name = "T"
+        class_levels = {"thief": 3}
+        deltas = type("D", (), {"key": POOL})()
+
+        def get(self, field):
+            return 0
+
+    monkeypatch.setenv("WISH_SPECIMENS", str(tmp_path))
+    monkeypatch.setattr(sweep.dos_codec, "read_character", lambda path: Char())
+    monkeypatch.setattr(sweep.dosbox if hasattr(sweep, "dosbox") else
+                        __import__("tools.dos.dosbox", fromlist=["x"]),
+                        "ARCHIVES", tmp_path / "none")
+    assert specimens.wish_written_files(folder) == {"CHRDATA1.SAV"}
+    seen = [row[0] for row in sweep.dos_records(POOL)]
+    assert seen == ["WISH-SPEC-x/CHRDATD1.SAV"]

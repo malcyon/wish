@@ -872,3 +872,32 @@ def test_correct_staged_rejects_a_line_not_in_the_recorded_form(tree, one_source
         specimens.correct_staged("gnomf1", staged=["4:0x19=60"], reason="x",
                                  root=tree)
     assert "staged" not in specimens.list_specimens(tree)[0]
+
+
+# --- wish_written ------------------------------------------------------
+
+
+def test_add_records_the_files_wish_wrote_and_check_accepts_them(tree, one_source):
+    dest = _add(tree, one_source, wish_written=["GNOMF1.CHA"])
+    fields = specimens.read_provenance(dest / "provenance.toml")
+    assert fields["wish_written"] == ["GNOMF1.CHA"]
+    assert specimens.wish_written_files(dest) == {"GNOMF1.CHA"}
+    assert specimens.check_specimens(tree) == []
+
+
+def test_add_rejects_a_wish_written_name_that_is_not_a_source(tree, one_source):
+    with pytest.raises(ValueError, match="NOPE.CHA"):
+        _add(tree, one_source, wish_written=["NOPE.CHA"])
+
+
+def test_check_flags_a_wish_written_name_the_specimen_does_not_hold(tree, one_source):
+    dest = _add(tree, one_source, wish_written=["GNOMF1.CHA"])
+    prov = dest / "provenance.toml"
+    _unlock(tree)
+    prov.write_text(prov.read_text().replace('wish_written = ["GNOMF1.CHA"]',
+                                             'wish_written = ["GONE.CHA"]'))
+    assert any("GONE.CHA" in p for p in specimens.check_specimens(tree))
+
+
+def test_a_specimen_with_no_wish_written_list_has_none(tree, one_source):
+    assert specimens.wish_written_files(_add(tree, one_source)) == set()

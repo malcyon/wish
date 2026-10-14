@@ -58,6 +58,7 @@ from goldbox import c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
+from tools.registry import specimens  # noqa: E402
 
 #: `GEN` is resident here whatever its PRG header claims.
 GEN_BASE = 0x0800
@@ -324,7 +325,9 @@ def dos_records(title: str = "pool-of-radiance", extra=()):
     folders += [str(p) for p in extra]
     files: list[str] = []
     for folder in folders:
-        files += glob.glob(folder + "/CHRDAT*.SAV") + glob.glob(folder + "/*.CHA")
+        ours = specimens.wish_written_files(pathlib.Path(folder))
+        files += [f for f in glob.glob(folder + "/CHRDAT*.SAV") + glob.glob(folder + "/*.CHA")
+                  if pathlib.Path(f).name not in ours]
     if dosbox.ARCHIVES.is_dir():
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.SAV", recursive=True)
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.CHA", recursive=True)
