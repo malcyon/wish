@@ -55,6 +55,10 @@ GEO = "GEO10"
 #: otherwise the townsmen only cheer. `amiga_savegame.word` takes Pool's numbering, $200 lower.
 GATE = 0x4C2D
 GATE_ON = 1
+#: The receipt's names for the gate read from the running game at the first map screen, and
+#: from the saved slot read back.
+LIVE_GATE = f"wander_gate_{GATE:04X}"
+SAVED_GATE = f"saved_wander_gate_{GATE:04X}"
 #: Words the stage records beside the gate: the arrival entry rewrites the gate when `$4CD9`
 #: is not 0 unless the party came from area 16 (`$4BF2`), and `$4C05` counts street steps.
 NOTED = (0x4CD9, 0x4BF2, 0x4C05)
@@ -72,9 +76,7 @@ CURRENT = 0x516C
 #: Fight screens no capture has shown yet; each takes its guard from the Silver Blades guard
 #: map once `guardmaps.py add --title ssb` cuts it from a capture. A run that meets one stops
 #: there, unchanged, and keeps the frame.
-UNCAPTURED = {
-    "continue_battle": "CONTINUE BATTLE: with YES NO",
-}
+UNCAPTURED: dict[str, str] = {}
 #: The treasure bar cut short of its last button, which reads EXIT or DETECT EXIT by party
 #: (`View Take Pool Share%s` in `/Secret`); cut from `640/ssb2/accept2/shots/11-world.png`,
 #: the opening scene's own `COMBAT` statement's treasure, as are both kept crops of the bar.
@@ -469,10 +471,10 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
             f"the loaded party is {names}, not {fight_['names']}")
     screens.press("B", "loaded_menu")
     wait_past_journal(screens, ("world",), 120, answer, adf, past=("loaded_menu",))
-    found["gate"] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
-                                     screens.left(READ_LIMIT))
-    require(found["gate"] == GATE_ON,
-            f"the gate ${GATE:04X} reads {found['gate']} in the running game, not {GATE_ON}")
+    found[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
+                                        screens.left(READ_LIMIT))
+    require(found[LIVE_GATE] == GATE_ON,
+            f"the gate ${GATE:04X} reads {found[LIVE_GATE]} in the running game, not {GATE_ON}")
     found["turn_before"] = curseadd.bounded(lambda _h: memory.turn_pointer(), memory.holder,
                                             screens.left(READ_LIMIT))
     screens.sleep(AFTER_KEY)
@@ -527,7 +529,7 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
     saved = _slot(disk, fight_["save"])
     return {"letter": fight_["save"], "verify": disk.verify(),
             "loaded_slot_unchanged": disk.read_file(loaded_file) == staged.read_file(loaded_file),
-            "gate": word(saved.data, GATE),
+            SAVED_GATE: word(saved.data, GATE),
             "members": [{"name": m.name, **member_fields(m.raw)} for m in saved.characters]}
 
 

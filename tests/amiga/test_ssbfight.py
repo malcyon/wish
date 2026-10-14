@@ -183,6 +183,32 @@ def test_the_combat_bar_rule_reads_the_captured_bar_and_not_the_encounter_page(t
     assert guards("continue", page)
 
 
+def test_the_continue_battle_rule_reads_the_bar_and_not_the_fight_before_it(tmp_path):
+    shots = scratch.cache_dir("acceptance") / "WISH-391" / "full3" / "screens"
+    # The bar held from 129 to the stop at 155; 128 is the fight just before it.
+    first, last, before = (shots / f"{n}-fight.png" for n in ("129", "155", "128"))
+    if not all(p.is_file() for p in (first, last, before)):
+        pytest.skip("the WISH-391 full3 frames are not on this machine")
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps(ssbfight.guard_rules()))
+    guards = PixelGuards(path)
+    assert guards("continue_battle", first) and guards("continue_battle", last)
+    assert not any(guards(s, last) for s in ssbfight.KNOWN if s != "continue_battle")
+    assert not guards("continue_battle", before)
+
+
+def test_fight_answers_each_continue_battle_bar_no_once(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, "continue_battle",
+                        None, "continue_battle", "continue", "world"],
+                owners=[_owner("PAINE")])
+    game.walking = False
+    screens = _screens(tmp_path, game, clock)
+    found = ssbfight.fight(screens, game, ["PAINE"])
+    assert found["outcome"] == "won" and game.keys == ["RET", "Q", "N", "N", "RET"]
+    _keys_allowed(screens, game)
+
+
 # -- staging ----------------------------------------------------------------------------------
 
 class Geo:
@@ -561,7 +587,7 @@ def test_drive_loads_begins_fights_and_saves_once(tmp_path, monkeypatch):
 
 def test_drive_reads_the_gate_and_the_turn_pointer_before_the_walk(tmp_path, monkeypatch):
     found, _, _, _ = _drive(tmp_path, monkeypatch)
-    assert found["gate"] == 1 and found["turn_before"] == 0
+    assert found["wander_gate_4C2D"] == 1 and found["turn_before"] == 0
 
 
 def test_drive_stops_on_the_map_when_the_running_gate_is_not_one(tmp_path, monkeypatch):
@@ -749,13 +775,14 @@ def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeyp
 
 def test_run_keeps_the_readings_made_before_a_step_stopped(tmp_path, monkeypatch):
     def drive(*args, found, **kwargs):
-        found.update(gate=1, turn_before=0)
+        found.update(wander_gate_4C2D=1, turn_before=0)
         raise RouteError("a screen no guard knows stayed 90s unchanged mid-fight")
 
     with pytest.raises(RouteError, match="unchanged"):
         _run(tmp_path, monkeypatch, drive=drive)
     written = json.loads((tmp_path / "run" / "receipt.json").read_text())
-    assert written["gate"] == 1 and written["turn_before"] == 0 and not written["success"]
+    assert written["wander_gate_4C2D"] == 1 and written["turn_before"] == 0
+    assert not written["success"]
 
 
 def test_run_fails_a_capture_nothing_confirms(tmp_path, monkeypatch):

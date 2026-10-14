@@ -1495,6 +1495,17 @@
       "example": "amiga-grab-crops/331run__shots__07-after.png",
       "sha256": "604731cd6f2b106a3670ba258e49c2545af33d3742467843fcd3a8c0f9ad7fe9"
     },
+    "continue_battle": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        434,
+        426
+      ],
+      "example": "amiga-grab-crops/wish391-full3__155-fight.png",
+      "sha256": "08826abf2d3c5fe55d5f8fc9413bc30e62e944d996f8fea72bbdfa7a181f94cd"
+    },
     "credits": {
       "also": [],
       "box": [
@@ -3057,6 +3068,9 @@
     ],
     "amiga-grab-crops/wish391-full2__165-fight.png": [
       "party_destroyed"
+    ],
+    "amiga-grab-crops/wish391-full3__155-fight.png": [
+      "continue_battle"
     ],
     "amiga-grab-crops/wish4-b1__a_camp3-00.png": [
       "camp"
