@@ -57,3 +57,28 @@ def test_both_buttons_show_their_whole_label(window, size):
         assert button.width() >= button.sizeHint().width(), (
             f"{name} {button.text()!r} is {button.width()}px of the "
             f"{button.sizeHint().width()}px its label asks for")
+
+
+def test_the_buttons_minimum_does_not_grow_with_the_font(window):
+    """The window's minimum width is held flat across fonts, so these buttons may
+    elide again at a larger font instead of raising it."""
+    from PyQt6.QtGui import QFont
+
+    win, app = window
+    widths = {}
+    base = app.font()
+    try:
+        for extra in (0, 10):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            for name in BUTTONS:
+                button = win.findChild(QPushButton, name)
+                button.setFont(bigger)
+                widths.setdefault(name, []).append(button.minimumSizeHint().width())
+    finally:
+        app.setFont(base)
+    for name, (at_base, at_ten) in widths.items():
+        # The base text is measured at 9pt whatever the font; 2px is hinting
+        # rounding, where the size hint itself grows by tens of pixels at +10.
+        assert abs(at_ten - at_base) <= 2, f"{name} {widths[name]}"

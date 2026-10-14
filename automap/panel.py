@@ -23,7 +23,7 @@ import logging
 from datetime import datetime
 
 from PyQt6.QtCore import QObject, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -295,15 +295,29 @@ class ElidingButton(QPushButton):
 
 
 class FullLabelButton(ElidingButton):
-    """A button whose label is never cut, so a long neighbour cannot take it.
+    """A button whose label is not cut at the base font, so a long neighbour cannot take it.
 
     A layout short of room shares the shortage by how far each widget's hint is
     above its minimum, so a wide dropdown beside this button pulls it down to
-    its minimum. Asking for the label's own width as the minimum keeps it.
+    its minimum. The minimum is the width the label needs at `BASE_POINT_SIZE`:
+    a larger font does not widen it, because the window's minimum width stays
+    where it is at every font and the button elides again, as an
+    `ElidingButton` does.
     """
 
+    #: The point size the label has to fit at; 9pt is the base UI font.
+    BASE_POINT_SIZE = 9.0
+
     def minimumSizeHint(self) -> QSize:
-        return self.sizeHint()
+        hint = self.sizeHint()
+        font = QFont(self.font())
+        if font.pointSizeF() <= self.BASE_POINT_SIZE:
+            return hint
+        text = self.text()
+        grown = self.fontMetrics().horizontalAdvance(text)
+        font.setPointSizeF(self.BASE_POINT_SIZE)
+        base = QFontMetrics(font).horizontalAdvance(text)
+        return QSize(hint.width() - grown + base, hint.height())
 
 
 class ElidingCheckBox(QCheckBox):
