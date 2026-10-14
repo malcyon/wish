@@ -742,10 +742,10 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         loaded = manifest["fight"]["members"]
         fallen = [m["name"] for m in found["after"]
                   if m["hit_points"] == 0 or m["status"] != loaded[m["name"]]["status"]]
-        standing = [m["name"] for m in found["after"] if m["name"] not in fallen]
-        raise RouteError(f"the party lost the {'fight' if pit else 'brawl'}; "
-                         f"standing: {standing}, fallen: {fallen}")
-    found["members"] = check_members(found["after"], manifest, members)
+        found["standing"] = [m["name"] for m in found["after"] if m["name"] not in fallen]
+        found["fallen"] = fallen
+    else:
+        found["members"] = check_members(found["after"], manifest, members)
     if not save:
         return found
     screens.wait(("world",), 30, past=())
@@ -774,9 +774,10 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
             "members": [{"name": m.name, **member_fields(m.raw)} for m in saved.characters]}
 
 
-def verdict(found: dict, manifest: dict, members: list[str]) -> list[str]:
+def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won") -> list[str]:
     """Problems with a read-back: empty when each named member was saved QUICK, as loaded,
-    and a Pit run's saved slot still holds the staged gate."""
+    and a Pit run's saved slot still holds the staged gate. After a lost fight the members
+    never got a bar and some fell, so only their presence is checked."""
     problems = []
     if manifest["fight"].get("kind") == PIT and found.get(SAVED_GATE) != PIT_GATE_ON:
         problems.append(f"the saved slot holds ${PIT_GATE:04X} = {found.get(SAVED_GATE)}, "
@@ -792,6 +793,8 @@ def verdict(found: dict, manifest: dict, members: list[str]) -> list[str]:
         rows = [m for m in found["members"] if m["name"] == name]
         if len(rows) != 1:
             problems.append(f"{name} is in the saved party {len(rows)} times")
+            continue
+        if outcome == "lost":
             continue
         loaded = manifest["fight"]["members"][name]
         row = rows[0]
@@ -888,7 +891,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             try:
                 found = read_back(pathlib.Path(fetched["path"]), manifest)
                 receipt["read_back"] = found
-                receipt["problems"] = verdict(found, manifest, list(args.member))
+                receipt["problems"] = verdict(found, manifest, list(args.member),
+                                              receipt.get("outcome", "won"))
             except Exception as exc:  # noqa: BLE001
                 receipt["problems"] = [f"read-back: {type(exc).__name__}: {exc}"]
         else:

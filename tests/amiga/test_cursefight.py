@@ -428,14 +428,24 @@ def test_drive_loads_walks_fights_and_saves_once(tmp_path, monkeypatch):
     _keys_allowed(screens, game)
 
 
-def test_drive_stops_after_a_lost_brawl_naming_who_stands_and_who_fell(tmp_path, monkeypatch):
+def test_drive_saves_after_a_lost_brawl_naming_who_stands_and_who_fell(tmp_path, monkeypatch):
     loaded = [_member(name) for name in NAMES]
     after = [_member(name) for name in NAMES]
     after[0].update(hit_points=0, status=1)
-    games = []
-    with pytest.raises(RouteError, match=r"lost the brawl.*standing: \['HOLLAND'.*fallen: \['GALAIN'\]"):
-        _drive(tmp_path, monkeypatch, parties=[loaded, after], outcome="lost", games=games)
-    assert "E" not in games[0].keys
+    found, game, _screens, _walked = _drive(tmp_path, monkeypatch, parties=[loaded, after],
+                                            outcome="lost")
+    assert found["outcome"] == "lost" and found["fallen"] == ["GALAIN"]
+    assert "GALAIN" not in found["standing"] and "HOLLAND" in found["standing"]
+    assert "members" not in found
+    assert game.keys[-4:] == ["E", "S", "F", "N"]
+
+
+def test_verdict_of_a_lost_fight_skips_the_quickfight_and_standing_checks():
+    members = [_member(name) for name in NAMES]
+    members[-1].update(hit_points=0, status=1)
+    found = _read(members)
+    assert cursefight.verdict(found, _manifest(), ["EVOKER"], "lost") == []
+    assert cursefight.verdict(found, _manifest(), ["EVOKER"])
 
 
 def test_drive_answers_the_injuries_question_before_the_punch_bar(tmp_path, monkeypatch):
@@ -608,7 +618,7 @@ def _run(tmp_path, monkeypatch, *, drive, problems=(), no_save=False):
     fetched = tmp_path / "fetched-save.adf"
     fetched.write_bytes(b"fetched")
     monkeypatch.setattr(cursefight, "read_back", lambda path, value: {"path": str(path)})
-    monkeypatch.setattr(cursefight, "verdict", lambda found, value, members: list(problems))
+    monkeypatch.setattr(cursefight, "verdict", lambda found, value, members, outcome="won": list(problems))
     halted = []
     receipt = None
     try:
