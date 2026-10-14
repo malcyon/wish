@@ -294,6 +294,18 @@ class ElidingButton(QPushButton):
         painter.drawControl(QStyle.ControlElement.CE_PushButton, option)
 
 
+class FullLabelButton(ElidingButton):
+    """A button whose label is never cut, so a long neighbour cannot take it.
+
+    A layout short of room shares the shortage by how far each widget's hint is
+    above its minimum, so a wide dropdown beside this button pulls it down to
+    its minimum. Asking for the label's own width as the minimum keeps it.
+    """
+
+    def minimumSizeHint(self) -> QSize:
+        return self.sizeHint()
+
+
 class ElidingCheckBox(QCheckBox):
     """The same, for a checkbox whose label is a sentence."""
 

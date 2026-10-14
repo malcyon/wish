@@ -1297,7 +1297,7 @@
                <number>2</number>
               </property>
               <item row="0" column="1">
-               <widget class="ElidingButton" name="action_clear_qf">
+               <widget class="FullLabelButton" name="action_clear_qf">
                 <property name="text">
                  <string>Clear quickfight</string>
                 </property>
@@ -1307,7 +1307,7 @@
                <widget class="ElidingComboBox" name="ft_combo" />
               </item>
               <item row="0" column="3">
-               <widget class="ElidingButton" name="ft_button">
+               <widget class="FullLabelButton" name="ft_button">
                 <property name="enabled">
                  <bool>false</bool>
                 </property>
@@ -3295,6 +3295,11 @@
   </customwidget>
   <customwidget>
    <class>ElidingButton</class>
+   <extends>QPushButton</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>FullLabelButton</class>
    <extends>QPushButton</extends>
    <header>automap.panel</header>
   </customwidget>

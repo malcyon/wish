@@ -730,13 +730,13 @@ class Ui_WishWindow(object):
         self.fasttravel_grid.setContentsMargins(0, 2, 0, 2)
         self.fasttravel_grid.setSpacing(4)
         self.fasttravel_grid.setObjectName("fasttravel_grid")
-        self.action_clear_qf = ElidingButton(parent=self.fasttravel_bar)
+        self.action_clear_qf = FullLabelButton(parent=self.fasttravel_bar)
         self.action_clear_qf.setObjectName("action_clear_qf")
         self.fasttravel_grid.addWidget(self.action_clear_qf, 0, 1, 1, 1)
         self.ft_combo = ElidingComboBox(parent=self.fasttravel_bar)
         self.ft_combo.setObjectName("ft_combo")
         self.fasttravel_grid.addWidget(self.ft_combo, 0, 2, 1, 1)
-        self.ft_button = ElidingButton(parent=self.fasttravel_bar)
+        self.ft_button = FullLabelButton(parent=self.fasttravel_bar)
         self.ft_button.setEnabled(False)
         self.ft_button.setObjectName("ft_button")
         self.fasttravel_grid.addWidget(self.ft_button, 0, 3, 1, 1)
@@ -1846,7 +1846,7 @@ class Ui_WishWindow(object):
         self.label_spells_castable.setText(_translate("WishWindow", "Castable per level"))
         self.sheet_tabs.setTabText(self.sheet_tabs.indexOf(self.tab_spells), _translate("WishWindow", "Spells"))
         self.tabs.setTabText(self.tabs.indexOf(self.tab_editor), _translate("WishWindow", "Character Editor"))
-from automap.panel import Bar, CardClassLabel, CardNameLabel, ElidingButton, ElidingComboBox, ElidingLabel, IconRow, ReadiedLabel
+from automap.panel import Bar, CardClassLabel, CardNameLabel, ElidingButton, ElidingComboBox, ElidingLabel, FullLabelButton, IconRow, ReadiedLabel
 from editor.activeeffects import ActiveEffectsView
 from editor.effects import EffectsView
 from editor.iconwidget import IconEditor
