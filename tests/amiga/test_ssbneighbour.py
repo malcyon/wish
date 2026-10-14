@@ -6,6 +6,7 @@ import hashlib
 import json
 import pathlib
 import subprocess
+import time
 
 import pytest
 from PIL import Image
@@ -1028,11 +1029,14 @@ def test_a_winvm_transport_overrun_is_retryable_only_with_its_timeout_cause():
 class _ScriptedGuest:
     """Show one named screen per grab; record every key pressed."""
 
-    def __init__(self, screens):
+    def __init__(self, screens, clock=None):
         self.screens = list(screens)
         self.keys = []
+        self.clock = clock
 
     def grab(self, state, raw, crop, timeout):
+        if self.clock is not None:
+            self.clock.now += 0.01
         shown = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
         crop.write_text(shown)
         raw.write_text(shown)
@@ -1053,11 +1057,26 @@ class _NamedGuards:
         return pathlib.Path(crop).read_text() == state
 
 
+class _GrabClock:
+    """A clock that moves only when the guest grabs a shot, so a wait's length is counted in grabs."""
+
+    now = 1000.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        pass
+
+    time = staticmethod(time.time)
+
+
 def _guarded_run(tmp_path, monkeypatch, screens):
-    monkeypatch.setattr(neighbour.time, "sleep", lambda seconds: None)
-    guest = _ScriptedGuest(screens)
+    clock = _GrabClock()
+    monkeypatch.setattr(neighbour, "time", clock)
+    guest = _ScriptedGuest(screens, clock)
     run = neighbour.GuardedRun(guest, "holder", tmp_path / "screens", _NamedGuards(),
-                               neighbour.time.monotonic() + 60)
+                               clock.monotonic() + 60)
     return run, guest
 
 
