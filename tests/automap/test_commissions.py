@@ -699,3 +699,18 @@ def test_no_summary_line_for_a_side_quest_shows_a_memory_address():
                 f"a memory address reaches a player: {line!r}")
             for flag in (quest.accept, *quest.progress, quest.finish):
                 assert flag.where not in line
+
+
+def test_a_group_with_no_rows_shows_no_heading_until_it_gains_one(app):
+    from automap.questlog import QuestLogPanel
+    panel = QuestLogPanel(make_root())
+    drawn = lambda name: panel.groups[name].isVisibleTo(panel.root)  # noqa: E731
+    assert not drawn("summons") and not drawn("completed")
+
+    flags = put(blank(), 0x4A9B, DONE)
+    put_ledger(flags, 0, PAID_VALUE)
+    panel.update_from(flags)
+    assert drawn("summons") and drawn("completed")
+
+    panel.update_from(blank())
+    assert not drawn("summons") and not drawn("completed")

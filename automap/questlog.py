@@ -316,6 +316,7 @@ class Group(QFrame):
         box.addWidget(self.heading)
         self._box = box
         self._rows: list[Row] = []
+        self.hide()
 
     def _row(self, index: int) -> Row:
         # Rows are made once and reused. A panel that rebuilt its widgets on
