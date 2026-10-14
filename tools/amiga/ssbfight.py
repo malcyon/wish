@@ -460,10 +460,15 @@ def wait_past_journal(screens: Screens, want: tuple[str, ...], limit: float, ans
     return screens.wait(want, limit, past=("journal", *past))
 
 
-def after_defeat(screens: Screens) -> dict:
+def after_defeat(screens: Screens, into: dict | None = None) -> dict:
     """Watch the screens after a lost fight, pressing nothing, until one of `LANDINGS` shows on
-    two grabs running or `AFTER_DEFEAT_LIMIT` passes; every grab is kept with what it matched."""
-    shots: list[dict] = []
+    two grabs running or `AFTER_DEFEAT_LIMIT` passes; every grab is kept with what it matched.
+
+    With `into`, each grab is in its `screens` as it is made, so a stop inside the watch still
+    leaves the frames already taken."""
+    found = {} if into is None else into
+    shots: list[dict] = found.setdefault("screens", [])
+    found["landing"] = None
     end = screens.clock() + screens.left(AFTER_DEFEAT_LIMIT)
     previous = None
     while screens.clock() < end:
@@ -471,10 +476,11 @@ def after_defeat(screens: Screens) -> dict:
         state = next((s for s in KNOWN if s in seen), None)
         shots.append({"shot": str(shot), "states": seen})
         if state in LANDINGS and state == previous:
-            return {"landing": state, "screens": shots}
+            found["landing"] = state
+            return found
         previous = state
         screens.sleep(3.0)
-    return {"landing": None, "screens": shots}
+    return found
 
 
 def to_load_picker(screens: Screens, landing: str) -> None:
@@ -531,21 +537,25 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
     screens.to_title(300)
     landing = "title"
     while True:
+        for key in attempts[-1].keys() - {"number", "after_defeat"} if attempts else ():
+            found.pop(key, None)
         attempt: dict[str, Any] = {"number": len(attempts) + 1}
         attempts.append(attempt)
-        to_load_picker(screens, landing)
-        begin(screens, manifest, memory, answer, attempt)
-        found.update({k: v for k, v in attempt.items() if k != "number"})
-        attempt["walk"] = found["walk"] = wander(screens, memory, fight_["place"], fight_)
-        if capture_only:
-            found["capture"] = capture(screens, memory, attempt["turn_before"])
-            return found
-        fought = fight(screens, memory, members, found=attempt)
-        attempt.update(fought)
-        found.update(fought)
+        try:
+            to_load_picker(screens, landing)
+            begin(screens, manifest, memory, answer, attempt)
+            attempt["walk"] = wander(screens, memory, fight_["place"], fight_)
+            if capture_only:
+                found["capture"] = capture(screens, memory, attempt["turn_before"])
+                return found
+            attempt.update(fight(screens, memory, members, found=attempt))
+        finally:
+            # The top level always describes the latest attempt, however far it got.
+            found.update({k: v for k, v in attempt.items() if k not in ("number", "after_defeat")})
         if found["outcome"] == "won":
             break
-        attempt["after_defeat"] = after_defeat(screens)
+        attempt["after_defeat"] = {}
+        after_defeat(screens, attempt["after_defeat"])
         landing = attempt["after_defeat"]["landing"]
         if len(attempts) > retries:
             return found
@@ -766,7 +776,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="stop at the fight's first member's command bar, pressing nothing on it")
     g.add_argument("--retry-lost", type=int, default=0, metavar="N",
                    help="after a lost fight, go back to the load picker by the boot's own route, "
-                        "load the staged slot again and walk again, at most N more times")
+                        "load the staged slot again and walk again, at most N more times; "
+                        "needs a larger --budget")
     g.add_argument("--budget", type=float, default=2700)
     g.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS")
     r = sub.add_parser("read", help="read a fetched disk's saved slot against a manifest")

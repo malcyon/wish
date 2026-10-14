@@ -555,7 +555,7 @@ DRIVE = [None, "credits", "title", "party_menu", "load_picker", None, "scrolls_d
 
 
 def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won",
-           parties=None, script=DRIVE, retries=0):
+           parties=None, script=DRIVE, retries=0, fight=None, found=None):
     clock = Clock()
     loaded = [_member(name) for name in NAMES]
     after = [_member(name, quickfight=1) for name in NAMES]
@@ -564,8 +564,8 @@ def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won
     answers = []
     monkeypatch.setattr(ssbfight, "wander", lambda *a: {"steps": [], "met": "shot"})
     outcomes = [outcome] if isinstance(outcome, str) else list(outcome)
-    monkeypatch.setattr(ssbfight, "fight", lambda *a, **k: {"outcome": outcomes.pop(0),
-                                                       "bars": [{"owner": "PAINE"}]})
+    monkeypatch.setattr(ssbfight, "fight", fight or (lambda *a, **k: {
+        "outcome": outcomes.pop(0), "bars": [{"owner": "PAINE"}]}))
     monkeypatch.setattr(ssbfight, "capture", lambda *a: {"outcome": "bar"})
 
     def answer(holder, adf, timeout):
@@ -574,7 +574,7 @@ def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won
 
     screens = _screens(tmp_path, game, clock)
     found = ssbfight.drive(screens, _manifest(), ["PAINE"], game, answer, save=save,
-                           capture_only=capture_only, retries=retries)
+                           capture_only=capture_only, retries=retries, found=found)
     return found, game, screens, answers
 
 
@@ -891,3 +891,93 @@ def test_memory_reads_silver_blades_records_through_the_shared_reader():
     assert memory.fields(bytes(raw)) == {field: len(field) for field in ssbfight.RECORD}
     assert (memory.title, memory.current) == (ssbfight.TITLE, 0x516C)
     assert ssbfight.cursefight.Memory("holder").current == ssbfight.cursefight.CURRENT
+
+
+def test_drive_top_level_describes_the_latest_attempt_when_it_stops(tmp_path, monkeypatch):
+    calls = []
+
+    def fight(*args, found, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            return {"outcome": "lost", "bars": [{"owner": "PAINE"}]}
+        found["bars"] = []
+        raise RouteError("stopped in the second fight")
+
+    loaded = [_member(name) for name in NAMES]
+    top = {}
+    with pytest.raises(RouteError, match="second fight"):
+        _drive(tmp_path, monkeypatch, script=RETRY[:14], retries=1, fight=fight, found=top,
+               parties=[loaded, loaded])
+    assert len(top["attempts"]) == 2
+    assert "outcome" not in top and top["bars"] == []
+    assert top["walk"] == top["attempts"][1]["walk"]
+
+
+def test_drive_top_level_drops_the_earlier_attempts_readings_when_begin_stops(tmp_path,
+                                                                           monkeypatch):
+    loaded = [_member(name) for name in NAMES]
+    top = {}
+    with pytest.raises(RouteError):
+        _drive(tmp_path, monkeypatch, outcome=["lost", "won"], script=RETRY[:12], retries=1,
+               found=top, parties=[loaded, loaded[:-1]])
+    assert "outcome" not in top and "bars" not in top and "walk" not in top
+    assert top["loaded"] == loaded[:-1]
+
+
+def test_drive_keeps_a_stopped_fights_partial_bars_at_the_top_without_retries(tmp_path,
+                                                                           monkeypatch):
+    def fight(*args, found, **kwargs):
+        found["bars"] = [{"owner": "PAINE"}]
+        raise RouteError("mid-fight")
+
+    top = {}
+    with pytest.raises(RouteError, match="mid-fight"):
+        _drive(tmp_path, monkeypatch, script=RETRY[:8], fight=fight, found=top)
+    assert top["bars"] == [{"owner": "PAINE"}]
+
+
+def test_after_defeat_keeps_the_frames_taken_when_it_stops(tmp_path):
+    clock = Clock()
+    game = Game(clock, [None, "party_destroyed", None])
+    game.walking = False
+    screens = _screens(tmp_path, game, clock)
+    real, grabs = screens.look, []
+
+    def look(label):
+        if len(grabs) == 2:
+            raise RouteError("deadline")
+        grabs.append(1)
+        return real(label)
+
+    screens.look = look
+    into = {}
+    with pytest.raises(RouteError, match="deadline"):
+        ssbfight.after_defeat(screens, into)
+    assert len(into["screens"]) == 2 and into["landing"] is None
+
+
+@pytest.mark.parametrize("landing, script, keys", [
+    ("credits", [None, "credits", "title", "party_menu", "load_picker"], ["ESC", "P", "L"]),
+    ("title", ["title", "party_menu", "load_picker"], ["P", "L"]),
+    ("load_picker", ["load_picker"], []),
+    ("party_menu", ["party_menu", "load_picker"], ["L"]),
+])
+def test_to_load_picker_reaches_the_picker_from_each_landing(tmp_path, landing, script, keys):
+    clock = Clock()
+    game = Game(clock, script)
+    game.walking = False
+    screens = _screens(tmp_path, game, clock)
+    ssbfight.to_load_picker(screens, landing)
+    assert game.keys == keys
+    _keys_allowed(screens, game)
+
+
+def test_drive_with_retries_spent_ends_lost_after_every_attempt_and_saves_nothing(tmp_path,
+                                                                               monkeypatch):
+    loaded = [_member(name) for name in NAMES]
+    found, game, _, _ = _drive(
+        tmp_path, monkeypatch, outcome=["lost", "lost"], script=RETRY, retries=1,
+        parties=[loaded, loaded])
+    assert found["outcome"] == "lost"
+    assert [a["outcome"] for a in found["attempts"]] == ["lost", "lost"]
+    assert not {"E", "S", "N"} & set(game.keys)
