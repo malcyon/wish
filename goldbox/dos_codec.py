@@ -3783,6 +3783,11 @@ def neutral_to_c64_record(char: NeutralCharacter, icon: bytes | None = None, *,
     out.fields = dict(char.fields)
     out.dropped = list(char.dropped)
     out.warnings = list(char.warnings)
+    # The source's raw size travels beside the vocabulary, and `c64_codec.
+    # write` reads it to tell an Amiga companion's join size from an edit.
+    held = getattr(char, _CREATURE_SOURCE, None)
+    if held:
+        setattr(out, _CREATURE_SOURCE, dict(held))
     field = out.fields.get("name")
     if field is not None:
         out.set("name", c64_name(str(field.value)),

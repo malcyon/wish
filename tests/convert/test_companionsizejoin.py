@@ -166,7 +166,8 @@ def test_a_pools_of_darkness_npc_is_not_a_joined_companion():
 @pytest.mark.parametrize("key, name, mon_id, story", c64_tests.CASES,
                          ids=c64_tests.IDS)
 def test_a_c64_companion_gets_the_amiga_join_size(key, name, mon_id, story):
-    """Fails without the fix: the C64's 1 became Amiga 2."""
+    """A companion who joined on the C64 is written with the size the Amiga
+    join gives him, 0, and reads back as small."""
     char = c64_codec.read(c64_tests._join(key, mon_id), game=key,
                           companions=_table(key))
     if "treasure_share" in char.fields:
@@ -188,9 +189,8 @@ def test_a_c64_player_keeps_his_size_on_the_amiga():
 
 
 def test_a_dos_curse_party_with_two_companions_saves_as_amiga(tmp_path):
-    """Fails without the fix: the sheet reads a DOS companion's size as the
-    C64 join's 1, the Amiga read-back as 0, and Save As stopped on
-    `size_small: 1 arrived as 0`."""
+    """Save As of a DOS party with two joined companions to the Amiga is not
+    stopped: the sheet and the Amiga read-back agree on each one's size."""
     from tools.convert import convertdrops
 
     source = gamedata.specimen(TILVERTON_JOIN)
@@ -204,3 +204,49 @@ def test_a_dos_curse_party_with_two_companions_saves_as_amiga(tmp_path):
                           "--out", str(tmp_path / "out"), "--no-play"])
     assert rc == 0
     assert len(list((tmp_path / "out").rglob("*.ADF"))) == 1
+
+
+def _amiga_neutral(key, mon_id, edited_size=None):
+    """A C64 companion written to the Amiga and read back, with his C64 size
+    edited to `edited_size` first when given."""
+    char = c64_codec.read(c64_tests._join(key, mon_id), game=key,
+                          companions=_table(key))
+    if "treasure_share" in char.fields:
+        char.set("treasure_share", 0, "test")
+    if edited_size is not None:
+        char.set("size_small", edited_size, "test")
+    built, _ = amiga_later.write_later(char, key)
+    return amiga_later.to_neutral_later(built)
+
+
+def _c64_size(neutral, key):
+    rec, _ = c64_codec.write(neutral, icon=_table(key).default_icon,
+                             companions=_table(key))
+    return rec.to_bytes()[SIZE_OFFSET]
+
+
+@pytest.mark.parametrize("key, name, mon_id, story", c64_tests.CASES,
+                         ids=c64_tests.IDS)
+def test_a_c64_companion_round_trips_through_the_amiga_with_the_join_size(
+        key, name, mon_id, story):
+    assert _c64_size(_amiga_neutral(key, mon_id), key) == 1
+
+
+def test_a_c64_companion_edited_to_size_0_keeps_it_through_the_amiga():
+    """The Amiga holds 1 for him, which is not the Amiga join's 0, so the
+    way back does not turn it into the C64 join's 1."""
+    key, mon_id = CURSE_KEY, 0x16
+    neutral = _amiga_neutral(key, mon_id, edited_size=0)
+    assert neutral.get("size_small") == 0
+    assert _c64_size(neutral, key) == 0
+
+
+def test_an_amiga_companion_edited_to_raw_size_1_is_small_on_the_c64():
+    """Raw 1 and the join's raw 0 both read as `size_small` 0; only the raw
+    byte tells the player's edit from the join's own."""
+    key, mon_id = CURSE_KEY, 0x16
+    neutral = _amiga_neutral(key, mon_id)
+    assert _c64_size(neutral, key) == 1
+    dos_codec.set_creature_source(neutral, "size", 1)
+    assert neutral.get("size_small") == 0
+    assert _c64_size(neutral, key) == 0

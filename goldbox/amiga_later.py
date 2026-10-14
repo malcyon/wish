@@ -1165,6 +1165,9 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
 
     out.set("size_small", max(0, char.get("size") - 1),
             "the Amiga size byte, less one", grade("size"))
+    # The raw byte travels beside the vocabulary, as a DOS record's does:
+    # `size_small` cannot tell a companion's join size 0 from an edited 1.
+    _dos.set_creature_source(out, "size", char.get("size"))
     out.set("attack_forms", char.get("attack_forms"),
             f"Amiga attack_forms @"
             f"{deltas.offset(table['attack_forms'].offset):#05x}",
