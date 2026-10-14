@@ -92,6 +92,7 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 
 from goldbox.geo import GEO_SIZE, Geo
+from goldbox.world import WINDOW_STEP
 
 from .target import WINDOW_H, WINDOW_W, Fix, NotConnected
 
@@ -3056,6 +3057,10 @@ class AmigaTarget:
         one the view byte implies (the interval between the script's area
         change and the area-entry routine). The block's own area word is never
         read: it lags a crossing.
+
+        `x` stays window-local, the C64's form, and `printed_x` is the column
+        the game prints: the status-line routine at `/program` file 0x246E2
+        adds 13 to the block's x word in view 3 and 26 in view 4.
         """
         window = grid.views.index(view)
         span = grid.indoors + 2 - grid.x
@@ -3072,7 +3077,8 @@ class AmigaTarget:
         if not (0 <= x < WINDOW_W and 0 <= y < WINDOW_H):
             return None
         return Fix(x, y, None, "memory", None, outdoors=True, window=window,
-                   heading=facing if facing < 8 else None)
+                   heading=facing if facing < 8 else None,
+                   printed_x=x + WINDOW_STEP * window)
 
     def _world_map_fix(self) -> Fix | None:
         """A world-map fix while the party is on the title's world map.

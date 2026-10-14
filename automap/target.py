@@ -159,6 +159,10 @@ class Fix:
     #: sets them.
     window: int | None = None
     heading: int | None = None
+    #: Only with `outdoors`: the x the game prints on its own status line, for
+    #: a port that prints something other than `x`. The Amiga prints the world
+    #: column; the C64 prints the window-local `x` and never sets this.
+    printed_x: int | None = None
 
     @property
     def square(self) -> tuple[int, int]:

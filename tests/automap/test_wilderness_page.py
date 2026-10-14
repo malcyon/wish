@@ -113,6 +113,16 @@ def _canvas(heading, at=(1, 8, 27), view=FULL_VIEW, minimum=False):
 
 # -- the page ------------------------------------------------------------------
 
+def test_a_c64_grid_square_is_shown_window_local(app, tmp_path, monkeypatch):
+    """The C64 prints the window-local pair, so the strip and the status line
+    keep it while the marker stands on the world square."""
+    win, _ = _window_on(app, tmp_path, monkeypatch, [out(7, 29)], window=1)
+    _step(win)
+    assert win.strip.where.text() == "Outdoors (7,29)"
+    assert win.status_text() == "Outdoors  (7, 29)  Stojanow Valley   [status]"
+    assert win.world_canvas.party_square == (20, 29)
+
+
 def test_the_world_page_shows_outdoors_and_the_map_page_indoors(
         app, tmp_path, monkeypatch):
     win, _ = _window_on(app, tmp_path, monkeypatch, [out(8, 27), indoors()])

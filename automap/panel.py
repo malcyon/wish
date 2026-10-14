@@ -1014,7 +1014,8 @@ class BottomStrip(QObject):
             if state.world_map:
                 self.where.setText("")
             elif state.outdoors:
-                self.where.setText(f"{OUTDOORS_WHERE} ({state.x},{state.y})")
+                x, y = state.outdoor_pair
+                self.where.setText(f"{OUTDOORS_WHERE} ({x},{y})")
             else:
                 self.where.setText(
                     f"({state.x},{state.y}) facing {state.facing_letter}"

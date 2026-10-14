@@ -1707,7 +1707,8 @@ class AutomapBinding(QObject):
         if st.outdoors:
             # `window` is set only when a world identifies the block.
             if st.window is not None:
-                where = (f"{OUTDOORS_WHERE}  ({st.x}, {st.y})  "
+                x, y = st.outdoor_pair
+                where = (f"{OUTDOORS_WHERE}  ({x}, {y})  "
                          f"{OUTDOORS_REGIONS[st.window]}")
             else:
                 where = OUTDOORS_STATUS

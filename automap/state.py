@@ -232,6 +232,9 @@ class AutomapState:
     window: int | None = None
     #: The travel grid's heading byte, 0-7, or None. Set only while `outdoors`.
     heading: int | None = None
+    #: The x the game prints outdoors, where it is not `x`: `Fix.printed_x`.
+    #: None on the C64, which prints the window-local `x`.
+    printed_x: int | None = None
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
@@ -270,6 +273,11 @@ class AutomapState:
         if not self.area:
             return str(self.candidates) if self.candidates else "identifying..."
         return areas.geo_name(self.area, self.title) or self.area
+
+    @property
+    def outdoor_pair(self) -> tuple[int, int]:
+        """The travel-grid square as the game prints it on its status line."""
+        return (self.x if self.printed_x is None else self.printed_x), self.y
 
     @property
     def facing_letter(self) -> str:
@@ -643,6 +651,7 @@ class Automapper:
             self.state.world_node = self.state.world_leg = None
             self.state.window = None
             self.state.heading = None
+            self.state.printed_x = None
             changed_area = self._check_resident()
 
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
@@ -816,6 +825,7 @@ class Automapper:
             self._outdoor_pending = None
             self.state.window = fix.window
             self.state.heading = fix.heading
+            self.state.printed_x = fix.printed_x
             self.state.outdoors = True
             self.state.x, self.state.y = fix.x, fix.y
             self.state.source = fix.source
@@ -859,6 +869,7 @@ class Automapper:
                     changed_heading = self._read_heading()
         self.state.outdoors = True
         self.state.x, self.state.y = fix.x, fix.y
+        self.state.printed_x = None
         self.state.source = fix.source
         self._started = False
         self._stale_line = None

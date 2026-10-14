@@ -81,7 +81,33 @@ def test_the_hop_lands_on_the_data_hunk():
 def test_the_view_byte_names_the_window(view, area, window):
     fix = target(guest(view=view, area=area)).fix()
     assert fix == Fix(7, 29, None, "memory", None, outdoors=True,
-                      window=window, heading=2)
+                      window=window, heading=2, printed_x=7 + 13 * window)
+
+
+@pytest.fixture
+def app():
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.mark.parametrize("view,area,pair,region", [
+    (2, 25, "7,29", "West of Phlan"),
+    (3, 26, "20,29", "Stojanow Valley"),
+    (4, 27, "33,29", "East of Phlan"),
+])
+def test_the_strip_and_status_line_show_the_pair_the_game_prints(
+        app, tmp_path, monkeypatch, view, area, pair, region):
+    """The game prints `20,29` at local x 7 in the middle window, so Wish
+    shows the same, and the marker's world square is unchanged."""
+    from support.automapwindow import make_window
+    win = make_window(app, tmp_path, monkeypatch, target(guest(view=view, area=area)),
+                      maps={"GEO01": Geo(bytes(0x400))})
+    win.mapper.poll()
+    win._refresh()
+    assert win.strip.where.text() == f"Outdoors ({pair})"
+    x, y = pair.split(",")
+    assert win.status_text() == f"Outdoors  ({x}, {y})  {region}   [memory]"
+    assert win.world_canvas.party_square == (int(x), int(y))
 
 
 def test_the_blocks_lagging_area_word_is_never_read():
