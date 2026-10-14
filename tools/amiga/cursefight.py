@@ -163,10 +163,9 @@ PIT_LINGER = 60.0
 LIVE_GATE = f"wander_gate_{PIT_GATE:04X}"
 GATE_AFTER = f"wander_gate_{PIT_GATE:04X}_after_fight"
 SAVED_GATE = f"saved_wander_gate_{PIT_GATE:04X}"
-#: Pit screens no Amiga capture has shown yet; each takes its guard from the Curse guard map
-#: once `guardmaps.py add` cuts it from a capture. Until then the guard map has no rule for
-#: it, no grab matches it, and a run that meets it stops there after `FIGHT_STALL` with
-#: nothing pressed on it, keeping the frame.
+#: Pit screens the Curse guard map has no rule for. No grab matches one, so a run that meets
+#: it presses nothing on it and stops after `FIGHT_STALL`, keeping the frame; `missing` lists
+#: those still without a rule.
 UNCAPTURED = {
     "attack_evade": "the giant slugs' ATTACK EVADE bar (`HORIZMENU` at `ECL11 $90DC`)",
 }
@@ -776,8 +775,12 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
 
 
 def verdict(found: dict, manifest: dict, members: list[str]) -> list[str]:
-    """Problems with a read-back: empty when each named member was saved QUICK, as loaded."""
+    """Problems with a read-back: empty when each named member was saved QUICK, as loaded,
+    and a Pit run's saved slot still holds the staged gate."""
     problems = []
+    if manifest["fight"].get("kind") == PIT and found.get(SAVED_GATE) != PIT_GATE_ON:
+        problems.append(f"the saved slot holds ${PIT_GATE:04X} = {found.get(SAVED_GATE)}, "
+                        f"not the staged {PIT_GATE_ON}")
     if found["verify"]:
         problems.append(f"the fetched disk fails verification: {found['verify']}")
     if not found["loaded_slot_unchanged"]:

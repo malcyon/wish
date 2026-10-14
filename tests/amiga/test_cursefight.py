@@ -965,3 +965,13 @@ def test_stage_names_both_areas_it_knows_for_a_slot_elsewhere(tmp_path, monkeypa
                                          "area 17"):
         cursefight.stage(prep, specimen, tmp_path / "out", load="D", save="F")
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("gate, problem", [(0x80, False), (0, True), (None, True)])
+def test_verdict_of_a_pit_run_needs_the_staged_gate_in_the_saved_slot(gate, problem):
+    members = [_member(name, quickfight=1) for name in NAMES]
+    found = {**_read(members), **({} if gate is None else {cursefight.SAVED_GATE: gate})}
+    problems = cursefight.verdict(found, _pit_manifest(), ["EVOKER"])
+    assert problems == ([f"the saved slot holds $4C2D = {gate}, not the staged 128"]
+                        if problem else [])
+    assert cursefight.verdict(_read(members), _manifest(), ["EVOKER"]) == []
