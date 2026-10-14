@@ -153,3 +153,34 @@ def read_variable(target, title: str, var: int) -> VarReading:
 
 def read_variables(target, title: str, variables) -> list[VarReading]:
     return [read_variable(target, title, v) for v in variables]
+
+
+#: The quest flags each title keeps, as the first and last ECL address, which
+#: all three ports share. The VM's setter (`/program` `0xa0e8`) stores a
+#: script's value as one big-endian word, so a word's low byte is the byte the
+#: C64 stores at the same address. `$4AF9`-`$4AFF` hold the wallset and wallmap
+#: words on the Amiga and are flags on no port.
+QUEST_FLAGS = {"pool-of-radiance": (0x4A20, 0x4AF8)}
+#: The length of the C64 page `goldbox.commissions.flags` takes, `$4A20`-`$4AFF`.
+QUEST_PAGE = 0x4B00 - 0x4A20
+
+
+def quest_flags(target, title: str) -> bytes | None:
+    """The C64 flag page `goldbox.commissions.flags` reads, from the Amiga's words.
+
+    None for a title with no quest flags, and while the table cannot be read.
+    The bytes past the title's last flag are zero.
+    """
+    span = QUEST_FLAGS.get(title)
+    if span is None:
+        return None
+    target = getattr(target, "target", target)
+    first, last = span
+    try:
+        address, rng = resolve(target, title, first)
+        resolve(target, title, last)
+        count = last - first + 1
+        data = target.read(address, rng.size * count)
+    except (VarError, amiga.NotConnected):
+        return None
+    return bytes(data[rng.size - 1::rng.size]) + bytes(QUEST_PAGE - count)

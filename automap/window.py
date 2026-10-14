@@ -64,6 +64,7 @@ from . import (
     amigalevelup,
     amigaparty,
     amigatrip,
+    amigavars,
     combat,
     live,
     rolls,
@@ -1522,7 +1523,9 @@ class AutomapBinding(QObject):
         up button is greyed the same way, then given back to each member the
         title's trainer would train, on a title whose row confirms `level-up`
         (`_show_amiga_party`). The cards come from `amigaparty.read_party`;
-        the C64's readers are never called.
+        the C64's readers are never called. The quest log is fed from
+        `amigavars.quest_flags` while the party reads, and only for a title
+        that keeps quest flags; on any other it says it is waiting for a game.
         """
         reason = amigaactions.unsupported(title)
         self.roster.set_unsupported()
@@ -1548,7 +1551,14 @@ class AutomapBinding(QObject):
         else:
             self._enter_travel(key)
             self.fasttravel_bar.attach(target)
-        self._show_amiga_party(amigaparty.read_party(target))
+        party = amigaparty.read_party(target)
+        self._show_amiga_party(party)
+        if party is None:
+            # As on the C64: plot flags do not move in a menu, so the log holds.
+            return
+        flags = amigavars.quest_flags(target, key)
+        if flags is not None:
+            self.questlog.update_from(flags)
 
     def _enter_amiga(self, key: str) -> None:
         """Run `key`'s actions, and drop whatever party another title left."""

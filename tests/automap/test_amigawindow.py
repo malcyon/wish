@@ -464,6 +464,114 @@ def test_switching_from_a_c64_to_an_amiga_clears_the_quest_log_and_strength(meas
     assert window.strength_label.toolTip() == waiting_tip
 
 
+# -- the quest log -----------------------------------------------------------------
+
+#: Where the made-up machine keeps Pool's `$4900` variable table.
+POOL_VARIABLES = 0xC30000
+
+
+@pytest.fixture
+def amiga_regions(monkeypatch):
+    """`FakeAmiga.memory` is `MemoryTarget`'s C64 dictionary, not a list of
+    Amiga regions, so the variable map checks against the Amiga's own."""
+    inside = amiga._in_memory
+
+    def regions(addr, length=1, memory=amiga.MEMORY):
+        return inside(addr, length,
+                      amiga.MEMORY if isinstance(memory, dict) else memory)
+    monkeypatch.setattr(amiga, "_in_memory", regions)
+
+
+def pool_flags(target, page):
+    """Lay a 224-byte C64 flag page out as Pool's Amiga words at `$4A20`.
+
+    `$4AF9`-`$4AFF` get `$FFFF`, the empty wallset and wallmap words the
+    Amiga keeps there, which are not flags on any port.
+    """
+    target.put(BASE + 0x98, POOL_VARIABLES.to_bytes(4, "big"))
+    words = bytearray()
+    for i, value in enumerate(page):
+        words += (0xFFFF if 0x4A20 + i > 0x4AF8 else value).to_bytes(2, "big")
+    target.put(POOL_VARIABLES + 2 * (0x4A20 - 0x4900), bytes(words))
+
+
+def flag_page(**ledger):
+    """A C64 flag page with ledger entries set, `entry21=3` style."""
+    from goldbox import commissions as book
+    page = bytearray(book.FLAGS_SIZE)
+    for name, value in ledger.items():
+        page[book.LEDGER_BASE - book.FLAGS_BASE + int(name[5:])] = value
+    return bytes(page)
+
+
+def quest_rows(panel):
+    return {name: [(r.what.text(), r.state.text(), r.note.text())
+                   for r in group.visible_rows()]
+            for name, group in panel.groups.items()}
+
+
+def c64_rows(page):
+    """What the C64's read draws from the same flag page."""
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.questlog import QuestLogPanel
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    panel = QuestLogPanel(root)
+    panel.update_from(page)
+    return quest_rows(panel), panel.heading.text()
+
+
+def test_an_amiga_pool_party_feeds_the_quest_log_as_the_c64_does(measured, amiga_regions):
+    # Slums in progress, the Sokal Keep entry paid, one summons outstanding.
+    page = bytearray(flag_page(entry21=3, entry1=255))
+    page[0x4A9B - 0x4A20] = 254
+    page = bytes(page)
+    target = FakeAmiga(c64_memory(), POOL)
+    lay_party(target, POOL)
+    pool_flags(target, page)
+    window = window_on(target)
+    window._refresh_roster()
+    rows, heading = c64_rows(page)
+    assert window.questlog.heading.text() == heading == "Quest Log"
+    assert quest_rows(window.questlog) == rows
+    assert any(state == "In progress" for _w, state, _n in rows["commissions"])
+    # The wallset and wallmap words past `$4AF8` reach the log as zero.
+    from automap import amigavars
+    assert amigavars.quest_flags(target, POOL) == page[:0xD9] + bytes(7)
+
+
+def test_the_amiga_quest_log_holds_while_the_party_cannot_be_read(measured, amiga_regions):
+    """As on the C64: a menu or a load does not blank the log."""
+    page = flag_page(entry21=3)
+    window, target = attached(POOL)
+    pool_flags(target, page)
+    window._refresh_roster()
+    before = quest_rows(window.questlog)
+    target.put(BASE + amigaparty.ROWS[POOL].head, bytes(4))
+    pool_flags(target, bytes(len(page)))
+    window._refresh_roster()
+    assert card_names(window) == ["ALDRIC", "BRYNNA", "COSIMO"]
+    assert window.roster.heading.text() == "Party - not readable right now"
+    assert quest_rows(window.questlog) == before
+    assert window.questlog.heading.text() == "Quest Log"
+
+
+def test_an_unlocated_pool_table_leaves_the_quest_log_waiting(measured, amiga_regions):
+    window, _ = attached(POOL)            # the table pointer reads zero
+    assert window.questlog.heading.text() == "Quest Log - waiting for a game"
+
+
+@pytest.mark.parametrize("key", [CURSE, SILVER, POOLS_OF_DARKNESS])
+def test_a_title_without_pool_s_quest_flags_leaves_the_log_waiting(measured, key):
+    """Only Pool of Radiance keeps the City Council's books."""
+    window, _ = attached(key)
+    assert card_names(window) == ["ALDRIC", "BRYNNA", "COSIMO"]
+    assert window.questlog.heading.text() == "Quest Log - waiting for a game"
+    assert not any(quest_rows(window.questlog).values())
+
+
 def test_switching_between_two_amiga_titles_drops_the_first_party(measured):
     window, _ = attached(POOL)
     assert card_names(window) == ["ALDRIC", "BRYNNA", "COSIMO"]
