@@ -3600,3 +3600,32 @@ def test_a_target_that_gave_up_blocks_a_later_call_rather_than_crashing(
                        ("screen", lambda: t.screen())):
         with pytest.raises(NotConnected):
             call()
+
+
+def _quest_rows(window) -> list[str]:
+    return [row.what.text() for group in window.questlog.groups.values()
+            for row in group.visible_rows()]
+
+
+def test_a_pool_session_lists_its_commissions(app, tmp_path, monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, live_machine())
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert _quest_rows(window)
+
+
+@pytest.mark.parametrize("game", [CURSE, c64_port.SECRET_OF_THE_SILVER_BLADES],
+                         ids=["curse", "silver-blades"])
+def test_another_c64_title_lists_no_pool_commissions(app, tmp_path,
+                                                    monkeypatch, game):
+    """The flag page is Pool's; Curse and Silver Blades keep unrelated bytes
+    there, which decoded as three Pool commissions."""
+    save0, roster = captured()
+    machine = MemoryTarget({game.save_load_address: save0 + roster})
+    window = make_window(app, tmp_path, monkeypatch, machine)
+    window.state.title = game.title
+    window._apply_title()
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert window.snapshot is not None
+    assert _quest_rows(window) == []
