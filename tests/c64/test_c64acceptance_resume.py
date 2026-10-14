@@ -370,7 +370,9 @@ def test_every_saved_attribute_round_trips_exactly():
               "returns_sent": 1, "flee_escaped": None, "shots": 9,
               "first_bar_done": True, "attack_evidence": {"row": [25, 1, 2]},
               "quit_evidence": None, "first_effect_loss": {"phase": "x", "last_present": [1, 2]},
-              "last_effect_row": [1, 2], "_saving_is_proof": False, "gen_reads": 3}
+              "last_effect_row": [1, 2], "_saving_is_proof": False, "gen_reads": 3,
+              "bar_ownership": {"name": "EVOKER", "owners": {"WISHHEL": 2}, "established": True},
+              "walk_reloads": [{"reload": "encounter", "at_move": 14, "square": [13, 7, 2]}]}
     assert set(values) == set(A.SilverRun.RESUME_ATTRS)
     holder = SimpleNamespace(RESUME_ATTRS=A.SilverRun.RESUME_ATTRS, gate_reports=[{"verified": True}],
                              **values)

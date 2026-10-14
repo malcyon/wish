@@ -359,6 +359,36 @@ ENCOUNTER_GATES: dict[tuple[str, int], EncounterGate] = {
        for area, roll in POOL_TRAVEL_ROLLS.items()},
 }
 
+#: Pool of Radiance's Slums step roll, `ECL14 $9B3A`-`$9B67`: `RANDOM #13,
+#: =[$980F]`, `+4` while `$6DCA` = 1, `+5` while `$4A0B` = 255, then
+#: `COMPARE [$980F], #12` / `IF<=` / `EXIT`; a value above 12 goes on to the
+#: fight.  Byte 43 is that compare's `#12`.
+POOL_SLUMS_ROLL_AT = 0x9B3A
+POOL_SLUMS_ROLL = bytes.fromhex(
+    "08 00 0d 01 0f 98"
+    " 03 01 ca 6d 00 01 16 04 00 04 01 0f 98 01 0f 98"
+    " 03 01 0b 4a 00 ff 16 04 00 05 01 0f 98 01 0f 98"
+    " 03 01 0f 98 00 0c 1a 00")
+POOL_SLUMS_ROLL_LIMIT = 43
+
+#: The gates a snapshot reload holds (`draw_keeping_gates`, used by
+#: `acceptance.py --walk-reload`): each lets the area's `RANDOM` draw and
+#: stops only the fight.  The C64 generator replays from a snapshot and draws
+#: once per check, so a gate that skips the draw, such as the Slums' `$4A80`
+#: cap (its `IF>= / EXIT` comes before `RANDOM`), leaves the encounter's draw
+#: waiting for the next key, which then meets it.
+RELOAD_GATES: dict[tuple[str, int], EncounterGate] = {
+    (G.POOL_OF_RADIANCE.key, 0x14): EncounterGate(
+        "PROBABLE",
+        "Slums ECL14: the compare's #12 at $9B65 becomes #255, which no roll "
+        "plus its bonuses exceeds, so IF<= always EXITs after RANDOM #13 has "
+        "drawn; bytecode only",
+        ((POOL_SLUMS_ROLL_AT + POOL_SLUMS_ROLL_LIMIT, 0xFF),),
+        ((POOL_SLUMS_ROLL_AT, POOL_SLUMS_ROLL),)),
+    **{(G.POOL_OF_RADIANCE.key, area): ENCOUNTER_GATES[(G.POOL_OF_RADIANCE.key, area)]
+       for area in POOL_TRAVEL_ROLLS},
+}
+
 #: Curse's fixed world-map ambushes: each leg's arm skips its fight when its
 #: once-flag is set (table at `ECL50 $9CAA`).  Opt-in, because the flags are
 #: story state.  `$4C83` and `$4C8E` were seen live (no `SETUPMON` on the
@@ -1129,6 +1159,15 @@ class Session:
     #: unless it is passed `allow_suppressed=True` (automapper and driver
     #: testing only, never conversion proof).
     no_encounters = False
+    #: With `no_encounters`, take each area's gate from `RELOAD_GATES`, whose
+    #: gates let the roll draw: a snapshot reload needs the generator to move
+    #: past the encounter's draw.  An area missing there is not suppressed.
+    draw_keeping_gates = False
+
+    def encounter_gate(self, area: int) -> EncounterGate | None:
+        """The running area's gate from the table `draw_keeping_gates` picks."""
+        table = RELOAD_GATES if self.draw_keeping_gates else ENCOUNTER_GATES
+        return table.get((self.game.key, area))
 
     #: Opt-in, works without `no_encounters`: set Curse's world-map once-flags
     #: so the fixed ambushes are skipped.  Changes story state.
@@ -3034,7 +3073,7 @@ class Session:
                 # (address, value, guard, the script's own byte there)
                 pokes: list[tuple[int, int, str | None, int | None]] = []
                 if self.no_encounters:
-                    gate = ENCOUNTER_GATES.get((key, area))
+                    gate = self.encounter_gate(area)
                     for at, want in gate.guards if gate is not None else ():
                         found = bytes(mon.read(at, len(want)))
                         if not guard_holds(found, (at, want), gate.pokes):
@@ -3075,7 +3114,7 @@ class Session:
         except (OSError, MonitorError) as e:
             self.log(f"  encounter pokes not written, monitor unreadable: {e}")
             return
-        if self.no_encounters and ENCOUNTER_GATES.get((key, area)) is None:
+        if self.no_encounters and self.encounter_gate(area) is None:
             if self._unsuppressed_logged is None:
                 self._unsuppressed_logged = set()
             if (key, area) not in self._unsuppressed_logged:
@@ -3121,12 +3160,15 @@ class Session:
         guard bytes are in memory, so the script the gate patched is gone
         whole and a byte equal to the poke belongs to the loaded script."""
         area = mon.read(self._title_entry(AREA_BYTE, "area byte").addr, 1)[0]
-        gate = ENCOUNTER_GATES.get((self.game.key, area))
-        if area == gated_area or gate is None or not gate.guards:
+        if area == gated_area:
             return False
-        return all(guard_holds(bytes(mon.read(at, len(want))), (at, want),
-                               gate.pokes)
-                   for at, want in gate.guards)
+        for table in (ENCOUNTER_GATES, RELOAD_GATES):
+            gate = table.get((self.game.key, area))
+            if gate is not None and gate.guards and all(
+                    guard_holds(bytes(mon.read(at, len(want))), (at, want), gate.pokes)
+                    for at, want in gate.guards):
+                return True
+        return False
 
     def restore_encounter_gates(self) -> list[dict]:
         """Turn `no_encounters` and `skip_world_map_ambushes` off, put back

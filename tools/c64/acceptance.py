@@ -54,7 +54,33 @@ command bar of the fights those steps fight, taking no snapshot away and writing
 memory: a `fight-watch` event carries the bar's screenshot stem, the screen's text
 rows, whose turn it is, and reads of NAME's roster block (its status byte) and
 record byte `0x0B8` and the roster block's combat side (`+0x0C`); a `fight-watch-placement` event at each fight's
-first bar says whether NAME is on the battlefield.
+first bar says whether NAME is on the battlefield.  Each bar's owner is the
+name the right-hand panel shows (`shown`); `owner_read` says whether the
+battle read names the same character.  `fight-watch-end`, each fight in the
+step result and `summary.json`'s `bar_ownership` count the bars by owner,
+NAME's own (`watched_bars`), the bars whose owner was not read
+(`unread_bars`: a blank panel, or a name the battle read does not match) and
+the names the panel showed between two bars, once per change
+(`panel_names_between_bars`, the turns the engine ran).  `established` is
+true when at least one bar was seen and every bar's owner was read, so that
+`watched_bars` 0 means NAME owned none.
+
+`--walk-reload N` (Pool, `walk-fight` or `walk-flee`) snapshots the machine
+before each move key and passes up to N encounters a step meets instead of
+fighting them: at the encounter menu, or as the fight opens, it restores
+that snapshot, attaches the disk again and sends the key again holding the
+area's `RELOAD_GATES` gate for that key alone, then puts the gate back and
+verifies it.  The C64 generator replays from a snapshot, so the key sent
+again without the gate would meet the same encounter; and a gate that skips
+the roll's draw (the Slums' `$4A80` cap) leaves that draw for the next key,
+which meets it, so a reload gate lets the roll draw and stops only the fight.
+An area with no such gate fails the step.  `--reload-lost-fights N` does the same after a fight the
+party lost, once its bars are recorded (the lost fight stays in `fights`
+with `reloaded`).  No reload is made after a side prompt was answered on the
+key.  Each reload is a `walk-reload` event and a `summary.json`
+`walk_reloads` row (`reload` is `encounter` or `lost`; the move, key,
+square, area and the last screen); the gate
+checks go to `encounter_gates`.
 
 `--read-at PC=GUARD:ADDR:N[,ADDR:N...]` (hex, Pool only, repeatable) is a
 stopping exec checkpoint armed at `load`: at PC it checks the code bytes there
@@ -1404,6 +1430,36 @@ FIGHT_OPENS_SECONDS = 60.0
 #: `--fight-watch`'s poll of the fight's message rows, in seconds; the
 #: default is one.
 WATCH_POLL_SECONDS = 0.25
+
+#: The text columns inside the combat screen's right-hand panel frame, and
+#: the rows below its top edge that can hold the acting combatant's name.
+PANEL_TEXT = slice(S.PANEL_LEFT + 1, S.PANEL_LEFT + 17)
+PANEL_NAME_ROWS = range(1, 8)
+
+
+def panel_name(rows: list[str]) -> str:
+    """The name the combat screen's right-hand panel shows, read off the text
+    alone: the first non-blank line inside the frame, which the game draws
+    above the hit points.  Empty when no screen or no such line was read."""
+    for r in PANEL_NAME_ROWS:
+        if r < len(rows):
+            text = rows[r][PANEL_TEXT].strip()
+            if text:
+                return text
+    return ""
+
+
+#: The snapshot a `walk-fight` step under `--walk-reload` or
+#: `--reload-lost-fights` takes before each move key, and restores when that
+#: key's encounter is to be passed rather than fought or lost.
+WALK_RELOAD_SNAPSHOT = "walk-reload"
+
+
+class WalkReloaded(Exception):
+    """Raised inside a `walk-fight` key once the machine has been put back to
+    the snapshot before the key; the step sends the key again with the
+    area's encounter gate held."""
+
 #: The game sides `walk-fight` answers a disk prompt for: side 2 is the only
 #: one seen loading a fight; any other prompt stops the step.
 WALK_SIDES = ("2",)
@@ -2303,8 +2359,37 @@ class PoolRun:
     #: appearance is logged and captured, so a row that changes on every read
     #: cannot flood the log.
     watch_counts: dict = {}
+    #: This fight's command bars by the name the panel showed at each (`""`
+    #: for a bar whose panel was blank), how many of them the screen read and
+    #: the battle read did not agree on, and the names the panel showed
+    #: between two bars (turns the engine ran).
+    watch_owners: dict = {}
+    watch_unmatched = 0
+    watch_panel_names: dict = {}
+    #: The name the panel showed at the last read that showed one.
+    watch_prev_panel = ""
+    #: `--fight-watch`: every watched fight's command bars by owner, summed
+    #: over the run, with `established` true once at least one bar was seen
+    #: and every bar's owner was read; `summary.json` keeps it.
+    bar_ownership: dict | None = None
     #: The stem `capture` last wrote, which the watch events name.
     last_stem = ""
+
+    #: `--walk-reload N`: how many encounters each `walk-fight` or `walk-flee`
+    #: step may pass by restoring the snapshot taken before the key that met
+    #: it and sending that key again with the area's encounter gate held,
+    #: instead of fighting.  `--reload-lost-fights N`: the same, but only
+    #: after the fight was fought and lost.  0 is off for both.
+    walk_reload = 0
+    reload_lost_fights = 0
+    #: Every reload the run made, in order; `summary.json` keeps it.
+    walk_reloads: list | None = None
+    #: The key the reload snapshot was taken for, while it may be restored:
+    #: (move number, key, the square before it, the side prompts answered
+    #: before it); None while no reload may happen.
+    walk_reload_armed: tuple | None = None
+    #: This step's reloads, by kind.
+    walk_reload_counts: dict = {}
 
     #: How many times a `walk` step may roll back and walk its route again
     #: after an encounter; 0 walks it once, as before.  `--walk-retry` sets it.
@@ -2605,15 +2690,15 @@ class PoolRun:
     #: flag and directory, the `remove` count, the scribe flag and square,
     #: the spells a `memorize` left pending,
     #: `mercy_before`, `lost_reading`, `returns_sent`, `flee_escaped`, the
-    #: capture counter `shots` (so a later screen never reuses a name) and
-    #: `gate_reports`.  `walk_verb`, `walk_side_prompts`, `walk_side_open` and
+    #: capture counter `shots` (so a later screen never reuses a name),
+    #: `bar_ownership`, `walk_reloads` and `gate_reports`.  `walk_verb`, `walk_side_prompts`, `walk_side_open` and
     #: `walk_treasures` are reset where their step starts, and `armed`,
     #: `traps`, `ready_*`, `temple_*` and `read_at_counts` belong to options a
     #: run with step snapshots does not take (`resume_blocker`), so none of
     #: them is saved.
     RESUME_ATTRS = ("at_menu", "directory", "removes", "scribing", "scribe_square",
                     "memorize_pending", "mercy_before", "lost_reading", "returns_sent", "flee_escaped",
-                    "shots")
+                    "shots", "bar_ownership", "walk_reloads")
 
     def resume_state(self) -> dict:
         """`RESUME_ATTRS` as they stand, as JSON values a record can hold.
@@ -7438,11 +7523,20 @@ class PoolRun:
         # presses nothing else; `walk_expired` bounds its waits by the run.
         self.sess.walk_encounter = word
         self.sess.walk_expired = self.spent
+        self.walk_reload_counts, self.walk_reload_armed = {}, None
         try:
-            return self._walk_fight(route, answer, word)
+            got = self._walk_fight(route, answer, word)
         finally:
             self.sess.walk_encounter = None
             self.sess.walk_expired = None
+            self.walk_reload_armed = None
+            if self.walk_reload or self.reload_lost_fights:
+                self.sess.discard_snapshot(WALK_RELOAD_SNAPSHOT)
+        if self.walk_reload or self.reload_lost_fights:
+            got["reloads"] = dict(self.walk_reload_counts)
+        if self.fight_watch:
+            got["bar_ownership"] = self.bar_ownership
+        return got
 
     def _walk_fight(self, route: str, answer: str | None,
                     word: str = S.ENCOUNTER_FIGHT) -> dict:
@@ -7466,16 +7560,23 @@ class PoolRun:
                 continue
             resent = False
             sends = unsent = 0
+            # Once a reload has passed this move's encounter, every later
+            # pass of the move holds the area's gate.
+            held = False
             while True:
                 # A key is sent again only when the party is where it was and
                 # either a fight took the key or the game read nothing: the
                 # position can lag a real move, and a second key would then
                 # take a second step.  A pass that sent no key (the square's
                 # text came up at `MOVE`) does not use up that one resend.
-                again = self._walk_fight_key(
-                    route, n, move, before, last,
-                    answer if n == len(route) - 1 else None, fights,
-                    word, flees)
+                try:
+                    again = self._walk_fight_pass(
+                        held, route, n, move, before, last,
+                        answer if n == len(route) - 1 else None, fights,
+                        word, flees)
+                except WalkReloaded:
+                    held = True
+                    continue
                 if self.walk_crossed is not None:
                     after = self.walk_crossed["position"]
                     break
@@ -7551,6 +7652,37 @@ class PoolRun:
         if word == ENCOUNTER_FLEE:
             got["flees"] = flees
         return got
+
+    def _walk_fight_pass(self, held: bool, route, n, move, before, *rest) -> bool:
+        """One `_walk_fight_key`.  Under `--walk-reload` or
+        `--reload-lost-fights` the machine is snapshotted first, so the key's
+        encounter can be passed (`reload_if_armed`); a HELD pass, the key sent
+        again after a reload, holds the area's encounter gate for that key
+        alone, then puts it back and verifies it before the next key."""
+        if held:
+            self.sess.no_encounters = self.sess.draw_keeping_gates = True
+            try:
+                # Taking MOVE runs the area's check once, before any key.
+                self.sess.suppress_encounters()
+                got = self._walk_fight_key(route, n, move, before, *rest)
+            except BaseException:
+                self.sess.no_encounters = self.sess.draw_keeping_gates = False
+                try:
+                    self.restore_gates(f"{self.walk_verb} move {n} after a reload")
+                except StepFailed as e:
+                    self.log.emit("encounter-gates-unrestored", why=str(e))
+                raise
+            self.sess.no_encounters = self.sess.draw_keeping_gates = False
+            self.restore_gates(f"{self.walk_verb} move {n} after a reload")
+            return got
+        if (self.walk_reload or self.reload_lost_fights) and not self.sess.in_combat():
+            self.sess.snapshot(WALK_RELOAD_SNAPSHOT)
+            self.walk_reload_armed = (n, move, list(before),
+                                      len(self.walk_side_prompts))
+        try:
+            return self._walk_fight_key(route, n, move, before, *rest)
+        finally:
+            self.walk_reload_armed = None
 
     def _check_blank_resend(self, route, n, move) -> None:
         """Fail rather than send `walk_one` into a blank row 24: after an
@@ -7727,6 +7859,11 @@ class PoolRun:
         """Answer an encounter menu or `YES NO`.  Returns True when the party
         fled the encounter, so no fight follows."""
         sess = self.sess
+        if (S.word_column(stop[24], "YES") < 0
+                and max(S.word_column(stop[24], w)
+                        for w in (S.ENCOUNTER_FIGHT, ENCOUNTER_FLEE)) >= 0):
+            # An encounter menu, before it is answered.
+            self.reload_if_armed("encounter", n, [])
         self._answer_stop(route, n, move, before, stop, pressed, answer,
                           word)
         if (word == ENCOUNTER_FLEE and S.word_column(stop[24], word) >= 0
@@ -7759,6 +7896,77 @@ class PoolRun:
                               f"{int(FIGHT_OPENS_SECONDS)} seconds")
         return False
 
+    def reload_gate(self) -> tuple[int | None, object]:
+        """The running area's id and its `S.RELOAD_GATES` entry (None when no
+        gate that lets the roll draw is known for it, or the area byte cannot
+        be read)."""
+        entry = S.AREA_BYTE.get(self.game.key)
+        if entry is None:
+            return None, None
+        try:
+            with self.sess.mon(5) as m:
+                area = m.read(entry.addr, 1)[0]
+                m.resume()
+        except (OSError, S.MonitorError):
+            return None, None
+        return area, S.RELOAD_GATES.get((self.game.key, area))
+
+    def reload_if_armed(self, kind: str, n: int, fights: list,
+                        fight: dict | None = None) -> None:
+        """Pass the encounter move N met, when `--walk-reload` (KIND
+        `encounter`, at the menu or before the fight) or
+        `--reload-lost-fights` (KIND `lost`, after the fight) still has a
+        reload for this step: restore the snapshot taken before the key,
+        attach the disk again, record the reload and raise `WalkReloaded`.
+        FIGHT, a lost fight's record, is kept in FIGHTS first.
+
+        Nothing happens when no snapshot was taken for move N, the cap is
+        used up, a side prompt was answered since the snapshot (a restore
+        makes the game ask for the side again) or the move crossed an edge.
+        The C64 generator replays from a snapshot, so the key sent again
+        would meet the same encounter unless the area's gate is held, and the
+        gate must let the roll draw (`S.RELOAD_GATES`), or the next key meets
+        the draw it skipped; an area with no such gate fails the step.
+        """
+        armed = self.walk_reload_armed
+        cap = self.walk_reload if kind == "encounter" else self.reload_lost_fights
+        if armed is None or armed[0] != n or cap <= 0:
+            return
+        used = self.walk_reload_counts.get(kind, 0)
+        if used >= cap:
+            return
+        _, move, before, mark = armed
+        if self.walk_crossed is not None or len(self.walk_side_prompts) > mark:
+            self.log.emit("walk-reload-skipped", reload=kind, at_move=n,
+                          why="a side prompt was answered or an edge crossed "
+                              "since the snapshot")
+            return
+        area, gate = self.reload_gate()
+        if gate is None or not gate.pokes:
+            raise self.fail(
+                self.walk_verb,
+                f"{self.walk_verb}: move {n} ({move}) met an encounter in area "
+                f"{'unread' if area is None else f'${area:02X}'}, which has no "
+                f"encounter gate that lets its roll draw, so a reload would "
+                f"meet the same encounter again: add the area to RELOAD_GATES")
+        self.walk_reload_armed = None
+        self.walk_reload_counts = {**self.walk_reload_counts, kind: used + 1}
+        if fight is not None:
+            fights.append(fight)
+        screen = self.last_stem
+        self.sess.restore(WALK_RELOAD_SNAPSHOT)
+        # Safe: no save comes inside a walk-fight step, so the disk image
+        # still matches the snapshot's copy.
+        self.reattach()
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back after a reload")
+        record = {"reload": kind, "step": self.walk_verb, "at_move": n,
+                  "move": move, "square": list(before), "area": area,
+                  "screen": screen}
+        self.walk_reloads = [*(self.walk_reloads or []), record]
+        self.log.emit("walk-reload", **record)
+        raise WalkReloaded(kind)
+
     def _fight_out(self, n, fights, flees, ambush, word, mark) -> None:
         """Fight the open fight out and record it; the side prompts answered
         since `mark` were followed by it, and the next encounter may ask for
@@ -7766,10 +7974,13 @@ class PoolRun:
         sess = self.sess
         number = len(fights)
         self.capture(f"fight-{number}-start")
+        self.reload_if_armed("encounter", n, fights)
         self.watch_fight, self.watch_bars = number, 0
         self.watch_bar_rows = self.watch_prev_rows = frozenset()
         self.watch_lines = 0
         self.watch_counts = {}
+        self.watch_owners, self.watch_unmatched = {}, 0
+        self.watch_panel_names, self.watch_prev_panel = {}, ""
         if self.fight_watch:
             # The engine runs a character between two command bars, so its
             # messages show for less than the default one-second poll.
@@ -7785,12 +7996,17 @@ class PoolRun:
         if self.fight_watch:
             self.watch_end(result)
         if result.outcome == S.LOST:
+            # Kept before any reload, so the bars of a fight the party lost
+            # stay in the step's record.
+            self.reload_if_armed("lost", n, fights, {
+                "at_move": n, "reloaded": True,
+                **self.fight_owners(), **dataclasses.asdict(result)})
             raise self.fight_lost(result)
         if result.outcome == S.BUDGET:
             raise self.fight_over_budget(str(int(self.walk_fight_seconds)), result)
         self.to_world()
         fights.append({"at_move": n, "square": self.position(),
-                       **dataclasses.asdict(result)})
+                       **self.fight_owners(), **dataclasses.asdict(result)})
         for prompt in self.walk_side_prompts[mark:]:
             prompt["fight"] = True
         self.walk_side_open.clear()
@@ -7835,6 +8051,16 @@ class PoolRun:
         in `watch_counts`."""
         rows = [screen.row(r) for r in range(25)]
         now = frozenset(r.strip() for r in rows if r.strip())
+        shown = panel_name(rows)
+        if shown and shown != self.watch_prev_panel and now != self.watch_bar_rows:
+            # Counted once each time the panel changes to it, so a turn the
+            # engine runs between two bars counts once however many reads
+            # it lasts.
+            self.watch_panel_names = {
+                **self.watch_panel_names,
+                shown: self.watch_panel_names.get(shown, 0) + 1}
+        if shown:
+            self.watch_prev_panel = shown
         new = sorted(now - self.watch_prev_rows - self.watch_bar_rows,
                      key=lambda text: [r.strip() for r in rows].index(text))
         self.watch_prev_rows = now
@@ -7866,10 +8092,46 @@ class PoolRun:
             battle = self.sess.battle()
             hp = next((c.hp for c in (battle.combatants if battle is not None else ())
                        if c.name.strip().upper() == name), None)
+        owners = self.fight_owners()
+        self.add_bar_ownership(name, owners)
         self.log.emit("fight-watch-end", fight=self.watch_fight, name=name,
                       outcome=result.outcome, lines=list(result.lines),
                       bars=list(result.bars), hp=hp,
-                      line_counts=dict(self.watch_counts), **reads)
+                      line_counts=dict(self.watch_counts), **owners, **reads)
+
+    def fight_owners(self) -> dict:
+        """This fight's command bars by the name the panel showed, how many
+        of them the watched name owned, how many had a blank panel or a name
+        the battle read did not match, and the names the panel showed between
+        two bars.  Empty without `--fight-watch`."""
+        if not self.fight_watch:
+            return {}
+        name = self.fight_watch.upper()
+        return {"bar_owners": dict(self.watch_owners),
+                "watched_bars": sum(n for who, n in self.watch_owners.items()
+                                    if who.upper() == name),
+                "unread_bars": self.watch_owners.get("", 0) + self.watch_unmatched,
+                "panel_names_between_bars": dict(self.watch_panel_names)}
+
+    def add_bar_ownership(self, name: str, owners: dict) -> None:
+        """Add one watched fight's bar owners to the run's `bar_ownership`."""
+        total = self.bar_ownership or {
+            "name": name, "fights": 0, "bars": 0, "watched_bars": 0,
+            "unread_bars": 0, "owners": {}, "panel_names_between_bars": {}}
+        total = {**total, "owners": dict(total["owners"]),
+                 "panel_names_between_bars": dict(total["panel_names_between_bars"])}
+        total["fights"] += 1
+        total["bars"] += sum(owners["bar_owners"].values())
+        total["watched_bars"] += owners["watched_bars"]
+        total["unread_bars"] += owners["unread_bars"]
+        for key, part in (("owners", "bar_owners"),
+                          ("panel_names_between_bars", "panel_names_between_bars")):
+            for who, n in owners[part].items():
+                total[key][who] = total[key].get(who, 0) + n
+        # Whether every bar so far has an owner the screen and the battle
+        # read agree on: only then does `watched_bars` 0 mean NAME owned none.
+        total["established"] = total["bars"] > 0 and total["unread_bars"] == 0
+        self.bar_ownership = total
 
     def watch_bar(self, sess, bar) -> None:
         """Log the battlefield, its text, whose bar this is and the watched
@@ -7893,6 +8155,18 @@ class PoolRun:
                             for c in (battle.combatants if battle is not None else ())])
         self.watch_bar_rows = self.watch_prev_rows = frozenset(
             r.strip() for r in rows if r.strip())
+        # The bar's owner is the name the game shows in the panel; the battle
+        # read (`acting`) must name the same character, or the bar counts as
+        # unread.
+        shown = panel_name(rows)
+        matched = bool(shown) and actor is not None and (
+            actor.name.strip().upper() == shown.upper())
+        self.watch_owners = {**self.watch_owners,
+                             shown: self.watch_owners.get(shown, 0) + 1}
+        if shown and not matched:
+            self.watch_unmatched += 1
+        if shown:
+            self.watch_prev_panel = shown
         self.capture(f"fight-{self.watch_fight}-bar-{self.watch_bars}", rows)
         self.log.emit(
             "fight-watch", fight=self.watch_fight, bar_number=self.watch_bars,
@@ -7901,6 +8175,8 @@ class PoolRun:
             owner=None if actor is None else {
                 "name": actor.name.strip(), "index": actor.index,
                 "position": [actor.x, actor.y]},
+            shown=shown, owner_read=matched,
+            watched_owner=bool(shown) and shown.upper() == name,
             **self.watch_reads(name))
         self.watch_bars += 1
 
@@ -10387,7 +10663,8 @@ def seeded_vicerc_digest(joy: bool = False) -> str:
 
 #: The arguments a resumed run must repeat, since each changes what the
 #: machine did before the snapshot.
-RESUME_OPTIONS = ("no_encounters", "walk_retry", "dispel_tries", "cross_edge",
+RESUME_OPTIONS = ("no_encounters", "walk_retry", "walk_reload", "reload_lost_fights",
+                  "dispel_tries", "cross_edge",
                   "walk", "walk_steps", "walk_fight_seconds", "joy",
                   "first_bar_key", "stage_row", "stage_trait", "stage_item",
                   "stage_record", "stage_status", "stage_side", "stage_var",
@@ -10761,6 +11038,11 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
         pool.dispel_tries = getattr(args, "dispel_tries", 1)
         pool.edge_crossing = getattr(args, "cross_edge", False)
         pool.fight_watch = getattr(args, "fight_watch", "")
+        pool.walk_reload = getattr(args, "walk_reload", 0)
+        pool.reload_lost_fights = getattr(args, "reload_lost_fights", 0)
+        if pool.walk_reload or pool.reload_lost_fights:
+            pool.gate_reports = []
+            summary["encounter_gates"] = pool.gate_reports
         if getattr(args, "no_encounters", False):
             pool.no_encounters = True
             pool.gate_reports = []
@@ -10975,7 +11257,12 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
             summary["movement_restored"] = (
                 None if not reports
                 else all(r["verified"] for r in reports))
-        if summary.get("no_encounters"):
+        if pool is not None and getattr(pool, "fight_watch", ""):
+            summary["bar_ownership"] = pool.bar_ownership
+        if pool is not None and (getattr(pool, "walk_reload", 0)
+                                 or getattr(pool, "reload_lost_fights", 0)):
+            summary["walk_reloads"] = list(pool.walk_reloads or [])
+        if summary.get("no_encounters") or "encounter_gates" in summary:
             reports = summary["encounter_gates"]
             # None: no gate was ever held, so there was nothing to verify.
             summary["encounter_gates_verified"] = (
@@ -11181,6 +11468,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--walk-retry", type=int, default=0, metavar="N",
                     help="a `walk` step that meets an encounter rolls back to "
                          "a snapshot and walks again, up to N more times")
+    ap.add_argument("--walk-reload", type=int, default=0, metavar="N",
+                    help="Pool walk-fight or walk-flee: up to N encounters per "
+                         "step are passed, not fought: the machine goes back to "
+                         "the snapshot taken before the key that met each, and "
+                         "the key is sent again with the area's encounter gate "
+                         "held for that key alone")
+    ap.add_argument("--reload-lost-fights", type=int, default=0, metavar="N",
+                    help="Pool walk-fight or walk-flee: up to N fights per step "
+                         "that the party loses are passed as --walk-reload "
+                         "passes an encounter, after the fight and its bars "
+                         "are recorded")
     ap.add_argument("--cross-edge", action="store_true",
                     help="Pool only: the last forward move of a `walk` or "
                          "`walk-fight` may leave the area, answering the one "
@@ -11314,6 +11612,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.fight_watch and (args.title != "pool" or not any(
             x.verb in ("walk-fight", "walk-flee") for x in steps)):
         ap.error("--fight-watch requires --title pool and a walk-fight or walk-flee step")
+    for option, value in (("--walk-reload", args.walk_reload),
+                          ("--reload-lost-fights", args.reload_lost_fights)):
+        if value < 0:
+            ap.error(f"{option} cannot be negative")
+        if value and (args.title != "pool" or not any(
+                x.verb in ("walk-fight", "walk-flee") for x in steps)):
+            ap.error(f"{option} requires --title pool and a walk-fight or walk-flee step")
     if args.first_bar_key is not None and not any(x.verb == "fight" for x in steps):
         ap.error("--first-bar-key needs a fight step")
     if args.stage_side and args.title == "pool":
