@@ -361,12 +361,16 @@ def test_the_label_names_a_curse_area_with_its_own_name_not_pools():
     assert st.area_label != "Sokol Keep"
 
 
-def test_the_label_still_falls_back_to_the_stem_for_a_shared_curse_map():
-    """`GEO01` is `$01`'s streets and `$02`'s Thieves' Guild -- two different
-    approved names on one map file -- so `_names_for_curse` leaves it out
-    rather than picking a winner, and the label is still the file stem."""
-    st = AutomapState(area="GEO01", title=CURSE_OF_THE_AZURE_BONDS)
-    assert st.area_label == "GEO01"
+def test_the_label_names_a_shared_curse_map_from_the_games_area_id():
+    """`GEO01` is `$01`'s streets and `$02`'s Thieves' Guild, so the map alone
+    names neither and the game's own area id decides; with no id the line is
+    blank and never the file name."""
+    def label(area_id):
+        return AutomapState(area="GEO01", title=CURSE_OF_THE_AZURE_BONDS,
+                            area_id=area_id).area_label
+    assert label(0x02) == "Thieves' Guild under Tilverton"
+    assert label(0x01) == "Tilverton streets"
+    assert label(None) == ""
 
 
 def test_the_label_still_falls_back_to_candidates_with_no_area():
@@ -1288,3 +1292,40 @@ def test_the_silver_blades_leg_arrivals_are_the_walked_arms():
 def test_leg_arrival_is_silver_blades_only():
     for title in (areas.POOL_OF_RADIANCE, areas.CURSE_OF_THE_AZURE_BONDS):
         assert areas.leg_arrival(title, 0x52, 0x51) is None
+
+
+# -- a shared map is named from the game's area id --------------------------
+
+
+@pytest.mark.parametrize("geo, area_id, name", [
+    ("GEO13", 19, "Zhentil Keep"),
+    ("GEO13", 26, "The Black City of Mulmaster"),
+    ("GEO24", 36, "Caves of Arcam the Beholder"),
+    ("GEO24", 38, "Arcam's Cave"),
+])
+def test_a_shared_pools_of_darkness_map_is_named_from_the_area_id(
+        geo, area_id, name):
+    st = AutomapState(area=geo, title=areas.POOLS_OF_DARKNESS,
+                      area_id=area_id)
+    assert st.area_label == name
+
+
+def test_a_stale_area_id_does_not_name_a_map_it_does_not_load():
+    """Aerie (33) does not load `GEO13`, so an id read during a load is not
+    attached to it."""
+    st = AutomapState(area="GEO13", title=areas.POOLS_OF_DARKNESS,
+                      area_id=33)
+    assert st.area_label == ""
+
+
+def test_a_silver_blades_mine_map_is_named_from_the_area_id():
+    st = AutomapState(area="GEO30", title=SECRET_OF_THE_SILVER_BLADES,
+                      area_id=0x31)
+    assert st.area_label == "The mines, levels 1-4"
+
+
+def test_no_map_label_is_a_file_name_without_an_area_id():
+    shown = [(title, geo) for title in areas.TABLES
+             for geo in sorted(areas.geos_in(title))
+             if AutomapState(area=geo, title=title).area_label.startswith("GEO")]
+    assert shown == []

@@ -18,7 +18,7 @@ from goldbox import areas, c64_port
 from goldbox.areas import POOL_OF_RADIANCE
 from goldbox.geo import DIRECTIONS, GRID, STEP, Geo
 
-from . import c64
+from . import c64, fasttravel
 from . import notes as notemod
 from .area import (
     NOT_OURS,
@@ -209,6 +209,9 @@ class AutomapState:
     #: its title. An unrecognised one is not an error -- `area_label` falls
     #: back to "area 21" rather than naming a Pool of Radiance place.
     title: str | None = POOL_OF_RADIANCE
+    #: The game's own area id, read only while the resident map has no single
+    #: name (two areas share it). None otherwise.
+    area_id: int | None = None
     x: int = 0
     y: int = 0
     facing: int = 0
@@ -254,11 +257,11 @@ class AutomapState:
         label, and 29 of Pool of Radiance's 30 areas have a real name to show
         instead. `area` still carries the stem for anything that wants it.
 
-        The stem is the fallback, not the format: a title whose maps we have no
-        names for shows `GEO15` and never another game's "Sokol Keep", which is
-        what `geo_name` rather than `area_name` buys -- `area_name`'s own
-        fallback, "area 21", says no more than the stem does and looks like a
-        name.
+        A map two areas share has no name of its own, so the game's area id
+        (`area_id`) picks the row; an id whose row does not load this map is a
+        stale read and names nothing. A map with no name shows a blank line,
+        never the file stem, and never another game's "Sokol Keep" -- which is
+        what `geo_name` rather than `area_name` buys.
 
         Checked **before** `not self.area`: an outdoor party with no indoor
         area yet identified used to read `identifying...` forever, which is
@@ -272,7 +275,12 @@ class AutomapState:
             return OUTDOORS_AREA
         if not self.area:
             return str(self.candidates) if self.candidates else "identifying..."
-        return areas.geo_name(self.area, self.title) or self.area
+        if self.area_id is not None:
+            row = areas.area_in(self.area_id, self.title)
+            if (row is not None and row.name
+                    and (not row.geos or self.area in row.geos)):
+                return row.name_for(self.area) or ""
+        return areas.geo_name(self.area, self.title) or ""
 
     @property
     def outdoor_pair(self) -> tuple[int, int]:
@@ -541,6 +549,7 @@ class Automapper:
         if self.state.area:
             self.state.save_notes()
         self.state.area = name
+        self.state.area_id = None
         self.state.geo = self._maps.get(name)
         # The sight radius is a setting, not a property of the area: building a
         # bare `Exploration()` here quietly put it back to `SIGHT` the first
@@ -1155,10 +1164,33 @@ class Automapper:
         self._contradictions = 0
         self._contradicting = None
         self.state.candidates = Candidates([name], "resident $0400", certain=True)
+        changed = False
         if name != self.state.area:
             self.set_area(name)
-            return True
-        return False
+            changed = True
+        # Two areas can share one map, and walking between them keeps it
+        # resident, so the game's own area id names the place.
+        area_id = (self._area_id()
+                   if areas.geo_name(name, self.state.title) is None else None)
+        if area_id != self.state.area_id:
+            self.state.area_id = area_id
+            changed = True
+        return changed
+
+    def _area_id(self) -> int | None:
+        """The game's area id, or None where it cannot be read."""
+        if not getattr(self.target, "c64_memory", True):
+            from . import amigatrip
+            layout = getattr(getattr(self.target, "target", self.target),
+                             "layout", None)
+            for row in amigatrip.ROWS.values():
+                if row.title == getattr(layout, "title", None):
+                    return amigatrip.area_id(self.target, row)
+            return None
+        addr = fasttravel.addresses_for(self.game)
+        if addr is None:
+            return None
+        return self.target.read(addr.slot, 1)[0] & 0x7F
 
     def _contradicted(self, block: bytes | None) -> None:
         """The block at `$0400` is a Gold Box map and it is not one of ours.
