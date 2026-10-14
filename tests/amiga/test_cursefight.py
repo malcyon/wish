@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import pathlib
@@ -126,7 +127,7 @@ def test_guard_rules_add_the_fight_screens_to_the_curse_map():
     assert set(cursefight.KNOWN) <= set(rules)
     for state, rule in cursefight.FIGHT_GUARDS.items():
         assert rules[state] == rule
-    assert set(cursefight.ALLOWED_KEYS) <= set(cursefight.KNOWN)
+    assert set(cursefight.ALLOWED_KEYS) <= set(cursefight.KNOWN) | set(cursefight.PIT_KNOWN)
 
 
 def test_every_allowed_key_is_an_amiga_key():
@@ -644,7 +645,7 @@ def test_run_succeeds_only_on_a_clean_read_back(tmp_path, monkeypatch, problems)
 def test_run_with_no_save_reads_nothing_back(tmp_path, monkeypatch):
     seen = {}
 
-    def drive(screens, manifest, members, memory, *, save):
+    def drive(screens, manifest, members, memory, *, save, found):
         seen["save"] = save
         return {"bars": []}
 
@@ -685,3 +686,282 @@ def test_stage_plans_the_tavern_walk_from_the_evoker_slot(tmp_path):
     with pytest.raises(RouteError, match="already on"):
         cursefight.stage(prep, specimen, tmp_path / "out2", load="D", save="A")
     assert not (tmp_path / "out2").exists()
+
+
+# -- the Pit of Moander: a wandering fight in area 17 -------------------------------------
+
+#: The converted C64 join save's square, 1,4 facing west, and the walk `pit_plan` gives it
+#: over `GEO11`: north onto 1,3, then back and forth between 1,3 and 0,3.
+PIT_START = {"area": 17, "x": 1, "y": 4, "facing": 3}
+PIT_PLAN = {"kind": "pit", "route": [0], "square": [1, 3], "facing": 3,
+            "roll_squares": [[0, 3], [1, 3]]}
+
+
+class PitGame(Game):
+    """The scripted game with the Pit's screens known and the gate readable."""
+
+    def __init__(self, clock, *args, gates=(0x80,), uncaptured=(), **kwargs):
+        super().__init__(clock, *args, **kwargs)
+        self.x, self.y, self.facing = PIT_START["x"], PIT_START["y"], PIT_START["facing"]
+        self.gates = list(gates)
+        self.uncaptured = set(uncaptured)
+
+    def __contains__(self, state):
+        return state in cursefight.PIT_KNOWN and state not in self.uncaptured
+
+    def __call__(self, state, crop):
+        return state in self and state == self.current
+
+    def variable(self, var):
+        assert var == cursefight.PIT_GATE
+        return self.gates.pop(0) if len(self.gates) > 1 else self.gates[0]
+
+
+def _pit_screens(tmp_path, game, clock, budget=100_000):
+    return cursefight.PitScreens(game, "holder", tmp_path / "shots", game, budget,
+                                 clock=clock, sleep=clock.sleep)
+
+
+def _pit_manifest(save="B"):
+    manifest = _manifest(save)
+    manifest["fight"].update(load="A", place=dict(PIT_START), **PIT_PLAN)
+    return manifest
+
+
+def test_pit_walk_steps_onto_the_roll_squares_until_a_step_meets_the_monsters(tmp_path):
+    clock = Clock()
+    game = PitGame(clock, boxes={(0, 3)})
+    screens = _pit_screens(tmp_path, game, clock)
+    found = cursefight.pit_walk(screens, game, PIT_START, PIT_PLAN)
+    assert game.keys == ["NP6", "NP8", "NP4", "NP8"]
+    assert [(s["x"], s["y"]) for s in found["steps"]] == [(1, 3), (0, 3)]
+    assert found["met"] and set(game.pressed_on) == {"world"}
+    _keys_allowed(screens, game)
+
+
+def test_pit_walk_sends_no_step_onto_a_square_outside_the_roll_squares(tmp_path):
+    clock = Clock()
+    game = PitGame(clock)
+    plan = {**PIT_PLAN, "roll_squares": [[1, 3]]}
+    with pytest.raises(RouteError, match="0,3 ahead of 1,3 is not one of the plan's roll squares"):
+        cursefight.pit_walk(_pit_screens(tmp_path, game, clock), game, PIT_START, plan)
+    assert game.keys == ["NP6", "NP8", "NP4"] and (game.x, game.y) == (1, 3)
+
+
+def test_pit_walk_reads_the_square_before_each_step(tmp_path):
+    clock = Clock()
+    game = PitGame(clock)
+    original = game.press
+
+    def press(holder, key, timeout):
+        original(holder, key, timeout)
+        if key == "NP4":
+            # Something moved the party along with the turn, and the turn's own read missed it.
+            game.y = 2
+
+    game.press = press
+    reads = iter([(1, 4, 3), (1, 4, 0), (1, 4, 0), (1, 3, 0), (1, 3, 3)])
+    game.fix = lambda: next(reads, (game.x, game.y, game.facing))
+    with pytest.raises(RouteError, match="stands at .*no step was sent"):
+        cursefight.pit_walk(_pit_screens(tmp_path, game, clock), game, PIT_START, PIT_PLAN)
+    assert game.keys == ["NP6", "NP8", "NP4"]
+
+
+def test_pit_walk_stops_when_the_party_is_not_where_the_slot_put_it(tmp_path):
+    clock = Clock()
+    game = PitGame(clock)
+    game.x = 2
+    with pytest.raises(RouteError, match="stands at"):
+        cursefight.pit_walk(_pit_screens(tmp_path, game, clock), game, PIT_START, PIT_PLAN)
+    assert game.keys == []
+
+
+def test_pit_walk_stops_after_its_step_limit(tmp_path):
+    clock = Clock()
+    game = PitGame(clock)
+    with pytest.raises(RouteError, match="4 steps .* met no fight"):
+        cursefight.pit_walk(_pit_screens(tmp_path, game, clock), game, PIT_START, PIT_PLAN,
+                            limit=4)
+    assert game.keys.count("NP8") == 5
+
+
+#: A Pit fight: the encounter's page, the slugs' question, the map still drawn while the
+#: monsters load, two bars, then the end screens and the map.
+PIT_FIGHT = ["continue", "attack_evade", "world", None, "combat_bar", "combat_bar", None,
+             "combat_bar", "combat_bar", None, "continue_battle", "treasure", "treasure_left",
+             "world"]
+
+
+def test_pit_fight_answers_attack_and_logs_the_first_bar(tmp_path):
+    clock = Clock()
+    game = PitGame(clock, PIT_FIGHT, owners=[_owner("SUNDRA"), _owner("EVOKER")])
+    game.walking = False
+    screens = _pit_screens(tmp_path, game, clock)
+    found = cursefight.fight(screens, game, ["EVOKER"], cursefight.PIT_FIGHT)
+    assert game.keys == ["RET", "A", "Q", "Q", "N", "E", "N"]
+    assert game.pressed_on[1] == "attack_evade"
+    assert [bar["owner"] for bar in found["bars"]] == ["SUNDRA", "EVOKER"]
+    assert found["outcome"] == "won"
+    _keys_allowed(screens, game)
+
+
+def test_the_slugs_question_is_uncaptured_and_a_run_stops_on_it_unpressed(tmp_path):
+    rules = cursefight.guard_rules()
+    assert cursefight.missing(rules) == ["attack_evade"]
+    assert set(cursefight.PIT_KNOWN) - set(cursefight.UNCAPTURED) <= set(rules)
+    assert cursefight.ALLOWED_KEYS["attack_evade"] == frozenset({"A"})
+    clock = Clock()
+    game = PitGame(clock, ["continue", "attack_evade"], uncaptured={"attack_evade"})
+    game.walking = False
+    with pytest.raises(RouteError, match="no guard knows stayed"):
+        cursefight.fight(_pit_screens(tmp_path, game, clock), game, ["EVOKER"],
+                         cursefight.PIT_FIGHT)
+    assert game.keys == ["RET"]
+
+
+#: Boot, load slot A, begin; the walk and the fight are replaced; then camp, save to B and
+#: the exit question.
+PIT_DRIVE = [None, "intro", "front_end", "title", "load_picker", None, "loaded_menu",
+             "loaded_menu", "world", "world", "camp", "camp_save_picker", None, "exit_game",
+             "exit_game", "camp"]
+
+
+def _pit_drive(tmp_path, monkeypatch, gates=(0x80,), games=None, save=True):
+    clock = Clock()
+    loaded = [_member(name) for name in NAMES]
+    after = [_member(name, quickfight=1) for name in NAMES]
+    game = PitGame(clock, PIT_DRIVE, parties=[loaded, after], gates=gates)
+    game.walking = False
+    if games is not None:
+        games.append(game)
+    walked = []
+    monkeypatch.setattr(cursefight, "pit_walk",
+                        lambda *a: walked.append(a) or {"steps": [], "met": "shot"})
+    monkeypatch.setattr(cursefight, "walk", pytest.fail)
+    seen = {}
+
+    def fight(screens, memory, members, rules=None, found=None):
+        seen["rules"] = rules
+        return {"bars": [{"owner": "EVOKER", "shot": "bar.png"}], "answered": [],
+                "outcome": "won"}
+
+    monkeypatch.setattr(cursefight, "fight", fight)
+    screens = _pit_screens(tmp_path, game, clock)
+    found = cursefight.drive(screens, _pit_manifest(), ["EVOKER"], game, save=save)
+    return found, game, screens, walked, seen
+
+
+def test_drive_in_the_pit_checks_the_gate_walks_fights_and_saves_once(tmp_path, monkeypatch):
+    found, game, screens, walked, seen = _pit_drive(tmp_path, monkeypatch,
+                                                    gates=(0x80, 0x80))
+    assert game.keys == ["ESC", "ESC", "L", "A", "B", "E", "S", "B", "N"]
+    assert walked and seen["rules"] is cursefight.PIT_FIGHT
+    assert found[cursefight.LIVE_GATE] == 0x80 and found[cursefight.GATE_AFTER] == 0x80
+    assert found["first_bar"] == {"owner": "EVOKER", "shot": "bar.png"}
+    assert found["members"]["EVOKER"]["quickfight"] == 1
+    assert "P" not in game.keys
+    _keys_allowed(screens, game)
+
+
+def test_drive_in_the_pit_stops_before_any_step_when_the_gate_did_not_load(tmp_path, monkeypatch):
+    games = []
+    with pytest.raises(RouteError, match="reads 0 in the running game"):
+        _pit_drive(tmp_path, monkeypatch, gates=(0,), games=games)
+    assert games[0].keys[-1] == "B"
+
+
+def test_run_of_a_pit_stage_uses_the_pit_screens_and_names_the_uncaptured_ones(
+        tmp_path, monkeypatch):
+    manifest = _staged(tmp_path)
+    value = json.loads(manifest.read_text())
+    value["fight"].update(PIT_PLAN)
+    manifest.write_text(json.dumps(value))
+    monkeypatch.setattr(cursefight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(cursefight.curseadd, "slot_letters", lambda disk: ["D"])
+    monkeypatch.setattr(cursefight.curseadd, "mute", lambda guest, out, timeout: out / "mute.json")
+    kinds = []
+
+    def drive(screens, manifest, members, memory, *, save, found):
+        kinds.append(type(screens))
+        found["walk"] = {"steps": []}
+        raise RouteError("a screen no guard knows stayed 90s unchanged mid-fight")
+
+    monkeypatch.setattr(cursefight, "drive", drive)
+    with pytest.raises(RouteError, match="no guard knows"):
+        cursefight.run(_args(tmp_path, manifest), guest=LaneGuest(), guards=object(),
+                       boot=lambda *a, **k: {"claim": "ok"}, memory=object(),
+                       halt=lambda *a, **k: {"fetched": {}})
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert kinds == [cursefight.PitScreens]
+    assert written["uncaptured"] == ["attack_evade"] and written["walk"] == {"steps": []}
+
+
+def _pit_source(tmp_path, specimen):
+    """The EVOKER specimen's slot D moved to the converted join save's Pit square, 1,4 west."""
+    from goldbox import amiga_adf, amiga_savegame
+    from tools.amiga.staging import replace_file_in_place
+
+    pit = tmp_path / "pit-source.adf"
+    pit.write_bytes(specimen.read_bytes())
+    disk = amiga_adf.AmigaDisk.open(pit)
+    saved = amiga_savegame.read_slot(disk, "D", amiga_savegame.CURSE.key)
+    data = amiga_savegame.with_square(saved, x=1, y=4, facing=6)
+    for word in (0x49F2, 0x49C5):  # the area and its resident map, in Pool's numbering
+        at = amiga_savegame.CURSE.vm_offset(word)
+        data = data[:at] + (17).to_bytes(2, "big") + data[at + 2:]
+    replace_file_in_place(disk, amiga_savegame.slot_path(amiga_savegame.CURSE, "D"), data)
+    disk.save(pit)
+    return pit
+
+
+def test_stage_sets_the_pit_gate_and_plans_the_walk_over_the_roll_squares(tmp_path):
+    from goldbox import amiga_adf
+
+    specimen, diskb = _registered_inputs()
+    pit = _pit_source(tmp_path, specimen)
+    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()  # noqa: E731
+    prep = tmp_path / "prep.json"
+    prep.write_text(json.dumps({
+        "title": "curse", "registered": {},
+        "disks": {"save": {"path": str(pit), "sha256": digest(pit)},
+                  "diskb": {"path": str(diskb), "sha256": digest(diskb)}}}))
+    before = digest(pit)
+    path = cursefight.stage(prep, pit, tmp_path / "out", load="D", save="F")
+    staged = json.loads(path.read_text())
+    fight = staged["fight"]
+    assert {k: fight[k] for k in PIT_PLAN} == PIT_PLAN
+    assert fight["place"] == PIT_START
+    assert fight["staged"] == {"4C2D": {"before": 0, "after": 0x80}}
+    assert digest(pit) == before == fight["source"]["sha256"]
+    copy = pathlib.Path(staged["disks"]["save"]["path"])
+    assert digest(copy) == staged["disks"]["save"]["sha256"] != before
+    source = cursefight._slot(amiga_adf.AmigaDisk.open(pit), "D").data
+    data = cursefight._slot(amiga_adf.AmigaDisk.open(copy), "D").data
+    assert cursefight.gate_word(data) == 0x80
+    assert [i for i in range(len(data)) if data[i] != source[i]] == [
+        _gate_offset() + 1]
+    back = cursefight.read_back(copy, {**staged, "fight": {**fight, "save": "D"}})
+    assert back[cursefight.SAVED_GATE] == 0x80 and back["loaded_slot_unchanged"]
+
+
+def _gate_offset():
+    from goldbox import amiga_savegame
+
+    return amiga_savegame.CURSE.vm_offset(cursefight.PIT_GATE - 0x200)
+
+
+def test_stage_names_both_areas_it_knows_for_a_slot_elsewhere(tmp_path, monkeypatch):
+    specimen, diskb = _registered_inputs()
+    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()  # noqa: E731
+    prep = tmp_path / "prep.json"
+    prep.write_text(json.dumps({
+        "title": "curse", "registered": {},
+        "disks": {"save": {"path": str(specimen), "sha256": digest(specimen)},
+                  "diskb": {"path": str(diskb), "sha256": digest(diskb)}}}))
+    real = cursefight.amiga_savegame.state_from_savegame
+    monkeypatch.setattr(cursefight.amiga_savegame, "state_from_savegame",
+                        lambda saved: dataclasses.replace(real(saved), area=3))
+    with pytest.raises(RouteError, match="area 3; .*Tilverton, area 1, and the Pit of Moander, "
+                                         "area 17"):
+        cursefight.stage(prep, specimen, tmp_path / "out", load="D", save="F")
+    assert not (tmp_path / "out").exists()

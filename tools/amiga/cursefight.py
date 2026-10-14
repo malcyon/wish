@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-"""Take an Amiga Curse party into Tilverton's tavern brawl, log each command bar's owner, and save.
+"""Take an Amiga Curse party into a fight, log each command bar's owner, and save.
 
 `stage` puts a copy of a Curse save disk some earlier run fetched in place of a prepare run's
-disk A and writes a manifest. `run` boots it in one muted WinUAE lane and, pressing only on
-guarded screens, loads the slot, begins, walks the area's own map (`GEO.GLB` on disk B) to the
-tavern at 6,10, answers PUNCH BARKEEP, and answers every command bar with QUICK, so the fight
-runs itself as the DOS fight step's does. At each bar it reads whose bar it is from memory and
-logs it. After the fight it checks each `--member` had a bar, now holds quickfight 1 and still
-stands, then camps and saves once to the staged letter, halts, fetches the disk and reads the
-slot back. `--no-save` stops after that check. Memory is only read, never written.
+disk A and writes a manifest. A slot in Tilverton (area 1) gets the tavern brawl; a slot in the
+Pit of Moander (area 17) gets a wandering fight, and the copy's slot has the Pit's wandering
+gate `$4C2D` set to `$80`, a value the area's script writes itself. `run` boots it in one muted
+WinUAE lane and, pressing only on guarded screens, loads the slot and begins. In Tilverton it
+walks the area's own map (`GEO.GLB` on disk B) to the tavern at 6,10 and answers PUNCH
+BARKEEP; in the Pit it reads the gate back from the running game, then steps between two of
+`GEO11`'s roll squares, reading the party's square before each step and stepping only onto a
+roll square, until a step brings up a screen that is not the map, and answers the giant
+slugs' ATTACK EVADE with ATTACK. Either way it answers every command bar with QUICK, so the
+fight runs itself as the DOS fight step's does, and at each bar it reads whose bar it is from
+memory and logs it. After the fight it checks each `--member` had a bar, now holds
+quickfight 1 and still stands, then camps and saves once to the staged letter, halts,
+fetches the disk and reads the slot back. `--no-save` stops after that check. Memory is only
+read, never written, so the Pit's gate stays at `$80` in a save the run makes; the receipt
+records it.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
 
 from __future__ import annotations
 
 import argparse
+import collections
 import dataclasses
 import hashlib
 import json
@@ -31,7 +40,7 @@ if __package__ in (None, ""):
 from goldbox import amiga_adf, amiga_savegame  # noqa: E402
 from tools.amiga import acceptance, curseadd, route_curse  # noqa: E402
 from tools.amiga.screens import PixelGuards  # noqa: E402
-from tools.amiga.staging import sha256  # noqa: E402
+from tools.amiga.staging import replace_file_in_place, sha256  # noqa: E402
 from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
 
 require = curseadd.require
@@ -103,6 +112,7 @@ ALLOWED_KEYS = {
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
     "investigate": frozenset({"N"}), "camp": frozenset({"S"}),
     "camp_save_picker": frozenset("ABCDEFGHIJ"), "exit_game": frozenset({"N"}),
+    "attack_evade": frozenset({"A"}),
 }
 #: Answers to the screens that come between the first command bar and the map.
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure": "E",
@@ -130,9 +140,52 @@ READ_LIMIT = 60.0
 POST_WRITE_WAIT = 20.0
 SLOT = curseadd.SLOT
 
+#: The Pit of Moander, area 17, walked over its own map, `GEO11` in disk B's `GEO.GLB`. Its
+#: script, the `ECL.GLB` block for area 17, is the C64's `ECL11` byte for byte. Its step
+#: entry masks the square byte with `$3F` and sends id 0 to the wandering roll, which with
+#: the gate `$4C2D` at `$80` rolls on every such step and fights under 15 (`$85A3`-`$85E3`);
+#: at 0 it never rolls. Every arm the roll picks with the gate at `$80` fights.
+PIT_AREA = 17
+PIT_GEO = "GEO11"
+PIT = "pit"
+PIT_GATE = 0x4C2D
+PIT_GATE_ON = 0x80
+PIT_SQUARE_MASK = 0x3F
+#: Steps between the two roll squares the walk takes looking for the fight before the run stops.
+PIT_STEPS = 60
+#: Seconds the map must hold after a step before the next key: a fight's monsters load with
+#: the map bar still drawn, and a key sent then would land in the fight.
+STEP_SETTLE = 12.0
+#: Seconds the map, still drawn while the monsters load, may show before the first bar.
+PIT_LINGER = 60.0
+#: The receipt's names for the gate read from the running game at the first map screen and
+#: after the fight, and from the saved slot read back.
+LIVE_GATE = f"wander_gate_{PIT_GATE:04X}"
+GATE_AFTER = f"wander_gate_{PIT_GATE:04X}_after_fight"
+SAVED_GATE = f"saved_wander_gate_{PIT_GATE:04X}"
+#: Pit screens no Amiga capture has shown yet; each takes its guard from the Curse guard map
+#: once `guardmaps.py add` cuts it from a capture. Until then the guard map has no rule for
+#: it, no grab matches it, and a run that meets it stops there after `FIGHT_STALL` with
+#: nothing pressed on it, keeping the frame.
+UNCAPTURED = {
+    "attack_evade": "the giant slugs' ATTACK EVADE bar (`HORIZMENU` at `ECL11 $90DC`)",
+}
+PIT_KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
+             "continue", "attack_evade", "combat_bar", "continue_battle", "treasure",
+             "treasure_left", "camp", "camp_save_picker", "exit_game")
+#: Answers to the screens between the step that met the monsters and the map after the fight;
+#: the slugs' question gets ATTACK, never EVADE.
+PIT_ANSWERS = {"continue": "RET", "attack_evade": "A", "combat_bar": "Q",
+               "continue_battle": "N", "treasure": "E", "treasure_left": "N"}
+
 
 class Screens(curseadd.Screens):
     known = KNOWN
+    allowed = ALLOWED_KEYS
+
+
+class PitScreens(curseadd.Screens):
+    known = PIT_KNOWN
     allowed = ALLOWED_KEYS
 
 
@@ -141,6 +194,65 @@ def guard_rules() -> dict:
     rules = curseadd.guard_rules()
     require(not set(FIGHT_GUARDS) & set(rules), "a fight guard name is already a Curse guard")
     return {**rules, **FIGHT_GUARDS}
+
+
+def missing(rules: dict) -> list[str]:
+    """The `UNCAPTURED` screens the guard map still has no rule for."""
+    return [state for state in UNCAPTURED if state not in rules]
+
+
+def gate_word(data: bytes) -> int:
+    """The Pit's gate from a saved game's bytes; `amiga_savegame.word` takes Pool's numbering."""
+    return amiga_savegame.word(data, PIT_GATE - 0x200, amiga_savegame.CURSE)
+
+
+def with_gate(data: bytes, value: int) -> bytes:
+    """The saved game's bytes with the Pit's gate replaced."""
+    at = amiga_savegame.CURSE.vm_offset(PIT_GATE - 0x200)
+    return data[:at] + value.to_bytes(2, "big") + data[at + 2:]
+
+
+def roll_square(geo, x: int, y: int) -> bool:
+    """A Pit square whose step runs only the wandering roll: id 0 once masked as `$8523` masks it."""
+    return 0 <= x < 16 and 0 <= y < 16 and geo.attributes(x, y) & PIT_SQUARE_MASK == 0
+
+
+def pit_plan(geo, start: tuple[int, int]) -> dict:
+    """The facings to the nearest roll square with a roll square open beside it both ways, the
+    facing from it to that neighbour, and every roll square the walk may step onto. Only roll
+    squares are entered, so no other square's script runs on the way."""
+    def pair(x: int, y: int) -> int | None:
+        for facing, (dx, dy) in STEP.items():
+            if (roll_square(geo, x + dx, y + dy) and geo.is_passable(x, y, facing)
+                    and geo.is_passable(x + dx, y + dy, (facing + 2) % 4)):
+                return facing
+        return None
+
+    previous: dict[tuple[int, int], Any] = {start: None}
+    queue = collections.deque([start])
+    while queue:
+        here = queue.popleft()
+        if roll_square(geo, *here) and pair(*here) is not None:
+            route, at = [], here
+            while previous[at]:
+                at, facing = previous[at]
+                route.append(facing)
+            facing = pair(*here)
+            dx, dy = STEP[facing]
+            squares = {here, (here[0] + dx, here[1] + dy)}
+            at = start
+            for heading in reversed(route):
+                at = (at[0] + STEP[heading][0], at[1] + STEP[heading][1])
+                squares.add(at)
+            return {"route": list(reversed(route)), "square": list(here), "facing": facing,
+                    "roll_squares": sorted([list(sq) for sq in squares])}
+        for facing, (dx, dy) in STEP.items():
+            nxt = (here[0] + dx, here[1] + dy)
+            if nxt in previous or not roll_square(geo, *nxt) or not geo.is_passable(*here, facing):
+                continue
+            previous[nxt] = (here, facing)
+            queue.append(nxt)
+    raise RouteError(f"no roll square with an open roll square beside it is reachable from {start}")
 
 
 def _slot(disk: amiga_adf.AmigaDisk, letter: str):
@@ -170,13 +282,32 @@ def plan(geo, start: tuple[int, int], target: tuple[int, int]) -> list[int]:
     return cursethac0.plan(geo, start, target)
 
 
-def tavern_map(diskb: pathlib.Path):
-    """`TAVERN_GEO` out of disk B's `GEO.GLB`."""
+def area_map(diskb: pathlib.Path, name: str):
+    """The map `name` out of disk B's `GEO.GLB`."""
     from automap import amiga  # noqa: PLC0415
 
     maps = amiga.load_maps(diskb)
-    require(TAVERN_GEO in maps, f"{diskb} holds no {TAVERN_GEO}")
-    return maps[TAVERN_GEO]
+    require(name in maps, f"{diskb} holds no {name}")
+    return maps[name]
+
+
+def tavern_map(diskb: pathlib.Path):
+    """`TAVERN_GEO` out of disk B's `GEO.GLB`."""
+    return area_map(diskb, TAVERN_GEO)
+
+
+def stage_gate(local: pathlib.Path, load: str) -> dict:
+    """Set the Pit's gate in slot `load` of the copy at `local`, in place; the copy's new digest."""
+    path = amiga_savegame.slot_path(amiga_savegame.CURSE, load)
+    copy = amiga_adf.AmigaDisk.open(local)
+    staged = with_gate(copy.read_file(path), PIT_GATE_ON)
+    replace_file_in_place(copy, path, staged)
+    copy.save(local)
+    check = amiga_adf.AmigaDisk.open(local)
+    require(not check.verify() and check.read_file(path) == staged,
+            "the staged slot does not read back")
+    require(gate_word(check.read_file(path)) == PIT_GATE_ON, "the staged gate does not read back")
+    return {"path": str(local), "sha256": sha256(local)}
 
 
 def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, out: pathlib.Path, *,
@@ -199,24 +330,31 @@ def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, out: pathlib.P
     saved = _slot(disk, load)
     state = amiga_savegame.state_from_savegame(saved)
     place = {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing}
-    require(state.area == TAVERN_AREA, f"slot {load} is in area {state.area}; the route "
-                                       f"knows only Tilverton, area {TAVERN_AREA}")
-    route = plan(tavern_map(pathlib.Path(manifest["disks"]["diskb"]["path"])),
-                 (state.x, state.y), TAVERN)
-    require(bool(route), f"no way from {state.x},{state.y} to the tavern")
+    require(state.area in (TAVERN_AREA, PIT_AREA),
+            f"slot {load} is in area {state.area}; the route knows only Tilverton, area "
+            f"{TAVERN_AREA}, and the Pit of Moander, area {PIT_AREA}")
+    diskb = pathlib.Path(manifest["disks"]["diskb"]["path"])
+    if state.area == TAVERN_AREA:
+        walk_plan: dict[str, Any] = {"route": plan(tavern_map(diskb), (state.x, state.y), TAVERN)}
+        require(bool(walk_plan["route"]), f"no way from {state.x},{state.y} to the tavern")
+    else:
+        walk_plan = {"kind": PIT, **pit_plan(area_map(diskb, PIT_GEO), (state.x, state.y))}
     out.mkdir(parents=True)
     disks = {}
-    for key, source in (("save", source_disk),
-                        ("diskb", pathlib.Path(manifest["disks"]["diskb"]["path"]))):
+    for key, source in (("save", source_disk), ("diskb", diskb)):
         local = out / f"{key}.adf"
         shutil.copyfile(source, local)
         disks[key] = {"path": str(local), "sha256": sha256(local)}
     require(disks["save"]["sha256"] == source_hash, "the copy differs from the source disk")
+    if state.area == PIT_AREA:
+        walk_plan["staged"] = {f"{PIT_GATE:04X}": {"before": gate_word(saved.data),
+                                                   "after": PIT_GATE_ON}}
+        disks["save"] = stage_gate(pathlib.Path(disks["save"]["path"]), load)
     staged = {**manifest, "disks": disks,
               "prepared_from": {"path": str(manifest_path.resolve()),
                                 "save_sha256": manifest["disks"]["save"]["sha256"]},
               "fight": {"source": {"path": str(source_disk.resolve()), "sha256": source_hash},
-                        "load": load, "save": save, "place": place, "route": route,
+                        "load": load, "save": save, "place": place, **walk_plan,
                         "names": [m.name for m in saved.characters],
                         "members": {m.name: member_fields(m.raw) for m in saved.characters}}}
     path = out / "prepare.json"
@@ -276,6 +414,12 @@ class Memory:
         require(members is not None, "the party list does not read")
         return [{"name": m.name, **self.fields(m.raw)} for m in members]
 
+    def variable(self, var: int) -> int | None:
+        """A script variable's value in the running game, None when it does not read."""
+        from automap import amigavars  # noqa: PLC0415
+
+        return amigavars.read_variable(self.target(), self.title, var).value
+
 
 def walk(screens: Screens, memory: Memory, start: dict, route: list[int]) -> list[dict]:
     """Turn and step along `route`, each key on the map and each move read back from memory."""
@@ -324,6 +468,76 @@ def walk(screens: Screens, memory: Memory, start: dict, route: list[int]) -> lis
     return steps
 
 
+def pit_walk(screens: Any, memory: Any, start: dict, fight_: dict,
+             limit: int = PIT_STEPS) -> dict:
+    """Walk the plan's route, then step back and forth between its two roll squares, until a
+    step brings up a screen that is not the map.
+
+    Before each forward key the party's square and facing are read from memory, and the key
+    goes only when they are where the walk left the party and the square ahead is one of the
+    plan's roll squares; otherwise the walk stops with nothing sent. Every key goes on a grab
+    the map guard matched. Each move is read back from memory, and after each step the map must
+    hold `STEP_SETTLE` seconds before the next key.
+    """
+    steps: list[dict] = []
+    roll = {tuple(sq) for sq in fight_["roll_squares"]}
+    x, y, facing = start["x"], start["y"], start["facing"]
+    seen = memory.fix()
+    require(seen == (x, y, facing), f"the party stands at {seen}, not the loaded {x},{y},{facing}")
+
+    def until(want: tuple[int, int, int]) -> tuple[int, int, int] | None:
+        end = screens.clock() + MOVE_LIMIT
+        got = None
+        while screens.clock() < end:
+            got = memory.fix()
+            if got == want:
+                break
+            screens.sleep(1.0)
+        return got
+
+    def settled() -> str | None:
+        """None while the map holds for `STEP_SETTLE`; else the crop that showed another screen."""
+        end = screens.clock() + STEP_SETTLE
+        while screens.clock() < end:
+            shown, shot = screens.look("step")
+            # A grab that left no crop is no reading of the screen.
+            if "world" not in shown and not pathlib.Path(shot).name.endswith("-raw.png"):
+                screens.events.append({"met": shown, "shot": str(shot)})
+                return str(shot)
+            screens.sleep(2.0)
+        return None
+
+    headings = list(fight_["route"])
+    back = (fight_["facing"] + 2) % 4
+    for n in range(len(headings) + limit):
+        heading = headings[n] if n < len(headings) else (
+            fight_["facing"] if (n - len(headings)) % 2 == 0 else back)
+        for key in TURN_KEYS.get((heading - facing) % 4, ()):
+            facing = (facing + (1 if key == "NP6" else -1)) % 4
+            screens.wait(("world",), 30, past=())
+            screens.press(key, "world")
+            got = until((x, y, facing))
+            require(got == (x, y, facing), f"{key} left the party at {got}, not {x},{y},{facing}")
+        screens.wait(("world",), 30, past=())
+        seen = memory.fix()
+        require(seen == (x, y, facing),
+                f"the party stands at {seen}, not {x},{y},{facing}; no step was sent")
+        dx, dy = STEP[heading]
+        require((x + dx, y + dy) in roll,
+                f"{x + dx},{y + dy} ahead of {x},{y} is not one of the plan's roll squares; "
+                "no step was sent")
+        x, y = x + dx, y + dy
+        screens.press("NP8", "world")
+        got = until((x, y, facing))
+        met = settled()
+        require(got == (x, y, facing) or met is not None,
+                f"NP8 left the party at {got}, not {x},{y},{facing}")
+        steps.append({"x": x, "y": y, "facing": facing})
+        if met is not None:
+            return {"steps": steps, "met": met}
+    raise RouteError(f"{limit} steps between the two roll squares met no fight")
+
+
 def reach_tavern(screens: Screens) -> None:
     """Wait for the PUNCH bar, answering the injuries question that comes first on a save
     whose brawl already happened with IGNORE THEM."""
@@ -368,6 +582,12 @@ CURSE_FIGHT = FightRules(
     known=KNOWN, answers=FIGHT_ANSWERS,
     bar_fields=("control", "status", "quickfight", "hit_points"), linger=TAVERN_LINGER,
     starting=("tavern",), after_bars={"tavern": "L"}, lost_answered=("tossed",))
+
+#: The Pit's wandering fight: the map may still show while its monsters load, and the
+#: encounter's own pages and the slugs' question come before the first bar.
+PIT_FIGHT = FightRules(
+    known=PIT_KNOWN, answers=PIT_ANSWERS,
+    bar_fields=("control", "status", "quickfight", "hit_points"), linger=PIT_LINGER)
 
 
 def fight(screens: Screens, memory: Memory, members: list[str],
@@ -475,9 +695,12 @@ def check_members(party: list[dict], manifest: dict, members: list[str]) -> dict
 
 
 def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, *,
-          save: bool) -> dict:
+          save: bool, found: dict | None = None) -> dict:
+    """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
+    made, so a step that stops still leaves what came before it for the receipt."""
     fight_ = manifest["fight"]
-    found: dict[str, Any] = {}
+    pit = fight_.get("kind") == PIT
+    found = {} if found is None else found
     screens.to_party_menu(300)
     screens.press("L", "title")
     screens.wait(("load_picker",), 60, past=("title",))
@@ -495,12 +718,25 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
     require(names == fight_["names"], f"the loaded party is {names}, not {fight_['names']}")
     screens.press("B", "loaded_menu")
     screens.wait(("world",), 90, past=("loaded_menu",))
-    screens.sleep(AFTER_KEY)
-    found["walk"] = walk(screens, memory, fight_["place"], fight_["route"])
-    reach_tavern(screens)
-    screens.press("P", "tavern")
-    screens.sleep(AFTER_KEY)
-    found.update(fight(screens, memory, members))
+    if pit:
+        found[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(PIT_GATE), memory.holder,
+                                            screens.left(READ_LIMIT))
+        require(found[LIVE_GATE] == PIT_GATE_ON,
+                f"the gate ${PIT_GATE:04X} reads {found[LIVE_GATE]} in the running game, "
+                f"not {PIT_GATE_ON}; no step was sent")
+        screens.sleep(AFTER_KEY)
+        found["walk"] = pit_walk(screens, memory, fight_["place"], fight_)
+        found.update(fight(screens, memory, members, PIT_FIGHT, found=found))
+        found["first_bar"] = found["bars"][0] if found["bars"] else None
+        found[GATE_AFTER] = curseadd.bounded(lambda _h: memory.variable(PIT_GATE),
+                                             memory.holder, screens.left(READ_LIMIT))
+    else:
+        screens.sleep(AFTER_KEY)
+        found["walk"] = walk(screens, memory, fight_["place"], fight_["route"])
+        reach_tavern(screens)
+        screens.press("P", "tavern")
+        screens.sleep(AFTER_KEY)
+        found.update(fight(screens, memory, members))
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
                                       screens.left(READ_LIMIT))
     if found["outcome"] == "lost":
@@ -508,7 +744,8 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         fallen = [m["name"] for m in found["after"]
                   if m["hit_points"] == 0 or m["status"] != loaded[m["name"]]["status"]]
         standing = [m["name"] for m in found["after"] if m["name"] not in fallen]
-        raise RouteError(f"the party lost the brawl; standing: {standing}, fallen: {fallen}")
+        raise RouteError(f"the party lost the {'fight' if pit else 'brawl'}; "
+                         f"standing: {standing}, fallen: {fallen}")
     found["members"] = check_members(found["after"], manifest, members)
     if not save:
         return found
@@ -531,10 +768,11 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
     disk = amiga_adf.AmigaDisk.open(disk_path)
     staged = amiga_adf.AmigaDisk.open(manifest["disks"]["save"]["path"])
     loaded_file = f"/SAVE/savgam{fight_['load']}.dat"
+    saved = _slot(disk, fight_["save"])
     return {"letter": fight_["save"], "verify": disk.verify(),
             "loaded_slot_unchanged": disk.read_file(loaded_file) == staged.read_file(loaded_file),
-            "members": [{"name": m.name, **member_fields(m.raw)}
-                        for m in _slot(disk, fight_["save"]).characters]}
+            **({SAVED_GATE: gate_word(saved.data)} if fight_.get("kind") == PIT else {}),
+            "members": [{"name": m.name, **member_fields(m.raw)} for m in saved.characters]}
 
 
 def verdict(found: dict, manifest: dict, members: list[str]) -> list[str]:
@@ -567,7 +805,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         boot: Callable = acceptance.boot_lane, halt: Callable = acceptance.halt_lane,
         memory: Any = None, clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep) -> dict:
-    """Boot a staged manifest, drive the tavern route, save once unless told not to, read back."""
+    """Boot a staged manifest, drive its route, save once unless told not to, read back."""
     require(0 <= args.wait_lane <= 1800, "lane wait exceeds 1800 seconds")
     require(0 < args.budget <= 3600, "budget must be at most 3600 seconds")
     require(not args.out.exists(), f"{args.out} already exists")
@@ -575,6 +813,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     require("fight" in manifest and manifest.get("title") == "curse",
             "the manifest is not a cursefight.py stage")
     fight_ = manifest["fight"]
+    pit = fight_.get("kind") == PIT
     require(bool(args.member), "name at least one --member")
     absent = [name for name in args.member if name not in fight_["names"]]
     require(not absent, f"{absent} are not in slot {fight_['load']}: {fight_['names']}")
@@ -588,6 +827,9 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                                "manifest": str(args.manifest.resolve()), "holder": args.holder,
                                "members": list(args.member), "save": not args.no_save,
                                "out": str(args.out.resolve()), "success": False, "cleanup": []}
+    rules = guard_rules()
+    if pit:
+        receipt["uncaptured"] = missing(rules)
     guest = guest if guest is not None else WinGuest()
     memory = memory if memory is not None else Memory(args.holder)
     command = [str(pathlib.Path(__file__)), "run", "--manifest", str(args.manifest),
@@ -595,23 +837,27 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                *(f"--member={name}" for name in args.member),
                *(["--no-save"] if args.no_save else [])]
     booted = False
+    found: dict[str, Any] = {}
     screens = None
     try:
         guard_file = args.out / "guards.json"
-        write_json(guard_file, guard_rules())
+        write_json(guard_file, rules)
         guards = guards if guards is not None else PixelGuards(guard_file)
         proof = curseadd.mute(guest, args.out, timeout=60)
         receipt["boot"] = boot(args.manifest, manifest, route_curse.CURSE, guest=guest,
                                holder=args.holder, audio_proof=proof, wait_lane=args.wait_lane,
                                timeout=300, command=command)
         booted = True
-        screens = Screens(guest, args.holder, args.out / "screens", guards, clock() + args.budget,
-                          clock=clock, sleep=sleep)
+        screens = (PitScreens if pit else Screens)(
+            guest, args.holder, args.out / "screens", guards, clock() + args.budget,
+            clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory,
-                             save=not args.no_save))
+                             save=not args.no_save, found=found))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
+        for key, value in found.items():
+            receipt.setdefault(key, value)
         if screens is not None:
             receipt["screens"] = screens.events
         if booted:
@@ -662,11 +908,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="an `acceptance.py prepare --title curse` prepare.json")
     s.add_argument("--source-disk", type=pathlib.Path, required=True,
                    help="a Curse disk A whose SAVE drawer holds the slot to load")
-    s.add_argument("--load", required=True, help="the slot the run loads")
+    s.add_argument("--load", required=True,
+                   help="the slot the run loads, in Tilverton (area 1) or the Pit (area 17)")
     s.add_argument("--save", required=True, help="the free slot the run saves to")
     s.add_argument("--out", type=pathlib.Path, required=True)
     g = sub.add_parser("run", help="boot a staged manifest in one muted WinUAE lane, take the "
-                                   "tavern fight, save once, halt, fetch and read back")
+                                   "tavern or Pit fight, save once, halt, fetch and read back")
     g.add_argument("--manifest", type=pathlib.Path, required=True, help="the stage's prepare.json")
     g.add_argument("--holder", required=True)
     g.add_argument("--out", type=pathlib.Path, required=True, help="a fresh folder for the run")
