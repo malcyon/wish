@@ -69,12 +69,14 @@ JOIN_ICON: dict[str, tuple[int, int, bytes]] = {CURSE_KEY: (0, 0, bytes(6))}
 #: The figure-size byte a companion's own join writes, per title and port.
 #: The C64 join copies `0x099` of his `MON` file (1 in all twelve joinable
 #: Curse and Silver Blades files); the DOS join copies the size of his
-#: `MON*CHA.DAX` record (0 in all 81 Curse records).  A title absent here has
+#: `MON*CHA.DAX` record (0 in all 81 Curse records); the Amiga join copies
+#: that of his `MONCHA.GLB` record (0 in the 7 joinable Curse and the 5
+#: joinable Silver Blades records).  A title absent here has
 #: no measured companion value, so its companions' size is converted as a
 #: player's is.
 COMPANION_SIZE: dict[str, dict[str, int]] = {
-    CURSE_KEY: {"C64": 1, "DOS": 0},
-    SILVER_BLADES_KEY: {"C64": 1, "DOS": 0},
+    CURSE_KEY: {"C64": 1, "DOS": 0, "Amiga": 0},
+    SILVER_BLADES_KEY: {"C64": 1, "DOS": 0, "Amiga": 0},
 }
 
 

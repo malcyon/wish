@@ -2365,10 +2365,16 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # -- size ----------------------------------------------------------------
     size = use("size_small")
     if size is not None:
-        # A DOS companion's size is 0, which names no figure; the C64 join
-        # gives a companion the size his own `MON` file holds.
+        # A DOS or Amiga companion's size is 0, which names no figure; the C64
+        # join gives a companion the size his own `MON` file holds.  An Amiga
+        # size edited away from its join's is the player's.
         joined = (companion_size(deltas.key, "C64")
-                  if char.port == "DOS" and joined_companion(char) else None)
+                  if joined_companion(char)
+                  and (char.port == "DOS"
+                       or (char.port == "Amiga"
+                           and int(size.value)
+                           == companion_size(deltas.key, "Amiga")))
+                  else None)
         if joined is None:
             rec.set("size_small", size.value)
             emit(size, "size_small", 0x099, 1)

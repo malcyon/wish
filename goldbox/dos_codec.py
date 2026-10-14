@@ -6484,18 +6484,18 @@ def write(char: NeutralCharacter,
         raw_size = creature_source(char, "size")
         keeps = (raw_size is not None
                  and max(0, raw_size - 1) == int(size_small.value))
-        # A C64 companion's 1 is the size his own join copied; DOS's join
-        # gives a companion his `MON*CHA.DAX` record's size instead.  A size
-        # edited away from the C64 join's is the player's, and is written as
-        # any other edited size is.
-        joined = (companion_size(deltas.key, "DOS")
-                  if into == "DOS" and char.port == "C64"
+        # A C64 companion's 1 is the size his own join copied; the DOS join
+        # gives a companion his `MON*CHA.DAX` record's size and the Amiga join
+        # his `MONCHA.GLB` record's.  A size edited away from the C64 join's
+        # is the player's, and is written as any other edited size is.
+        joined = (companion_size(deltas.key, into)
+                  if into in ("DOS", "Amiga") and char.port == "C64"
                   and c64_codec.joined_companion(char)
                   and int(size_small.value)
                   == companion_size(deltas.key, "C64") else None)
         if joined is not None:
             put(size_small, "size",
-                f", written as {joined}, the size the DOS join gives a "
+                f", written as {joined}, the size the {into} join gives a "
                 f"companion", value=joined)
         else:
             put(size_small, "size",
