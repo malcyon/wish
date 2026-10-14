@@ -2209,6 +2209,7 @@ graph LR
   c64_codec --> classcode
   c64_codec --> companions
   c64_codec --> derive
+  c64_codec -.->|deferred| dos_codec
   c64_codec --> dos_port
   c64_codec --> effects
   c64_codec --> encoding
