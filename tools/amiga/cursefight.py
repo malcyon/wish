@@ -777,7 +777,8 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
 def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won") -> list[str]:
     """Problems with a read-back: empty when each named member was saved QUICK, as loaded,
     and a Pit run's saved slot still holds the staged gate. After a lost fight the members
-    never got a bar and some fell, so only their presence is checked."""
+    never got a bar and some fell, so only their presence and control are checked; a fight does
+    not change control."""
     problems = []
     if manifest["fight"].get("kind") == PIT and found.get(SAVED_GATE) != PIT_GATE_ON:
         problems.append(f"the saved slot holds ${PIT_GATE:04X} = {found.get(SAVED_GATE)}, "
@@ -794,13 +795,15 @@ def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won
         if len(rows) != 1:
             problems.append(f"{name} is in the saved party {len(rows)} times")
             continue
-        if outcome == "lost":
-            continue
         loaded = manifest["fight"]["members"][name]
         row = rows[0]
+        if row["control"] != loaded["control"]:
+            problems.append(f"{name} was saved as {row}, loaded as {loaded}")
+        if outcome == "lost":
+            continue
         if row["quickfight"] != 1:
             problems.append(f"{name} was saved with quickfight {row['quickfight']}")
-        if row["control"] != loaded["control"] or row["status"] != loaded["status"]:
+        if row["status"] != loaded["status"]:
             problems.append(f"{name} was saved as {row}, loaded as {loaded}")
         if row["hit_points"] == 0:
             problems.append(f"{name} was saved at 0 hit points")
@@ -900,6 +903,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         errors = [item for item in receipt["cleanup"] if any(k.endswith("error") for k in item)]
         receipt["success"] = ("error" not in receipt and not errors and "halt" in receipt
                               and receipt.get("problems") == [])
+        if "outcome" in receipt:
+            receipt["fight_won"] = receipt["outcome"] == "won"
         write_json(args.out / "receipt.json", receipt)
     if not receipt["success"]:
         raise RouteError(receipt.get("error") or f"problems: {receipt.get('problems')}; "
@@ -935,6 +940,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--manifest", type=pathlib.Path, required=True)
     r.add_argument("--disk", type=pathlib.Path, required=True)
     r.add_argument("--member", action="append", default=[])
+    r.add_argument("--receipt", type=pathlib.Path,
+                   help="the run's receipt.json, whose outcome the read-back is judged by")
+    r.add_argument("--outcome", choices=("won", "lost"),
+                   help="the fight's outcome, when no receipt is given")
     args = parser.parse_args(argv)
     try:
         with terminating():
@@ -943,12 +952,20 @@ def main(argv: list[str] | None = None) -> int:
                             save=args.save))
                 return 0
             if args.command == "run":
-                print(json.dumps(run(args), indent=1, sort_keys=True))
+                receipt = run(args)
+                print(json.dumps(receipt, indent=1, sort_keys=True))
+                print(f"cursefight: fight outcome {receipt.get('outcome', 'unknown')}; "
+                      f"success {receipt['success']}")
                 return 0
             require(bool(args.member), "name at least one --member")
+            require((args.receipt is None) != (args.outcome is None),
+                    "give one of --receipt and --outcome")
+            outcome = (args.outcome if args.receipt is None
+                       else json.loads(args.receipt.read_text()).get("outcome"))
+            require(outcome in ("won", "lost"), f"the fight outcome is {outcome!r}, not won or lost")
             manifest = json.loads(args.manifest.read_text())
             found = read_back(args.disk, manifest)
-            problems = verdict(found, manifest, args.member)
+            problems = verdict(found, manifest, args.member, outcome)
             print(json.dumps({"found": found, "problems": problems}, indent=1, sort_keys=True))
             return 0 if not problems else 1
     except (RouteError, OSError, ValueError, KeyError, amiga_adf.AmigaDiskError) as exc:

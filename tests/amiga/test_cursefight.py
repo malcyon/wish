@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import json
 import pathlib
+from unittest import mock
 
 import pytest
 
@@ -448,6 +449,31 @@ def test_verdict_of_a_lost_fight_skips_the_quickfight_and_standing_checks():
     assert cursefight.verdict(found, _manifest(), ["EVOKER"])
 
 
+def test_verdict_of_a_lost_fight_still_catches_a_changed_control():
+    members = [_member(name) for name in NAMES]
+    members[-1].update(control=0)
+    problems = cursefight.verdict(_read(members), _manifest(), ["EVOKER"], "lost")
+    assert len(problems) == 1 and "EVOKER was saved as" in problems[0]
+
+
+def test_read_takes_the_outcome_from_a_receipt_or_an_option_and_needs_one(tmp_path, capsys):
+    members = [_member(name) for name in NAMES]
+    members[-1].update(hit_points=0)
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps(_manifest()))
+    found = _read(members) | {"verify": [], "loaded_slot_unchanged": True}
+    receipt = tmp_path / "r.json"
+    receipt.write_text(json.dumps({"outcome": "lost"}))
+    base = ["read", "--manifest", str(manifest), "--disk", "d.adf", "--member", "EVOKER"]
+    with mock.patch.object(cursefight, "read_back", return_value=found):
+        assert cursefight.main([*base, "--receipt", str(receipt)]) == 0
+        assert cursefight.main([*base, "--outcome", "lost"]) == 0
+        assert cursefight.main([*base, "--outcome", "won"]) == 1
+        capsys.readouterr()
+        assert cursefight.main(base) == 2
+    assert "one of --receipt and --outcome" in capsys.readouterr().err
+
+
 def test_drive_answers_the_injuries_question_before_the_punch_bar(tmp_path, monkeypatch):
     script = [*DRIVE[:11], "injuries", "injuries", "tavern", *DRIVE[12:]]
     found, game, screens, _walked = _drive(tmp_path, monkeypatch, script=script)
@@ -650,6 +676,13 @@ def test_run_succeeds_only_on_a_clean_read_back(tmp_path, monkeypatch, problems)
     else:
         receipt, written, halted = _run(tmp_path, monkeypatch, drive=drive)
         assert receipt["success"] and written["source_hashes"] == "unchanged" and halted
+
+
+@pytest.mark.parametrize("outcome", ["won", "lost"])
+def test_run_records_whether_the_fight_was_won_apart_from_success(tmp_path, monkeypatch, outcome):
+    drive = lambda *a, **k: {"bars": [], "outcome": outcome}  # noqa: E731
+    receipt, written, _halted = _run(tmp_path, monkeypatch, drive=drive)
+    assert receipt["success"] and written["fight_won"] is (outcome == "won")
 
 
 def test_run_with_no_save_reads_nothing_back(tmp_path, monkeypatch):
