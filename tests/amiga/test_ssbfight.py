@@ -375,14 +375,33 @@ def test_fight_answers_every_screen_and_logs_each_bar_owner(tmp_path):
     _keys_allowed(screens, game)
 
 
-@pytest.mark.parametrize("end", ["party_destroyed", "party_menu", "loaded_menu", "title"])
-def test_fight_records_a_lost_fight_and_presses_nothing_after(tmp_path, end):
+@pytest.mark.parametrize("end, last", [("party_destroyed", ["RET"]), ("party_menu", []),
+                                       ("loaded_menu", []), ("title", [])])
+def test_fight_records_a_lost_fight_and_presses_nothing_after(tmp_path, end, last):
     clock = Clock()
-    game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, end],
+    game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, end, "world"],
                 owners=[_owner("PAINE")])
     game.walking = False
-    found = ssbfight.fight(_screens(tmp_path, game, clock), game, ["Guy de Valois"])
-    assert found["outcome"] == "lost" and game.keys == ["RET", "Q"]
+    screens = _screens(tmp_path, game, clock)
+    found = ssbfight.fight(screens, game, ["Guy de Valois"])
+    # The defeat screen gets its one key and nothing after it is grabbed.
+    assert found["outcome"] == "lost" and game.keys == ["RET", "Q", *last]
+    assert game.script == ["world"]
+    _keys_allowed(screens, game)
+
+
+def test_the_party_destroyed_rule_reads_the_defeat_frame_only(tmp_path):
+    shots = scratch.cache_dir("acceptance") / "WISH-391" / "full2" / "screens"
+    # The message held from 146 to the stop at 165; 145 is the last battlefield frame.
+    frames = {n: shots / f"{n}-fight.png" for n in ("070", "145", "146", "165")}
+    if not all(p.is_file() for p in frames.values()):
+        pytest.skip("the WISH-391 full2 frames are not on this machine")
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps(ssbfight.guard_rules()))
+    guards = PixelGuards(path)
+    assert guards("party_destroyed", frames["146"]) and guards("party_destroyed", frames["165"])
+    assert not guards("party_destroyed", frames["145"])
+    assert not guards("party_destroyed", frames["070"])
 
 
 def test_fight_stops_when_a_named_member_had_no_bar(tmp_path):
@@ -554,7 +573,7 @@ def test_drive_stops_before_saving_when_a_member_fell(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("on, key", [("world", "S"), ("camp", "E"), ("combat_bar", "D"),
                                      ("combat_bar", "SPACE"), ("journal", "RET"),
-                                     ("party_destroyed", "RET"), ("loaded_menu", "D")])
+                                     ("party_destroyed", "N"), ("loaded_menu", "D")])
 def test_a_key_outside_the_allowlist_is_never_sent(tmp_path, on, key):
     clock = Clock()
     game = Game(clock)
@@ -695,7 +714,7 @@ def test_run_fails_a_lost_fight_and_reads_nothing_back(tmp_path, monkeypatch):
 def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeypatch):
     seen = {}
 
-    def drive(screens, manifest, members, memory, answer, *, save, capture_only):
+    def drive(screens, manifest, members, memory, answer, *, save, capture_only, found):
         seen.update(save=save, capture_only=capture_only)
         return {"capture": {"outcome": "bar", "shot": "s.png", "confirmed": True,
                             "support": "the combat_bar guard"}}
@@ -703,6 +722,17 @@ def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeyp
     receipt, _written, _halted = _run(tmp_path, monkeypatch, drive=drive, capture=True)
     assert seen == {"save": False, "capture_only": True}
     assert receipt["success"] and "read_back" not in receipt
+
+
+def test_run_keeps_the_readings_made_before_a_step_stopped(tmp_path, monkeypatch):
+    def drive(*args, found, **kwargs):
+        found.update(gate=1, turn_before=0)
+        raise RouteError("a screen no guard knows stayed 90s unchanged mid-fight")
+
+    with pytest.raises(RouteError, match="unchanged"):
+        _run(tmp_path, monkeypatch, drive=drive)
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert written["gate"] == 1 and written["turn_before"] == 0 and not written["success"]
 
 
 def test_run_fails_a_capture_nothing_confirms(tmp_path, monkeypatch):

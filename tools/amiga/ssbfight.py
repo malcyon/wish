@@ -74,7 +74,6 @@ CURRENT = 0x516C
 #: there, unchanged, and keeps the frame.
 UNCAPTURED = {
     "continue_battle": "CONTINUE BATTLE: with YES NO",
-    "party_destroyed": "THE MONSTERS REJOICE, FOR THE PARTY HAS BEEN DESTROYED! and its prompt",
 }
 #: The treasure bar cut short of its last button, which reads EXIT or DETECT EXIT by party
 #: (`View Take Pool Share%s` in `/Secret`); cut from `640/ssb2/accept2/shots/11-world.png`,
@@ -93,11 +92,14 @@ ALLOWED_KEYS = {
     "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
     "treasure_bar": frozenset({"E"}), "treasure": frozenset({"N"}), "camp": frozenset({"S"}),
     "camp_save_picker": frozenset("ABCDEFGHIJ"), "exit_game": frozenset({"N"}),
+    "party_destroyed": frozenset({"RET"}),
 }
 #: Answers to the screens that come between the encounter and the map after a won fight.
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure_bar": "E",
-                 "treasure": "N", "continue": "RET"}
-#: Screens that mean the party was destroyed: the message, or a menu the game returns to.
+                 "treasure": "N", "continue": "RET", "party_destroyed": "RET"}
+#: Screens that mean the party was destroyed: the message, whose PRESS ANY KEY prompt gets
+#: RETURN and ends the step (the screen after it has not been seen), or a menu the game
+#: returns to, which gets no key.
 DEFEAT = ("party_destroyed", "loaded_menu", "party_menu", "title")
 TURN_KEYS = cursefight.TURN_KEYS
 STEP = cursefight.STEP
@@ -446,10 +448,12 @@ def wait_past_journal(screens: Screens, want: tuple[str, ...], limit: float, ans
 
 
 def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, answer: Callable,
-          *, save: bool, capture_only: bool = False) -> dict:
+          *, save: bool, capture_only: bool = False, found: dict | None = None) -> dict:
+    """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
+    made, so a step that stops still leaves what came before it for the receipt."""
     fight_ = manifest["fight"]
     adf = pathlib.Path(manifest["disks"]["df0"]["path"])
-    found: dict[str, Any] = {}
+    found = {} if found is None else found
     screens.to_title(300)
     screens.press("P", "title")
     screens.wait(("party_menu",), 60, past=("title",))
@@ -580,6 +584,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                *(f"--member={name}" for name in args.member),
                *(["--no-save"] if args.no_save else []), *(["--capture"] if args.capture else [])]
     booted = False
+    found: dict[str, Any] = {}
     screens = None
     try:
         guard_file = args.out / "guards.json"
@@ -594,10 +599,12 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         screens = Screens(guest, args.holder, args.out / "screens", guards, clock() + args.budget,
                           clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory, answer,
-                             save=receipt["save"], capture_only=args.capture))
+                             save=receipt["save"], capture_only=args.capture, found=found))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
+        for key, value in found.items():
+            receipt.setdefault(key, value)
         if screens is not None:
             receipt["screens"] = screens.events
         if booted:

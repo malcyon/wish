@@ -355,7 +355,8 @@ class FightRules:
     after_bars: dict[str, str] = dataclasses.field(default_factory=dict)
     #: Screens answered with their key that mean the fight was lost; the map then ends it.
     lost_answered: tuple[str, ...] = ()
-    #: Screens that end the fight as lost at once, with no key.
+    #: Screens that end the fight as lost at once: one with a key in `answers` gets that key,
+    #: and nothing after it is waited for; the others get none.
     defeat: tuple[str, ...] = ()
     #: How a bar owner's name and a `--member` name are compared.
     name_key: Callable[[str], str] = _same
@@ -401,7 +402,11 @@ def fight(screens: Screens, memory: Memory, members: list[str],
             screens.sleep(1.5)
             continue
         if state in rules.defeat:
-            answered.append({"screen": state, "shot": str(shot)})
+            key = rules.answers.get(state)
+            if key is not None:
+                screens.press(key, state)
+            answered.append({"screen": state, "shot": str(shot),
+                             **({"key": key} if key is not None else {})})
             lost = True
             break
         named = "a screen no guard knows" if state is None else f"the {state} screen"

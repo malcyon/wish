@@ -1682,6 +1682,28 @@
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/03-loaded_menu.png",
       "sha256": "b42348b9683f21c65444090b3e9d74d3ac0147fe09ecd68e1a0563245501b2d9"
     },
+    "party_destroyed": {
+      "also": [],
+      "and": [
+        {
+          "box": [
+            72,
+            404,
+            686,
+            426
+          ],
+          "sha256": "89288c715c8aa9551b9e72d12f88a0b738175d9f0c5351323b50f2f1b8788b13"
+        }
+      ],
+      "box": [
+        90,
+        108,
+        656,
+        146
+      ],
+      "example": "amiga-grab-crops/wish391-full2__165-fight.png",
+      "sha256": "7e9ebb28854fc9ef8fcb2400182d15dc644a48ea4139b839112b03b0f1ff5bf6"
+    },
     "party_menu": {
       "also": [],
       "box": [
@@ -3032,6 +3054,9 @@
     ],
     "amiga-grab-crops/wish391-cap1__097-capture.png": [
       "combat_bar"
+    ],
+    "amiga-grab-crops/wish391-full2__165-fight.png": [
+      "party_destroyed"
     ],
     "amiga-grab-crops/wish4-b1__a_camp3-00.png": [
       "camp"
