@@ -268,30 +268,65 @@ def test_the_dos_dexterity_block_holds_two_bytes_the_c64_does_not():
     assert differ == [10, 16]
 
 
-def test_the_dos_sweep_leaves_out_files_a_specimen_marks_as_wish_written(
-        tmp_path, monkeypatch):
-    """The game's slot of the same specimen stays in; Wish's own is skipped."""
-    from tools.registry import specimens  # noqa: PLC0415
+class _ThiefChar:
+    name = "T"
+    class_levels = {"thief": 3}
+    deltas = type("D", (), {"key": POOL})()
 
-    folder = tmp_path / "pool-dos" / "WISH-SPEC-x"
-    folder.mkdir(parents=True)
-    for name in ("CHRDATA1.SAV", "CHRDATD1.SAV"):
-        (folder / name).write_bytes(b"x")
-    (folder / "provenance.toml").write_text('wish_written = ["CHRDATA1.SAV"]\n')
+    def get(self, field):
+        return 0
 
-    class Char:
-        name = "T"
-        class_levels = {"thief": 3}
-        deltas = type("D", (), {"key": POOL})()
 
-        def get(self, field):
-            return 0
+@pytest.fixture
+def fake_sweep(tmp_path, monkeypatch):
+    """A sweep that reads every file as a level 3 thief, with no archives."""
+    from tools.dos import dosbox  # noqa: PLC0415
 
     monkeypatch.setenv("WISH_SPECIMENS", str(tmp_path))
-    monkeypatch.setattr(sweep.dos_codec, "read_character", lambda path: Char())
-    monkeypatch.setattr(sweep.dosbox if hasattr(sweep, "dosbox") else
-                        __import__("tools.dos.dosbox", fromlist=["x"]),
-                        "ARCHIVES", tmp_path / "none")
-    assert specimens.wish_written_files(folder) == {"CHRDATA1.SAV"}
-    seen = [row[0] for row in sweep.dos_records(POOL)]
-    assert seen == ["WISH-SPEC-x/CHRDATD1.SAV"]
+    monkeypatch.setattr(sweep.dos_codec, "read_character",
+                        lambda path: _ThiefChar())
+    monkeypatch.setattr(dosbox, "ARCHIVES", tmp_path / "none")
+    return tmp_path
+
+
+def _specimen(root, provenance=None, names=("CHRDATA1.SAV", "CHRDATD1.SAV")):
+    folder = root / "pool-dos" / "WISH-SPEC-x"
+    folder.mkdir(parents=True)
+    for name in names:
+        (folder / name).write_bytes(b"x")
+    if provenance is not None:
+        (folder / "provenance.toml").write_text(provenance)
+    return folder
+
+
+def test_the_dos_sweep_leaves_out_files_a_specimen_marks_as_wish_written(fake_sweep):
+    """The game's slot of the same specimen stays in; Wish's own is skipped."""
+    _specimen(fake_sweep, 'wish_written = ["CHRDATA1.SAV"]\n')
+    assert [r[0] for r in sweep.dos_records(POOL)] == ["WISH-SPEC-x/CHRDATD1.SAV"]
+
+
+def test_the_wish_written_match_ignores_case(fake_sweep):
+    _specimen(fake_sweep, 'wish_written = ["chrdata1.sav"]\n')
+    assert [r[0] for r in sweep.dos_records(POOL)] == ["WISH-SPEC-x/CHRDATD1.SAV"]
+
+
+def test_a_specimen_whose_provenance_cannot_be_read_is_reported_and_skipped(
+        fake_sweep, capsys):
+    _specimen(fake_sweep, 'wish_written = "CHRDATA1.SAV"\n')
+    assert list(sweep.dos_records(POOL)) == []
+    assert "wish_written must be a list" in capsys.readouterr().err
+    (fake_sweep / "pool-dos" / "WISH-SPEC-x" / "provenance.toml").write_text("= nope")
+    assert list(sweep.dos_records(POOL)) == []
+    assert "cannot be read" in capsys.readouterr().err
+
+
+def test_the_sweep_skips_an_emulator_instances_staged_tree(fake_sweep, monkeypatch):
+    from tools.dos import dostailsweep  # noqa: PLC0415
+
+    staged = fake_sweep / "inst" / "1" / "game"
+    staged.mkdir(parents=True)
+    (staged / "CHRDATA1.SAV").write_bytes(b"x")
+    monkeypatch.setattr(dostailsweep, "SCRATCH_DIRS", (f"{fake_sweep}/inst/",))
+    assert list(sweep.dos_records(POOL, extra=[staged])) == []
+    monkeypatch.setattr(dostailsweep, "SCRATCH_DIRS", ())
+    assert len(list(sweep.dos_records(POOL, extra=[staged]))) == 1

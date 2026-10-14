@@ -881,7 +881,7 @@ def test_add_records_the_files_wish_wrote_and_check_accepts_them(tree, one_sourc
     dest = _add(tree, one_source, wish_written=["GNOMF1.CHA"])
     fields = specimens.read_provenance(dest / "provenance.toml")
     assert fields["wish_written"] == ["GNOMF1.CHA"]
-    assert specimens.wish_written_files(dest) == {"GNOMF1.CHA"}
+    assert specimens.wish_written_files(dest) == {"gnomf1.cha"}
     assert specimens.check_specimens(tree) == []
 
 
@@ -901,3 +901,64 @@ def test_check_flags_a_wish_written_name_the_specimen_does_not_hold(tree, one_so
 
 def test_a_specimen_with_no_wish_written_list_has_none(tree, one_source):
     assert specimens.wish_written_files(_add(tree, one_source)) == set()
+
+
+def test_wish_written_matches_names_case_insensitively(tree, one_source):
+    dest = _add(tree, one_source, wish_written=["gnomf1.cha"])
+    assert specimens.read_provenance(dest / "provenance.toml")["wish_written"] == [
+        "GNOMF1.CHA"]
+    assert specimens.wish_written_files(dest) == {"gnomf1.cha"}
+
+
+def test_check_compares_wish_written_names_case_insensitively(tree, one_source):
+    dest = _add(tree, one_source, wish_written=["GNOMF1.CHA"])
+    prov = dest / "provenance.toml"
+    _unlock(tree)
+    prov.write_text(prov.read_text().replace('["GNOMF1.CHA"]', '["gnomf1.cha"]'))
+    assert specimens.check_specimens(tree) == []
+
+
+def test_check_reports_a_wish_written_that_is_not_a_list_of_names(tree, one_source):
+    dest = _add(tree, one_source, wish_written=["GNOMF1.CHA"])
+    prov = dest / "provenance.toml"
+    _unlock(tree)
+    prov.write_text(prov.read_text().replace('["GNOMF1.CHA"]', '"GNOMF1.CHA"'))
+    assert any("wish_written must be a list" in p
+               for p in specimens.check_specimens(tree))
+    with pytest.raises(ValueError, match="wish_written must be a list"):
+        specimens.wish_written_files(dest)
+
+
+def test_wish_written_files_names_an_unreadable_provenance(tree, one_source):
+    dest = _add(tree, one_source)
+    _unlock(tree)
+    (dest / "provenance.toml").write_text("= nope")
+    with pytest.raises(ValueError, match="cannot be read"):
+        specimens.wish_written_files(dest)
+
+
+def test_correct_wish_written_adds_the_list_and_keeps_the_manifest(tree, one_source):
+    dest = _add(tree, one_source)
+    before = specimens.read_provenance(dest / "provenance.toml")["sha256"]
+    r = specimens.correct_wish_written(
+        "gnomf1", wish_written=["gnomf1.cha"], reason="rolled in Wish", root=tree)
+    assert r["wish_written"] == ["GNOMF1.CHA"]
+    fields = specimens.read_provenance(dest / "provenance.toml")
+    assert fields["wish_written"] == ["GNOMF1.CHA"]
+    assert fields["sha256"] == before
+    assert "rolled in Wish" in fields["issue_note"]
+    assert specimens.check_specimens(tree) == []
+
+
+def test_correct_wish_written_rejects_a_name_the_specimen_lacks(tree, one_source):
+    _add(tree, one_source)
+    with pytest.raises(ValueError, match="NOPE.CHA"):
+        specimens.correct_wish_written(
+            "gnomf1", wish_written=["NOPE.CHA"], reason="x", root=tree)
+
+
+def test_correct_wish_written_rejects_replacing_a_recorded_list(tree, one_source):
+    _add(tree, one_source, wish_written=["GNOMF1.CHA"])
+    with pytest.raises(ValueError, match="already records"):
+        specimens.correct_wish_written(
+            "gnomf1", wish_written=["GNOMF1.SPC"], reason="x", root=tree)

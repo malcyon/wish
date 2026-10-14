@@ -220,14 +220,42 @@ def read_provenance(path: pathlib.Path) -> dict:
         return tomllib.load(f)
 
 
+def _wish_written_problem(value) -> str | None:
+    """Why `value` is not a valid `wish_written`, or None."""
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        return "wish_written must be a list of file names"
+    return None
+
+
 def wish_written_files(folder: pathlib.Path) -> set[str]:
-    """Names of the files in a specimen folder that Wish wrote rather than the
-    game, from its provenance `wish_written` list.  A sweep of what the game
-    wrote leaves these out; a folder with no provenance lists none."""
+    """Casefolded names of the files in a specimen folder that Wish wrote
+    rather than the game, from its provenance `wish_written` list.  A sweep of
+    what the game wrote leaves these out; a folder with no provenance lists
+    none.  A provenance that cannot be read, or a malformed key, is a
+    ValueError naming the file."""
     prov = pathlib.Path(folder) / PROVENANCE_NAME
     if not prov.is_file():
         return set()
-    return set(read_provenance(prov).get("wish_written", []))
+    try:
+        value = read_provenance(prov).get("wish_written", [])
+    except (tomllib.TOMLDecodeError, OSError) as exc:
+        raise ValueError(f"{prov}: cannot be read ({exc})") from exc
+    problem = _wish_written_problem(value)
+    if problem:
+        raise ValueError(f"{prov}: {problem}")
+    return {v.casefold() for v in value}
+
+
+def _resolve_wish_written(requested: list[str], available) -> list[str]:
+    """`requested` names matched case-insensitively against `available`,
+    returned spelled as `available` spells them; ValueError for any that
+    match nothing."""
+    by_fold = {a.casefold(): a for a in available}
+    missing = sorted(n for n in requested if n.casefold() not in by_fold)
+    if missing:
+        raise ValueError(f"wish_written names {', '.join(missing)}, which "
+                         f"is not a file of this specimen")
+    return sorted({by_fold[n.casefold()] for n in requested})
 
 
 def make_read_only(path: pathlib.Path) -> None:
@@ -375,12 +403,8 @@ def add(platform: str, name: str, sources: list[pathlib.Path], *,
         if platform == "c64":
             raise ValueError("--wish-written names files inside a specimen "
                              "folder; a C64 specimen is one disk image")
-        have = {s.name for s in sources}
-        missing = sorted(set(wish_written) - have)
-        if missing:
-            raise ValueError(f"--wish-written names {', '.join(missing)}, "
-                             f"which is not among the files being added")
-        fields["wish_written"] = sorted(set(wish_written))
+        fields["wish_written"] = _resolve_wish_written(
+            wish_written, [s.name for s in sources])
 
     if platform == "c64":
         if len(sources) != 1:
@@ -512,10 +536,17 @@ def check_specimens(root: pathlib.Path | None = None) -> list[str]:
                     f"{name}: {fname} has changed -- recorded {expected[:12]}, "
                     f"now {actual[:12]}")
         covered.add(entry["_provenance"])
-        for fname in entry.get("wish_written", []):
-            if fname not in sha256 or not (base / fname).is_file():
-                problems.append(f"{name}: wish_written names {fname}, "
-                                f"which is not a file of this specimen")
+        if "wish_written" in entry:
+            problem = _wish_written_problem(entry["wish_written"])
+            if problem:
+                problems.append(f"{name}: {problem}")
+            else:
+                held = {f.casefold() for f in sha256
+                        if (base / f).is_file()}
+                for fname in entry["wish_written"]:
+                    if fname.casefold() not in held:
+                        problems.append(f"{name}: wish_written names {fname}, "
+                                        f"which is not a file of this specimen")
         for field in REQUIRED_FIELDS:
             if field not in entry:
                 problems.append(f"{name}: provenance.toml is missing '{field}'")
@@ -836,6 +867,40 @@ def correct_staged(name: str, *, staged: list[str], reason: str,
             "issue_note": fields["issue_note"]}
 
 
+def correct_wish_written(name: str, *, wish_written: list[str], reason: str,
+                         root: pathlib.Path | None = None,
+                         today: str | None = None) -> dict:
+    """Record which of an existing specimen's files Wish wrote, leaving every
+    file alone.
+
+    For a provenance written before `wish_written` existed.  The names are
+    matched case-insensitively against the specimen's manifest; the date and
+    `reason` are appended to `issue_note`.  A specimen already listing
+    `wish_written` is rejected, since replacing it is not a correction.
+    """
+    root = root or tree_root()
+    if not wish_written:
+        raise ValueError("--wish-written is empty")
+    if not reason.strip():
+        raise ValueError("--reason is empty")
+    entry = _one_entry(name, root)
+    if entry.get("platform") == "c64":
+        raise ValueError(f"{name}: a C64 specimen is one disk image")
+    if entry.get("wish_written"):
+        raise ValueError(f"{name}: already records its wish_written")
+    names = _resolve_wish_written(wish_written, entry.get("sha256", {}))
+    day = today or datetime.date.today().isoformat()
+    record = (f"Corrected {day}: `wish_written` was not recorded. Reason: {reason}")
+    fields = _plain_fields(entry)
+    fields["wish_written"] = names
+    fields["issue_note"] = _noted(entry, record)
+    _rewrite_provenance(name, entry, fields,
+                        {"wish_written": names,
+                         "issue_note": fields["issue_note"]})
+    return {"name": name, "wish_written": names,
+            "issue_note": fields["issue_note"]}
+
+
 STAGED_LINE = re.compile(
     r"^(effect row|trait|item|record|status|side|variable|roster)\b.*: .+ -> .+$")
 STAGED_ROSTER = re.compile(
@@ -923,6 +988,17 @@ def cmd_correct_staged(args: argparse.Namespace) -> int:
         print(f"rejected: {exc}")
         return 1
     print(f"corrected {r['name']}\n  staged: {r['staged']}")
+    return 0
+
+
+def cmd_correct_wish_written(args: argparse.Namespace) -> int:
+    try:
+        r = correct_wish_written(args.name, wish_written=args.wish_written,
+                                 reason=args.reason)
+    except ValueError as exc:
+        print(f"rejected: {exc}")
+        return 1
+    print(f"corrected {r['name']}\n  wish_written: {r['wish_written']}")
     return 0
 
 
@@ -1027,6 +1103,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="one staging write, repeatable")
     cs.add_argument("--reason", required=True, help="why it was not recorded")
     cs.set_defaults(func=cmd_correct_staged)
+
+    cw = sub.add_parser("correct-wish-written", help="record which files of an "
+                        "existing specimen Wish wrote; no file moves")
+    cw.add_argument("name")
+    cw.add_argument("--wish-written", nargs="+", required=True, metavar="NAME",
+                    dest="wish_written", help="file names Wish wrote, not the game")
+    cw.add_argument("--reason", required=True, help="why it was not recorded")
+    cw.set_defaults(func=cmd_correct_wish_written)
 
     sub.add_parser("list", help="what is in the tree").set_defaults(func=cmd_list)
     sub.add_parser("check", help="verify every specimen's SHA-256"

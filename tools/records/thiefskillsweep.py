@@ -58,6 +58,7 @@ from goldbox import c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402
 from goldbox.record import CharacterRecord  # noqa: E402
 from goldbox.savegame import SaveGame0  # noqa: E402
+from tools.dos import dostailsweep  # noqa: E402
 from tools.registry import specimens  # noqa: E402
 
 #: `GEN` is resident here whatever its PRG header claims.
@@ -325,13 +326,19 @@ def dos_records(title: str = "pool-of-radiance", extra=()):
     folders += [str(p) for p in extra]
     files: list[str] = []
     for folder in folders:
-        ours = specimens.wish_written_files(pathlib.Path(folder))
+        try:
+            ours = specimens.wish_written_files(pathlib.Path(folder))
+        except ValueError as exc:
+            print(f"  skipped {folder}: {exc}", file=sys.stderr)
+            continue
         files += [f for f in glob.glob(folder + "/CHRDAT*.SAV") + glob.glob(folder + "/*.CHA")
-                  if pathlib.Path(f).name not in ours]
+                  if pathlib.Path(f).name.casefold() not in ours]
     if dosbox.ARCHIVES.is_dir():
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.SAV", recursive=True)
         files += glob.glob(str(dosbox.ARCHIVES) + "/**/*.CHA", recursive=True)
     for path in sorted(set(files)):
+        if dostailsweep.is_staged(pathlib.Path(path)):
+            continue
         try:
             char = dos_codec.read_character(path)
         except Exception:

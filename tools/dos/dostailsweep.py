@@ -115,6 +115,11 @@ NO_RECORDS = ("No DOS records on this machine: set $FR_ARCHIVES to the "
               "gamedisks.yaml")
 
 
+def is_staged(path: pathlib.Path) -> bool:
+    """Is `path` inside an emulator instance's staged game tree?"""
+    return any(d in pathlib.Path(path).as_posix() for d in SCRATCH_DIRS)
+
+
 def foreign_title(path: pathlib.Path) -> str | None:
     """The name of a title with no layout here, if `path` is inside one."""
     text = path.as_posix().lower()
@@ -229,7 +234,7 @@ def collect(roots, want_built: bool,
         for path in walk:
             if not path.is_file() or path.suffix.lower() not in RECORD_SUFFIXES:
                 continue
-            if any(d in path.as_posix() for d in SCRATCH_DIRS):
+            if is_staged(path):
                 continue
             try:
                 size = path.stat().st_size
