@@ -58,6 +58,14 @@ JOINABLE: dict[str, frozenset[int]] = {
 }
 
 
+#: The combat icon `(head, body, colours)` the DOS and Amiga joins give a
+#: companion: all zero in the 7 joinable Curse `MON*CHA.DAX` and `MONCHA.GLB`
+#: records and in both companions of the DOS Pit join save.  Neither engine
+#: draws it: a Curse member at control `$80` or above fights as his picture
+#: (`GAME.OVR 0x1F3D9`).  Silver Blades' records are zero too, but where its
+#: engines draw a companion has not been read, so it has no row.
+JOIN_ICON: dict[str, tuple[int, int, bytes]] = {CURSE_KEY: (0, 0, bytes(6))}
+
 #: The figure-size byte a companion's own join writes, per title and port.
 #: The C64 join copies `0x099` of his `MON` file (1 in all twelve joinable
 #: Curse and Silver Blades files); the DOS join copies the size of his
@@ -74,6 +82,31 @@ def companion_size(key: str, port: str) -> int | None:
     """The size byte `port`'s join gives a companion of title `key`, or None
     when none is measured."""
     return COMPANION_SIZE.get(key, {}).get(port)
+
+
+#: The sheet-portrait and dual-class bytes a companion's own join writes, per
+#: title and port, where they differ from what a player character holds.
+#: The C64 join copies them from his `MON` file (7 of 7 joinable Curse files);
+#: the DOS join from his `MON*CHA.DAX` record (7 of 7, and both companions of
+#: the DOS Pit join save), and the Amiga join from his `MONCHA.GLB` record
+#: (7 of 7; `/Curse` 0x26306 loads it and 0x270A6 copies these bytes
+#: unchanged).  DOS and the Amiga keep no dual-class pair, only the former
+#: levels, which all three joins leave zero.  Silver Blades holds zero in all
+#: of them on every port, which is what a player holds, so it has no row.
+COMPANION_FILL: dict[str, dict[str, dict[str, int]]] = {
+    CURSE_KEY: {
+        "C64": {"portrait_head": 0xFF, "portrait_body": 0x00,
+                "dual_class_slot": 0xFF, "dual_class_level": 0xFF},
+        "DOS": {"portrait_head": 0xFF, "portrait_body": 0x00},
+        "Amiga": {"portrait_head": 0xFF, "portrait_body": 0x00},
+    },
+}
+
+
+def companion_fill(key: str, port: str) -> dict[str, int]:
+    """The bytes `port`'s join gives a companion of title `key` that a player
+    character does not hold, by field name; empty when none is measured."""
+    return dict(COMPANION_FILL.get(key, {}).get(port, {}))
 
 
 def _name_from(raw: bytes) -> str:

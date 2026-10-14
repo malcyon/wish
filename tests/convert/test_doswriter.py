@@ -1177,9 +1177,10 @@ def test_an_all_zero_icon_entry_converts_as_the_seeded_default(tmp_path):
     assert not any("combat icon" in w for w in report.warnings), report.warnings
 
 
-def test_an_all_zero_icon_entry_under_a_later_title_is_not_seeded(tmp_path):
-    """Only Pool of Radiance is known to seed every slot, so the same zero
-    entry under Curse of the Azure Bonds gives the party no figure."""
+def test_an_all_zero_icon_entry_under_a_later_title_is_the_seeded_default(
+        tmp_path):
+    """Curse's `INIT $0ADF` seeds every slot with the default as Pool of
+    Radiance's does, so a zero entry under Curse converts as that default."""
     parts = IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
     save0, save1 = _fixture_payloads()
     container = c64_save.container_for("curse-of-the-azure-bonds")
@@ -1189,7 +1190,12 @@ def test_an_all_zero_icon_entry_under_a_later_title_is_not_seeded(tmp_path):
     _, icons = dos_codec.c64_party(bytes(poked), None,
                                    "curse-of-the-azure-bonds",
                                    icon_parts=parts)
-    assert icons[-1] is None
+    want = parts.dos_icon_from_c64(
+        parts.default_icon(),
+        c64_icon_tables(title="curse-of-the-azure-bonds"))
+    assert icons[-1] is not None
+    assert (icons[-1].head, icons[-1].body, icons[-1].colours) == (
+        want.head, want.body, want.colours)
 
 
 def test_a_c64_party_of_six_different_icons_gets_six_different_dos_figures(

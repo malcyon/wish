@@ -814,7 +814,10 @@ LATER_ACCOUNTED: tuple[tuple[str, str], ...] = (
                       "machine -- 15 Curse and 6 Silver Blades -- and "
                       "neither title's sheet draws a face on either port "
                       "(#300), so there is no position to convert or menu "
-                      "to read until either title draws one"),
+                      "to read until either title draws one. A Curse "
+                      "companion holds $FF, which his join copies and the "
+                      "writer gives every joined companion back "
+                      "(goldbox.companions.COMPANION_FILL)"),
     ("portrait_body", "see portrait_head; the body half of the same pair, "
                       "0 in the same 21 of 21"),
     ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "

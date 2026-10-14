@@ -37,7 +37,7 @@ from . import (
     traits,
 )
 from . import levels as level_tables
-from .companions import JOINABLE, companion_size
+from .companions import JOINABLE, companion_fill, companion_size
 from .encoding import COMBAT_BIAS
 from .items import TYPE_LOCATION, Item, ItemType
 from .layout import RECORD_SIZE, Confidence, Field
@@ -2261,6 +2261,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # array: `dual_class_level` is the pair's sentinel, so zero there means
     # "not dual-classed" whatever `dual_class_slot` holds, and a character
     # who left two classes cannot be spelled at all.
+    held_any = former is not None and any(former.value.values())
+    if not held_any and joined_companion(char) and deltas.dual_class:
+        # A joined companion who never changed class holds what the C64 join
+        # copies from his `MON` file.
+        fill = companion_fill(deltas.key, "C64")
+        if "dual_class_slot" in fill:
+            rec.set("dual_class_slot", fill["dual_class_slot"])
+            rec.set("dual_class_level", fill["dual_class_level"])
+            rep.note(0x0B9, 2,
+                     f"dual_class_slot/dual_class_level: "
+                     f"{fill['dual_class_slot']:#04x} "
+                     f"{fill['dual_class_level']:#04x}, what the C64 join "
+                     f"copies from a companion's MON file")
     if former is not None:
         held = {n: lv for n, lv in former.value.items() if lv}
         if not held:
@@ -2946,6 +2959,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             rec.set(name, v.value)
             emit(v, name, offset, 1, f"{stem}{v.value:02X}")
     rep.has_portrait = both
+    # A joined companion with no portrait gets what the C64 join copies from
+    # his `MON` file, which in Curse is not what a player holds.
+    if not both and joined_companion(char):
+        for name, value in companion_fill(deltas.key, "C64").items():
+            if name in ("portrait_head", "portrait_body"):
+                rec.set(name, value)
+                rep.note(_field(name).offset, 1,
+                         f"{name}: {value:#04x}, what the C64 join copies "
+                         f"from a companion's MON file")
 
     # -- the status, and the out-of-play flag packed above it -----------------
     # One byte holding two things: the low three bits are the state the sheet
@@ -4421,6 +4443,12 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     if deltas.dual_class and rec.is_stored("dual_class_level"):
         level = rec.get("dual_class_level")
         held: dict[str, int] = {}
+        fill = companion_fill(deltas.key, "C64")
+        if is_npc and (rec.get("dual_class_slot"), level) == (
+                fill.get("dual_class_slot"), fill.get("dual_class_level")):
+            # What the C64 join copies from a companion's `MON` file: he has
+            # not changed class.
+            level = 0
         if level:
             slot = rec.get("dual_class_slot")
             name_ = _DUAL_CLASS_SLOT_NAMES.get(slot)

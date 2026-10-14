@@ -87,7 +87,7 @@ from . import (
 from . import levels as level_tables
 from .c64_codec import Report
 from .c64_codec import c64_share_from_dos as c64_share_from_dos
-from .companions import companion_size
+from .companions import JOIN_ICON, companion_fill, companion_size
 from .dos_port import (
     CLASS_NUMBERS,
     CURSE_OF_THE_AZURE_BONDS,
@@ -6538,10 +6538,22 @@ def write(char: NeutralCharacter,
     draws_portrait = draws_sheet_portrait(deltas.key)
     portraits_written: set[str] = set()
     companion = bool(w.get("npc")) and w.get("npc_control_byte") != 0xB3
+    # A joined companion holds what his own join wrote, which in Curse is
+    # not what a player holds: `goldbox.companions.COMPANION_FILL`.
+    join_fill = (companion_fill(deltas.key, into)
+                 if c64_codec.joined_companion(char) else {})
     for pname, lookup, stem in (("portrait_head", "head_position", "HEAD"),
                                 ("portrait_body", "body_position", "BODY")):
         v = use(pname)
         position = None
+        if pname in join_fill and not draws_portrait:
+            f = table[pname]
+            rec[f.offset] = join_fill[pname]
+            rep.note(f.offset, f.size,
+                     f"{pname}: {join_fill[pname]:#04x}, what the {into} join "
+                     f"gives a companion")
+            portraits_written.add(pname)
+            continue
         if v is not None and companion and draws_portrait:
             # The byte is the companion's own, not a menu position (see the
             # reader), so no table is needed.
@@ -10229,18 +10241,39 @@ def c64_party(save0: bytes, save1: bytes | None, game=None,
             # reads and writes at exactly this same offset the other way.
             at = container.icon(char_slot.index)
             raw = bytes(save0[at:at + container.icon_size])
-            # An all-zero entry converts as the seeded default, which the
-            # Pool of Radiance engine writes into every icon slot before a
-            # character exists; the later titles are not known to seed it,
-            # so a zero entry there keeps the drop line.
-            zero_entry = (not any(raw)
-                          and c64.key == POOL_OF_RADIANCE.key)
+            # An all-zero entry converts as the seeded default, which every
+            # title's `INIT` writes into every icon slot before a character
+            # exists (Pool, Curse `$0ADF`, Silver Blades `$0C1A`), so no
+            # entry the game wrote is zero; an earlier Wish's writer left
+            # some.
+            zero_entry = not any(raw)
             if zero_entry:
                 raw = icon_parts.default_icon()
+            join_icon = (JOIN_ICON.get(c64.key)
+                         if c64_codec.joined_companion(character) else None)
+            if join_icon is not None:
+                # DOS and the Amiga draw a joined companion as his picture,
+                # never his icon, and their own joins leave the icon zero.
+                head, body, colours = join_icon
+                why = ("the icon the DOS and Amiga joins give a companion, "
+                       "who is drawn as his picture")
+                icon = DosIcon(head, body, colours, why, why)
+                if (stale_icon_note is not None
+                        and stale_icon_note in character.dropped):
+                    character.dropped.remove(stale_icon_note)
+                out.append(character)
+                icons.append(icon)
+                continue
             try:
                 icon = icon_parts.dos_icon_from_c64(raw, reverse_tables)
             except ValueError as exc:
                 character.warnings.append(f"combat icon: {exc}")
+                if (c64_codec.picture_companion(character)
+                        and stale_icon_note is not None
+                        and stale_icon_note in character.dropped):
+                    # DOS and the Amiga draw him as his picture, so the icon
+                    # they would not draw is not a loss.
+                    character.dropped.remove(stale_icon_note)
             else:
                 if zero_entry:
                     icon = dataclasses.replace(
