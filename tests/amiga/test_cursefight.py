@@ -1018,3 +1018,128 @@ def test_verdict_of_a_pit_run_needs_the_staged_gate_in_the_saved_slot(gate, prob
     assert problems == ([f"the saved slot holds $4C2D = {gate}, not the staged 128"]
                         if problem else [])
     assert cursefight.verdict(_read(members), _manifest(), ["EVOKER"]) == []
+
+
+# -- a destroyed party in the Pit, and the save-only run ----------------------------------
+
+#: The Pit run that lost to shambling mounds: its last frame before the destroyed message,
+#: and the message itself.
+PIT_RUN1 = pathlib.Path.home() / ".cache/wish/acceptance/WISH-388/c64join-amiga-pit/run1/screens"
+
+
+def test_party_destroyed_guard_matches_the_pit_frame_and_not_the_frame_before(tmp_path):
+    frames = {n: PIT_RUN1 / f"{n}-fight.png" for n in (187, 216)}
+    if not all(f.is_file() for f in frames.values()):
+        pytest.skip("the WISH-388 Pit run 1 capture is not on this machine")
+    rules = tmp_path / "guards.json"
+    rules.write_text(json.dumps(cursefight.guard_rules()))
+    guards = PixelGuards(rules)
+    assert guards("party_destroyed", frames[216])
+    assert not guards("party_destroyed", frames[187])
+    assert [s for s in cursefight.PIT_KNOWN if s in guards and guards(s, frames[216])] == [
+        "party_destroyed"]
+
+
+def test_pit_fight_ends_lost_on_the_destroyed_message_with_one_return(tmp_path):
+    clock = Clock()
+    script = ["continue", "world", "combat_bar", "combat_bar", None, "party_destroyed", "title"]
+    game = PitGame(clock, script, owners=[_owner("EVOKER")])
+    game.walking = False
+    screens = _pit_screens(tmp_path, game, clock)
+    found = cursefight.fight(screens, game, ["EVOKER"], cursefight.PIT_FIGHT)
+    assert found["outcome"] == "lost" and game.keys == ["RET", "Q", "RET"]
+    assert game.pressed_on[-1] == "party_destroyed"
+    assert found["answered"][-1]["screen"] == "party_destroyed"
+    _keys_allowed(screens, game)
+
+
+def test_drive_in_the_pit_stops_at_a_destroyed_party_saving_nothing(tmp_path, monkeypatch):
+    clock = Clock()
+    loaded = [_member(name) for name in NAMES]
+    game = PitGame(clock, PIT_DRIVE, parties=[loaded])
+    game.walking = False
+    monkeypatch.setattr(cursefight, "pit_walk", lambda *a: {"steps": [], "met": "shot"})
+    monkeypatch.setattr(
+        cursefight, "fight",
+        lambda *a, **k: {"bars": [{"owner": "EVOKER", "shot": "bar.png"}],
+                         "answered": [{"screen": "party_destroyed", "key": "RET"}],
+                         "outcome": "lost"})
+    found = cursefight.drive(_pit_screens(tmp_path, game, clock), _pit_manifest(), ["EVOKER"],
+                             game, save=True)
+    assert found["destroyed"] and found["outcome"] == "lost"
+    assert game.keys == ["ESC", "ESC", "L", "A", "B"] and "after" not in found
+    assert cursefight.GATE_AFTER not in found
+
+
+def test_drive_with_no_fight_camps_and_saves_as_loaded(tmp_path, monkeypatch):
+    clock = Clock()
+    game = PitGame(clock, PIT_DRIVE, parties=[[_member(name) for name in NAMES]])
+    game.walking = False
+    for name in ("pit_walk", "walk", "fight"):
+        monkeypatch.setattr(cursefight, name, pytest.fail)
+    screens = _pit_screens(tmp_path, game, clock)
+    found = cursefight.drive(screens, _pit_manifest(), ["EVOKER"], game, save=True,
+                             no_fight=True)
+    assert game.keys == ["ESC", "ESC", "L", "A", "B", "E", "S", "B", "N"]
+    assert "outcome" not in found and cursefight.LIVE_GATE not in found
+    _keys_allowed(screens, game)
+
+
+def test_run_reports_a_destroyed_party_and_reads_nothing_back(tmp_path, monkeypatch):
+    drive = lambda *a, **k: {"bars": [], "outcome": "lost", "destroyed": True}  # noqa: E731
+    with pytest.raises(RouteError, match="destroyed, so nothing was saved"):
+        _run(tmp_path, monkeypatch, drive=drive)
+    written = json.loads((tmp_path / "run" / "receipt.json").read_text())
+    assert written["problems"] == ["the party was destroyed, so nothing was saved"]
+    assert written["fight_won"] is False and "read_back" not in written
+
+
+def test_run_with_no_fight_saves_and_judges_the_read_back_unfought(tmp_path, monkeypatch):
+    manifest = _staged(tmp_path)
+    monkeypatch.setattr(cursefight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(cursefight.curseadd, "slot_letters", lambda disk: ["D"])
+    monkeypatch.setattr(cursefight.curseadd, "mute", lambda guest, out, timeout: out / "mute.json")
+    seen = {}
+
+    def drive(screens, manifest, members, memory, *, save, found, no_fight=False):
+        seen.update(save=save, no_fight=no_fight)
+        return {}
+
+    monkeypatch.setattr(cursefight, "drive", drive)
+    monkeypatch.setattr(cursefight, "read_back", lambda path, value: {"path": str(path)})
+    monkeypatch.setattr(cursefight, "verdict",
+                        lambda found, value, members, outcome="won": seen.update(outcome=outcome)
+                        or [])
+    fetched = tmp_path / "fetched-save.adf"
+    fetched.write_bytes(b"fetched")
+    args = _args(tmp_path, manifest)
+    args.no_fight = True
+    receipt = cursefight.run(args, guest=LaneGuest(), guards=object(),
+                             boot=lambda *a, **k: {"claim": "ok"}, memory=object(),
+                             halt=lambda *a, **k: {"fetched": {"save": {"path": str(fetched)}}})
+    assert seen == {"save": True, "no_fight": True, "outcome": "unfought"}
+    assert receipt["success"] and receipt["fight"] is False and "fight_won" not in receipt
+
+
+def test_run_with_no_fight_and_no_save_stops_before_the_guest(tmp_path):
+    manifest = _staged(tmp_path)
+    args = _args(tmp_path, manifest, no_save=True)
+    args.no_fight = True
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="--no-fight saves"):
+        cursefight.run(args, guest=guest, guards=object(), boot=pytest.fail, halt=pytest.fail,
+                       memory=object())
+    assert guest.calls == [] and not (tmp_path / "run").exists()
+
+
+def test_verdict_of_an_unfought_save_skips_quickfight_and_checks_the_picture():
+    members = [_member(name, picture=0x16) for name in NAMES]
+    manifest = _manifest()
+    for name in NAMES:
+        manifest["fight"]["members"][name]["picture"] = 0x16
+    assert cursefight.verdict(_read(members), manifest, ["EVOKER"], "unfought") == []
+    assert any("quickfight 0" in p
+               for p in cursefight.verdict(_read(members), manifest, ["EVOKER"], "won"))
+    members[-1]["picture"] = 0
+    assert cursefight.verdict(_read(members), manifest, ["EVOKER"], "unfought") == [
+        "EVOKER was saved with picture 0, staged with 22"]

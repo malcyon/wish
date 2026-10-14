@@ -14,9 +14,12 @@ slugs' ATTACK EVADE with ATTACK. Either way it answers every command bar with QU
 fight runs itself as the DOS fight step's does, and at each bar it reads whose bar it is from
 memory and logs it. After the fight it checks each `--member` had a bar, now holds
 quickfight 1 and still stands, then camps and saves once to the staged letter, halts,
-fetches the disk and reads the slot back. `--no-save` stops after that check. Memory is only
-read, never written, so the Pit's gate stays at `$80` in a save the run makes; the receipt
-records it.
+fetches the disk and reads the slot back. `--no-save` stops after that check. A party the
+Pit's monsters destroy gets RETURN on the destroyed message, and the run ends there, lost,
+saving nothing. `--no-fight` loads the slot, begins, then camps and saves at once, with no
+walk and no fight, and reads the save back, each member's combat picture included. Memory is
+only read, never written, so the Pit's gate stays at `$80` in a save the run makes; the
+receipt records it.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
 
@@ -52,10 +55,11 @@ TITLE = route_curse.CURSE_KEY
 TAVERN_AREA = 1
 TAVERN_GEO = "GEO01"
 TAVERN = (6, 10)
-#: Record offsets in `/Curse`: name at 0, control 0xF7, status 0x19A, side 0x19C, quickfight
-#: 0x19D (QUICK at 0x386C sets it; the turn test at 0x2C24 reads it), hit points 0x1A9.
-RECORD = {"control": 0xF7, "status": 0x19A, "side": 0x19C, "quickfight": 0x19D,
-          "hit_points": 0x1A9}
+#: Record offsets in `/Curse`: name at 0, control 0xF7, the combat picture 0x127 (a joined
+#: companion's own, DOS 0x126), status 0x19A, side 0x19C, quickfight 0x19D (QUICK at 0x386C
+#: sets it; the turn test at 0x2C24 reads it), hit points 0x1A9.
+RECORD = {"control": 0xF7, "picture": 0x127, "status": 0x19A, "side": 0x19C,
+          "quickfight": 0x19D, "hit_points": 0x1A9}
 RECORD_SIZE = 0x1AC
 #: The data-hunk global holding the record whose turn it is: the turn routine 0x2B68 stores
 #: it at 0x2BB6, before 0x2C24 picks the command bar or the computer's turn.
@@ -79,6 +83,13 @@ FIGHT_GUARDS = {
     # `continue` box and so is told apart by its text.
     "tossed": {"box": [74, 302, 690, 318],
                "sha256": "c0673a24f91bb7991f3c3139ce81fbc68556aee0ae50230a88d853ad4fe9c8f8"},
+    # The destroyed party's message over a PRESS ANY KEY bar, cut from the Pit run that lost
+    # to shambling mounds (WISH-388 `c64join-amiga-pit/run1/screens/216-fight.png`); the text
+    # box alone would also match the same words over another bar, so the bar is the `and`.
+    "party_destroyed": {"box": [90, 108, 656, 146],
+                        "sha256": "ee9bc04a0212b97c277a22fd81edb01de359ad6cb1668a2128456fd1344d7c7b",
+                        "and": [{"box": [72, 404, 686, 426],
+                                 "sha256": "64ccbcfd2cec635e30dc2c838c8039916f77553e5a819c06412a00640054197b"}]},
     # MOVE VIEW AIM, the start of every member's command bar.
     "combat_bar": {"box": [72, 404, 288, 426],
                    "sha256": "140a5633d4aa744c3cf0bcf3d4a1bd5870f0ca7701590fa635ddd66abdff61df"},
@@ -112,7 +123,7 @@ ALLOWED_KEYS = {
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
     "investigate": frozenset({"N"}), "camp": frozenset({"S"}),
     "camp_save_picker": frozenset("ABCDEFGHIJ"), "exit_game": frozenset({"N"}),
-    "attack_evade": frozenset({"A"}),
+    "attack_evade": frozenset({"A"}), "party_destroyed": frozenset({"RET"}),
 }
 #: Answers to the screens that come between the first command bar and the map.
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure": "E",
@@ -169,13 +180,15 @@ SAVED_GATE = f"saved_wander_gate_{PIT_GATE:04X}"
 UNCAPTURED = {
     "attack_evade": "the giant slugs' ATTACK EVADE bar (`HORIZMENU` at `ECL11 $90DC`)",
 }
+#: "party_destroyed" comes before "continue": the first known screen a grab matches names it.
 PIT_KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
-             "continue", "attack_evade", "combat_bar", "continue_battle", "treasure",
+             "party_destroyed", "continue", "attack_evade", "combat_bar", "continue_battle", "treasure",
              "treasure_left", "camp", "camp_save_picker", "exit_game")
 #: Answers to the screens between the step that met the monsters and the map after the fight;
-#: the slugs' question gets ATTACK, never EVADE.
+#: the slugs' question gets ATTACK, never EVADE, and the destroyed party's message RETURN.
 PIT_ANSWERS = {"continue": "RET", "attack_evade": "A", "combat_bar": "Q",
-               "continue_battle": "N", "treasure": "E", "treasure_left": "N"}
+               "continue_battle": "N", "treasure": "E", "treasure_left": "N",
+               "party_destroyed": "RET"}
 
 
 class Screens(curseadd.Screens):
@@ -583,10 +596,12 @@ CURSE_FIGHT = FightRules(
     starting=("tavern",), after_bars={"tavern": "L"}, lost_answered=("tossed",))
 
 #: The Pit's wandering fight: the map may still show while its monsters load, and the
-#: encounter's own pages and the slugs' question come before the first bar.
+#: encounter's own pages and the slugs' question come before the first bar. A destroyed party's
+#: message gets RETURN and ends the fight as lost, with nothing after it waited for.
 PIT_FIGHT = FightRules(
     known=PIT_KNOWN, answers=PIT_ANSWERS,
-    bar_fields=("control", "status", "quickfight", "hit_points"), linger=PIT_LINGER)
+    bar_fields=("control", "status", "quickfight", "hit_points"), linger=PIT_LINGER,
+    defeat=("party_destroyed",))
 
 
 def fight(screens: Screens, memory: Memory, members: list[str],
@@ -694,9 +709,11 @@ def check_members(party: list[dict], manifest: dict, members: list[str]) -> dict
 
 
 def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, *,
-          save: bool, found: dict | None = None) -> dict:
+          save: bool, found: dict | None = None, no_fight: bool = False) -> dict:
     """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
-    made, so a step that stops still leaves what came before it for the receipt."""
+    made, so a step that stops still leaves what came before it for the receipt. With
+    `no_fight` the party camps and saves as loaded, with no walk and no fight. A destroyed
+    party ends the drive at its message, saving nothing."""
     fight_ = manifest["fight"]
     pit = fight_.get("kind") == PIT
     found = {} if found is None else found
@@ -717,6 +734,10 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
     require(names == fight_["names"], f"the loaded party is {names}, not {fight_['names']}")
     screens.press("B", "loaded_menu")
     screens.wait(("world",), 90, past=("loaded_menu",))
+    if no_fight:
+        screens.sleep(AFTER_KEY)
+        camp_save(screens, fight_["save"])
+        return found
     if pit:
         found[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(PIT_GATE), memory.holder,
                                             screens.left(READ_LIMIT))
@@ -727,6 +748,10 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         found["walk"] = pit_walk(screens, memory, fight_["place"], fight_)
         found.update(fight(screens, memory, members, PIT_FIGHT, found=found))
         found["first_bar"] = found["bars"][0] if found["bars"] else None
+        found["destroyed"] = bool(found["answered"]) and (
+            found["answered"][-1]["screen"] in PIT_FIGHT.defeat)
+        if found["destroyed"]:
+            return found
         found[GATE_AFTER] = curseadd.bounded(lambda _h: memory.variable(PIT_GATE),
                                              memory.holder, screens.left(READ_LIMIT))
     else:
@@ -748,17 +773,22 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         found["members"] = check_members(found["after"], manifest, members)
     if not save:
         return found
+    camp_save(screens, fight_["save"])
+    return found
+
+
+def camp_save(screens: Screens, letter: str) -> None:
+    """From the map: camp, save to `letter`, and answer the exit question with NO."""
     screens.wait(("world",), 30, past=())
     screens.press("E", "world")
     screens.wait(("camp",), 60, past=("world",))
     screens.press("S", "camp")
     screens.wait(("camp_save_picker",), 60, past=("camp",))
-    screens.press(fight_["save"], "camp_save_picker")
+    screens.press(letter, "camp_save_picker")
     screens.wait(("exit_game",), 120, past=("camp_save_picker",))
     screens.sleep(POST_WRITE_WAIT)
     screens.press("N", "exit_game")
     screens.wait(("camp",), 60, past=("exit_game",))
-    return found
 
 
 def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
@@ -778,7 +808,8 @@ def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won
     """Problems with a read-back: empty when each named member was saved QUICK, as loaded,
     and a Pit run's saved slot still holds the staged gate. After a lost fight the members
     never got a bar and some fell, so only their presence and control are checked; a fight does
-    not change control."""
+    not change control. With no fight (`unfought`) nobody pressed QUICK, so quickfight is not
+    checked. A member staged with his combat picture must be saved with the same one."""
     problems = []
     if manifest["fight"].get("kind") == PIT and found.get(SAVED_GATE) != PIT_GATE_ON:
         problems.append(f"the saved slot holds ${PIT_GATE:04X} = {found.get(SAVED_GATE)}, "
@@ -799,9 +830,12 @@ def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won
         row = rows[0]
         if row["control"] != loaded["control"]:
             problems.append(f"{name} was saved as {row}, loaded as {loaded}")
+        if "picture" in loaded and row.get("picture") != loaded["picture"]:
+            problems.append(f"{name} was saved with picture {row.get('picture')}, "
+                            f"staged with {loaded['picture']}")
         if outcome == "lost":
             continue
-        if row["quickfight"] != 1:
+        if outcome == "won" and row["quickfight"] != 1:
             problems.append(f"{name} was saved with quickfight {row['quickfight']}")
         if row["status"] != loaded["status"]:
             problems.append(f"{name} was saved as {row}, loaded as {loaded}")
@@ -818,6 +852,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     require(0 <= args.wait_lane <= 1800, "lane wait exceeds 1800 seconds")
     require(0 < args.budget <= 3600, "budget must be at most 3600 seconds")
     require(not args.out.exists(), f"{args.out} already exists")
+    no_fight = getattr(args, "no_fight", False)
+    require(not (no_fight and args.no_save), "--no-fight saves; it cannot go with --no-save")
     manifest = json.loads(args.manifest.read_text())
     require("fight" in manifest and manifest.get("title") == "curse",
             "the manifest is not a cursefight.py stage")
@@ -835,6 +871,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     receipt: dict[str, Any] = {"started_utc": datetime.now(timezone.utc).isoformat(),
                                "manifest": str(args.manifest.resolve()), "holder": args.holder,
                                "members": list(args.member), "save": not args.no_save,
+                               "fight": not no_fight,
                                "out": str(args.out.resolve()), "success": False, "cleanup": []}
     rules = guard_rules()
     if pit:
@@ -844,7 +881,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     command = [str(pathlib.Path(__file__)), "run", "--manifest", str(args.manifest),
                "--holder", args.holder, "--out", str(args.out),
                *(f"--member={name}" for name in args.member),
-               *(["--no-save"] if args.no_save else [])]
+               *(["--no-save"] if args.no_save else []),
+               *(["--no-fight"] if no_fight else [])]
     booted = False
     found: dict[str, Any] = {}
     screens = None
@@ -861,7 +899,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             guest, args.holder, args.out / "screens", guards, clock() + args.budget,
             clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory,
-                             save=not args.no_save, found=found))
+                             save=not args.no_save, found=found,
+                             **({"no_fight": True} if no_fight else {})))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
@@ -888,6 +927,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         fetched = (receipt.get("halt") or {}).get("fetched", {}).get("save")
         if "error" in receipt:
             pass
+        elif receipt.get("destroyed"):
+            receipt["problems"] = ["the party was destroyed, so nothing was saved"]
         elif args.no_save:
             receipt["problems"] = []
         elif fetched:
@@ -895,7 +936,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                 found = read_back(pathlib.Path(fetched["path"]), manifest)
                 receipt["read_back"] = found
                 receipt["problems"] = verdict(found, manifest, list(args.member),
-                                              receipt.get("outcome", "won"))
+                                              "unfought" if no_fight
+                                              else receipt.get("outcome", "won"))
             except Exception as exc:  # noqa: BLE001
                 receipt["problems"] = [f"read-back: {type(exc).__name__}: {exc}"]
         else:
@@ -934,6 +976,9 @@ def main(argv: list[str] | None = None) -> int:
                         "and still stand; repeat for several")
     g.add_argument("--no-save", action="store_true",
                    help="stop after the fight's checks, saving nothing")
+    g.add_argument("--no-fight", action="store_true",
+                   help="load the slot, begin, then camp and save at once, with no walk and no "
+                        "fight, and read the save back")
     g.add_argument("--budget", type=float, default=2700)
     g.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS")
     r = sub.add_parser("read", help="read a fetched Curse disk's saved slot against a manifest")
@@ -942,7 +987,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--member", action="append", default=[])
     r.add_argument("--receipt", type=pathlib.Path,
                    help="the run's receipt.json, whose outcome the read-back is judged by")
-    r.add_argument("--outcome", choices=("won", "lost"),
+    r.add_argument("--outcome", choices=("won", "lost", "unfought"),
                    help="the fight's outcome, when no receipt is given")
     args = parser.parse_args(argv)
     try:
@@ -962,7 +1007,11 @@ def main(argv: list[str] | None = None) -> int:
                     "give one of --receipt and --outcome")
             outcome = (args.outcome if args.receipt is None
                        else json.loads(args.receipt.read_text()).get("outcome"))
-            require(outcome in ("won", "lost"), f"the fight outcome is {outcome!r}, not won or lost")
+            if args.receipt is not None and outcome is None and not json.loads(
+                    args.receipt.read_text()).get("fight", True):
+                outcome = "unfought"
+            require(outcome in ("won", "lost", "unfought"),
+                    f"the fight outcome is {outcome!r}, not won, lost or unfought")
             manifest = json.loads(args.manifest.read_text())
             found = read_back(args.disk, manifest)
             problems = verdict(found, manifest, args.member, outcome)
