@@ -13713,3 +13713,125 @@ def test_saveas_report_is_not_accepted_with_a_source_that_replaces_the_folder(
     with pytest.raises(SystemExit):
         da.main(["--title", "darkness", "--save", str(tmp_path), "--saveas-report",
                  str(report), "--steps", "load", *extra])
+
+
+# -- `rest-fight`: Silver Blades' Compound patrol (WISH-388) ----------------------
+
+
+class FakeRestFight(FakeFight):
+    """`FakeFight` in camp in the Compound: the rest shows a blank bar for
+    `rest_looks` looks, then the patrol's continue page (`ends` "patrol") or
+    the camp bar again (`ends` "camp"); `Return` at the page starts the fight
+    at GUY's command bar, or with `to_map` puts up the map instead."""
+
+    FRAMES = {**FakeFight.FRAMES, "camp": "REST ALTER FIX VIEW MAGIC SAVE EXIT",
+              "resting": "", "patrol": "PRESS BUTTON OR RETURN TO CONTINUE"}
+
+    def __init__(self, tmp_path, ends="patrol", to_map=False, rest_looks=2):
+        super().__init__(tmp_path)
+        self.state, self.ends, self.to_map = "camp", ends, to_map
+        self.rest_looks = rest_looks
+        self.rested = []
+
+    def capture(self):
+        if self.state == "resting":
+            self.rest_looks -= 1
+            if self.rest_looks < 0:
+                self.state = self.ends
+        return super().capture()
+
+    def key(self, *keys, gap=0.35):
+        for k in keys:
+            if self.state == "patrol" and k == "Return":
+                self.keys.append(k)
+                if self.to_map:
+                    self.state = "map"
+                else:
+                    self.state, self.actor, self.fought = "bar1", "GUY", True
+                    _select(self.ds, self.ptrs[self.actor])
+            else:
+                super().key(k, gap=gap)
+
+
+PATROL_GLYPHS = _screen(_bar(FakeRestFight.FRAMES["patrol"]), b"").glyphs(dosbox.BAR)
+
+
+def _rest_fighter(tmp_path, monkeypatch, area=68, **kw):
+    game = FakeRestFight(tmp_path, **kw)
+    d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
+    d.logged = []
+    d.note = lambda **k: d.logged.append(k)
+    game.state = "map"
+    d.record_world(game.capture())
+    game.state = "camp"
+    d.camp_sig = da.bar_signature(game.capture())
+    d.where = "camp"
+    d.moved_since_load = []
+    monkeypatch.setattr(d, "_saved_area", lambda: (area, "area from SAVGAMD.DAT"))
+
+    def start_rest(minutes):
+        game.rested.append(minutes)
+        game.state = "resting"
+        return 0, {"days": minutes // 1440}
+
+    monkeypatch.setattr(d, "_start_rest", start_rest)
+    real = da.fight_bar_kind
+    # The measured continue digest is the game's; the fake's page stands in.
+    monkeypatch.setattr(da, "fight_bar_kind", lambda s: (
+        "continue" if s.glyphs(dosbox.BAR) == PATROL_GLYPHS else real(s)))
+    return game, d
+
+
+def test_a_rest_fight_answers_the_patrol_page_and_stops_at_the_first_bar(
+        tmp_path, monkeypatch):
+    """The C64's live sequence on DOS: the rest stops on the patrol's page,
+    `Return` there, and the fight's first command bar is read and shot with
+    nothing pressed at it; the party never walks."""
+    game, d = _rest_fighter(tmp_path, monkeypatch)
+    got = d.rest_fight(14400)
+    assert game.rested == [14400]
+    assert game.keys == ["Return"] and game.state == "bar1"
+    assert d.where == "pressed"
+    assert got["first_bar"] and got["rest_fight"] and got["area"] == 68
+    assert got["stopped_rest_on"] == "continue"
+    assert got["actor"]["name"] == "GUY" and len(got["placement"]) == 4
+    assert got["first_bar_shot"] is not None
+
+
+def test_a_rest_that_ends_in_camp_is_a_rest_fight_with_no_fight(tmp_path, monkeypatch):
+    game, d = _rest_fighter(tmp_path, monkeypatch, ends="camp")
+    with pytest.raises(da.StepFailed, match="ended in camp with no fight"):
+        d.rest_fight(14400)
+    assert game.keys == []
+
+
+def test_the_map_after_the_patrol_page_fails_without_walking(tmp_path, monkeypatch):
+    game, d = _rest_fighter(tmp_path, monkeypatch, to_map=True)
+    with pytest.raises(da.StepFailed, match="does not walk"):
+        d.rest_fight(14400)
+    assert game.keys == ["Return"]
+
+
+def test_a_rest_fight_outside_the_compound_rests_not_at_all(tmp_path, monkeypatch):
+    game, d = _rest_fighter(tmp_path, monkeypatch, area=16)
+    with pytest.raises(da.StepFailed, match="area 68's"):
+        d.rest_fight(14400)
+    assert game.rested == [] and game.keys == []
+
+
+def test_rest_fight_parses_a_duration_and_needs_silver_blades_camp():
+    step = da.parse_step("rest-fight 10d")
+    assert (step.kind, step.minutes) == ("rest-fight", 14400)
+    da.validate_steps([da.parse_step(s) for s in
+                       ("load", "begin", "camp", "rest-fight 10d", "shot x", "read")],
+                      "ssb")
+    with pytest.raises(ValueError, match="rest-fight needs camp first"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "rest-fight 10d")], "ssb")
+    with pytest.raises(ValueError, match="ssb only, not curse"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "camp", "rest-fight 10d")], "curse")
+    with pytest.raises(ValueError, match="or rest-fight"):
+        da.validate_steps([da.parse_step(s) for s in
+                           ("load", "begin", "camp", "rest-fight 10d", "save D")],
+                          "ssb")

@@ -124,6 +124,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
 | `join MOVES` | Curse only: in an area with a row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Pit, area 17: ALIAS and DRAGONBAIT), answers up to `JOIN_ARRIVAL_PRESSES` arrival pages, fails if a joining name is already on the panel, walks every move but the last as `walk` does, steps forward onto the join square with the last (`I`), and answers the square's script screens in the site's order by their text, one KERNAL key each (`$1D`/`$9D` move a bar's highlight, `$0D` chooses), with the script's own continue bar between (its text window logged with each); a list's Return waits for the highlight on its first line; the world bar or the move sub-bar the walk left up gets no key while the square's script prints under it; any other screen, a key that changes nothing, an unreadable screen past the wait, or the world bar or the move sub-bar before the last answer (once a key is pressed, or when the screen has not changed for `FIRST_SCREEN_GRACE`) stops the step with nothing pressed on that screen; either bar after the last answer ends it; a stop puts the encounter gates back; then fails unless the panel lists every joining name; returns the screens, the keys with the row 24 each was pressed on, the square and the panel |
 | `join-arrival AREA` | Silver Blades only: for an area with an `arrival` row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Compound, area 68: SIR DERIC), fails with nothing written if a joining name is already on the panel, the panel has no room, or the row's `first_visit` bit reads set (`$4C9E` bit 0, which the scene sets as it starts); then makes `warp`'s trip with `FastTravel.run` from the area the party is in, so the arriving script's entry 4 sees another area in `$4BF2`, and answers the scene's screens in the site's order by their text as `join` does; fails unless the panel then lists every joining name; returns the trip, the `first_visit` reading, the screens, the keys, the square and the panel |
+| `rest-fight 240h` | Silver Blades only, and the last step: in the Compound (area `$44`, read live; any other area fails with nothing pressed), `ENCAMP` and `REST` for at most that long with the rest interruption left as the game sets it (not with `--no-encounters`), until the area's rest check stops the rest with `YOU ARE SPOTTED BY A PATROL.`; that page is answered with Return, `COM.PREP` gets no key, and the first command bar is captured as `first-bar` (`first_bar` in the result, with the live area) and the run ends there; a rest that runs its time, a page with other text, or the camp or world bar before the fight fails the step with the screen kept; the party never moves |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -832,7 +833,8 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
          "fight-flee": "may", "snapshot": "must", "restore": "must",
          "fight-cast": "must", "memorize": "must", "site": "must",
-         "add": "must", "join": "must", "join-arrival": "must"}
+         "add": "must", "join": "must", "join-arrival": "must",
+         "rest-fight": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -1409,7 +1411,7 @@ def parse_steps(texts) -> list[Step]:
             raise ValueError(f"{verb} needs an argument")
         if verb in ("snapshot", "restore"):
             parse_snapshot_name(verb, arg)
-        if verb == "rest" and arg.lower() != REST_OFFERED:
+        if verb == "rest" and arg.lower() != REST_OFFERED or verb == "rest-fight":
             parse_rest(arg)
         elif verb == "peek":
             parse_peek(arg)
@@ -1452,6 +1454,9 @@ def parse_steps(texts) -> list[Step]:
         steps.append(Step(verb, arg))
     if not steps or steps[0].verb != "load":
         raise ValueError("the first step is load")
+    if any(s.verb == "rest-fight" for s in steps[:-1]):
+        raise ValueError("rest-fight ends the run at the fight's first command "
+                         "bar, so it is the last step")
     if any(s.verb == "load" for s in steps[1:]):
         raise ValueError("one boot, one load")
     taken: dict[str, bool] = {}
@@ -10676,6 +10681,114 @@ class SilverRun(CurseRun):
             raise self.fight_lost(result)
         return walked, result, before, seen
 
+    # -- the fight in the Compound: the rest check's patrol ----------------------
+    def area_now(self) -> int | None:
+        """The area running now (`FastTravel.current_area`), or None."""
+        try:
+            ft = auto_actions.FastTravel(self.game)
+            return ft.current_area(SessTarget(self.sess), ft.addresses)
+        except Exception:                   # noqa: BLE001
+            return None
+
+    def patrol_fight(self, arg: str) -> dict:
+        """Rest in the Compound for at most ARG until the area's rest check
+        stops the rest with its patrol, answer the patrol's page, and stop at
+        the fight's first command bar, captured as `first-bar`, with no key
+        sent from `COM.PREP` on.  The party never moves.  A party outside
+        `REST_FIGHT_AREA` fails the step before any key; a rest that runs its
+        time, or one stopped by anything but the patrol, fails it with the
+        screen kept."""
+        minutes, hours = parse_rest(arg)
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        area = self.area_now()
+        if area != REST_FIGHT_AREA:
+            raise self.fail("rest-fight", f"the party is in area {area}, not "
+                                          f"{REST_FIGHT_AREA}; nothing was pressed")
+        square = self.position()
+        if not self.to_camp():
+            raise self.fail("camp", "ENCAMP never put up the camp bar")
+        got = route_pool.rest(self.sess, self.log, minutes, hours, self.armed,
+                              quiet=False)
+        self.capture(f"rest-fight-{arg}")
+        if "failed" in got:
+            raise self.fail("rest", got["failed"])
+        if got.get("interrupted") is not True:
+            raise self.fail("rest-fight", f"no fight in {arg} of rest: the rest "
+                                          f"ran its time")
+        pages, text = self.follow_patrol(got)
+        if self.await_mode((S.COMBAT,), SILVER_PREP_SECONDS,
+                           "COM.PREP") != S.COMBAT:
+            raise self.fail("rest-fight", "Silver Blades never entered combat mode")
+        self.capture("fight-start")
+        shown = self.sess.await_bar((S.BAR_COMMAND,), timeout=60, interval=2.0)
+        rows = self.capture("first-bar")
+        if shown is None:
+            raise self.fail("rest-fight", "no command bar came up in the fight")
+        first_bar = {"seen": True, "bar": rows[24].strip() if rows else "",
+                     "area": self.area_now()}
+        self.log.emit("rest-fight-first-bar", **first_bar)
+        return {"area": area, "position": square, "asked": [minutes, hours],
+                "before_clock": got["before"]["clock"],
+                "after_clock": got["after"]["clock"],
+                "rest_interrupt": got.get("rest_interrupt"),
+                "pages": pages, "text": text, "first_bar": first_bar}
+
+    def follow_patrol(self, got: dict) -> tuple[list[str], list[str]]:
+        """From the rest's stop to the fight: each `PRESS ... TO CONTINUE`
+        page answered with Return once its text names `REST_FIGHT_TEXT`,
+        until `rest_fight` sees the fight.  A page with other text, the camp
+        or world bar, more than `REST_LEAVE_PROMPTS` pages, or a screen that
+        is none of these fails the step with nothing pressed on it.  Returns
+        row 24 of each page answered and the pages' text."""
+        prompts: list[str] = []
+        text: list[str] = list(got.get("text", []))
+        for _ in range(REST_LEAVE_PROMPTS + 1):
+            rows = self.wait_rows(
+                lambda r: (self.rest_fight(r) or self.rest_page(r[24])
+                           or CAMP_BAR in r[24] or self.at_world(r[24])),
+                REST_LEAVE_SECONDS, "the patrol's page or its fight")
+            if rows is None:
+                raise self.fail("rest-fight", f"the rest stopped and row 24 held "
+                                              f"{self.bar().strip()!r}")
+            bar = rows[24].strip()
+            if self.rest_fight(rows):
+                if REST_FIGHT_TEXT not in text:
+                    raise self.fail("rest-fight", f"a fight came with no "
+                                                  f"{REST_FIGHT_TEXT!r} page "
+                                                  f"(text {text!r})")
+                self.log.emit("rest-fight-fight", bar=bar, text=text)
+                return prompts, text
+            if CAMP_BAR in bar or self.at_world(bar):
+                raise self.fail("rest-fight", f"the rest stopped and row 24 went "
+                                              f"back to {bar!r} with no fight "
+                                              f"(text {text!r})")
+            if len(prompts) >= REST_LEAVE_PROMPTS:
+                break
+            page = [r.strip("$%& ") for r in rows[17:23] if r.strip("$%& ")]
+            text += [t for t in page if t not in text]
+            if REST_FIGHT_TEXT not in text:
+                raise self.fail("rest-fight", f"the rest stopped on {page!r}, "
+                                              f"not the patrol; nothing pressed")
+            prompts.append(bar)
+            self.log.emit("rest_prompt", bar=bar, text=page)
+            self.sess.press_kernal(0x0D)
+            self.wait_rows(lambda r, was=rows[17:25]: r[17:25] != was,
+                           ARRIVAL_PAGE_SECONDS, "the next page")
+        raise self.fail("rest-fight", f"the rest put up more than "
+                                      f"{REST_LEAVE_PROMPTS} pages: {prompts}")
+
+
+#: `rest-fight`: Silver Blades' Compound, area `$44`.  `ECL44` has no walking
+#: roll (no `RANDOM` among its reachable statements); its one random fight is
+#: entry 3, "camp interrupted" (`$829A`), which the camp's rest check runs
+#: with the pair entry 2 sets at ENCAMP (`$7ED2`/`$7ED3` = 96, 20: one check
+#: each 8 hours at 20 in 100, read [96, 20] in camp in a live rest).  It
+#: prints `REST_FIGHT_TEXT` over `PRESS BUTTON OR RETURN TO CONTINUE.`, and
+#: after Return `SETUPMON` and the fight, on the square the party camped on.
+REST_FIGHT_AREA = 0x44
+REST_FIGHT_TEXT = "YOU ARE SPOTTED BY A PATROL."
+
 
 # --- the run ---------------------------------------------------------------------
 
@@ -11622,6 +11735,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.join(step.arg)
             elif step.verb == "join-arrival":
                 got = pool.join_arrival(step.arg)
+            elif step.verb == "rest-fight":
+                got = pool.patrol_fight(step.arg)
             elif step.verb == "site":
                 got = pool.site(step.arg)
             elif step.verb == "walk-fight":
@@ -12038,6 +12153,12 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("the join step: Curse of the Azure Bonds only")
     if any(x.verb == "join-arrival" for x in steps) and args.title != "ssb":
         ap.error("the join-arrival step: Secret of the Silver Blades only")
+    if any(x.verb == "rest-fight" for x in steps):
+        if args.title != "ssb":
+            ap.error("the rest-fight step: Secret of the Silver Blades only")
+        if args.no_encounters:
+            ap.error("rest-fight waits for the game's own rest fight, which "
+                     "--no-encounters holds off")
     if any(x.verb == "add" for x in steps) and args.title != "pool":
         ap.error("the add step: Pool of Radiance only")
     if any(x.verb == "site" for x in steps) and args.title != "pool":

@@ -91,6 +91,7 @@ a source whose title does not match `--title`:
 | `temple raise N` | Pool, at the temple's arrival question a walk ended on (from the Slums square 15,4 facing W, `walk KKIIJI` reaches it at 1,3 in New Phlan): `YES`; roster line N highlighted (`End`); its sheet's money read (`VIEW`, `Escape`); `HEAL`, the service list read and its highlight moved with `End` onto `RAISE DEAD`, read after each press; `HEAL`; the price read off `PAY FOR CURE YES NO`; `YES`; the message window watched until the list holds clear; the list's `EXIT`, the sheet's money read again and the temple's `EXIT` back to the map.  `outcome` is `no-money` when the window says `NOT ENOUGH MONEY`, `alive` when the roster line's hit points then read 1 and the money changed, and `unknown` otherwise (the game draws no message for a raise and rolls nothing).  The result has the price, `gold_before`, `gold_after` and each sheet's money.  A run with it stages record bytes only with `--stage-record`, and only gold (`0x08E`, `0x08F`) and constitution (`0x014`) |
 | `turn N` | N from 1 to 4: the walk's control.  Silver Blades and Pools of Darkness press MOVE first and leave move mode after; N `Right` presses, each reading the `x,y` square, which a turn must leave alone (`lost-walk-turn`); the party stays on the map for `camp`, `save D` and `read`.  A run with `turn` and no `walk` fails unless `read` shows the saved place unchanged ("did not move") |
 | `fight first-bar` | Pool, Curse and Silver Blades, from the map: walk into a fight as `fight` does, log `placement` (judged from each square, as a dead member reads off the map but its fallen figure is drawn) and who acts at the first command bar, shoot it (`first_bar_shot`), and stop there with nothing pressed at it; no fight is fought out, so only `shot` and `read` may come after it |
+| `rest-fight 10d` | Silver Blades, in camp, in the Compound (area 68, the loaded save's area, believed only while no step since the load can have moved the party): camp `REST` for at most that long, pressing nothing until the area's own rest check stops it on its patrol page (`YOU ARE SPOTTED BY A PATROL.`, a continue bar) or a fight screen, then `fight first-bar`'s reading: `Return` at the page, `placement` and who acts at the first command bar, its shot, and the run ends there; the camp bar or the map coming back with no fight fails the step (`rest-fight-none`), and the party never walks |
 | `fight`, `fight 900` | Pool: walk with `dosfightwatch.walk_to_encounter` until a fight bar shows, answer each bar by `PoolOfRadiance.COMBAT_KEYS`, log the command bars as below, and end on the map once its bar has held `FIGHT_SETTLED` seconds; one fight a boot.  Curse and Silver Blades, from the map: walk (Silver Blades in move mode) preferring squares not yet stood on (`Explorer`) until a fight starts, answer each bar by `FIGHT_KEYS` (`COMBAT`, `QUICK`, `EXIT` at the treasure and at a locked door, which the walk then marks walled, `NO` at `YES NO`, `Return` to continue), and end on the map once its bar has held `FIGHT_SETTLED` seconds after a fight was met (`FIGHT_MET`: a command bar, the encounter menu, a wandering fight's `ATTACK EVADE` bar (answered `ATTACK` through `_answer`, `EVADE` never) or `CONTINUE BATTLE`, the only one of the three a fight with every member on `QUICK` shows); the number bounds walk and fight, in seconds (`FIGHT_SECONDS`).  Curse's first fight of a boot, with the party confirmed in Tilverton (area 1) -- the status line reads a square and the live area byte is 1, or, when that byte does not read, the loaded save is in area 1 and no step since the load can have moved the party (`STILL_STEPS`) -- walks instead over the area's `GEO` to the tavern at 6,10 (`RouteWalk`, `fight-route` in `run.jsonl`), and the tavern's bar, read as text with the title's font, is answered `PUNCH BARKEEP` before a fight and `LEAVE` after one (`tavern`), the brawl counting as met once `PUNCH BARKEEP` has changed the bar, so it is punched once a step; the bartender's `ASK ABOUT INJURIES IGNORE THEM`, which a save whose brawl was already fought shows first, is answered `IGNORE THEM`, which brings the tavern's bar.  At each command bar the debugger names who acts (`bar` in `run.jsonl`); at the first it logs `placement`, every combatant's square, side, quickfight and control (`COMBAT_LAYOUTS`), and `--first-bar-key KEY` is pressed there once instead of `QUICK`, the next bar logging every record again as `after-first-bar-key`.  A Silver Blades fight in area 16 is blocked unless the gate `$4C2D` is 1, since a successful wandering roll there is a compliment: add `--stage-var 4C2D=1`.  With `--intervene` (Silver Blades only) the game starts as `START.EXE X Gem` (`CHEAT_ARGS`) and Alt+X, the game's own end-the-fight key, is pressed once at the bar after the first-bar key, or at the first bar without one; a command bar coming back stops the run (`fight-intervene`).  The defeat screen (`PARTY_DESTROYED`) stops it at once (`fight-destroyed`).  A second `fight` in the boot follows `camp`, `save X` and `leave`, or another `fight`; the first-bar key and Alt+X are the first fight's only, each result names its fight by number, and every later fight presses `SPACE` once at its first combat screen (`HAND_BACK`: a command bar, or a blank or unclassified bar once combat has begun -- the encounter menu answered, the placement read, or the combat window changed from what the last fight left and reading as a fight, probed at most every `COMBAT_PROBE_SECONDS`), because `QUICK` survives into the next fight, logging every combatant's quickfight just before it (`before-hand-back`) and recording `handed_back`, `handed_back_to` and `before_hand_back`.  A run with a `fight` boots DOSBox-X (`dosboxx.XSession`) rather than DOSBox 0.74 |
 | `prayer-watch 49`, `prayer-watch 35` | Pool (35 and 49), Curse and Silver Blades (49), from the map, `load` first, with each title's addresses (`dosfightwatch.PRAYER_LAYOUTS`).  Pool walks to an encounter (`walk_to_encounter`) and arms at the encounter menu; Curse and Silver Blades walk as `fight` does (Silver Blades' area 16 needs `--stage-var 4C2D=1` here too) and arm at the first command bar, once `placement` is logged and `QUICK` pressed there.  At that point it reads every member's effect nodes and Prayer's handler table, breaks on the id-49 stub (and Pool's id-35 stub) and the attack roll's stub (Pool's `08D2:003E`, the table's segment less the Prayer unit plus the attack unit), arm the list-10 call and its return at the segment that stub's far jump names, re-arming when a stub hit shows a new one, arm the handler, bonus test, +1 helper and penalty at the overlay segment the stub's far jump names once it loads, answer each bar (Pool by `COMBAT_KEYS`, Curse and Silver Blades by `FIGHT_KEYS`), and log each halt as `prayer-halt`: registers, 16 bytes at `SS:SP`, the four-frame `BP` chain, combatant name and side, the node's five bytes and the two roll bytes the +1 helper raises (Pool's `DS:0x6816` and `DS:0x6822`).  A party attack is a list-10 call halt with a side-0 attacker, closed by that attacker's next return halt.  For id 49 the step stops after one party attack whose own helper or penalty halt fell inside it, and in Curse and Silver Blades only once a monster's attack has also reached the penalty (`monster_penalties`), which a conclusive run there needs (only a list-10 penalty, an attack, counts as a monster's attack; a saving-throw penalty, list 12, does not; and a later round replaces an ally's round until a member carrying the node has completed one); for id 35 three completed pairs with no Prayer stub halt inside them are a conclusive result, and the step stops after the third.  It also stops when the map has held `FIGHT_SETTLED` seconds, at the defeat screen (Curse and Silver Blades), or after `PRAYER_FIGHT_SECONDS`; the step fails if the menu or first command bar came more than `PRAYER_BOOT_SECONDS` after the driver was made (Pool's walk is bounded by its 40 steps, the other two's by `FIGHT_SECONDS`, and both by the run's `--deadline`).  The result is `conclusive: False`, and the run exits 2 with `inconclusive` in `summary.json` rather than `lost` or `completed`, when no member carried the node at the menu or at the stop, an armed or halted routine's code did not match `GAME.OVR`, the stop-time party was not read, or, for id 49, no party attack armed at the stubs ran its helper or penalty (the first call loads the overlay before its routines are armed, so a round needs a later attack).  Only `shot`, `press` and `read` may follow |
 | `read` | copies `SAVE/` out and decodes every node, the clock, the place and each character's experience, installed slot against each saved one; for Pools of Darkness also each character's eight thief skills, item count, encumbrance, movement, current movement, record byte 0x130 (spell id 126's book byte, `book_0x130`) and items |
@@ -1980,6 +1981,16 @@ SECOND_FIGHT_TITLES = frozenset({"curse", "ssb"})
 #: `fight first-bar`: walk into a fight, log the placement and who acts at
 #: its first command bar, shoot it and end the run there.
 FIRST_BAR = "first-bar"
+#: `rest-fight`: the Compound, Silver Blades area 68, whose script (`ECL2.DAX`
+#: block 68, byte for byte the C64 `ECL44`) has no walking roll; its only
+#: random fight is the rest check's entry 3, `YOU ARE SPOTTED BY A PATROL.`
+#: and then a fight, on the square the party camped on.
+REST_FIGHT_TITLES = frozenset({"ssb"})
+REST_FIGHT_AREA = 68
+#: The bars that stop a `rest-fight` rest as the patrol's: its continue page,
+#: or a fight screen should the page be missed.
+REST_FIGHT_KINDS = frozenset({"continue", "command", "encounter", "ambush",
+                              "continue_battle"})
 #: Steps Pool's `fight` walks with `dosfightwatch.walk_to_encounter` before
 #: giving up on meeting one.
 POOL_FIGHT_WALK_STEPS = 40
@@ -2846,7 +2857,8 @@ STEP_HELP = ("load, begin, vault, move-on, 'walk MI', 'walk I', 'walk 1', 'turn 
              "'items 1', "
              "'halve 1 1', 'join 4 15', 'trade 1 2 3', 'view 1', 'memorize 5', 'cast 2 BLESS', "
              "'cast 2 RESIST-COLD 4', 'scribe 5 PROTECTION FROM GOOD', 'shot NAME', "
-             "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'prayer-watch 49', "
+             "'press KEY', 'fight', 'fight 900', 'fight first-bar', 'rest-fight 10d', "
+             "'prayer-watch 49', "
              "'add ARRONEL', 'walk KKIIJI', 'temple raise 1', "
              "'snapshot NAME', 'restore NAME', 'deposit 5 2', map, continue, exit, "
              "'answer PARLAY p', 'answer CONTINUE Return map', "
@@ -2938,6 +2950,8 @@ def parse_step(text: str) -> Step:
         if not dossnapshot.SNAPSHOT_NAME.match(words[1]):
             raise ValueError(f"{text!r}: a snapshot name is letters, digits, - and _")
         return Step(kind, text, name=words[1])
+    if kind == "rest-fight" and len(words) == 2:
+        return Step(kind, text, minutes=parse_duration(words[1]))
     if kind == "fight" and len(words) == 2 and words[1].lower() == FIRST_BAR:
         return Step(kind, text, name=FIRST_BAR)
     if kind == "fight" and (len(words) == 1 or (
@@ -2998,7 +3012,7 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         previous, last = last, k
         if where == "first-bar":
             raise ValueError(f"only shot and read may come after fight "
-                             f"{FIRST_BAR}: {step.text!r}")
+                             f"{FIRST_BAR} or rest-fight: {step.text!r}")
         if where == "script" and k not in SCRIPT_STEPS:
             raise ValueError(f"only answer, pick, shot and read may come after an "
                              f"answer that leaves a script's bar showing; end the "
@@ -3160,6 +3174,18 @@ def validate_steps(steps: list[Step], title: str = "pool") -> None:
         elif k == "rest":
             if where != "camp":
                 raise ValueError(f"rest needs camp first: {step.text!r}")
+        elif k == "rest-fight":
+            if title not in REST_FIGHT_TITLES:
+                raise ValueError(f"rest-fight is driven in "
+                                 f"{', '.join(sorted(REST_FIGHT_TITLES))} only, "
+                                 f"not {title}")
+            if where != "camp":
+                raise ValueError(f"rest-fight needs camp first: {step.text!r}")
+            if fights:
+                raise ValueError(f"rest-fight is the boot's only fight: {step.text!r}")
+            rest_presses(step.minutes)
+            fights += 1
+            where = "first-bar"
         elif k == "icon":
             if title not in ICON_TITLES:
                 raise ValueError(f"icon is driven in {', '.join(sorted(ICON_TITLES))} "
@@ -6839,6 +6865,11 @@ class Driver:
                    and bar_signature(screen) == state["walking"])
         if walking or self.on_world(screen):
             state["unknown_since"] = None
+            if state.get("stay") and not state["met"]:
+                # `rest-fight` never walks: the map before a fight is met
+                # means the rest's stop led nowhere.
+                raise self.fail("rest-fight-map", "the map came back before "
+                                "any fight; the step does not walk")
             if state["met"]:
                 state["back_since"] = state["back_since"] or time.time()
                 if time.time() - state["back_since"] >= FIGHT_SETTLED:
@@ -8415,7 +8446,7 @@ class Driver:
         if kind not in SCRIBE_KEEPS:
             self.scribing = False
         if (self.moved_since_load is not None
-                and kind not in STILL_STEPS | {"load", "fight"}):
+                and kind not in STILL_STEPS | {"load", "fight", "rest-fight"}):
             self.moved_since_load.append(kind)
 
     def rest(self, minutes: int) -> dict:
@@ -8432,14 +8463,7 @@ class Driver:
         pending = self.scribing and not self.left_camp
         self.scribing = False
         self.ensure_camp()
-        if not self.press_changes(CAMP_REST, wait=10.0):
-            raise self.fail("rest-menu", "REST did not open the rest menu")
-        self.shot("rest-menu")
-        zeroed = self.zero_rest_time()
-        self.shot("rest-zero")
-        presses = self.set_rest_time(minutes)
-        self.shot("rest-set")
-        self.s.key(self.keys.go)
+        zeroed, presses = self._start_rest(minutes)
         passes = minutes // REST_STEP
         ended = self.after_rest(60.0 + 2.0 * passes, f"rest {minutes}m")
         if ended == "message":
@@ -8448,6 +8472,115 @@ class Driver:
         return {"asked": minutes, "zero_presses": zeroed, **presses,
                 "left_camp": self.left_camp, "ended_by_message": ended == "message",
                 "scribe_pending": pending}
+
+    def _start_rest(self, minutes: int) -> tuple[int, dict]:
+        """Camp `REST`, the rest time zeroed and set to `minutes` by key, and
+        the rest begun; the zeroing presses and `set_rest_time`'s counts."""
+        if not self.press_changes(CAMP_REST, wait=10.0):
+            raise self.fail("rest-menu", "REST did not open the rest menu")
+        self.shot("rest-menu")
+        zeroed = self.zero_rest_time()
+        self.shot("rest-zero")
+        presses = self.set_rest_time(minutes)
+        self.shot("rest-set")
+        self.s.key(self.keys.go)
+        return zeroed, presses
+
+    def rest_fight(self, minutes: int) -> dict:
+        """Silver Blades in the Compound (area `REST_FIGHT_AREA`): rest up to
+        `minutes` until the area's own rest check starts its patrol fight,
+        then follow the fight to its first command bar as `fight first-bar`
+        does, pressing nothing there.
+
+        The party never moves: the rest is the game's, and the fight's pages
+        are answered by `FIGHT_KEYS` (`Return` at the patrol's continue
+        bar).  The area is the loaded save's, believed only while no step
+        since the load can have moved the party.  A rest that ends in camp,
+        or a map bar before any fight, fails the step with its screen shot:
+        no fight came in the time asked.
+        """
+        if self.title.key not in REST_FIGHT_TITLES:
+            raise StepFailed(f"rest-fight is driven in "
+                             f"{', '.join(sorted(REST_FIGHT_TITLES))} only, "
+                             f"not {self.title.key}")
+        if self.camp_sig is None or self.where != "camp":
+            raise StepFailed("rest-fight needs camp first")
+        if not hasattr(self.s, "attach"):
+            raise StepFailed("rest-fight reads the combatants through the "
+                             "DOSBox-X debugger, and this session has none")
+        why, area = self._rest_fight_area()
+        self.note(event="rest-fight-area", area=area, why=why)
+        if area != REST_FIGHT_AREA:
+            raise self.fail("rest-fight-area", f"the patrol rest fight is area "
+                            f"{REST_FIGHT_AREA}'s; {why}")
+        self.ensure_camp()
+        zeroed, presses = self._start_rest(minutes)
+        passes = minutes // REST_STEP
+        kind = self._await_rest_fight(60.0 + 2.0 * passes, minutes)
+        self.fights += 1
+        column = status_column(self.title.key)
+        walker = Explorer()
+        state = self._fight_state(True, None)
+        state.update(first_bar_key=None, intervene=False, stop_at_first=True,
+                     stay=True)
+        end = time.time() + self.bounded(float(FIGHT_SECONDS), "rest-fight")
+        while not state["stopped"]:
+            self.check_deadline("rest-fight")
+            if time.time() > end:
+                raise self.fail("rest-fight-budget", f"no command bar in "
+                                f"{FIGHT_SECONDS} s after the rest stopped")
+            try:
+                if self._fight_tick(walker, column, None, state):
+                    break
+            except dosboxx.NotLineDoubled:
+                state["torn"] += 1
+                time.sleep(0.25)
+        if not state["stopped"]:
+            raise self.fail("rest-fight-over", "the fight ended before a "
+                            "command bar was read")
+        self.where = "pressed"
+        return self._first_bar_result(state, {
+            "rest_fight": True, "asked": minutes, "zero_presses": zeroed,
+            **presses, "stopped_rest_on": kind, "area": area})
+
+    def _rest_fight_area(self) -> tuple[str, int | None]:
+        """The loaded save's area, and why it is or is not believed now."""
+        if self.moved_since_load is None:
+            return "no load has run in this boot", None
+        if self.moved_since_load:
+            return (f"{', '.join(self.moved_since_load)} may have moved the "
+                    "party since the load"), None
+        area, how = self._saved_area()
+        return how, area
+
+    def _await_rest_fight(self, timeout: float, minutes: int) -> str:
+        """Wait out a rest until a fight's first bar shows, pressing nothing;
+        the kind of that bar.  The camp bar back, or the map, is a rest that
+        met no fight, and fails the step."""
+        deadline = time.time() + self.bounded(timeout, "rest-fight")
+        while time.time() < deadline:
+            self.check_deadline("rest-fight")
+            try:
+                screen = self.s.capture()
+            except dosboxx.NotLineDoubled:
+                time.sleep(0.25)
+                continue
+            kind = fight_bar_kind(screen)
+            if kind in REST_FIGHT_KINDS:
+                self.note(event="rest-fight-stopped", kind=kind,
+                          shot=self._fight_shot("rest-fight-stopped"))
+                return kind
+            if self.in_camp(screen):
+                time.sleep(1.0)
+                if self.in_camp():
+                    raise self.fail("rest-fight-none", f"the rest of {minutes} "
+                                    "minutes ended in camp with no fight")
+            elif self.on_world(screen):
+                raise self.fail("rest-fight-none", "the map came back after "
+                                "the rest with no fight")
+            time.sleep(0.3)
+        raise self.fail("rest-fight-none", f"neither the camp bar nor a fight "
+                        f"after {timeout:.0f} s of a {minutes}-minute rest")
 
     def rest_message(self) -> None:
         """Curse: `Return` past the continue screens that ended a rest, the map
@@ -9303,7 +9436,7 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
         # to DOSBox 0.74's 320x200.
         # A Pool walk or turn reads the party's square from memory when the
         # status line hides it (`POOL_PLACE`), so it boots DOSBox-X too.
-        debugger = (any(s.kind in ("fight", "prayer-watch") for s in steps)
+        debugger = (any(s.kind in ("fight", "rest-fight", "prayer-watch") for s in steps)
                     or no_encounters
                     or (args.title == "pool"
                         and any(s.kind in ("walk", "turn") for s in steps)))
@@ -9474,6 +9607,8 @@ def _run(args, outer: contextlib.ExitStack, clock=time.monotonic) -> int:
                     r = {"shot": d.shot(step.name)}
                 elif step.kind == "fight":
                     r = d.fight(step.seconds, step.name == FIRST_BAR)
+                elif step.kind == "rest-fight":
+                    r = d.rest_fight(step.minutes)
                 elif step.kind == "prayer-watch":
                     r = d.prayer_watch(step.node)
                 elif step.kind == "temple":
