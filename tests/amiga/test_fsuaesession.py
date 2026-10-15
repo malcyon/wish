@@ -1049,3 +1049,39 @@ def test_the_guest_says_which_route_steps_it_carries_out():
     guest = fsuaesession.FsuaeGuest()
     assert all(guest.supports(kind) for kind in ("insert", "snapshot", "restore", "reset"))
     assert not guest.supports("teleport")
+
+
+def _close_during(guest, monkeypatch, clock, seconds):
+    """Write the menu's close line during the next sleep of exactly `seconds`, as a late line would arrive."""
+    pending = [CLOSE]
+
+    def sleep(length):
+        clock.sleep(length)
+        if pending and length == seconds:
+            _log_line(guest, pending.pop())
+
+    monkeypatch.setattr(fsuaesession.time, "sleep", sleep)
+
+
+def test_a_close_line_later_than_the_wait_ends_the_recovery_with_no_second_backspace(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _fail_a_save(guest, monkeypatch, lane)
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    # The BackSpace closes the menu, but its line only reaches the log after the wait ran out.
+    _close_during(guest, monkeypatch, clock, fsuaesession.MENU_LOG_RECHECK)
+    _menu_log(guest, [None, "Reset at 00C456B2. Chipset mask = 00000000"])
+    guest.reset("wish1-test", 60)
+    assert lane.keys == ["BackSpace", *TOP, *["Down"] * 20, "Return", "Return"]
+
+
+def test_a_close_line_still_on_its_way_is_waited_for_before_the_log_is_read(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _fail_a_save(guest, monkeypatch, lane)
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    # The walk's last key was just sent and closed the menu; its line arrives while the guest waits.
+    guest._last_key = clock.now - 1.0
+    _close_during(guest, monkeypatch, clock, fsuaesession.MENU_LOG_WAIT - 1.0)
+    _menu_log(guest, [OPEN, CLOSE, "Reset at 00C456B2. Chipset mask = 00000000"])
+    guest.reset("wish1-test", 60)
+    assert lane.keys[:3] == ["F12", "BackSpace", "F12"]

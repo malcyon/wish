@@ -60,8 +60,12 @@ REDRAW_WAIT = 10.0
 #: the top border), 54% to 99% for the game's own screens.
 BLACK_LEVEL = 40
 BLACK_SHARE = 0.05
-#: Seconds the emulator may take to log the F12 menu opening or closing.
+#: Seconds the emulator may take to log the F12 menu opening or closing. Measured on Curse: the
+#: line reached the log 0.17 s to 1.61 s after the key went down, in 24 of 24 openings and
+#: closings (12 each), so this is three times the longest.
 MENU_LOG_WAIT = 5.0
+#: Seconds the guest waits after a BackSpace's wait runs out before it reads the log once more.
+MENU_LOG_RECHECK = 1.0
 #: More BackSpaces than the menu has levels: the top list, SAVESTATES, a slot and its
 #: "Overwrite savestate N?" question make four.
 MENU_MAX_DEPTH = 5
@@ -516,28 +520,46 @@ class FsuaeGuest:
         text = self._log_since(0)
         return text.rfind(_MENU_OPEN) > text.rfind(_MENU_CLOSE)
 
+    def _settle_log(self) -> None:
+        """Wait until `MENU_LOG_WAIT` after the last key, so a menu line that key caused is in the log."""
+        if self._last_key is not None:
+            left = self._last_key + MENU_LOG_WAIT - time.monotonic()
+            if left > 0:
+                time.sleep(left)
+
     def _recover_menu(self) -> list[str]:
         """After a walk that went wrong, close the menu on its top list so its depth is 1 again.
 
-        The emulator logs every opening and closing of the menu. A closed menu is opened with
-        F12; then BackSpace pops one level at a time until the log shows the menu closing, which
-        only BackSpace on the top list does, so no BackSpace reaches the game. Returns the keys
-        sent, none when the depth is known.
+        The emulator logs every opening and closing of the menu, up to `MENU_LOG_WAIT` after the
+        key. Once that has passed since the last key, the log's last word says whether the menu
+        is open; a closed one is opened with F12. The log is read again just before the first
+        BackSpace, and BackSpace then pops one level at a time until the log shows the menu
+        closing, which only BackSpace on the top list does. After a BackSpace whose wait runs
+        out, the log is read once more and a close found then ends the recovery, so a late line
+        does not let another BackSpace reach the game. Returns the keys sent, none when the
+        depth is known.
         """
         if self._menu_depth is not None:
             return []
         keys: list[str] = []
+        self._settle_log()
         if not self._menu_open_in_log():
             since = self._log_size()
             self._send("F12")
             keys.append("F12")
             if self._await_log(since, lambda t: _MENU_OPEN in t, MENU_LOG_WAIT) is None:
                 raise RouteError("the emulator log shows the F12 menu did not open to be closed on its top list")
+        if not self._menu_open_in_log():
+            raise RouteError("the emulator log shows the F12 menu closed again before its first BackSpace")
         for _ in range(MENU_MAX_DEPTH):
             since = self._log_size()
             self._send("BackSpace")
             keys.append("BackSpace")
             if self._await_log(since, lambda t: _MENU_CLOSE in t, MENU_LOG_WAIT) is not None:
+                self._menu_depth = 1
+                return keys
+            time.sleep(MENU_LOG_RECHECK)
+            if not self._menu_open_in_log():
                 self._menu_depth = 1
                 return keys
         raise RouteError(f"the F12 menu was still open after {MENU_MAX_DEPTH} BackSpaces")
@@ -602,6 +624,7 @@ class FsuaeGuest:
         walk = ["Down", "Down", "Return", *["Down"] * (slot - 1), "Return", "Return"]
         # A state file there means the menu marked the slot when it saved it, even for a save
         # whose log line never came; "Overwrite savestate N?" then opens on Confirm overwrite.
+        # A question this guess misses leaves the walk on it with no save line, so the log wait fails the save.
         if slot in self._menu_full or path.exists():
             walk.append("Return")
         keys = [*recovered, *self._walk(walk, 3)]
