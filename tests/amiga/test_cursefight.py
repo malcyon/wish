@@ -1463,8 +1463,12 @@ class CastGame(Game):
     fails that read), or with no `polls` the row the last bar read."""
 
     def __init__(self, clock, script, *, owners=(), watches=(), aims=((BRUTUS_AT, 6),),
-                 ids=(0x52, 0x52, 0x52), unguarded=(), polls=()):
+                 ids=(0x52, 0x52, 0x52), unguarded=(), polls=(), poll_seconds=0.0,
+                 poll_hold=None):
         super().__init__(clock, script, owners=owners)
+        #: Seconds of the run's clock each poll's read takes, and an event a poll's read
+        #: waits on before it answers.
+        self.poll_seconds, self.poll_hold = poll_seconds, poll_hold
         self.walking = False
         self.watches, self.aims = list(watches), list(aims)
         self.ids = list(ids)
@@ -1490,6 +1494,9 @@ class CastGame(Game):
         assert spell == 0x52
         if names == ["BRUTUS"]:
             self.polled += 1
+            if self.poll_hold is not None:
+                self.poll_hold.wait(5)
+            self.clock.now += self.poll_seconds
             if not self.polls:
                 return {"BRUTUS": (self.last_watch or self.watches[0])["BRUTUS"]}
             row = self.polls.pop(0) if len(self.polls) > 1 else self.polls[0]
@@ -1733,11 +1740,25 @@ def test_cast_verdict_takes_the_runs_away_frame_as_running():
                                    LOADED) == ("fled", [])
 
 
-def test_cast_verdict_refutes_a_member_who_fled_still_under_the_game():
+def test_cast_verdict_keeps_a_member_who_fled_under_the_game_fled_and_names_his_control():
+    """Spec 66adfbd2 records leaving the map as its own outcome, not a refutation."""
     log = {**_log([_watch((142,))]), "changes": [_row((142,), status=3)]}
     kind, problems = cursefight.cast_verdict(log, _watch(status=0), _saved(status=0, control=0xB3),
                                              LOADED)
-    assert kind == "refuted" and "still reads control 0xb3" in problems[0]
+    assert kind == "fled" and problems == [
+        "BRUTUS ran off the map but reads control 0xb3, status 0 live, not 0x00 and 0",
+        "BRUTUS ran off the map but reads control 0xb3, status 0 saved, not 0x00 and 0"]
+
+
+def test_cast_verdict_keeps_a_berserk_member_who_left_the_map_under_the_game_got_away():
+    log = {**_log([_watch((137,))]), "changes": [_row((137,), status=3)]}
+    kind, problems = cursefight.cast_verdict(log, _watch(status=0), _saved(status=0, control=0xB3),
+                                             LOADED)
+    assert kind == "got_away" and problems == [
+        "BRUTUS held 137, got away and reads control 0xb3 live, not 0x00",
+        "BRUTUS held 137, got away and reads control 0xb3 saved, not 0x00"]
+    assert cursefight.cast_verdict(log, _watch(status=0, control=0), _saved(status=0),
+                                   LOADED) == ("got_away", [])
 
 
 def test_cast_verdict_records_got_away_without_running_as_its_own_outcome():
@@ -1810,6 +1831,77 @@ def test_a_failed_poll_is_logged_and_the_fight_goes_on(tmp_path):
     assert found["outcome"] == "won"
     assert [e["frame"] for e in cast.poll_errors] == [2]
     assert [(c["frame"], c["status"]) for c in cast.changes] == [(1, 1), (3, 3)]
+
+
+def test_a_poll_that_outlives_its_limit_is_never_joined_by_a_second_read(tmp_path, monkeypatch):
+    """The first poll's read hangs; every later grab skips its poll while that read runs."""
+    import threading
+
+    monkeypatch.setattr(cursefight, "POLL_READ_LIMIT", 0.05)
+    hold = threading.Event()
+    clock = Clock()
+    game = CastGame(clock, ["~monster", "~monster2", "~monster", "party_won", "world"],
+                    watches=[_watch()], poll_hold=hold)
+    cast = _cast(game)
+    try:
+        found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=cast)
+        assert found["outcome"] == "won"
+        assert game.polled == 1 and cast.polls_skipped >= 4
+        assert [e["frame"] for e in cast.poll_errors] == [1]
+        assert "no answer" in cast.poll_errors[0]["error"]
+    finally:
+        hold.set()
+
+
+def test_poll_time_counts_toward_no_fight_timer(tmp_path):
+    """A held frame polled with a 40 s read each time is a held frame of a few seconds."""
+    clock = Clock()
+    game = CastGame(clock, ["~still"] * 5 + ["party_won", "world"], watches=[_watch()],
+                    poll_seconds=40.0)
+    found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+    assert found["outcome"] == "won" and game.polled >= 5
+    assert clock.now > cursefight.FIGHT_STALL * 2
+
+
+def test_reads_of_the_located_game_never_overlap(monkeypatch):
+    """A second thread's read waits for the first, as a worker a bounded read gave up on
+    would still be reading when the next read starts."""
+    import threading
+
+    from automap import amiga
+
+    state = {"active": 0, "most": 0, "located": 0}
+    first_in, second_in = threading.Event(), threading.Event()
+
+    class Target:
+        data_base = 0
+
+        def locate(self):
+            state["located"] += 1
+
+        def read(self, address, size):
+            state["active"] += 1
+            state["most"] = max(state["most"], state["active"])
+            if address == 1:
+                first_in.set()
+                second_in.wait(0.5)
+            else:
+                second_in.set()
+            state["active"] -= 1
+            return bytes(size)
+
+    monkeypatch.setattr(amiga, "AmigaTarget", lambda pipe, machine: Target())
+    monkeypatch.setattr(amiga, "WinuaePipe", lambda holder: None)
+    memory = cursefight.Memory("holder")
+    first = threading.Thread(target=lambda: memory.target().read(1, 4))
+    first.start()
+    assert first_in.wait(2)
+    second = threading.Thread(target=lambda: memory.target().read(2, 4))
+    second.start()
+    first.join(3)
+    second.join(3)
+    assert state == {"active": 0, "most": 1, "located": 1}
+    assert memory.target().data_base == 0
 
 
 def test_a_fight_with_no_cast_reads_no_member_between_bars(tmp_path):

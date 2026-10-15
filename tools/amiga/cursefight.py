@@ -43,6 +43,7 @@ import json
 import pathlib
 import shutil
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -590,16 +591,20 @@ class Memory:
         self._in_fight: bool | None = None
         #: The last mode read's error, None while the reads work.
         self.mode_error: str | None = None
+        #: Held for every call on the located game, so a read a timed-out worker is still
+        #: making never runs beside another on the same pipe.
+        self._lock = threading.RLock()
 
     def target(self) -> Any:
-        if self._target is None:
-            from automap import amiga  # noqa: PLC0415
+        with self._lock:
+            if self._target is None:
+                from automap import amiga  # noqa: PLC0415
 
-            target = amiga.AmigaTarget(amiga.WinuaePipe(holder=self.holder),
-                                       amiga.MACHINES[self.title])
-            target.locate()
-            self._target = target
-        return self._target
+                target = amiga.AmigaTarget(amiga.WinuaePipe(holder=self.holder),
+                                           amiga.MACHINES[self.title])
+                target.locate()
+                self._target = Serial(target, self._lock)
+            return self._target
 
     def fields(self, raw: bytes) -> dict[str, int]:
         return {field: raw[at] for field, at in self.record.items()}
@@ -695,6 +700,29 @@ class Memory:
     def aim(self) -> tuple[int, int]:
         """The aim menu's target record address and the count of combatants NEXT steps through."""
         return self._global(AIM_TARGET, 4), self._global(AIM_COUNT, 1)
+
+
+class Serial:
+    """A located game whose every method call holds one lock.
+
+    `WinuaePipe` sends each request on its own connection with no lock of its own, and the
+    pipe takes one client at a time, so a worker `curseadd.bounded` gave up on can still be
+    reading when the next read starts; under the lock that read waits instead.
+    """
+
+    def __init__(self, target: Any, lock: Any):
+        self._inner, self._lock = target, lock
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self._inner, name)
+        if not callable(value):
+            return value
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            with self._lock:
+                return value(*args, **kwargs)
+
+        return call
 
 
 def watch_row(raw: bytes, address: int, effects: list[int], spell: int) -> dict:
@@ -923,6 +951,9 @@ class Cast:
         #: Frames that showed the watched member's runs-away message, and failed poll reads.
         self.runs_away_frames: list[dict] = []
         self.poll_errors: list[dict] = []
+        #: A poll read that outlived its limit and is still running; no poll starts beside it.
+        self._poll_worker: threading.Thread | None = None
+        self.polls_skipped = 0
 
     def names(self) -> list[str]:
         return list(dict.fromkeys((self.watched, self.caster, self.aim_at)))
@@ -936,7 +967,7 @@ class Cast:
         self._note(screens, rows[self.watched], when)
         return reading
 
-    def _note(self, screens: Any, row: dict, when: str) -> None:
+    def _note(self, screens: Any, row: dict, when: str, frame: int | None = None) -> None:
         """Log the watched member's row when any of `WATCHED_FIELDS` differs from the last."""
         if set(row["effects"]) & set(LOWERING):
             self.lowered = True
@@ -944,25 +975,45 @@ class Cast:
         if seen == self._last_seen:
             return
         self._last_seen = seen
-        change = {"frame": screens.count, "when": when,
+        change = {"frame": screens.count if frame is None else frame, "when": when,
                   **{f: (list(row[f]) if f == "effects" else row[f]) for f in WATCHED_FIELDS}}
         self.changes.append(change)
         screens.events.append({"watch_change": change})
 
-    def poll(self, screens: Any, shot: Any) -> None:
+    def poll(self, screens: Any, shot: Any) -> float:
         """One fight poll: note a frame showing the watched member's runs-away message, then
-        read him and log a change. A read that fails is logged and the fight goes on."""
+        read him and log a change, returning the seconds the read took. A read that fails or
+        outlives `POLL_READ_LIMIT` is logged and the fight goes on; while such a read is still
+        running no poll reads, so two reads never overlap."""
         guard = RUNS_AWAY_GUARDS.get(self.watched)
         if guard is not None and guard in screens.guards and screens.guards(guard, shot):
             self.runs_away_frames.append({"frame": screens.count, "shot": str(shot)})
             screens.events.append({"runs_away": self.runs_away_frames[-1]})
-        try:
-            rows = curseadd.bounded(lambda _h: self.memory.watch([self.watched], self.spell),
-                                    self.memory.holder, screens.left(POLL_READ_LIMIT))
-        except RouteError as exc:
-            self.poll_errors.append({"frame": screens.count, "error": str(exc)})
-            return
-        self._note(screens, rows[self.watched], "poll")
+        if self._poll_worker is not None and self._poll_worker.is_alive():
+            self.polls_skipped += 1
+            return 0.0
+        self._poll_worker = None
+        began, frame = screens.clock(), screens.count
+        result: dict[str, Any] = {}
+
+        def work() -> None:
+            try:
+                result["rows"] = self.memory.watch([self.watched], self.spell)
+            except BaseException as exc:  # noqa: BLE001 - logged by the poll below
+                result["error"] = f"{type(exc).__name__}: {exc}"
+
+        worker = threading.Thread(target=work, name="cursefight-poll", daemon=True)
+        worker.start()
+        worker.join(screens.left(POLL_READ_LIMIT))
+        if worker.is_alive():
+            self._poll_worker = worker
+            self.poll_errors.append({"frame": frame,
+                                     "error": f"no answer in {POLL_READ_LIMIT:.0f}s"})
+        elif "error" in result:
+            self.poll_errors.append({"frame": frame, "error": result["error"]})
+        else:
+            self._note(screens, result["rows"][self.watched], "poll", frame)
+        return max(0.0, screens.clock() - began)
 
     def _settle(self, reading: dict) -> None:
         """Close a cast the caster's next bar or the fight's end finds unfinished, and check
@@ -1135,7 +1186,7 @@ class Cast:
                 "watch": self.watched, "events": self.events, "reads": self.reads,
                 "captures": self.captures, "lowered_seen": self.lowered, "quick": self.quick,
                 "changes": self.changes, "runs_away_frames": self.runs_away_frames,
-                "poll_errors": self.poll_errors}
+                "poll_errors": self.poll_errors, "polls_skipped": self.polls_skipped}
 
 
 def fight(screens: Screens, memory: Memory, members: list[str],
@@ -1162,7 +1213,10 @@ def fight(screens: Screens, memory: Memory, members: list[str],
                 f"the fight was still going after {FIGHT_LIMIT:.0f}s")
         seen, shot = screens.look("fight")
         if cast is not None and screens.grabbed:
-            cast.poll(screens, shot)
+            # The poll's own time is no time the screen was watched, so no timer counts it.
+            spent = cast.poll(screens, shot)
+            started, still_since, guided = started + spent, still_since + spent, guided + spent
+            settle_from = None if settle_from is None else settle_from + spent
         state = next((s for s in rules.known if s in seen), None)
         digest = _digest(shot)
         if state is not None:
@@ -1445,12 +1499,14 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
 
     The watched member's readings are every bar's and every logged poll change. He left the
     map when one reads status 3; he ran when one holds 142 or a frame showed his runs-away
-    message. `fled`: he ran and left the map; after the fight his control reads 0 and his
-    status 0, live and in the saved slot (`saved`, his read-back row), saved with the creature
-    type he was first read with, holding none of 35, 137 and 142, above 0 hit points.
-    `got_away`: he left the map without running; expected saved at status 0 with the type he
-    was first read with, his control recorded and not judged. `refuted`: 137 or 142 was seen
-    and his control still reads as loaded after the fight. `pass`, only for the berserk form
+    message. Leaving the map is judged first and is never a refutation (spec 66adfbd2).
+    `fled`: he ran and left the map; after the fight his control reads 0 and his status 0,
+    live and in the saved slot (`saved`, his read-back row), saved with the creature type he
+    was first read with, holding none of 35, 137 and 142, above 0 hit points. `got_away`: he
+    left the map without running; expected saved at status 0 with the type he was first read
+    with, and with control 0 live and saved if he held 137; with neither effect his control is
+    recorded and not judged. `refuted`: 137 or 142 was seen, he never left the map, and his
+    control still reads as loaded after the fight. `pass`, only for the berserk form
     that stays on the map: he held 137; after the fight his control reads 0 and his status as
     loaded, live and saved; the saved chain holds none of 35, 137 and 142; his hit points are
     above 0. A member who ran and was never read off the map is `inconclusive`, as is anything
@@ -1482,15 +1538,15 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
         if left:
             problems.append(f"{name} was saved holding effects {left}")
 
-    if (ran or berserk) and any(row is not None and row["control"] == loaded["control"]
-                                for _where, row in rows):
-        problems.append(f"{name} held {BERSERK} or {RUNS_AWAY} and still reads control "
-                        f"{loaded['control']:#04x} after the fight")
-        return "refuted", problems
     if left_map and not ran:
         if saved is not None and (saved["status"], saved["creature_type"]) != (0, kind):
             problems.append(f"{name} got away but was saved with status {saved['status']}, "
                             f"type {saved['creature_type']}; expected 0, {kind}")
+        if berserk:
+            for where, row in rows:
+                if row is not None and row["control"] != 0:
+                    problems.append(f"{name} held {BERSERK}, got away and reads control "
+                                    f"{row['control']:#04x} {where}, not 0x00")
         return "got_away", problems
     if left_map:
         for where, row in rows:
@@ -1506,6 +1562,11 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
                 problems.append(f"{name} reads 0 hit points saved")
         leftover()
         return "fled", problems
+    if (ran or berserk) and any(row is not None and row["control"] == loaded["control"]
+                                for _where, row in rows):
+        problems.append(f"{name} held {BERSERK} or {RUNS_AWAY} and still reads control "
+                        f"{loaded['control']:#04x} after the fight")
+        return "refuted", problems
     if ran and not berserk:
         problems.append(f"{name} held {RUNS_AWAY} but no read caught him off the map "
                         f"(status {GOT_AWAY})")
