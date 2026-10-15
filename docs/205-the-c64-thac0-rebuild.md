@@ -189,9 +189,16 @@ type-`$49` (bit 0) item. `0x0EC` is `COM.PREP $1682[dexterity]`, and the
 converter writes `0x0EC` whenever it has the item-type table, and
 `thac0_current` too when the source has one, so a READY before the first fight
 leaves the number unchanged. The rule reproduces the byte in all 124 engine-written
-slots checked. Curse's weapon block (`$387E`) is the same rule, with its
-`0x0EC` cache from `COM.PREP $1740`, and is applied the same way; Silver
-Blades' is unchecked, so its converted byte stays base plus strength.
+slots checked. Curse's weapon block (`$387E`) reads as the same rule from the
+code: the type-flag bits are the same, the readied ammunition is type `$1C`
+(bit 7) or `$49` (bit 0), lowest readied slot first, and `COM.PREP $178B`
+equals the dexterity table for 3-21. The rule reproduces the byte in 112 of the
+116 engine-written Curse roster blocks whose `0x0EC` is set, 17 of them with a
+readied weapon, none a bowman or carrying readied ammunition. The four others
+are one character, saved after shopping with a dart readied, whose roster
+block still holds the strength-only byte: the engine had not rebuilt it since.
+Silver Blades' block is unread, so its converted byte stays base plus
+strength.
 
 ## Where the numbers came from
 

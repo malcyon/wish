@@ -55,8 +55,8 @@ __all__ = [
     "INFRAVISION",
     "LEVEL_FIELDS",
     "strength_index",
-    "pool_missile_adjustment",
-    "pool_thac0_current_byte",
+    "missile_adjustment",
+    "readied_thac0_current_byte",
     "thac0_current_byte",
     "write",
     "read",
@@ -990,10 +990,10 @@ _MISSILE_BY_DEX = (-3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3, 3, 4)
 #: The item types whose readied plus a launcher adds to the roster THAC0 in
 #: Pool of Radiance: `LIBRARY $36F9` takes type `$1C` for weapon-flag bit 7
 #: and type `$49` for bit 0.
-_POOL_AMMO_BIT7, _POOL_AMMO_BIT0 = 0x1C, 0x49
+_AMMO_BIT7_TYPE, _AMMO_BIT0_TYPE = 0x1C, 0x49
 
 
-def pool_missile_adjustment(dexterity: int) -> int:
+def missile_adjustment(dexterity: int) -> int:
     """What `COM.PREP $1682` gives a dexterity, as the signed value stored at
     record `0x0EC`."""
     return _MISSILE_BY_DEX[min(max(int(dexterity), 3), 21) - 3]
@@ -1020,7 +1020,7 @@ def _readied_weapon(raws: list[bytes],
                  and item_types[r[0]].raw[TYPE_LOCATION] == 0), None)
 
 
-def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
+def readied_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
                             raws: list[bytes],
                             item_types: Mapping[int, ItemType]) -> int:
     """The byte `LIBRARY $3729` leaves in `thac0_current` in Pool of Radiance:
@@ -1049,9 +1049,9 @@ def pool_thac0_current_byte(base_byte: int, hit_bonus: int, missile: int,
         total += hit_bonus
     total += _signed_plus(weapon)
     if flags & 0x80:
-        total += readied_plus(_POOL_AMMO_BIT7)
+        total += readied_plus(_AMMO_BIT7_TYPE)
     elif flags & 0x01:
-        total += readied_plus(_POOL_AMMO_BIT0)
+        total += readied_plus(_AMMO_BIT0_TYPE)
     return total & 0xFF
 
 
@@ -1331,10 +1331,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                      Confidence.CONFIRMED, Provenance.COMPUTED)
     pool_item_table = (deltas.key == "pool-of-radiance"
                        and item_types is not None)
-    # Curse's `LIBRARY $387E` is the same weapon block as Pool's `$368F`,
-    # its dexterity cache `COM.PREP $1740` holds Pool's table for 3-21, and
-    # its ITEMS rows for the weapons and ammunition are Pool's; Silver
-    # Blades' are unchecked, so it keeps base plus strength.
+    # Curse's `LIBRARY $387E` is Pool's `$368F` block read from the code: the
+    # same type-flag bits, and readied types 0x1C and 0x49 as the ammunition.
+    # Its `COM.PREP $178B` table equals the one here for dexterity 3-21.  Of
+    # the 116 engine-written C64 Curse roster blocks with 0x0EC set, 112 agree
+    # with `readied_thac0_current_byte` and the other four are one character
+    # whose block was not rebuilt after shopping; none holds a bowman.  Silver
+    # Blades is unread, so it keeps base plus strength.
     weapon_table = (deltas.key in ("pool-of-radiance",
                                    "curse-of-the-azure-bonds")
                     and item_types is not None)
@@ -2805,7 +2808,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     if weapon_table:
         dst = _field("thac0")
         dex_dst = _field("missile_attack_adjustment")
-        missile = pool_missile_adjustment(rec.get("dexterity"))
+        missile = missile_adjustment(rec.get("dexterity"))
         rec.set("missile_attack_adjustment", missile)
         rep.note(dex_dst.offset, dex_dst.size,
                  "missile_attack_adjustment: what dexterity gives at "
@@ -2815,7 +2818,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         raw_inv = rec.get_raw("inventory")
         hit = c64_strength_hit_step(w.get("strength", 0),
                                     w.get("exceptional_strength", 0))
-        rec.set("thac0", pool_thac0_current_byte(
+        rec.set("thac0", readied_thac0_current_byte(
             rec.get("thac0_base"),
             hit if rec.get("strength_bonus_flag") else 0, missile,
             [raw_inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]

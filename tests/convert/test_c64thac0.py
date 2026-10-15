@@ -224,7 +224,7 @@ def test_the_dex_term_is_the_missile_table_not_dexterity_itself():
     table = {3: -3, 4: -2, 5: -1, 6: 0, 15: 0, 16: 1, 17: 2, 18: 3, 20: 3,
              21: 4, 25: 4}
     for dexterity, want in table.items():
-        assert c64_codec.pool_missile_adjustment(dexterity) == want
+        assert c64_codec.missile_adjustment(dexterity) == want
         rec, _ = _pool([_item(2)], dexterity=dexterity)
         assert rec.get("missile_attack_adjustment") == want
 
@@ -282,11 +282,11 @@ def test_a_type_49_ammunition_plus_is_taken_for_a_bit_0_weapon_only():
 def test_the_byte_wraps_mod_256_like_the_engines_adc():
     types = {1: _type(0x04)}
     raws = [_item(1, plus=10)]
-    assert c64_codec.pool_thac0_current_byte(250, 2, 0, raws, types) == 6
+    assert c64_codec.readied_thac0_current_byte(250, 2, 0, raws, types) == 6
 
 
 def test_a_dexterity_below_3_takes_the_lowest_read_row():
-    assert c64_codec.pool_missile_adjustment(1) == -3
+    assert c64_codec.missile_adjustment(1) == -3
 
 
 def test_a_readied_weapon_of_an_unknown_type_counts_as_no_weapon():
