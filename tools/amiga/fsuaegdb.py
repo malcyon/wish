@@ -315,6 +315,21 @@ def check_shift_letter(key: str) -> None:
                          "as 7.")
 
 
+def largest_window(display: str, found: list[str]) -> str | None:
+    """The emulator's main window: the largest one, as it also keeps a 10x10 helper.
+
+    None when no window of `found` has a readable size above 100 pixels.
+    """
+    try:
+        sized = [(w, window_size(display, w)) for w in found]
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    sized = [(w, wh) for w, wh in sized if wh and min(wh) > 100]
+    if sized:
+        return max(sized, key=lambda item: item[1][0] * item[1][1])[0]
+    return None
+
+
 def press(display: str, key: str, settle: float) -> None:
     """One keystroke into the emulator, through XTEST on its own display.
 
@@ -328,8 +343,9 @@ def press(display: str, key: str, settle: float) -> None:
     check_shift_letter(key)
     env = {"DISPLAY": display, "PATH": "/usr/bin:/bin"}
     found = fsuaepor.find_windows(display)
-    if found:
-        fsuaepor.focus(display, found[0])
+    target = largest_window(display, found) or (found[0] if found else None)
+    if target:
+        fsuaepor.focus(display, target)
     subprocess.run(["xdotool", "key", key], env=env, check=False)
     time.sleep(settle)
 
@@ -2608,13 +2624,10 @@ def fit_window(display: str, size: tuple[int, int] = SCREEN,
         if not alive():
             return False
         try:
-            sized = [(w, window_size(display, w))
-                     for w in fsuaepor.find_windows(display, 5)]
+            main = largest_window(display, fsuaepor.find_windows(display, 5))
         except (OSError, subprocess.TimeoutExpired):
-            sized = []
-        sized = [(w, wh) for w, wh in sized if wh and min(wh) > 100]
-        if sized:
-            main = max(sized, key=lambda item: item[1][0] * item[1][1])[0]
+            main = None
+        if main:
             subprocess.run(["xdotool", "windowsize", main, str(size[0]),
                             str(size[1]), "windowmove", main, "0", "0"],
                            env=env, check=False, timeout=5)
