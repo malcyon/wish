@@ -1,9 +1,9 @@
-"""A Pool of Radiance character's C64 movement is computed, not copied.
+"""A Pool of Radiance or Curse character's C64 movement is computed, not copied.
 
 The C64's encounter menu FLEE reads roster `+0x1B` before any fight rebuilds
 it, so a stale source value has to be replaced by what the C64 roster rebuild
 (`LIBRARY $3729`) would store: `goldbox.derive.expected_movement`. Without the
-ITEMS type table the copy stays, and every other title keeps it.
+ITEMS type table the copy stays, and Silver Blades keeps it.
 """
 
 from __future__ import annotations
@@ -68,10 +68,35 @@ def test_readied_plate_armour_sets_movement_six():
     assert rec.get("roster_movement") == 6
 
 
-def test_another_title_keeps_the_copy_even_with_a_table():
-    char = _char(game="curse-of-the-azure-bonds")
+def test_silver_blades_keeps_the_copy_even_with_a_table():
+    char = _char(game="secret-of-the-silver-blades")
     rec, _ = c64_codec.write(char, item_types={})
     assert rec.get("roster_movement") == 12
+
+
+CURSE = "curse-of-the-azure-bonds"
+
+
+def test_a_curse_zombies_stale_six_becomes_the_rebuilds_twelve():
+    """A zombie's roster byte is 6; a living member with base movement 12 and
+    no load over his allowance is 12, which `LIBRARY $3918` stores."""
+    char = _char(game=CURSE, gold=0)
+    char.set("movement_current", 6, "made up: the zombie's rate")
+    rec, rep = c64_codec.write(char, item_types={})
+    assert rec.get("roster_movement") == 12
+    assert "C64 roster rebuild" in rep.sources[0x11B]
+
+
+def test_a_curse_member_in_plate_gets_the_limited_value():
+    rec, _ = c64_codec.write(_char(game=CURSE, gold=0, inventory=[_plate()]),
+                             item_types=_armour_types())
+    assert rec.get("roster_movement") == 6
+
+
+def test_an_overloaded_curse_member_gets_the_limited_value():
+    """600 coins over an allowance of 0 is the band 9."""
+    rec, _ = c64_codec.write(_char(game=CURSE), item_types={})
+    assert rec.get("roster_movement") == 9
 
 
 def test_the_field_disposition_no_longer_says_copied():

@@ -1318,9 +1318,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     block below, placed after the per-class levels are written.
 
     `item_types` is the ITEMS type table (`goldbox.items.load_item_types`).
-    With it a Pool of Radiance character's `roster_movement` is computed by
-    `derive.expected_movement` from the converted record; without it, and for
-    every other title, the source's `movement_current` is copied.
+    With it a Pool of Radiance or Curse character's `roster_movement` is
+    computed by `derive.expected_movement` from the converted record; without
+    it, and for Silver Blades, the source's `movement_current` is copied.
 
     `companions` is the title's companion table (`goldbox.companions`).  With
     it a companion who matches a `MON` file gets that file's story byte at
@@ -1348,7 +1348,10 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                      "the C64's own recalculation (ECL65 $9160) of every "
                      "strength source, from the permanent score",
                      Confidence.CONFIRMED, Provenance.COMPUTED)
-    pool_item_table = (deltas.key == "pool-of-radiance"
+    # Curse's roster rebuild (`LIBRARY $3918`) is Pool's `$3729` rule over the
+    # same base byte, armour thresholds and 31-entry allowance table; Silver
+    # Blades' is unread, so it keeps the copy.
+    pool_item_table = (deltas.key in WEAPON_RULE_TITLES
                        and item_types is not None)
     # Curse's `LIBRARY $387E` is Pool's `$368F` block read from the code: the
     # same type-flag bits, and readied types 0x1C and 0x49 as the ammunition.
@@ -1413,7 +1416,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         value, extra = v.value, ""
         if feeble and field in effects.FEEBLEMIND_SCORES:
             feeble_fields[field] = (v, c64_name, dst)
-        if field == "movement_current" and deltas.key == "pool-of-radiance":
+        if field == "movement_current" and deltas.key in WEAPON_RULE_TITLES:
             extra = ", copied rather than recomputed: no item-type table was given"
         top = _max_stored(dst.size)
         if field == "experience" and int(value) > top:
@@ -2814,7 +2817,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
             else:
                 rep.note(dst.offset, dst.size,
                          "roster_movement: computed by the C64 roster "
-                         "rebuild's rule (LIBRARY $3729) from the converted "
+                         "rebuild's rule (LIBRARY $3729, Curse $3918) from the converted "
                          "base movement, readied body armour, carried weight "
                          "and strength allowance, not copied")
 
@@ -3343,12 +3346,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                    "because a source's own port may have written the byte "
                    "through a different one -- DOS's magic-user and thief "
                    "rows disagree with the C64's at low level (#366)"),
-    ("movement_current", "**computed, not copied** in Pool of Radiance when "
+    ("movement_current", "**computed, not copied** in Pool of Radiance and Curse when "
                          "the item-type table is given: the rule of "
                          "`LIBRARY $3729` over the converted base movement, "
                          "readied body armour, carried weight and strength "
                          "allowance (`derive.expected_movement`); copied "
-                         "without the table and in every other title"),
+                         "without the table and in Silver Blades"),
     ("thac0_current", "**recomputed, not copied**: this record's own "
                       "`thac0_base` plus the AD&D strength to-hit bonus, "
                       "the way `LIBRARY $3918` rebuilds it at the party's "
