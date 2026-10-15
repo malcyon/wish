@@ -48,11 +48,14 @@ MAX_WAIT_LANES = 1800
 #: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
 #: L, Y, slot, B, E and N; Pools of Darkness' L, Y, P, slot and B.
 PERSIST_RELOAD_KEYS = 6
+#: The most `continue` pages (PRESS RETURN TO CONTINUE) a camp LOAD answers on its way back to the world bar.
+PERSIST_CONTINUE_PAGES = 3
 #: Screens a persist reload answers beyond its phases' own, which need a guard like any other.
 PERSIST_BRANCH_STATES = {
     "ssb": frozenset({"load_anyway", "load_picker", "loaded_menu", "journal", "world",
-                      "treasure_bar", "treasure"}),
-    "darkness": frozenset({"load_anyway", "load_from", "load_picker", "loaded_menu", "world"}),
+                      "treasure_bar", "treasure", "continue"}),
+    "darkness": frozenset({"load_anyway", "load_from", "load_picker", "loaded_menu", "world",
+                           "continue"}),
 }
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
@@ -242,7 +245,8 @@ def _persist_budget(route: Any, letter: str) -> int:
 
     saved, rest = maproute.persist_phases(route, letter)
     return _phase_keys(saved) + _phase_keys(rest) + (
-        PERSIST_RELOAD_KEYS if route.title in maproute.BRANCHED_RELOAD else 0)
+        PERSIST_RELOAD_KEYS + 2 * PERSIST_CONTINUE_PAGES
+        if route.title in maproute.BRANCHED_RELOAD else 0)
 
 
 def _latest_landing(queued: float, speed: float) -> float:
@@ -2101,21 +2105,38 @@ class Controller:
             self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
             self._press_to("B", ("journal",), CAMP_LOAD_WAIT)
             self._answer_journal()
-            state, frame = self._await_first(("world", "treasure_bar"), limit=CAMP_SLOT_WAIT)
+            state, frame = self._await_first(("world", "treasure_bar", "continue"),
+                                             limit=CAMP_SLOT_WAIT)
             if state is None:
                 kept = frame["raw"] if frame else "no exact crop"
                 raise AcceptanceStop(f"persist reload: the screen after the journal answer "
-                                     f"is neither world nor treasure_bar; kept {kept}")
+                                     f"is none of world, treasure_bar or continue; kept {kept}")
+            state, frame = self._through_continue(state, frame, ("treasure_bar",))
             if state == "treasure_bar":
                 self._press_to("E", ("treasure",), CAMP_LOAD_WAIT)
-                state, frame = self._press_to("N", ("world",), CAMP_SLOT_WAIT)
+                state, frame = self._press_to("N", ("world", "continue"), CAMP_SLOT_WAIT)
+                state, frame = self._through_continue(state, frame, ())
             return frame
         state, _ = self._press_to("L", ("load_anyway", "load_from"), CAMP_LOAD_WAIT)
         if state == "load_anyway":
             self._press_to("Y", ("load_from",), CAMP_LOAD_WAIT)
         self._press_to("P", ("load_picker",), CAMP_LOAD_WAIT)
         self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
-        return self._press_to("B", ("world",), CAMP_SLOT_WAIT)[1]
+        state, frame = self._press_to("B", ("world", "continue"), CAMP_SLOT_WAIT)
+        return self._through_continue(state, frame, ())[1]
+
+    def _through_continue(self, state: str, frame: dict[str, Any], also: tuple[str, ...]
+                          ) -> tuple[str, dict[str, Any]]:
+        """RETURN on each `continue` page (the "grown bored with peace" text after a load), a
+        bounded number of times, until the world bar or one of `also` is up."""
+        pages = 0
+        while state == "continue":
+            if pages == PERSIST_CONTINUE_PAGES:
+                raise AcceptanceStop(f"persist reload: still on a continue page after "
+                                     f"{pages} RETURN presses; kept {frame['raw']}")
+            pages += 1
+            state, frame = self._press_to("RET", ("world", "continue", *also), CAMP_SLOT_WAIT)
+        return state, frame
 
     def _reload_original_by_screen(self, reload_phase: Any) -> None:
         """The persist leg's original-slot reload for the titles whose camp LOAD varies.

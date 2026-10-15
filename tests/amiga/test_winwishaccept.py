@@ -5182,3 +5182,83 @@ def test_the_restart_answers_the_boot_pages_and_the_code_wheel_before_the_load(
     assert ("await", "title", ["curse_wheel"]) in events[restart:]
     assert events.index(("await", "title", ["curse_wheel"]), restart) < events.index(
         "reload", restart)
+
+
+# ---- the continue page a camp LOAD can end on ----
+
+def _continue_after_answer(game):
+    game.keys.append("JOURNAL")
+    game.screen = "continue"
+
+
+def test_persist_reload_presses_return_on_the_continue_page_after_the_journal_answer(
+        tmp_path, monkeypatch):
+    table = {**_SSB_SCREENS, ("continue", "RET"): "treasure_bar"}
+    controller, game, _ = _persist_rig(tmp_path, monkeypatch, table)
+    monkeypatch.setattr(controller, "_answer_journal", lambda: _continue_after_answer(game))
+
+    result = controller.run_persist()
+
+    assert result["failure"] is None
+    assert game.keys[6:] == ["L", "Y", "F", "B", "JOURNAL", "RET", "E", "N", "FINAL"]
+    assert controller.action_commands <= controller.action_limit
+
+
+def test_persist_reload_ends_on_the_world_bar_after_the_continue_page(tmp_path, monkeypatch):
+    table = {**_SSB_SCREENS, ("continue", "RET"): "world"}
+    controller, game, events = _persist_rig(tmp_path, monkeypatch, table)
+    monkeypatch.setattr(controller, "_answer_journal", lambda: _continue_after_answer(game))
+
+    assert controller.run_persist()["failure"] is None
+    assert game.keys[6:] == ["L", "Y", "F", "B", "JOURNAL", "RET", "FINAL"]
+    assert ("persist_reloaded", len(game.keys) - 1) in events
+
+
+def test_a_continue_page_that_never_turns_is_pressed_a_bounded_number_of_times(tmp_path, monkeypatch):
+    table = {**_SSB_SCREENS, ("continue", "RET"): "continue"}
+    controller, game, _ = _persist_rig(tmp_path, monkeypatch, table)
+    monkeypatch.setattr(controller, "_answer_journal", lambda: _continue_after_answer(game))
+
+    result = controller.run_persist()
+
+    assert game.keys.count("RET") == winwishaccept.PERSIST_CONTINUE_PAGES
+    assert "still on a continue page" in result["failure"]
+
+
+def test_the_original_slot_reload_presses_return_on_the_continue_page(tmp_path, monkeypatch):
+    table = {**_SSB_ORIGINAL, ("continue", "RET"): "treasure_bar"}
+    controller, game, events, last = _original_reload_rig(tmp_path, monkeypatch, "ssb", table)
+    monkeypatch.setattr(controller, "_answer_journal", lambda: _continue_after_answer(game))
+
+    controller._reload_original_by_screen(last)
+
+    assert game.keys == ["E", "L", "Y", "B", "B", "JOURNAL", "RET", "E", "N"]
+    assert events == [("original_slot_reload.back", 9)]
+
+
+def test_pools_of_darkness_presses_return_on_a_continue_page_before_the_world_bar(tmp_path, monkeypatch):
+    table = {**_DARKNESS_ORIGINAL, ("loaded_menu", "B"): "continue", ("continue", "RET"): "world"}
+    controller, game, events, last = _original_reload_rig(tmp_path, monkeypatch, "darkness", table)
+
+    controller._reload_original_by_screen(last)
+
+    assert game.keys == ["E", "L", "Y", "P", "B", "B", "RET"]
+    assert events == [("original_slot_reload.back", 7)]
+
+
+def test_the_continue_guard_recognises_the_page_the_first_live_persist_run_stopped_on(tmp_path):
+    # A frame from the player's own run (game-136.raw.png of the first live Silver Blades
+    # persist run); it is not in the repository, so the test skips without it.
+    frame = (pathlib.Path.home() / ".cache/wish/acceptance/WISH-359/persist/ssb/heal1/game-136.png")
+    if not frame.is_file():
+        pytest.skip("the first live persist run's frame is not on this machine")
+    from tools.amiga import guardmaps, screens
+
+    export = tmp_path / "export"
+    export.mkdir()
+    guard_dir = pathlib.Path(winwishaccept.__file__).parent
+    assert guardmaps.main(["--maps", str(guard_dir), "export", "--title", "ssb", "--out", str(export)]) == 0
+    guards = screens.PixelGuards(export / "guards.json")
+
+    assert guards("continue", frame)
+    assert not guards("world", frame) and not guards("treasure_bar", frame)
