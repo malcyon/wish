@@ -439,7 +439,7 @@ def test_unreadable_checkpoint_stops_before_another_key(tmp_path, monkeypatch):
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     monkeypatch.setattr(controller, "_map_section", lambda: None)
     monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: [])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     phase = _phase("walk", "world",
                    SimpleNamespace(**{**vars(_step("observe", "world")),
                                       "checkpoint": "lost_fix",
@@ -1352,12 +1352,12 @@ def test_terminal_discovery_real_checkpoint_retains_pair_and_fix_verdict(tmp_pat
         pathlib.Path(path).write_bytes(b"wish")
         pathlib.Path(str(path) + ".json").write_text("{}")
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     result = controller.run_discovery()
     pair = result["checkpoints"]["ssb_leave_terminal"]
     assert pathlib.Path(pair["wish"]).read_bytes() == b"wish"
     assert pathlib.Path(pair["wish_sidecar"]).is_file()
-    assert pathlib.Path(pair["controls"]).read_text() == "Controls\n"
+    assert pathlib.Path(pair["controls"]).read_text() == "Text|Party|||\n"
     assert pair["pair_atomic"] is False
     assert pair["game"] is result["discovery"]["evidence"][-1]
     assert (pair["observed"]["fix"] is None) == (not readable)
@@ -1978,7 +1978,7 @@ def test_opening_real_checkpoint_pairs_last_exact_frame_and_requires_fix(tmp_pat
         pathlib.Path(path).write_bytes(b"wish")
         pathlib.Path(str(path) + ".json").write_text("{}")
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     result = controller.run_opening_first()
     pair = result["checkpoints"]["ssb_opening_after_first"]
     assert pair["game"] is result["discovery"]["evidence"][-1]
@@ -2595,7 +2595,7 @@ def test_third_page_retains_delayed_wish_pairs_for_both_new_checkpoints(
         pathlib.Path(path).write_bytes(b"wish")
         pathlib.Path(str(path) + ".json").write_text("{}")
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     result = controller.run_opening_second()
     assert result["failure"] is None
     for name, index in (("ssb_opening_third", 1), ("ssb_opening_after_third", 4)):
@@ -2872,7 +2872,7 @@ def test_second_page_real_checkpoint_retains_delayed_nonatomic_wish_pair(
         pathlib.Path(path).write_bytes(b"wish")
         pathlib.Path(str(path) + ".json").write_text("{}")
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     result = controller.run_opening_second()
     pair = result["checkpoints"]["ssb_opening_second"]
     assert pair["game"] is result["discovery"]["evidence"][0]
@@ -2954,7 +2954,7 @@ def _party_checkpoint_controller(tmp_path, monkeypatch, memory):
         pathlib.Path(path).write_bytes(b"wish")
 
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     return controller
 
 
@@ -2988,14 +2988,27 @@ def test_the_first_checkpoint_stops_a_wish_that_never_connected(tmp_path, monkey
     assert "loaded" not in controller.checkpoints
 
 
-@pytest.mark.parametrize("rows", [0, 2])
-def test_the_first_checkpoint_records_whether_the_dump_held_messages_rows(tmp_path, monkeypatch, rows):
+def test_a_dump_without_a_party_heading_stops_the_first_checkpoint(tmp_path, monkeypatch):
     controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
-    dump = ["Button|Heal|||enabled=True", *["ListItem|a message|||"] * rows]
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: dump)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Button|Heal|||enabled=True"])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="no Party heading"):
+        controller._checkpoint("loaded", None, {"raw": "game"})
+    assert controller.summary["party_heading_seen"] is False
+
+
+def test_the_first_checkpoint_records_that_the_party_heading_was_seen(tmp_path, monkeypatch):
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
     controller._checkpoint("loaded", None, {"raw": "game"})
-    controller._checkpoint("later", None, {"raw": "game"})
-    assert controller.summary["messages_panel_rows"] == rows
+    assert controller.summary["party_heading_seen"] is True
+
+
+def test_the_connection_wait_stops_when_the_route_time_runs_out(tmp_path, monkeypatch):
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
+    controller.route_end = controller.clock() + 12
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party - waiting for a game|||"])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="route time ran out"):
+        controller._checkpoint("loaded", None, {"raw": "game"})
+    assert controller.clock() < controller.route_end + winwishaccept.CONNECT_POLL
 
 
 def test_a_stale_waiting_row_does_not_stop_a_wish_that_connected(tmp_path, monkeypatch):
@@ -3907,7 +3920,7 @@ def _map_walk_controller(tmp_path, monkeypatch, *, tab_seconds=8.0):
         events.append(("wish_shot", pathlib.Path(path).name))
         pathlib.Path(path).write_bytes(b"wish")
     monkeypatch.setattr(winwishaccept.winwish, "shot", shot)
-    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Controls"])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: ["Text|Party|||"])
     target = SimpleNamespace(
         fix=lambda: SimpleNamespace(**party, outdoors=False, world_map=False,
                                     window=None, heading=None),

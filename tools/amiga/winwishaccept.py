@@ -1162,6 +1162,13 @@ def _party_nodes(target: Any, party: Any) -> list[tuple[int, int]]:
     return nodes
 
 
+def _is_party_heading(line: str) -> bool:
+    """Whether a `controls` row is the Party panel's heading, `Party` or `Party - <message>`."""
+    kind, _, rest = line.partition("|")
+    name = rest.split("|", 1)[0]
+    return kind == "Text" and (name == "Party" or name.startswith("Party - "))
+
+
 class Controller:
     """One bounded boot with injectable guests and clock for lifecycle tests."""
 
@@ -1666,16 +1673,25 @@ class Controller:
         return records
 
     def _await_connection(self, controls: list[str]) -> list[str]:
-        """The controls once Wish's Party heading no longer waits for a game; stops the run if it still does after `CONNECT_WAIT`."""
-        # Whether the dump exposes the Messages panel's rows at all decides if this check can see anything.
-        self.summary["messages_panel_rows"] = sum(line.startswith("ListItem|") for line in controls)
-        deadline = self.clock() + CONNECT_WAIT
-        while any(WAITING_HEADING in line for line in controls):
+        """The controls once Wish's Party heading no longer waits for a game.
+
+        Stops the run when the dump has no Party heading, when the wait reaches `CONNECT_WAIT`, or
+        when the route time runs out first.
+        """
+        deadline = self.clock() + min(CONNECT_WAIT, self.route_end - self.clock())
+        while True:
+            seen = any(_is_party_heading(line) for line in controls)
+            self.summary["party_heading_seen"] = seen
+            if not seen:
+                raise AcceptanceStop("the controls dump has no Party heading, so Wish's connection cannot be judged")
+            if not any(WAITING_HEADING in line for line in controls):
+                return controls
             if self.clock() >= deadline:
+                if self.clock() >= self.route_end:
+                    raise AcceptanceStop(f"the bounded route time ran out while Wish still showed '{WAITING_HEADING}'")
                 raise AcceptanceStop(f"Wish still shows '{WAITING_HEADING}' {CONNECT_WAIT} s after the first checkpoint")
             self.sleep(CONNECT_POLL)
             controls = winwish.ui(self.guest, self.args.holder, "controls")
-        return controls
 
     def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
         """Wish's shot and its controls, of whichever tab is showing."""
