@@ -6383,11 +6383,16 @@ class PoolRun:
         return {"walked": taken, "acted": result.acted, "position": position,
                 **dataclasses.asdict(result)}
 
-    def _wait_idle(self, need: int = 6) -> bool:
-        """Wait until the engine is back in its key-wait loop and stays there.
+    def _wait_idle(self, need: int = 6, ready=None) -> bool:
+        """Wait until the engine is back in its key-wait loop and stays there,
+        or, when READY is given, until READY accepts the screen.
 
         A fixed settle would measure the floppy, and a read taken while the
-        arriving area is still loading sees it half loaded.  Unlike
+        arriving area is still loading sees it half loaded.  An arrival
+        script's menu waits for its key outside both key windows (run
+        `e231406cb5-s2-sir-deric-join`: the Compound's menu stood 300 s and
+        the program counter never entered them), so a caller that knows the
+        screen the arrival ends on passes READY.  Unlike
         `tools/areas/wallpins.py`'s `wait_idle`, it fails the step instead of
         returning False, and the run's deadline bounds it.
         """
@@ -6398,6 +6403,10 @@ class PoolRun:
         limit = self.clock() + WARP_IDLE_SECONDS
         while self.clock() < limit:
             self.sess.settle(2)
+            if ready is not None:
+                shown = self.sess.screen()
+                if shown is not None and ready(shown):
+                    return True
             try:
                 with self.sess.mon(5) as m:
                     pc = m.registers().get(auto_actions.pc_register(m))
@@ -9471,9 +9480,11 @@ class CurseRun(PoolRun):
             raise self.fail("warp", str(e)) from None
         return self.trip("warp", area)
 
-    def trip(self, tag: str, area: int) -> dict:
+    def trip(self, tag: str, area: int, ready=None) -> dict:
         """Fast-travel the party into AREA with `FastTravel.run`, wait for
-        the key-wait loop, and fail (as TAG) unless the area byte reads AREA."""
+        the key-wait loop (or for READY to accept the screen, as
+        `_wait_idle` takes it), and fail (as TAG) unless the area byte reads
+        AREA."""
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         jumps: list[int] = []
@@ -9497,7 +9508,10 @@ class CurseRun(PoolRun):
         self.log.say("  writes: " + ", ".join(listing))
         if not outcome.ok:
             raise self.fail(tag, outcome.message)
-        self._wait_idle()
+        if ready is None:
+            self._wait_idle()
+        else:
+            self._wait_idle(ready=ready)
         self.sess.settle(4)
         there = ft.current_area(target, ft.addresses)
         if there != area:
@@ -9526,9 +9540,6 @@ class CurseRun(PoolRun):
         site = joinstep.site_for(self.game.key, area)
         if site is None:
             raise self.fail("join", f"no join site in area {area}")
-        if site.arrival:
-            raise self.fail("join", f"area {area}'s join starts on arrival; "
-                                    f"use join-arrival {area}")
         self.leave_arrival(f"join {route}", presses=JOIN_ARRIVAL_PRESSES)
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -9593,9 +9604,11 @@ class CurseRun(PoolRun):
         answer the join its arrival script starts by its text
         (`joinstep.JoinAnswerer`) until the world bar is back with each
         joining name on the party panel.  The area must have an `arrival`
-        row in `joinstep.JOIN_SITES`.  Before the trip, a joining name
-        already on the panel, a full panel, or a set `first_visit` bit (the
-        scene would not play) fails the step with nothing written."""
+        row in `joinstep.JOIN_SITES`.  Before the trip, a party already in
+        AREA (its entry 4 would see AREA as the came-from and play nothing),
+        a joining name already in a panel name field, a full panel, or a set
+        `first_visit` bit (the scene would not play) fails the step with
+        nothing written."""
         try:
             area = parse_warp(arg, self.game.title)
         except ValueError as e:
@@ -9605,13 +9618,19 @@ class CurseRun(PoolRun):
             raise self.fail("join-arrival", f"no arrival join in area {area}")
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
-        panel = self.panel_names()
-        already = [n for n in site.joins if any(n in row for row in panel)]
+        ft = auto_actions.FastTravel(self.game)
+        here = ft.current_area(SessTarget(self.sess), ft.addresses)
+        if here == area:
+            raise self.fail("join-arrival", f"the party is already in area "
+                                            f"{area}; its arrival join plays "
+                                            f"only on entry from another area")
+        names = self.panel_name_fields()
+        already = [n for n in site.joins if n in names]
         if already:
             raise self.fail("join-arrival", f"{', '.join(already)} already in "
                                             f"the party")
-        if len(panel) + len(site.joins) > PARTY_SLOTS:
-            raise self.fail("join-arrival", f"the panel lists {len(panel)}; "
+        if len(names) + len(site.joins) > PARTY_SLOTS:
+            raise self.fail("join-arrival", f"the panel lists {len(names)}; "
                                             f"{len(site.joins)} more do not fit")
         first_visit = None
         if site.first_visit is not None:
@@ -9625,7 +9644,11 @@ class CurseRun(PoolRun):
                 raise self.fail("join-arrival", f"${address:04X} reads "
                                                 f"${held:02X}: the arrival "
                                                 f"scene has already played")
-        trip = self.trip("join-arrival", area)
+        # The scene's first menu waits outside the key-wait loop, so the
+        # trip ends when that menu is drawn.
+        first = site.screens[0]
+        trip = self.trip("join-arrival", area,
+                         ready=lambda shown: joinstep.matches(shown, first))
         answerer = joinstep.JoinAnswerer(
             self.sess.screen, self.sess.press_kernal,
             prompt=self.sess.handle_prompt, log=self.log.say)
@@ -9639,7 +9662,8 @@ class CurseRun(PoolRun):
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         panel = self.panel_names()
-        missing = [n for n in site.joins if not any(n in row for row in panel)]
+        names = self.panel_name_fields()
+        missing = [n for n in site.joins if n not in names]
         self.capture("joined")
         if missing:
             raise self.fail("join-arrival", f"the panel does not list "
@@ -9648,6 +9672,22 @@ class CurseRun(PoolRun):
         got.update({"trip": trip, "first_visit": first_visit,
                     "square": self.position(), "panel": panel})
         return got
+
+    def panel_name_fields(self) -> list[str]:
+        """Each member's whole name field on the world panel: the row from
+        `PARTY_COLUMN` up to the column the `AC` heading starts at, as
+        `Session.party_rows` reads it, stripped."""
+        rows = self.sess.stable_party_rows()
+        screen = self.sess.screen()
+        if screen is None or not rows:
+            return []
+        head = next((r for r in S.PARTY_ROWS
+                     if S.PARTY_HEADER in screen.row(r)[S.PARTY_COLUMN:]), None)
+        if head is None:
+            return []
+        width = screen.row(head)[S.PARTY_COLUMN:].index(S.PARTY_HEADER)
+        return [screen.row(r)[S.PARTY_COLUMN:S.PARTY_COLUMN + width].strip()
+                for r in rows]
 
     def panel_names(self) -> list[str]:
         """The world panel's rows, from the name column on, read once the
