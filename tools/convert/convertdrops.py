@@ -57,6 +57,7 @@ from editor import convert, dosimport  # noqa: E402
 from goldbox import amiga_savegame, c64_codec, c64_port, dos_codec  # noqa: E402
 from goldbox.d64 import load_payload  # noqa: E402
 from goldbox.iconparts import IconParts  # noqa: E402
+from goldbox.items import load_item_types  # noqa: E402
 from goldbox.portraits import PortraitError, tables_from_disks  # noqa: E402
 from tools.dos import dosbox  # noqa: E402
 
@@ -114,8 +115,18 @@ def game_files(game):
                     portraits = tables_from_disks(where)
                 except (PortraitError, OSError):
                     portraits = None
+            item_types = None
+            if game.key in c64_codec.WEAPON_RULE_TITLES:
+                # `ITEMS` is on side 1, not on the disk that carries the icons.
+                for disk in sorted(pathlib.Path(where).glob("*.[dD]64")):
+                    try:
+                        item_types = load_item_types(str(disk))
+                    except Exception:
+                        continue
+                    break
             out = dosimport.GameFiles(
                 icon=icon, animate=animate, portraits=portraits,
+                item_types=item_types,
                 companions=dosimport.load_companions(
                     game.key, sorted(pathlib.Path(where).glob("*.[dD]64"))))
     _GAME_FILES[game.key] = out

@@ -126,3 +126,66 @@ def test_the_converter_path_reads_the_item_table_for_curse(tmp_path):
     block = next(b for b in roster.roster_blocks
                  if b.slot_index == slot.index)
     assert block.thac0 == 13
+
+
+def _armour_only_alias():
+    """A Curse character with body armour readied and no weapon: the weapon
+    hand is empty, which is the `LIBRARY $387E` entry's `JMP $3914` unarmed
+    path whatever else is worn."""
+    char = NeutralCharacter("ALIAS", source="made up", game=CURSE)
+    for name, value in (("levels", {"fighter": 6}), ("strength", 18),
+                        ("exceptional_strength", 0), ("dexterity", 17),
+                        ("thac0_base", COMBAT_BIAS - 15),
+                        ("thac0_current", COMBAT_BIAS - 14),
+                        ("attack_forms", bytes([0, 0, 1, 0, 2, 0, 0, 0])),
+                        ("roster_tail", bytes([0x30, 0, 0, 9, 9, 9, 9, 9, 9])),
+                        ("inventory", [_item(5)])):
+        char.set(name, value, "made up")
+    return char
+
+
+def test_a_readied_suit_of_armour_alone_gets_the_unarmed_attack_bytes():
+    """Roster tail bytes 3-8 are the attack dice plus the strength damage
+    step (+2 for 18) -- the engine's unarmed result -- not the source's."""
+    types = dict(_TYPES)
+    types[5] = _type(0x00, location=2)
+    rec, _ = c64_codec.write(_armour_only_alias(), item_types=types)
+    assert rec.get_raw("roster_tail")[3:9] == bytes([1, 0, 2, 0, 2, 0])
+
+
+@pytest.mark.skipif(gamedata.specimen_root() is None,
+                    reason="needs the specimen tree")
+@gamedata.needs_curse_disks
+def test_engine_written_curse_characters_keep_their_unarmed_attack_bytes():
+    """The 24 character files the C64 Curse game itself exported
+    (`coab-c64` specimens, nobody readied anything): reading each and
+    writing it again with the item table leaves roster tail bytes 3-8 as
+    the engine wrote them."""
+    from goldbox.d64 import D64
+    from goldbox.record import CharacterRecord
+
+    types = _curse_item_types()
+    files = 0
+    for path in sorted((gamedata.specimen_root() / "coab-c64").glob(
+            "WISH-SPEC-curse-*.[dD]64")):
+        disk = D64.open(str(path))
+        for entry in disk.directory():
+            if not entry.is_prg or entry.is_empty:
+                continue
+            data = disk.read_file(entry)
+            if len(data) != 582 or entry.name == b"SAVEAZURE":
+                continue
+            try:
+                record = CharacterRecord.from_prg(data, 0x7C00)
+            except Exception:
+                continue
+            raw = record.get_raw("inventory")
+            if any(raw[n * 16] and raw[n * 16 + 6] & 0x80 for n in range(16)):
+                continue
+            out, _ = c64_codec.write(c64_codec.read(record, source=path.name),
+                                     item_types=types)
+            files += 1
+            assert out.to_bytes()[0x113:0x119] == record.to_bytes()[0x113:0x119], (
+                path.name, record.name)
+    if not files:
+        pytest.skip("no engine-exported Curse character files here")

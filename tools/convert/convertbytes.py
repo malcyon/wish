@@ -52,14 +52,16 @@ def _load(tree: pathlib.Path | None):
     sys.path.insert(0, str(tree.resolve() if tree else root))
     from automap import gamedisks
     from editor import convert, dosimport
-    from goldbox import c64_port, dos_codec
+    from goldbox import c64_codec, c64_port, dos_codec
     from goldbox import portraits as portraits_mod
     from goldbox.d64 import load_payload
     from goldbox.iconparts import IconParts
+    from goldbox.items import load_item_types
     from tools.dos import dosbox
     return dict(convert=convert, dosimport=dosimport, dos=dos_codec, games=c64_port,
                 load_payload=load_payload, IconParts=IconParts,
-                portraits=portraits_mod, dosbox=dosbox, gamedisks=gamedisks)
+                portraits=portraits_mod, dosbox=dosbox, gamedisks=gamedisks,
+                c64_codec=c64_codec, load_item_types=load_item_types)
 
 
 def specimen_root() -> pathlib.Path:
@@ -100,6 +102,22 @@ def sources(root: pathlib.Path, scratch: pathlib.Path):
         image.write_bytes(disk.to_bytes())
         out.append(image)
     return out
+
+
+def item_types_for(mod: dict, game, where) -> dict | None:
+    """`ITEMS` off the first of `game`'s C64 disks in `where` that carries it,
+    for the titles whose converted THAC0 reads it; `None` for the others."""
+    # A `--tree` older than the weapon rule has no title list.
+    titles = getattr(mod["c64_codec"], "WEAPON_RULE_TITLES",
+                     (mod["games"].POOL_OF_RADIANCE.key,))
+    if game.key not in titles:
+        return None
+    for disk in sorted(pathlib.Path(where).glob("*.[dD]64")):
+        try:
+            return mod["load_item_types"](str(disk))
+        except Exception:
+            continue
+    return None
 
 
 def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
@@ -144,6 +162,7 @@ def run(tree: pathlib.Path | None, dump: pathlib.Path | None = None,
                 extra = ({"companions": load(game.key, sorted(
                     pathlib.Path(where).glob("*.[dD]64")))}
                     if load else {})
+                extra["item_types"] = item_types_for(mod, game, where)
                 out = dosimport.GameFiles(icon=icon, animate=animate,
                                           portraits=portraits, **extra)
         cache[game.key] = out
