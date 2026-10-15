@@ -510,3 +510,33 @@ def test_the_encounter_adapter_stops_a_blocked_key_and_another_title():
     assert "stopped" in adapter.keys(["S"]) and pressed == []
     other, _ = _adapter(title="pool-of-radiance")
     assert "pool-of-radiance" in other.on()["error"]
+
+
+def _controller_log(events):
+    """The WinUAE Controller.log signature, with `event` as its first parameter."""
+    def log(event, **data):
+        events.append({"event": event, **data})
+    return log
+
+
+def test_the_encounter_switch_notes_reach_the_controller_log():
+    events = []
+    fake = FakeEncounters(None)
+    adapter = fsuaewishaccept._Encounters(
+        GAME_KEY, None, 6531, log=_controller_log(events), press=lambda key: None,
+        now=lambda: 0.0, encounters=fake)
+    fake.note = lambda **row: adapter._note(**row)
+    adapter.on()
+    fake.note(event="no_encounters", action="on", at=0.0)
+    adapter.off()
+    fake.note(event="no_encounters", action="off", at=0.0)
+    rows = [e for e in events if e["event"] == "no_encounters_row"]
+    assert [row["action"] for row in rows] == ["on", "off"]
+    assert all(row["note_event"] == "no_encounters" for row in rows)
+
+
+def test_an_interrupt_note_reaches_the_controller_log():
+    events = []
+    log = _controller_log(events)
+    fsuaewishaccept._log_note(log, "interrupt", {"event": "crash", "error": "stop"})
+    assert events == [{"event": "interrupt", "note_event": "crash", "error": "stop"}]

@@ -193,6 +193,14 @@ class _NotingGuards:
         return getattr(self._guards, name)
 
 
+def _log_note(log: Any, name: str, payload: dict[str, Any]) -> None:
+    """Log a debugger note whose own `event` would collide with the log's first argument."""
+    fields = dict(payload)
+    if "event" in fields:
+        fields["note_event"] = fields.pop("event")
+    log(name, **fields)
+
+
 class _StateView:
     def __init__(self, owner: _Encounters):
         self.owner = owner
@@ -222,7 +230,7 @@ class _Encounters:
     def _note(self, **payload: Any) -> None:
         if payload.get("error"):
             self.errors.append(str(payload["error"]))
-        self.log("no_encounters_row", **payload)
+        _log_note(self.log, "no_encounters_row", payload)
 
     def _result(self, **extra: Any) -> dict[str, Any]:
         found, self.errors = self.errors, []
@@ -668,7 +676,7 @@ class FsuaeController(base.Controller):
             failures.append(f"event log: {exc}")
 
     def run_title(self) -> dict[str, Any]:
-        with fsuaegdb.interruptible(lambda **payload: self.log("interrupt", **payload)):
+        with fsuaegdb.interruptible(lambda **payload: _log_note(self.log, "interrupt", payload)):
             try:
                 self._up()
                 title = self._await_title()
