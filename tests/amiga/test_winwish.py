@@ -423,6 +423,27 @@ def test_a_sibling_that_vanishes_or_cannot_be_read_is_skipped_and_the_download_s
     assert beside.is_file() and unreadable.exists()
 
 
+def test_an_existing_empty_build_folder_is_filled_where_a_rename_onto_a_directory_fails(
+        tmp_path, monkeypatch):
+    real = pathlib.Path.rename
+
+    def windows_rename(self, target):
+        if pathlib.Path(target).exists():
+            raise FileExistsError(target)
+        return real(self, target)
+    monkeypatch.setattr(pathlib.Path, "rename", windows_rename)
+    folder = tmp_path / SHA[:12]
+    folder.mkdir()
+    got = winwish.fetch(_downloading([]), SHA, folder)
+    assert got.parent == folder and (folder / winwish.COMMIT_FILE).is_file()
+    # A folder holding something is still never replaced.
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "keep.txt").write_text("x")
+    assert winwish.fetch(_downloading([]), SHA, other).parent != other
+    assert (other / "keep.txt").read_text() == "x"
+
+
 def test_a_failed_download_leaves_no_temporary_folder(tmp_path):
     def run(argv, timeout):
         if argv[:3] == ["gh", "run", "download"]:

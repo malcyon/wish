@@ -1725,6 +1725,10 @@ def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.P
         (fresh / HASH_FILE).write_text(file_sha256(zips[0]) + "\n")
         relative = zips[0].relative_to(fresh)
         result = None
+        # Windows cannot rename onto an existing directory, empty or not; `rmdir` removes
+        # only an empty one, so a folder holding anything is never replaced.
+        with contextlib.suppress(OSError):
+            dest.rmdir()
         for target in (dest, dest.parent / f"{dest.name}.{fresh.name.rsplit('.', 1)[-1]}"):
             try:
                 fresh.rename(target)
