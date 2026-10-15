@@ -4543,6 +4543,31 @@ def test_the_mapping_leg_grabs_the_disconnect_and_never_restarts_the_game(tmp_pa
     assert controller.restarted is False
 
 
+def test_the_mapping_leg_presses_no_action_on_a_route_with_enabled_actions(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, leg="mapping")
+    controller.route.actions = (SimpleNamespace(kind="heal", enabled=True, selector="hp",
+                                                show=None, back=None),)
+    controller.summary["actions"]["heal"] = winwishaccept.row()
+    monkeypatch.setattr(controller, "run_actions", lambda: pytest.fail("actions pressed"))
+    monkeypatch.setattr(controller, "_final_reload", lambda: pytest.fail("final reload ran"))
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert result["actions"]["heal"]["status"] == "unproven"
+    assert result["actions"]["heal"]["reason"] == "pressed only on the persist leg"
+
+
+def test_the_mapping_leg_stops_preflight_on_an_action_option():
+    args = winwishaccept._parser().parse_args([
+        "--title", "pool", "--manifest", "m", "--sha", SHA, "--holder", "h", "--mute-proof", "p",
+        "--out", "o", "--leg", "mapping", "--action", "heal"])
+    args.deadline = 1500
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="--action needs --leg persist"):
+        winwishaccept.preflight(args, guest=object(), route_for=None)
+
+
 def test_the_reconnect_leg_runs_only_the_load_then_the_disconnect_and_reload(tmp_path, monkeypatch):
     controller, events = _disconnect_controller(tmp_path, monkeypatch)
     monkeypatch.setattr(controller, "flag_controls", lambda: pytest.fail("flags set"))

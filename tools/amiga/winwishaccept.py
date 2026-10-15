@@ -403,10 +403,10 @@ def _page_states(route: Any) -> set[str]:
             and row[2] is None}
 
 
-def _states(route: Any) -> set[str]:
+def _states(route: Any, *, actions: bool = True) -> set[str]:
     phases = [*route.phases]
     for action in route.actions:
-        if action.enabled:
+        if actions and action.enabled:
             if action.show is None or action.back is None:
                 raise AcceptanceStop(f"{action.kind} has no game-display route")
             if not action.show.ready or not action.back.ready:
@@ -553,6 +553,8 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         raise AcceptanceStop("--leg reconnect is not a discovery mode")
     if leg == "reconnect" and getattr(args, "action", None):
         raise AcceptanceStop("--leg reconnect presses no actions")
+    if leg == "mapping" and getattr(args, "action", None):
+        raise AcceptanceStop("--action needs --leg persist")
     wait_lanes = getattr(args, "wait_lanes", 0)
     if not 0 <= wait_lanes <= MAX_WAIT_LANES:
         raise AcceptanceStop(f"--wait-lanes must be from 0 to {MAX_WAIT_LANES} seconds")
@@ -591,7 +593,6 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
             _check_reconnect(route)
         elif persist_actions is None:
             _phase_map(route)
-            _selected_actions(args, route)
         if args.title == "ssb":
             from tools.amiga import route_silver_blades  # noqa: PLC0415
 
@@ -661,7 +662,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     elif persist:
         states = _persist_states(route, persist_actions, persist["letter"])
     else:
-        states = _states(route)
+        states = _states(route, actions=False)
     missing = states - guards.rules.keys()
     if missing:
         raise AcceptanceStop("route has no measured guards for " + ", ".join(sorted(missing)))
@@ -2804,11 +2805,10 @@ class Controller:
                 if name == "load" and not reconnect:
                     self.flag_controls()
             if not reconnect:
-                self.run_actions()
-                if any(action.enabled for action in self.route.actions):
-                    self._game_section()
-                    self._await("world")
-                    self._final_reload()
+                for action in self.route.actions:
+                    if action.enabled:
+                        self.summary["actions"][action.kind]["reason"] = (
+                            "pressed only on the persist leg")
             self._map_section()
             if reconnect and self.launch is None:
                 # Found before the game is stopped, while it can still be left running.
@@ -2873,12 +2873,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--walk-tab", choices=WALK_TABS, default="editor",
                         help="the Wish tab left showing while the party walks")
     parser.add_argument("--leg", choices=LEGS, default="mapping",
-                        help="mapping is the whole route; persist loads, presses the actions, "
-                             "saves to a free slot and loads it again; reconnect loads the "
+                        help="mapping is the whole route and presses no action; persist loads, "
+                             "presses the actions, saves to a free slot and loads it again; "
+                             "reconnect loads the "
                              "party, stops the game, grabs Wish, starts the game again and "
                              "reloads")
     parser.add_argument("--action", action="append", choices=ACTION_KINDS,
-                        help="run only this enabled action; repeat for several")
+                        help="run only this enabled action; repeat for several (--leg persist only)")
     parser.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
                         help=f"wait up to this long (0 to {MAX_WAIT_LANES}) for a free lane; "
                              "the wait is not route time")
