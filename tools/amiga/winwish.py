@@ -49,6 +49,7 @@ import os
 import pathlib
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -1518,7 +1519,7 @@ def restore_pending_display(guest: "Guest", holder: str) -> str:
     Only an exact `ok journal` from the guest counts, so a holder that never set the
     display costs one cheap call and no session 1 task.
     """
-    if guest.ps(display_pending_script(holder)).strip() != "ok journal":
+    if guest.ps(display_pending_script(holder), step="restore_pending_display").strip() != "ok journal":
         return "ok unchanged"
     display(guest, holder, "restore")
     return "ok restored"
@@ -1549,23 +1550,34 @@ def _run(argv: list[str], timeout: float) -> tuple[int, str]:
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
+class GuestError(WinwishError):
+    """A guest command that failed, with which step ran it, ssh's exit code and the command's length."""
+
+    def __init__(self, message: str, *, step: str, exit_code: int, command_length: int):
+        super().__init__(f"{message} [step {step}, ssh exit {exit_code}, "
+                         f"command length {command_length}]")
+        self.step, self.exit_code, self.command_length = step, exit_code, command_length
+
+
 class Guest:
     """The `winvm` and `gh` calls, behind one seam so a test can fake them."""
 
     def __init__(self, run: Callable[[list[str], float], tuple[int, str]] = _run):
         self.run = run
 
-    def winvm(self, *args: str, timeout: float = CALL_SECONDS) -> str:
+    def winvm(self, *args: str, timeout: float = CALL_SECONDS, step: str = "") -> str:
         rc, out = self.run(["winvm", *args], timeout)
         if rc:
-            raise WinwishError(f"winvm {args[0]} failed: {out}")
+            raise GuestError(f"winvm {args[0]} failed: {out}", step=step or args[0],
+                             exit_code=rc, command_length=sum(len(a) for a in args))
         return out
 
-    def ps(self, script: str, timeout: float = CALL_SECONDS) -> str:
+    def ps(self, script: str, timeout: float = CALL_SECONDS, step: str = "") -> str:
         """Run `script` on the guest; its reply must open with `ok`."""
         rc, out = self.run(["winvm", "ps", script], timeout)
         if rc or not out.startswith("ok"):
-            raise WinwishError(f"the guest said: {out or 'nothing'}")
+            raise GuestError(f"the guest said: {out or 'nothing'}", step=step or "ps",
+                             exit_code=rc, command_length=len(script))
         return out
 
     def holds_lane(self, holder: str) -> str:
@@ -1621,29 +1633,64 @@ def pick_run(listing: str, sha: str) -> int:
     return int(max(good, key=lambda r: r.get("createdAt", ""))["databaseId"])
 
 
+HASH_FILE = "zip.sha256"
+
+
+def _held_zip(folder: pathlib.Path, sha: str) -> pathlib.Path | None:
+    """The one zip in `folder` when its commit note names `sha` and its recorded hash still holds."""
+    note, recorded = folder / COMMIT_FILE, folder / HASH_FILE
+    zips = sorted(folder.rglob("*.zip")) if folder.is_dir() else []
+    try:
+        if len(zips) != 1 or note.read_text().strip() != sha:
+            return None
+        if recorded.read_text().strip() != file_sha256(zips[0]):
+            return None
+    except OSError:
+        return None
+    return zips[0]
+
+
 def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.Path:
     """Download the `frozen-windows` artifact of `sha` and return its zip.
 
-    Safe to run again: the zips and the commit note from an earlier download are
-    removed first, so a second call never finds two zips.
+    A folder already holding this commit's zip with its recorded hash is reused. A
+    download goes into a fresh temporary folder that is renamed into place, and a zip
+    another run may be staging is never deleted: when the build folder holds something
+    else, the download lands in a folder of its own beside it.
     """
     sha = full_sha(guest, sha)
+    dest = dest or scratch.cache_dir("winwish", sha[:12])
+    held = _held_zip(dest, sha)
+    if held:
+        return held
     listing = guest.gh("run", "list", "--workflow", WORKFLOW, "--commit", sha,
                        "--limit", "20", "--json",
                        "databaseId,headSha,conclusion,createdAt")
     run_id = pick_run(listing, sha)
-    dest = dest or scratch.cache_dir("winwish", sha[:12])
-    scratch.ensure(dest)
-    for old in [*dest.rglob("*.zip"), dest / COMMIT_FILE]:
-        old.unlink(missing_ok=True)
-    guest.gh("run", "download", str(run_id), "--name", ARTIFACT, "--dir",
-             str(dest), timeout=COPY_SECONDS)
-    zips = sorted(dest.rglob("*.zip"))
-    if len(zips) != 1:
-        raise WinwishError(f"expected one zip in the {ARTIFACT} artifact, "
-                           f"found {[z.name for z in zips]}")
-    (dest / COMMIT_FILE).write_text(sha + "\n")
-    return zips[0]
+    scratch.ensure(dest.parent)
+    fresh = pathlib.Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
+    try:
+        guest.gh("run", "download", str(run_id), "--name", ARTIFACT, "--dir",
+                 str(fresh), timeout=COPY_SECONDS)
+        zips = sorted(fresh.rglob("*.zip"))
+        if len(zips) != 1:
+            raise WinwishError(f"expected one zip in the {ARTIFACT} artifact, "
+                               f"found {[z.name for z in zips]}")
+        (fresh / COMMIT_FILE).write_text(sha + "\n")
+        (fresh / HASH_FILE).write_text(file_sha256(zips[0]) + "\n")
+        relative = zips[0].relative_to(fresh)
+        for target in (dest, None):
+            target = target or dest.parent / f"{dest.name}.{fresh.name.rsplit('.', 1)[-1]}"
+            try:
+                fresh.rename(target)
+            except OSError:
+                if target == dest and (won := _held_zip(dest, sha)):
+                    return won
+                continue
+            return target / relative
+        raise WinwishError(f"could not move the download into place beside {dest}")
+    finally:
+        shutil.rmtree(fresh, ignore_errors=True)
 
 
 @contextlib.contextmanager
@@ -1671,14 +1718,22 @@ def file_sha256(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stage(guest: Guest, holder: str, zipped: pathlib.Path) -> str:
-    """Copy the zip to the guest and unpack it afresh; returns the guest's `ok exe=...` line."""
+def stage(guest: Guest, holder: str, zipped: pathlib.Path,
+          expect_sha256: str | None = None) -> str:
+    """Copy the zip to the guest and unpack it afresh; returns the guest's `ok exe=...` line.
+
+    `expect_sha256` is the hash a caller recorded earlier; a zip that no longer hashes to it
+    is blocked before anything is copied.
+    """
     root = run_dir(holder)
     zip_sha = file_sha256(zipped)
-    guest.ps(mkdir_script(root))
-    guest.winvm("put", str(zipped), root.replace("\\", "/") + "/", timeout=COPY_SECONDS)
+    if expect_sha256 and zip_sha != expect_sha256.lower():
+        raise WinwishError(f"{zipped} hashes to {zip_sha}, not the {expect_sha256} recorded earlier")
+    guest.ps(mkdir_script(root), step="stage mkdir")
+    guest.winvm("put", str(zipped), root.replace("\\", "/") + "/", timeout=COPY_SECONDS,
+                step="stage put")
     return guest.ps(stage_script(holder, rf"{root}\{zipped.name}", zip_sha),
-                    timeout=COPY_SECONDS)
+                    timeout=COPY_SECONDS, step="stage unpack")
 
 
 SAVES_FOLDER = "saves"
@@ -1756,7 +1811,7 @@ def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, .
         return guest.ps(start_script(holder, environment(flag, holder, features, pipe), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
-                        timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30)
+                        timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30, step="start_wish")
     except WinwishError:
         _quietly(guest.ps, probe_close_script(holder))
         raise
@@ -1890,7 +1945,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     sha = full_sha(guest, args.sha)
     zipped = pathlib.Path(args.zip) if args.zip else fetch(guest, sha)
     check_zip_commit(zipped, sha)
-    result: dict[str, str] = {"staged": stage(guest, args.holder, zipped)}
+    result: dict[str, str] = {"staged": stage(guest, args.holder, zipped, getattr(args, "zip_sha256", None))}
     claimed = started = wish_tried = done = False
     with terminating():
         try:

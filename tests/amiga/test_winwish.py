@@ -262,7 +262,7 @@ def test_pick_run_says_what_to_start_when_there_is_none():
 def test_fetch_lists_by_commit_then_downloads_the_named_artifact(tmp_path):
     def download(argv):
         if argv[:3] == ["gh", "run", "download"]:
-            (tmp_path / "wish-1-windows-x86_64.zip").write_bytes(b"PK")
+            (pathlib.Path(argv[argv.index("--dir") + 1]) / "wish-1-windows-x86_64.zip").write_bytes(b"PK")
         return argv
 
     run = FakeRun([(lambda a: a[1:3] == ["run", "list"], 0, json.dumps(RUNS))])
@@ -283,7 +283,8 @@ def test_fetch_lists_by_commit_then_downloads_the_named_artifact(tmp_path):
 def test_fetch_can_run_twice_in_one_folder(tmp_path):
     def wrapped(argv, timeout):
         if argv[:3] == ["gh", "run", "download"]:
-            (tmp_path / f"wish-{len(list(tmp_path.glob('*.zip')))}.zip").write_bytes(b"PK")
+            folder = pathlib.Path(argv[argv.index("--dir") + 1])
+            (folder / "wish-1.zip").write_bytes(b"PK")
         if argv[1:3] == ["run", "list"]:
             return 0, json.dumps(RUNS)
         return 0, "ok"
@@ -303,6 +304,78 @@ def test_a_zip_fetched_for_another_commit_is_blocked(tmp_path):
     winwish.check_zip_commit(zipped, SHA)
     (tmp_path / "commit.txt").unlink()
     winwish.check_zip_commit(zipped, SHA)
+
+
+def _downloading(counter, listing=json.dumps(RUNS)):
+    """A gh that writes a differently named zip, with different bytes, on every download."""
+    def run(argv, timeout):
+        if argv[:3] == ["gh", "run", "download"]:
+            counter.append(1)
+            folder = pathlib.Path(argv[argv.index("--dir") + 1])
+            (folder / f"wish-{len(counter)}.zip").write_bytes(b"PK%d" % len(counter))
+            return 0, "ok"
+        return (0, listing) if argv[1:3] == ["run", "list"] else (0, "ok")
+    return winwish.Guest(run)
+
+
+def test_a_second_run_fetching_the_same_sha_leaves_the_first_runs_zip_intact(tmp_path):
+    counter: list[int] = []
+    guest = _downloading(counter)
+    folder = tmp_path / SHA[:12]
+    first = winwish.fetch(guest, SHA, folder)
+    held = first.read_bytes()
+    second = winwish.fetch(guest, SHA, folder)
+    assert first.read_bytes() == held and second.is_file()
+    assert second == first and len(counter) == 1
+
+
+def test_a_build_folder_whose_zip_fails_its_hash_is_left_alone_and_the_download_lands_beside_it(tmp_path):
+    counter: list[int] = []
+    guest = _downloading(counter)
+    folder = tmp_path / SHA[:12]
+    first = winwish.fetch(guest, SHA, folder)
+    first.write_bytes(b"torn")
+    second = winwish.fetch(guest, SHA, folder)
+    assert first.read_bytes() == b"torn"
+    assert second.parent != folder and second.read_bytes() == b"PK2"
+    assert (second.parent / winwish.COMMIT_FILE).read_text().strip() == SHA
+    assert not list(tmp_path.glob(".*"))
+
+
+def test_a_failed_download_leaves_no_temporary_folder(tmp_path):
+    def run(argv, timeout):
+        if argv[:3] == ["gh", "run", "download"]:
+            return 1, "network down"
+        return 0, json.dumps(RUNS)
+    with pytest.raises(winwish.WinwishError, match="network down"):
+        winwish.fetch(winwish.Guest(run), SHA, tmp_path / SHA[:12])
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_stage_blocks_a_zip_that_no_longer_matches_the_hash_recorded_earlier(tmp_path):
+    zipped = tmp_path / "wish-1.zip"
+    zipped.write_bytes(b"PK")
+    recorded = winwish.file_sha256(zipped)
+    run = FakeRun()
+    winwish.stage(winwish.Guest(run), "h", zipped, recorded)
+    zipped.write_bytes(b"PK-other")
+    run.calls.clear()
+    with pytest.raises(winwish.WinwishError, match="recorded earlier"):
+        winwish.stage(winwish.Guest(run), "h", zipped, recorded)
+    assert run.calls == []
+
+
+def test_a_failed_guest_command_names_its_step_exit_code_and_command_length():
+    run = FakeRun([(lambda a: a[1] == "put", 255, "exec request failed on channel 0")])
+    with pytest.raises(winwish.GuestError) as caught:
+        winwish.stage(winwish.Guest(run), "h", pathlib.Path(__file__))
+    error = caught.value
+    assert (error.step, error.exit_code) == ("stage put", 255)
+    assert error.command_length == len("put" + str(pathlib.Path(__file__)) + "C:/Amiga/wish/run-h/")
+    assert "step stage put" in str(error) and "ssh exit 255" in str(error)
+    ps = winwish.Guest(FakeRun([(lambda a: a[1] == "ps", 255, "exec request failed")]))
+    with pytest.raises(winwish.GuestError, match=r"step restore_pending_display, ssh exit 255, command length \d+"):
+        winwish.restore_pending_display(ps, "h")
 
 
 def test_fetch_rejects_a_sha_that_is_an_option():

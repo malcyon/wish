@@ -15,8 +15,10 @@ import math
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict
 from typing import Any
@@ -505,9 +507,42 @@ def _deadline_limit(mode: str | None, walk_tab: str = "editor") -> int:
     return DISCOVERY_SECONDS if mode else MAX_SECONDS
 
 
+def guest_failure_fields(exc: BaseException) -> dict[str, Any]:
+    """The step, ssh exit code and command length of a failed guest command, for the failure event."""
+    if not isinstance(exc, winwish.GuestError):
+        return {}
+    return {"step": exc.step, "exit_code": exc.exit_code, "command_length": exc.command_length}
+
+
 def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
               driver_sha: str | None = None) -> tuple[Any, Any, pathlib.Path, dict[str, Any]]:
-    """Check every static dependency before a lane can be claimed."""
+    """Check every static dependency before a lane can be claimed.
+
+    The guard export is built in a temporary folder beside its final place and renamed
+    only when every check has passed, so a failed start leaves nothing to block the next.
+    """
+    final = pathlib.Path(args.out) / "guards-export"
+    if final.exists():
+        raise AcceptanceStop(f"guard export directory already exists: {final}")
+    made: list[pathlib.Path] = []
+    try:
+        route, guards, zipped, info = _preflight(args, made, guest=guest, route_for=route_for,
+                                                 driver_sha=driver_sha)
+        try:
+            made[0].rename(final)
+        except OSError as exc:
+            raise AcceptanceStop(f"guard export directory cannot be put in place: {exc}") from exc
+    except BaseException:
+        for folder in made:
+            shutil.rmtree(folder, ignore_errors=True)
+        raise
+    info["guards"]["export"] = str(final / "guards.json")
+    return route, guards, zipped, info
+
+
+def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any,
+               route_for: Any, driver_sha: str | None = None,
+               ) -> tuple[Any, Any, pathlib.Path, dict[str, Any]]:
     if not BUILD_SHA.fullmatch(args.sha):
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
     mode = getattr(args, "discover", None)
@@ -593,10 +628,9 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     expected_source = f"guards_{guardmaps.FILES[route.title]}.json"
     if route.guard_path.name != expected_source or not route.guard_path.is_file():
         raise AcceptanceStop(f"the measured guard source must be {expected_source}")
-    export_dir = pathlib.Path(args.out) / "guards-export"
-    if export_dir.exists():
-        raise AcceptanceStop(f"guard export directory already exists: {export_dir}")
-    export_dir.mkdir(parents=True)
+    pathlib.Path(args.out).mkdir(parents=True, exist_ok=True)
+    export_dir = pathlib.Path(tempfile.mkdtemp(prefix=".guards-export.", dir=args.out))
+    made.append(export_dir)
     try:
         rc = guardmaps.main(["--maps", str(route.guard_path.parent), "export",
                              "--title", route.title, "--out", str(export_dir)])
@@ -2280,7 +2314,7 @@ class Controller:
                 raise AcceptanceStop(f"persistence {result['status']}: {result['reason']}")
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
-            self.log("failure", error=self.summary["failure"])
+            self.log("failure", error=self.summary["failure"], **guest_failure_fields(exc))
             if result["status"] == "unproven" and not result.get("reason"):
                 result["reason"] = self.summary["failure"]
         finally:
@@ -2315,6 +2349,7 @@ class Controller:
                   "mute_proof": self.args.mute_proof,
                   "df0": None, "df1": None, "df2": None, "df3": None,
                   "game": self.route.game_key, "zip": str(self.zipped),
+                  "zip_sha256": self.info.get("release_artifact", {}).get("sha256"),
                   "uae_option": list(self.route.amiga_title.options),
                   "travel_targets": [], "no_flag": False, "map_only": self.discovery,
                   "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": False}
@@ -2633,7 +2668,7 @@ class Controller:
             self.summary["discovery"]["reason"] = "Opening image identification and mapping remain unproven"
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
-            self.log("failure", error=self.summary["failure"])
+            self.log("failure", error=self.summary["failure"], **guest_failure_fields(exc))
             self.summary["discovery"]["status"] = "failed"
             self.summary["discovery"]["reason"] = self.summary["failure"]
         finally:
@@ -2670,7 +2705,7 @@ class Controller:
             self.summary["discovery"]["reason"] = "Opening image identification and mapping remain unproven"
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
-            self.log("failure", error=self.summary["failure"])
+            self.log("failure", error=self.summary["failure"], **guest_failure_fields(exc))
             self.summary["discovery"]["status"] = "failed"
             self.summary["discovery"]["reason"] = self.summary["failure"]
         finally:
@@ -2734,7 +2769,7 @@ class Controller:
             discovery["reason"] = "Prompt identification and mapping remain unproven"
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
-            self.log("failure", error=self.summary["failure"])
+            self.log("failure", error=self.summary["failure"], **guest_failure_fields(exc))
             self.summary["discovery"]["status"] = "failed"
             self.summary["discovery"]["reason"] = self.summary["failure"]
         finally:
@@ -2802,7 +2837,7 @@ class Controller:
                 "awaiting image review", evidence=[str(back)])
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
-            self.log("failure", error=self.summary["failure"])
+            self.log("failure", error=self.summary["failure"], **guest_failure_fields(exc))
             incomplete = next((name for name, result in self.summary["mapping"].items()
                                if result["status"] == "unproven"), None)
             if incomplete:

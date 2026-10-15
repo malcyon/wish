@@ -1073,7 +1073,7 @@ def test_discovery_preflight_only_accepts_measured_prefix(tmp_path, monkeypatch)
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
     monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
         rules={name: True for phase in route.phases[:3]
                for name in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -2000,8 +2000,8 @@ def test_opening_preflight_requires_independent_two_box_rule_and_pins(tmp_path, 
     route.guard_path.write_text("{}")
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
-    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda argv: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     rule = json.loads(json.dumps(winwishaccept.OPENING_FIRST_RULE))
     if fault == "scene":
         args.manifest.write_text(args.manifest.read_text().replace('"opening_scene":true',
@@ -2034,9 +2034,15 @@ def test_opening_preflight_requires_independent_two_box_rule_and_pins(tmp_path, 
         with pytest.raises(winwishaccept.AcceptanceStop):
             winwishaccept.preflight(args, guest=guest, route_for=lambda *args: route,
                                     driver_sha=SHA)
+        # A failed start leaves no export folder to block the next one.
+        assert not (tmp_path / "guards-export").exists()
+        assert not list(tmp_path.glob(".guards-export.*"))
     else:
         result = winwishaccept.preflight(args, guest=guest, route_for=lambda *args: route,
                                          driver_sha=SHA)
+        assert (tmp_path / "guards-export" / "guards.json").is_file()
+        assert result[3]["guards"]["export"] == str(tmp_path / "guards-export" / "guards.json")
+        assert not list(tmp_path.glob(".guards-export.*"))
         assert result[3]["provenance"]["approved_media_sha256"] == pins
 
 
@@ -2066,8 +2072,8 @@ def test_second_page_preflight_requires_both_independent_boxes_before_artifact(
     route.guard_path.write_text("{}")
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
-    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda argv: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     second = json.loads(json.dumps(winwishaccept.OPENING_SECOND_RULE))
     third = json.loads(json.dumps(winwishaccept.OPENING_THIRD_RULE))
     if fault == "prose":
@@ -2402,8 +2408,8 @@ def test_third_page_preflight_rejects_changed_export_before_fetch(tmp_path, monk
     route.guard_path.write_text("{}")
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
-    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda argv: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+    monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     third = json.loads(json.dumps(winwishaccept.OPENING_THIRD_RULE))
     if fault == "prose":
         third["sha256"] = "0" * 64
@@ -3240,7 +3246,7 @@ def test_leave_yes_preflight_requires_the_leave_town_guard(tmp_path, monkeypatch
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
     monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
         rules={name: True for phase in route.phases[:3]
                for name in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -3318,7 +3324,7 @@ def test_camp_load_preflight_requires_the_camp_guard(tmp_path, monkeypatch):
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
     monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
         rules={name: True for phase in route.phases[:4]
                for name in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -3477,7 +3483,7 @@ def test_camp_load_preflight_requires_the_load_anyway_guard(tmp_path, monkeypatc
     monkeypatch.setattr(route_silver_blades, "journal_preflight", lambda executable: None)
     monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
     monkeypatch.setattr(winwishaccept.guardmaps, "main", lambda args: (
-        (tmp_path / "guards-export" / "guards.json").write_text("{}") and 0))
+        (pathlib.Path(args[args.index("--out") + 1]) / "guards.json").write_text("{}") and 0))
     monkeypatch.setattr(winwishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
         rules={name: True for phase in route.phases[:4]
                for name in (phase.initial_state, *(s.state for s in phase.steps))}
@@ -5123,3 +5129,11 @@ def test_the_persist_leg_final_reload_goes_by_screen_for_the_branched_titles(tmp
     controller._final_reload()
 
     assert len(called) == 1 and called[0].steps[-1].expected.compare_to is None
+
+
+def test_a_guest_failure_event_carries_the_step_exit_code_and_command_length():
+    error = winwishaccept.winwish.GuestError("x", step="stage put", exit_code=255,
+                                             command_length=7)
+    assert winwishaccept.guest_failure_fields(error) == {
+        "step": "stage put", "exit_code": 255, "command_length": 7}
+    assert winwishaccept.guest_failure_fields(ValueError("x")) == {}
