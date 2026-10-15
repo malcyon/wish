@@ -26,9 +26,12 @@ one member of the copy, and nothing else. `run --cast CASTER:SPELL --aim MEMBER 
 has the caster cast a staged spell on his own bars: CAST, the list checked in memory to hold
 only that spell, NEXT on the aim menu until the target is MEMBER's record, then TARGET; DONE
 while the watched member is confused, and QUICK once he has held effect 137 or 142 or the
-spell is spent. The watched member is read at every bar, on every other poll of the fight and
-after it, each change logged with its frame, and the receipt judges the run pass, fled,
-got_away, refuted or inconclusive (`cast_verdict`). `--capture` takes the
+spell is spent. The watched member is read with the caster at every bar and after the fight,
+and on every other poll of the fight alone, his record and effect nodes in one request; every
+fight grab is checked for his runs-away, forced-to-flee and berserk messages with no read.
+Each change is logged with its frame. The receipt judges the run from his saved row first,
+pass, fled, got_away, refuted or inconclusive, with the readings and messages as notes
+(`cast_verdict`). `--capture` takes the
 list and the aim menu from memory and a held frame, stops at the aim menu and saves nothing.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
@@ -139,9 +142,25 @@ FIGHT_GUARDS = {
     # state of the fight loop and gets no key: a `--watch BRUTUS` poll records its frames.
     "brutus_runs_away": {"box": [426, 190, 600, 224],
                          "sha256": "c09b5c811a5c98865751d5560584e9fabaf460bce9b2d58af55b844bf18e9d15"},
+    # BRUTUS IS FORCED TO FLEE, three lines, which the computer turn (`/Curse 0x6764`) prints
+    # while the flag Confusion's run-away arm sets is up; cut from `i6/stage/run2/screens/
+    # 062-fight.png`, and 084 shows the same.
+    "brutus_forced_to_flee": {"box": [426, 190, 680, 240],
+                              "sha256": "4700664f796207dde5eb6f493d4b609d5b558e78689fae461653b655769d2aa3"},
+    # BRUTUS GOES BERSERK, never drawn for him: his name line from run2 062 (the same rows in
+    # run1 064 and run2 084) and the verb line, with the blank line under it, from run2 070
+    # (GALAIN GOES BERSERK), which matches the BAR PATRON lines of 079 and 085 too. The name
+    # line ends at row 208 because GALAIN's G reaches rows 206-207.
+    "brutus_berserk": {"box": [426, 190, 680, 208],
+                       "sha256": "447b6c9189311984f680c9d691d2597df4da4f62028c16cf91497a2604187cec",
+                       "and": [{"box": [426, 208, 680, 240],
+                                "sha256": "68ece7193fedeb61b704ed1999abcecf85e40b740d95f7de21945d18a4448fd3"}]},
 }
-#: The watched member's runs-away message, by name: the guard each poll checks.
-RUNS_AWAY_GUARDS = {"BRUTUS": "brutus_runs_away"}
+#: The watched member's messages, by name, and the guard of each: checked on every fight
+#: grab, with no memory read. None of them is a state of the fight loop or gets a key.
+MESSAGE_GUARDS = {"BRUTUS": {"runs_away": "brutus_runs_away",
+                             "forced_to_flee": "brutus_forced_to_flee",
+                             "berserk": "brutus_berserk"}}
 #: "party_won", "party_destroyed" and "tossed" come before "continue": the first known screen
 #: a grab matches names it.
 KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
@@ -256,8 +275,10 @@ SPELL_LIST_HEAD = 0x63E2
 SPELL_LIST = 0x63E6
 AIM_TARGET = 0x4FE6
 AIM_COUNT = 0x4FE0
-#: Effect ids: confused (35), goes berserk (137) and runs away (142). Removing 137 or 142
-#: clears a control of `$B3` (`0x12626`, `0x126A8`).
+#: Effect ids: confused (35), goes berserk (137) and runs away (142). Confusion's handler
+#: (`0x10A94`) rolls 1-100 each turn: 1-10 adds 142 and sets the flee flag (combat block +0x12),
+#: 61-80 adds 137. Removing 137 or 142 clears a control of `$B3` (`0x12626`, `0x126A8`), and
+#: removing 142 clears the flee flag.
 CONFUSED = 35
 BERSERK = 137
 RUNS_AWAY = 142
@@ -288,6 +309,13 @@ WATCHED_FIELDS = ("control", "status", "hit_points", "quickfight", "creature_typ
 #: Seconds one poll's read of the watched member may take; a failed poll is logged and the
 #: fight goes on.
 POLL_READ_LIMIT = 10.0
+#: A record's effect list (`amigaparty`'s Curse row): head pointer at +0xF2, nodes of 10
+#: bytes, the id at +0 and the next node's address at +6.
+EFFECT_HEAD = 0xF2
+EFFECT_LINK = 0x06
+EFFECT_SIZE = 0x0A
+#: Nodes a poll follows before it takes the list as broken.
+EFFECT_LIMIT = 64
 #: Record fields `stage --stage-record` may write: hit points and their maximum, and one
 #: memorised slot each (`memorised0` is +0x1E). Control, status, type, side and effects are
 #: never written.
@@ -681,9 +709,16 @@ class Memory:
         for name in names:
             found = [m for m in members if m.name == name]
             require(len(found) == 1, f"{name} is in the party {len(found)} times")
+            nodes = found[0].effects()
             rows[name] = watch_row(found[0].raw, found[0].address,
-                                   [raw[0] for _at, raw in found[0].effects()], spell)
+                                   [raw[0] for _at, raw in nodes], spell)
+            rows[name]["nodes"] = [at for at, _raw in nodes]
         return rows
+
+    def record_and_nodes(self, address: int, nodes: list[int]) -> list[bytes]:
+        """The record at `address` and the effect nodes at `nodes`, in one request."""
+        blocks = [(address, self.record_size), *((at, EFFECT_SIZE) for at in nodes)]
+        return [bytes(raw) for raw in self.target().read_blocks(blocks)]
 
     def spell_list(self) -> tuple[int, list[int]]:
         """The combat spell list: its head pointer and every nonzero id in it."""
@@ -730,6 +765,38 @@ def watch_row(raw: bytes, address: int, effects: list[int], spell: int) -> dict:
     return {"address": address, **{field: raw[at] for field, at in RECORD.items()},
             "creature_type": raw[CREATURE_TYPE], "effects": list(effects),
             "spell_left": raw[MEMORISED:MEMORISED + MEMORISED_SIZE].count(spell)}
+
+
+def _u32(raw: bytes, at: int) -> int:
+    return int.from_bytes(raw[at:at + 4], "big")
+
+
+def poll_row(blocks: list[bytes], address: int, nodes: list[int]) -> tuple[dict, list[int]]:
+    """One poll's reading from `Memory.record_and_nodes`: the record's fields and effect ids,
+    and the effect list's node addresses as far as this read could follow them.
+
+    The list is followed from the record's head through the nodes read with it. When it reaches
+    a node not among them (the list changed since the last read), `effects` is None and the
+    addresses end with that node, so the next poll reads it. Raises `RouteError` on a list that
+    comes back on itself or runs past `EFFECT_LIMIT`."""
+    raw = blocks[0]
+    fetched = dict(zip(nodes, blocks[1:]))
+    chain: list[int] = []
+    effects: list[int] | None = []
+    at = _u32(raw, EFFECT_HEAD)
+    while at:
+        require(at not in chain and len(chain) < EFFECT_LIMIT,
+                f"the effect list at {address:#x} does not end: {[hex(a) for a in chain]}")
+        chain.append(at)
+        node = fetched.get(at)
+        if node is None:
+            effects = None
+            break
+        effects.append(node[0])
+        at = _u32(node, EFFECT_LINK)
+    row = {"address": address, "name": _name(raw), **{f: raw[o] for f, o in RECORD.items()},
+           "creature_type": raw[CREATURE_TYPE], "effects": effects}
+    return row, chain
 
 
 def walk(screens: Screens, memory: Memory, start: dict, route: list[int]) -> list[dict]:
@@ -908,6 +975,35 @@ PIT_FIGHT = FightRules(
     defeat=("party_destroyed",))
 
 
+def _listed(value: Any) -> Any:
+    return tuple(value) if isinstance(value, list) else value
+
+
+def cast_spends(log: dict) -> list[dict]:
+    """Each cast event's spend: the caster's count at the event's own bar read less his count
+    at the first read after it, and every later drop before the next event's bar (that read
+    included) as a cast the computer made for him. A spend no read has followed yet is None.
+
+    Taken from the reads alone, so a receipt an earlier driver wrote replays the same way."""
+    caster, reads = log["caster"], log["reads"]
+    starts = [next((i for i, r in enumerate(reads) if r["when"] == f"bar {e['bar']} ({caster})"),
+                   None) for e in log["events"]]
+    out = []
+    for n, (event, start) in enumerate(zip(log["events"], starts)):
+        later = next((s for s in starts[n + 1:] if s is not None), len(reads) - 1)
+        counts = ([] if start is None else
+                  [(r["when"], r[caster]["spell_left"]) for r in reads[start + 1:later + 1]
+                   if caster in r])
+        if not counts:
+            out.append({"spent": None, "left_after": None, "computer_casts": []})
+            continue
+        computer = [{"when": when, "spent": before - left}
+                    for (_w, before), (when, left) in zip(counts, counts[1:]) if left < before]
+        out.append({"spent": event["left_before"] - counts[0][1], "left_after": counts[0][1],
+                    "computer_casts": computer})
+    return out
+
+
 class Captured(Exception):
     """`--capture` reached the aim menu and kept its frame; the fight goes no further."""
 
@@ -920,8 +1016,10 @@ class Cast:
     DONE instead; after that it gets QUICK, as every other bar does. The list gets CAST once
     every id on it is the spell; the aim menu, which the game shows straight after the list,
     gets NEXT until the target global holds the aim member's record, then TARGET. Every bar
-    reads the watched member and the caster, and a cast event checks that exactly one
-    memorised copy was spent.
+    reads the watched member and the caster. A cast's spend is the drop in the caster's count
+    from his bar to the first read after it (`cast_spends`); a later drop is logged as a cast the
+    computer made for him. Every fight grab is checked for the watched member's messages, and
+    polls his record alone in one request.
 
     With `capture`, a frame is kept for the list and one for the aim menu, and the aim menu's
     frame ends the fight with nothing pressed on it. Only the guarded list gets CAST; an
@@ -948,12 +1046,17 @@ class Cast:
         #: Each change in the watched member's `WATCHED_FIELDS`, with the frame it was read at.
         self.changes: list[dict] = []
         self._last_seen: tuple | None = None
-        #: Frames that showed the watched member's runs-away message, and failed poll reads.
-        self.runs_away_frames: list[dict] = []
+        #: Frames that showed one of the watched member's messages, and failed poll reads.
+        self.messages: list[dict] = []
         self.poll_errors: list[dict] = []
         #: A poll read that outlived its limit and is still running; no poll starts beside it.
         self._poll_worker: threading.Thread | None = None
         self.polls_skipped = 0
+        #: Polls made before any read gave the watched member's record address.
+        self.polls_unaddressed = 0
+        #: The watched member's record and effect-node addresses from the last read of him.
+        self._watched_at: int | None = None
+        self._nodes: list[int] = []
 
     def names(self) -> list[str]:
         return list(dict.fromkeys((self.watched, self.caster, self.aim_at)))
@@ -964,72 +1067,99 @@ class Cast:
         reading = {"when": when, **rows}
         self.reads.append(reading)
         screens.events.append({"watch": reading})
+        self._watched_at = rows[self.watched]["address"]
+        self._nodes = list(rows[self.watched].get("nodes", ()))
         self._note(screens, rows[self.watched], when)
+        self._spends()
         return reading
 
+    def _spends(self) -> None:
+        """Write each cast event's spend and the computer's later casts, from the reads so far."""
+        for event, spend in zip(self.events, cast_spends(self.log())):
+            if spend["spent"] is not None:
+                event.update(left_after=spend["left_after"], spent=spend["spent"],
+                             computer_casts=spend["computer_casts"])
+
     def _note(self, screens: Any, row: dict, when: str, frame: int | None = None) -> None:
-        """Log the watched member's row when any of `WATCHED_FIELDS` differs from the last."""
-        if set(row["effects"]) & set(LOWERING):
+        """Log the watched member's row when any of `WATCHED_FIELDS` differs from the last.
+
+        A poll that could not follow his whole effect list reads `effects` as None."""
+        if set(row["effects"] or ()) & set(LOWERING):
             self.lowered = True
-        seen = tuple(tuple(row[f]) if f == "effects" else row[f] for f in WATCHED_FIELDS)
+        seen = tuple(_listed(row[f]) for f in WATCHED_FIELDS)
         if seen == self._last_seen:
             return
         self._last_seen = seen
         change = {"frame": screens.count if frame is None else frame, "when": when,
-                  **{f: (list(row[f]) if f == "effects" else row[f]) for f in WATCHED_FIELDS}}
+                  **{f: (None if row[f] is None else list(row[f])) if f == "effects" else row[f]
+                     for f in WATCHED_FIELDS}}
         self.changes.append(change)
         screens.events.append({"watch_change": change})
 
+    def check_messages(self, screens: Any, shot: Any) -> None:
+        """Record a frame showing one of the watched member's messages; reads no memory."""
+        for message, guard in MESSAGE_GUARDS.get(self.watched, {}).items():
+            if guard in screens.guards and screens.guards(guard, shot):
+                self.messages.append({"frame": screens.count, "message": message,
+                                      "shot": str(shot)})
+                screens.events.append({"message": self.messages[-1]})
+
     def poll(self, screens: Any, shot: Any) -> float:
-        """One fight poll: note a frame showing the watched member's runs-away message, then
-        read him and log a change, returning the seconds the read took. A read that fails or
-        outlives `POLL_READ_LIMIT` is logged and the fight goes on; while such a read is still
-        running no poll reads, so two reads never overlap."""
-        guard = RUNS_AWAY_GUARDS.get(self.watched)
-        if guard is not None and guard in screens.guards and screens.guards(guard, shot):
-            self.runs_away_frames.append({"frame": screens.count, "shot": str(shot)})
-            screens.events.append({"runs_away": self.runs_away_frames[-1]})
+        """One fight poll: record a frame showing one of the watched member's messages, then
+        read his record and the effect nodes the last read found, in one request, and log a
+        change, returning the seconds the read took. Before any read has given his address no
+        poll reads. A read that fails or outlives `POLL_READ_LIMIT` is logged and the fight goes
+        on; while such a read is still running no poll reads, so two reads never overlap."""
+        self.check_messages(screens, shot)
         if self._poll_worker is not None and self._poll_worker.is_alive():
             self.polls_skipped += 1
             return 0.0
         self._poll_worker = None
+        if self._watched_at is None:
+            self.polls_unaddressed += 1
+            return 0.0
         began, frame = screens.clock(), screens.count
+        address, nodes = self._watched_at, list(self._nodes)
         result: dict[str, Any] = {}
 
         def work() -> None:
             try:
-                result["rows"] = self.memory.watch([self.watched], self.spell)
+                result["blocks"] = self.memory.record_and_nodes(address, nodes)
             except BaseException as exc:  # noqa: BLE001 - logged by the poll below
                 result["error"] = f"{type(exc).__name__}: {exc}"
 
         worker = threading.Thread(target=work, name="cursefight-poll", daemon=True)
         worker.start()
         worker.join(screens.left(POLL_READ_LIMIT))
+        error = None
         if worker.is_alive():
             self._poll_worker = worker
-            self.poll_errors.append({"frame": frame,
-                                     "error": f"no answer in {POLL_READ_LIMIT:.0f}s"})
+            error = f"no answer in {POLL_READ_LIMIT:.0f}s"
         elif "error" in result:
-            self.poll_errors.append({"frame": frame, "error": result["error"]})
+            error = result["error"]
         else:
-            self._note(screens, result["rows"][self.watched], "poll", frame)
+            try:
+                row, chain = poll_row(result["blocks"], address, nodes)
+                require(row["name"] == self.watched,
+                        f"the record at {address:#x} holds {row['name']!r}, not {self.watched}")
+            except RouteError as exc:
+                error = str(exc)
+            else:
+                self._nodes = chain
+                self._note(screens, row, "poll", frame)
+        if error is not None:
+            self.poll_errors.append({"frame": frame, "error": error})
         return max(0.0, screens.clock() - began)
 
     def _settle(self, reading: dict) -> None:
-        """Close a cast the caster's next bar or the fight's end finds unfinished, and check
-        the spend while no cast is in flight and the caster has not been given QUICK."""
-        left = reading[self.caster]["spell_left"]
+        """Close a cast the caster's next bar or the fight's end finds unfinished, and take the
+        caster's count from this reading."""
         if self.phase in ("chose", "begun"):
             self.events[-1]["outcome"] = "lost" if self.phase == "begun" else "no_list"
             self.phase = "idle"
         if self.phase == "aimed":
             self.phase = "idle"
-        if self.events and not self.quick:
-            event = self.events[-1]
-            if "left_after" not in event:
-                event["left_after"] = left
-                event["spent"] = event["left_before"] - left
-        self.left = left
+        self.left = reading[self.caster]["spell_left"]
 
     def on_bar(self, owner: dict, screens: Any, bar: int) -> str:
         """The key for a bar: CAST, DONE or QUICK on the caster's, QUICK on everyone else's."""
@@ -1185,8 +1315,9 @@ class Cast:
         return {"caster": self.caster, "spell": self.spell, "aim": self.aim_at,
                 "watch": self.watched, "events": self.events, "reads": self.reads,
                 "captures": self.captures, "lowered_seen": self.lowered, "quick": self.quick,
-                "changes": self.changes, "runs_away_frames": self.runs_away_frames,
-                "poll_errors": self.poll_errors, "polls_skipped": self.polls_skipped}
+                "changes": self.changes, "messages": self.messages,
+                "poll_errors": self.poll_errors, "polls_skipped": self.polls_skipped,
+                "polls_unaddressed": self.polls_unaddressed}
 
 
 def fight(screens: Screens, memory: Memory, members: list[str],
@@ -1494,95 +1625,97 @@ def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won
 
 
 def cast_verdict(log: dict, after: dict | None, saved: dict | None,
-                 loaded: dict) -> tuple[str, list[str]]:
-    """The cast run's verdict and the problems behind it.
+                 loaded: dict) -> tuple[str, list[str], list[str]]:
+    """The cast run's verdict, the problems behind it, and notes on what the watch saw.
 
-    The watched member's readings are every bar's and every logged poll change. He left the
-    map when one reads status 3; he ran when one holds 142 or a frame showed his runs-away
-    message. Leaving the map is judged first and is never a refutation (spec 66adfbd2).
-    `fled`: he ran and left the map; after the fight his control reads 0 and his status 0,
-    live and in the saved slot (`saved`, his read-back row), saved with the creature type he
-    was first read with, holding none of 35, 137 and 142, above 0 hit points. `got_away`: he
-    left the map without running; expected saved at status 0 with the type he was first read
-    with, and with control 0 live and saved if he held 137; with neither effect his control is
-    recorded and not judged. `refuted`: 137 or 142 was seen, he never left the map, and his
-    control still reads as loaded after the fight. `pass`, only for the berserk form
-    that stays on the map: he held 137; after the fight his control reads 0 and his status as
-    loaded, live and saved; the saved chain holds none of 35, 137 and 142; his hit points are
-    above 0. A member who ran and was never read off the map is `inconclusive`, as is anything
-    else. Every cast event must also have spent exactly one memorised copy.
+    The watched member's saved row decides the form (`saved`, his read-back row; `loaded`, his
+    staged fields):
+
+    * `pass`, the berserk form: saved control 0 and the loaded status.
+    * `fled`: saved control 0 and status 0, the run-away form that left the map.
+    * `got_away`: saved status 0 with the loaded control: he left the map unlowered.
+    * `refuted`: saved with the loaded control and status although a reading held 137 or 142
+      or a frame showed his runs-away or berserk message.
+    * `inconclusive`: no saved row, a member loaded with control 0, the loaded row with no
+      lowering seen, or any other row.
+
+    Problems: no cast, a cast that spent other than one copy (`cast_spends`), the live reading
+    after the fight disagreeing with the form, a creature type other than the first read, 0 hit
+    points, or effects 35, 137 or 142 still saved. The bar and poll readings and the message
+    frames then confirm the form or leave a gap, each named in the notes; they never change it.
     """
     name = log["watch"]
-    seen = [r[name] for r in log["reads"] if name in r] + list(log.get("changes", []))
-    events = log["events"]
-    problems = []
-    if not events:
+    problems: list[str] = []
+    notes: list[str] = []
+    if not log["events"]:
         problems.append("no cast event")
-    for number, event in enumerate(events, 1):
-        if event.get("spent") != 1:
-            problems.append(f"cast {number} ({event.get('outcome')}) spent {event.get('spent')} "
+    for number, (event, spend) in enumerate(zip(log["events"], cast_spends(log)), 1):
+        if spend["spent"] != 1:
+            problems.append(f"cast {number} ({event.get('outcome')}) spent {spend['spent']} "
                             f"of {log['spell']}, not 1")
-    held = {effect for r in seen for effect in r["effects"]}
-    ran = RUNS_AWAY in held or bool(log.get("runs_away_frames"))
-    berserk = BERSERK in held
+        notes += [f"the computer cast {cast['spent']} of {log['spell']} for {log['caster']} "
+                  f"before the read {cast['when']!r}" for cast in spend["computer_casts"]]
+    seen = [r[name] for r in log["reads"] if name in r] + list(log.get("changes", []))
+    held = {effect for r in seen for effect in (r["effects"] or ())}
+    shown = {m["message"] for m in log.get("messages", [])}
+    shown |= {"runs_away"} if log.get("runs_away_frames") else set()
+    ran = RUNS_AWAY in held or "runs_away" in shown
+    berserk = BERSERK in held or "berserk" in shown
     left_map = any(r["status"] == GOT_AWAY for r in seen)
     kind = seen[0]["creature_type"] if seen else None
     live = None if after is None else after.get(name)
-    rows = [("live", live), ("saved", saved)]
-    for where, row in rows:
-        if row is None:
-            problems.append(f"no {where} reading of {name} after the fight")
-
-    def leftover() -> None:
-        left = sorted(set(saved["effects"]) & {CONFUSED, *LOWERING}) if saved else []
-        if left:
-            problems.append(f"{name} was saved holding effects {left}")
-
-    if left_map and not ran:
-        if saved is not None and (saved["status"], saved["creature_type"]) != (0, kind):
-            problems.append(f"{name} got away but was saved with status {saved['status']}, "
-                            f"type {saved['creature_type']}; expected 0, {kind}")
-        if berserk:
-            for where, row in rows:
-                if row is not None and row["control"] != 0:
-                    problems.append(f"{name} held {BERSERK}, got away and reads control "
-                                    f"{row['control']:#04x} {where}, not 0x00")
-        return "got_away", problems
-    if left_map:
-        for where, row in rows:
-            if row is not None and (row["control"], row["status"]) != (0, 0):
-                problems.append(f"{name} ran off the map but reads control "
-                                f"{row['control']:#04x}, status {row['status']} {where}, "
-                                f"not 0x00 and 0")
-        if saved is not None:
-            if saved["creature_type"] != kind:
-                problems.append(f"{name} ran off the map but was saved with type "
-                                f"{saved['creature_type']}, not {kind}")
-            if saved["hit_points"] == 0:
-                problems.append(f"{name} reads 0 hit points saved")
-        leftover()
-        return "fled", problems
-    if (ran or berserk) and any(row is not None and row["control"] == loaded["control"]
-                                for _where, row in rows):
-        problems.append(f"{name} held {BERSERK} or {RUNS_AWAY} and still reads control "
-                        f"{loaded['control']:#04x} after the fight")
-        return "refuted", problems
-    if ran and not berserk:
-        problems.append(f"{name} held {RUNS_AWAY} but no read caught him off the map "
-                        f"(status {GOT_AWAY})")
-        return "inconclusive", problems
-    if not berserk:
-        problems.append(f"{name} never held {BERSERK} or {RUNS_AWAY}")
-    for where, row in rows:
-        if row is None:
-            continue
-        if row["control"] != 0 or row["status"] != loaded["status"]:
-            problems.append(f"{name} reads control {row['control']:#04x}, status "
-                            f"{row['status']} {where}, not 0x00 and {loaded['status']}")
-        if row["hit_points"] == 0:
-            problems.append(f"{name} reads 0 hit points {where}")
-    leftover()
-    return ("pass" if not problems else "inconclusive"), problems
+    if saved is None:
+        problems.append(f"no saved reading of {name} after the fight")
+        return "inconclusive", problems, notes
+    control, status = saved["control"], saved["status"]
+    if loaded["control"] == 0:
+        problems.append(f"{name} was loaded with control 0x00, so nothing could lower it")
+        return "inconclusive", problems, notes
+    if control == 0 and status == loaded["status"]:
+        form, want = "pass", (0, loaded["status"])
+    elif control == 0 and status == 0:
+        form, want = "fled", (0, 0)
+    elif control == loaded["control"] and status == 0:
+        form, want = "got_away", (loaded["control"], 0)
+    elif (control, status) == (loaded["control"], loaded["status"]):
+        if ran or berserk:
+            problems.append(f"{name} held {BERSERK} or {RUNS_AWAY}, or showed its message, and "
+                            f"was saved with control {control:#04x} and status {status} as loaded")
+            return "refuted", problems, notes
+        problems.append(f"{name} never held {BERSERK} or {RUNS_AWAY} and was saved as loaded")
+        return "inconclusive", problems, notes
+    else:
+        problems.append(f"{name} was saved with control {control:#04x} and status {status}, "
+                        f"which is none of the forms")
+        return "inconclusive", problems, notes
+    if live is None:
+        problems.append(f"no live reading of {name} after the fight")
+    elif (live["control"], live["status"]) != want:
+        problems.append(f"{name} reads control {live['control']:#04x}, status {live['status']} "
+                        f"live after the fight, not {want[0]:#04x} and {want[1]} as saved")
+    if kind is not None and saved["creature_type"] != kind:
+        problems.append(f"{name} was saved with type {saved['creature_type']}, not {kind}")
+    if kind is None:
+        notes.append(f"no reading of {name} before the save gave his creature type")
+    if saved["hit_points"] == 0:
+        problems.append(f"{name} was saved at 0 hit points")
+    if form == "pass" and left_map:
+        problems.append(f"a reading caught {name} off the map (status {GOT_AWAY}), yet he was "
+                        f"saved at status {status}")
+    left = sorted(set(saved["effects"]) & {CONFUSED, *LOWERING})
+    if left:
+        problems.append(f"{name} was saved holding effects {left}")
+    gaps = {
+        "pass": [(berserk, f"no reading held {BERSERK} and no frame showed {name} GOES BERSERK")],
+        "fled": [(ran or berserk, f"no reading held {RUNS_AWAY} or {BERSERK} and no frame showed "
+                                  f"{name} RUNS AWAY or GOES BERSERK"),
+                 (left_map, f"no reading caught {name} off the map (status {GOT_AWAY})")],
+        "got_away": [(left_map, f"no reading caught {name} off the map (status {GOT_AWAY})")],
+    }[form]
+    notes += [text for ok, text in gaps if not ok]
+    if "forced_to_flee" in shown:
+        notes.append(f"frames showed {name} IS FORCED TO FLEE")
+    return form, problems, notes
 
 
 def parse_cast(text: str) -> tuple[str, int]:
@@ -1735,11 +1868,12 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                                               else receipt.get("outcome", "won"))
                 if cast is not None:
                     rows = [m for m in found["members"] if m["name"] == watched]
-                    kind, problems = cast_verdict(receipt["cast"], receipt.get("watch_after"),
-                                                  rows[0] if len(rows) == 1 else None,
-                                                  fight_["members"][watched])
+                    kind, problems, notes = cast_verdict(
+                        receipt["cast"], receipt.get("watch_after"),
+                        rows[0] if len(rows) == 1 else None, fight_["members"][watched])
                     receipt["cast_verdict"] = kind
                     receipt["cast_problems"] = problems
+                    receipt["cast_notes"] = notes
                     receipt["problems"] += [f"the cast verdict is {kind}"] if kind != "pass" else []
                     receipt["problems"] += problems
             except Exception as exc:  # noqa: BLE001
