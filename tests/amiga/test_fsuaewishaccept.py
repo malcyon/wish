@@ -130,10 +130,12 @@ class FakeWish:
         self.app = object()
         self.window = None
         self.events = []
+        self.tab_log = []
         self.rows = rows or (lambda: [])
 
     def open(self):
-        self.window = object()
+        self.window = SimpleNamespace(tabs=SimpleNamespace(
+            setCurrentIndex=lambda index: self.tab_log.append(("tab", index))))
         self.events.append("open")
 
     def close(self):
@@ -252,6 +254,23 @@ def test_start_asks_for_no_debugger_of_its_own(tmp_path, monkeypatch):
     assert [call[0] for call in game.calls][:4] == ["claim", "put", "start", "environment"]
     assert wish.events == ["open"]
     assert "SDL_AUDIODRIVER=dummy" in controller.summary["silence"]["environ"]
+
+
+def test_each_checkpoint_shows_the_map_tab_again_before_its_grab(tmp_path, monkeypatch):
+    from wish.window import EDITOR_TAB, MAP_TAB
+
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch, route=_route(title="darkness"))
+    shoot = controller._shoot_window
+    monkeypatch.setattr(controller, "_shoot_window",
+                        lambda path: (path.name.startswith("wish-")
+                                      and wish.tab_log.append(("grab", path.name))) or shoot(path))
+    controller.run_title()
+
+    # Wish holds a jump of more than one square until the map tab is shown again, so each grab
+    # follows a trip away from the map tab and back.
+    refresh = [("tab", EDITOR_TAB), ("tab", MAP_TAB)]
+    assert wish.tab_log == [*refresh, ("grab", "wish-loaded.png"),
+                            *refresh, ("grab", "wish-reopened.png")]
 
 
 def _flag_rows(actions_on):
