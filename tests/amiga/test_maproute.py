@@ -798,3 +798,104 @@ def test_the_persist_leg_prefix_is_the_load_and_pool_boat_only(tmp_path: Path):
     pool = maproute.route_for("pool", _manifest("pool", tmp_path))
     names = [p.name for p in pool.phases]
     assert all(name in names for name in maproute.LEG_PREFIX["pool"])
+
+
+def _spells_manifest(title: str, root: Path) -> dict:
+    party = maproute.SPELLS_PARTIES[title]
+    return {**_manifest(title, root),
+            "substitute": {"letter": party.letter, "sha256": party.sha256},
+            "state_a": dict(party.place)}
+
+
+@pytest.mark.parametrize("title,letter", [("curse", "G"), ("ssb", "E")])
+def test_the_spells_party_passes_the_persist_leg_and_never_the_mapping_leg(
+        title: str, letter: str, tmp_path: Path):
+    from types import SimpleNamespace
+
+    from tools.amiga import winwishaccept
+
+    route = maproute.route_for(title, _spells_manifest(title, tmp_path))
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="pinned for the persist leg"):
+        winwishaccept._phase_map(route)
+    actions = winwishaccept._check_persist(SimpleNamespace(action=["heal"]), route)
+    assert [action.kind for action in actions] == ["heal"]
+    saved, rest = maproute.persist_phases(route, letter)
+    assert saved.steps[0].checkpoint == "persist_saved"
+    assert ("exit_game", letter) in _keys(rest)
+    assert set(route.unresolved) == {maproute._PERSIST_ONLY}
+    assert route.provenance["spells_party"].endswith(f"slot {maproute.SPELLS_PARTIES[title].letter}")
+
+
+def test_the_curse_spells_party_loads_and_reloads_on_its_own_square(tmp_path: Path):
+    route = maproute.route_for("curse", _spells_manifest("curse", tmp_path))
+    yulash = maproute.route_for("curse", _yulash_manifest(tmp_path))
+    phases = {phase.name: phase for phase in route.phases}
+    reload = next(phase for phase in yulash.phases if phase.name == "reload")
+    square = maproute.Expected(engine={"x": 5, "y": 13, "facing": 3})
+
+    assert phases["load"].steps[-1].expected == square
+    assert phases["reload"].steps[-1].expected == square
+    assert phases["reload"].ready and phases["load"].ready
+    assert [(s.kind, s.state, s.key, s.relaunch) for s in phases["reload"].steps] == [
+        (s.kind, s.state, s.key, s.relaunch) for s in reload.steps]
+    assert phases["reload"].pages == reload.pages
+
+
+@pytest.mark.parametrize("title,change", [
+    ("curse", {"state_a": {"area": 1, "x": 5, "y": 12, "facing": 3}}),
+    ("curse", {"substitute": {"letter": "F"}}),
+    ("curse", {"loaded_letter": "C"}),
+    ("ssb", {"state_a": {"area": 16, "x": 3, "y": 5, "facing": 2}}),
+])
+def test_a_spells_party_off_its_pin_gets_no_persist_route(
+        title: str, change: dict, tmp_path: Path):
+    from types import SimpleNamespace
+
+    from tools.amiga import winwishaccept
+
+    manifest = _spells_manifest(title, tmp_path)
+    if "substitute" in change:
+        change = {"substitute": {**manifest["substitute"], **change["substitute"]}}
+    route = maproute.route_for(title, {**manifest, **change})
+
+    assert "spells_party" not in route.provenance
+    with pytest.raises(winwishaccept.AcceptanceStop, match="route incomplete"):
+        winwishaccept._check_persist(SimpleNamespace(action=["heal"]), route)
+
+
+@pytest.mark.parametrize("title,key", [
+    ("curse", "curse-of-the-azure-bonds"), ("ssb", "secret-of-the-silver-blades")])
+def test_the_pinned_spells_party_holds_a_ready_spell_for_the_selector_to_clear(
+        title: str, key: str):
+    import hashlib
+
+    from gamedata import specimen
+
+    from automap import amigaparty
+    from goldbox import amiga_adf, amiga_savegame
+
+    party = maproute.SPELLS_PARTIES[title]
+    path = specimen(party.specimen, platform="amiga") / party.file
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == party.sha256
+    saved = amiga_savegame.read_slot(amiga_adf.AmigaDisk.open(path), party.letter, key)
+    state = amiga_savegame.state_from_savegame(saved)
+    row = amigaparty.ROWS[key]
+    spot = row.memorised
+
+    def memorised(member) -> bytes:
+        return member.raw[spot.offset:spot.offset + spot.length]
+
+    assert {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing} == party.place
+    # The selector takes the first member by party slot with any memorised byte, and clears
+    # that member's first non-zero byte.
+    chosen = next(member for member in sorted(saved.characters, key=lambda m: m.raw[row.slot])
+                  if any(memorised(member)))
+    assert chosen.raw[:15].split(b"\0")[0].decode("latin1") == party.member
+    first = next(value for value in memorised(chosen) if value)
+    ready = [value for value in memorised(chosen) if value and not value & 0x80]
+    # Bit 7 marks a spell still being memorised, which the Cast list does not show.
+    assert not first & 0x80
+    # Curse's Cast list for a member with no spell left shows no list at all, so its party
+    # keeps one after the clear.
+    assert len(ready) >= (2 if title == "curse" else 1)

@@ -133,6 +133,43 @@ _POD_AERIE = {"area": 33, "x": 1, "y": 2, "facing": 1}
 _POOL_DOCK = Expected(engine={"outdoors": True, "facing": 1}, window={"x": 7, "y": 29})
 
 
+@dataclasses.dataclass(frozen=True)
+class SpellsParty:
+    """A registered party whose Cast list shows Save and Restore spells clearing a spell.
+
+    `route_for` gives it the load and the camp reload and no mapping phase, so only the
+    persist leg can run it. `specimen` names the registered folder without `WISH-SPEC-`.
+    """
+
+    specimen: str
+    file: str
+    sha256: str
+    letter: str
+    place: Mapping[str, int]
+    #: The first member by party slot with a memorised spell, whom the spells selector picks.
+    member: str
+
+
+#: One spells party per title whose mapping party cannot show a cleared spell.
+SPELLS_PARTIES = {
+    # The game's own save of slot C in Tilverton. SHARA holds Find Traps (22) twice at record
+    # +0x70 and +0x71, so clearing the first leaves one in her Cast list; PHILIPPE holds
+    # Magic Missile, Stinking Cloud and Fireball (15, 34, 47) at +0x6F to +0x71.
+    "curse": SpellsParty(
+        "wish-677-curse-mn2xe43ffvzwqylsmu-mfrwgzlqoqyq", "fetched-df0.adf",
+        "85966196be11013bee365d62006976c4444c6dbd763ac96f137f38d831c8b787", "C",
+        {"area": 1, "x": 5, "y": 13, "facing": 3}, "SHARA"),
+    # The game's own save of slot C in New Verdigris. PAINE holds Invisibility to Animals
+    # (80) at record +0x68, the only memorised spell in any Silver Blades save registered.
+    "ssb": SpellsParty(
+        "wish-667-ssb-heywcmjtgzrwklltoawxa33tgi-meza", "fetched-df0.adf",
+        "b6538d4e540baea597905f27a6713d263f4223e9fe26791fcb4d61ceaef1facd", "C",
+        {"area": 16, "x": 3, "y": 3, "facing": 2}, "PAINE"),
+}
+_SPELLS_SLOT = {"curse": "B", "ssb": "D"}
+_PERSIST_ONLY = "The spells party is pinned for the persist leg, which walks no mapping phase."
+
+
 def _slot_from(manifest: Mapping[str, object]) -> str:
     slot = manifest.get("loaded_letter", manifest.get("slot_letter"))
     if not isinstance(slot, str) or not _SLOT.fullmatch(slot):
@@ -178,7 +215,7 @@ def _missing(name: str, initial: str, reason: str) -> Phase:
 
 
 def _load(title: str, slot: str, opening_scene: bool = False,
-          curse_yulash: bool = False) -> Phase:
+          curse_yulash: bool = False, curse_square: Mapping[str, int] | None = None) -> Phase:
     if title == "pool":
         return _phase(
             "load", "title",
@@ -197,7 +234,8 @@ def _load(title: str, slot: str, opening_scene: bool = False,
             Step("key", "sheet", key="V", checkpoint="load_sheet"),
             Step("key", "loaded_menu", key="E"),
             Step("key", "world", key="B", checkpoint="loaded",
-                 expected=Expected(engine=_CURSE_YULASH) if curse_yulash else None),
+                 expected=(Expected(engine=_CURSE_YULASH) if curse_yulash
+                           else Expected(engine=curse_square) if curse_square else None)),
         )
     if title == "ssb":
         prefix = (
@@ -553,6 +591,46 @@ def _pool_walkout() -> Phase:
     )
 
 
+def _curse_reload(expected: Expected) -> Phase:
+    """Save to F, quit, reset and load slot B again; Curse's camp has no load, and its exit
+    leaves AmigaDOS asking for a reboot."""
+    return _phase(
+        "reload", "world",
+        Step("key", "camp", key="E"),
+        Step("key", "camp_save_picker", key="S"),
+        Step("key", "exit_game", key="F"),
+        Step("key", "reboot", key="Y"),
+        Step("reset", "title", relaunch=True),
+        Step("key", "load_picker", key="L"),
+        Step("key", "loaded_menu", key="B"),
+        Step("key", "world", key="B", checkpoint="curse_reloaded", expected=expected),
+        pages=("front_end", "intro"),
+    )
+
+
+def _spells_phases(title: str, load: Phase, slot: str, party: SpellsParty
+                   ) -> tuple[Phase, ...]:
+    """The load and the camp reload a spells party needs; every mapping phase stays missing."""
+    if title == "curse":
+        reload = _curse_reload(Expected(engine=_square(party)))
+    else:
+        # The reload's comparison is with the transition's arrival, which this party never makes.
+        reload = _ssb_reload(slot)
+        reload = dataclasses.replace(reload, steps=tuple(
+            dataclasses.replace(step, expected=dataclasses.replace(
+                step.expected, compare_to=None, relation=None))
+            if step.expected is not None and step.expected.compare_to else step
+            for step in reload.steps))
+    return (load, *(_missing(name, "world", _PERSIST_ONLY)
+                    for name in ("stationary", "walk", "transition")),
+            reload, _missing("reopen_step", "world", _PERSIST_ONLY))
+
+
+def _square(party: SpellsParty) -> dict[str, int]:
+    """The party's square and facing; the Tilverton area byte is not yet read in a running game."""
+    return {key: party.place[key] for key in ("x", "y", "facing")}
+
+
 def _curse_phases() -> tuple[Phase, ...]:
     """The Yulash save at 2,6 facing east: turns, a walk west and back through the
     checkpoint square, out to the world map, ENTER CITY and SNEAK IN, then a save to F, the
@@ -598,20 +676,7 @@ def _curse_phases() -> tuple[Phase, ...]:
         Step("key", "world", key="S", checkpoint="curse_yulash_again",
              expected=_at(16, 0, 6, 1, "curse_world", "view_changed")),
     )
-    # Curse's camp has no load, and its exit leaves AmigaDOS asking for a reboot.
-    reload = _phase(
-        "reload", "world",
-        Step("key", "camp", key="E"),
-        Step("key", "camp_save_picker", key="S"),
-        Step("key", "exit_game", key="F"),
-        Step("key", "reboot", key="Y"),
-        Step("reset", "title", relaunch=True),
-        Step("key", "load_picker", key="L"),
-        Step("key", "loaded_menu", key="B"),
-        Step("key", "world", key="B", checkpoint="curse_reloaded",
-             expected=_at(16, 2, 6, 1, "curse_yulash_again", "moved")),
-        pages=("front_end", "intro"),
-    )
+    reload = _curse_reload(_at(16, 2, 6, 1, "curse_yulash_again", "moved"))
     reopen = _phase(
         "reopen_step", "world",
         Step("encounters", "world", encounters=True),
@@ -743,9 +808,22 @@ def _curse_yulash(manifest: Mapping[str, object], source: Mapping[str, object],
             and manifest.get("state_a") == _CURSE_YULASH)
 
 
+def _spells_party(title: str, manifest: Mapping[str, object], source: Mapping[str, object],
+                  slot: str) -> SpellsParty | None:
+    """The pinned spells party, when the prepared slot holds it on its own square."""
+    party = SPELLS_PARTIES.get(title)
+    if party is None or slot != _SPELLS_SLOT[title]:
+        return None
+    if (source.get("letter"), source.get("sha256")) != (party.letter, party.sha256):
+        return None
+    return party if manifest.get("state_a") == party.place else None
+
+
 def _specimen_gaps(title: str, manifest: Mapping[str, object],
                    source: Mapping[str, object], media: tuple[Media, ...],
                    slot: str) -> tuple[str, ...]:
+    if _spells_party(title, manifest, source, slot) is not None:
+        return ()
     if title == "pool":
         if slot != "A" or (source.get("letter"), source.get("sha256")) != (
                 "B", _POOL_OUTDOOR_SHA256):
@@ -779,8 +857,11 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
     media = _media_for(title, manifest, base)
     source = _source_provenance(manifest)
     curse_yulash = title == "curse" and _curse_yulash(manifest, source, slot)
-    load = _load(title, slot, opening_scene, curse_yulash)
-    phases = _phases(title, load, slot, curse_yulash)
+    spells = _spells_party(title, manifest, source, slot)
+    load = _load(title, slot, opening_scene, curse_yulash,
+                 _square(spells) if spells is not None and title == "curse" else None)
+    phases = (_spells_phases(title, load, slot, spells) if spells is not None
+              else _phases(title, load, slot, curse_yulash))
     specimen_gaps = _specimen_gaps(title, manifest, source, media, slot)
     provenance: dict[str, object] = {
         "prepared_slot": slot,
@@ -809,6 +890,12 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
                          "WinUAE boot."),
         }[title],
     }
+    if spells is not None:
+        provenance["spells_party"] = f"WISH-SPEC-{spells.specimen}/{spells.file} slot {spells.letter}"
+        provenance["confidence"] = (
+            "CONFIRMED: The party, slot and memorised bytes were read off the registered disk. "
+            "SPECULATIVE: The load and camp reload are the mapping route's keys, not yet matched "
+            "with this party on its square.")
     unresolved = (
         *specimen_gaps,
         *(phase.reason for phase in phases if not phase.ready and phase.reason),
