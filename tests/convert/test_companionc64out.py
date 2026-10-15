@@ -411,3 +411,72 @@ def test_the_dos_games_own_resave_of_a_c64_joined_party_converts_to_the_c64_figu
     """Specimen: DOS Curse's own resave of a party that joined on the C64."""
     folder = gamedata.specimen(C64_JOIN_DOS_RESAVE)
     _assert_the_c64_figure(app, tmp_path, folder, "D")
+
+
+SSB_KEY = "secret-of-the-silver-blades"
+SIR_DERIC_SPECIMEN = "WISH-SPEC-ssb-sir-deric-joined-s2b"
+
+
+def _sir_deric_specimen() -> pathlib.Path:
+    """Silver Blades' own save (a game-written disk, the provenance records
+    the run) taken after SIR DERIC joined on arriving in the Compound."""
+    root = specimen_root()
+    found = list(root.glob(f"ssb-c64/{SIR_DERIC_SPECIMEN}.[dD]64")) if root else []
+    if not found:
+        pytest.skip(f"needs specimen {SIR_DERIC_SPECIMEN}")
+    return found[0]
+
+
+def test_a_silver_blades_companion_through_dos_comes_back_with_his_c64_figure(
+        app, tmp_path):
+    """Specimen: SIR DERIC joined on the C64 (the game's own save), to DOS as
+    Wish writes it, back to the C64.
+
+    His picture, story byte and default icon are all read off the player's own
+    Silver Blades disks, not hard-coded.
+    """
+    from support.silverblades import ssb_disks
+    sides = ssb_disks()
+    companions = Companions.load(SSB_KEY, sides)
+    mon = companions.match("SIR DERIC")
+    assert mon is not None
+    picture = companions.picture_for(mon)
+    icon = next(IconParts.load(side).default_icon() for side in sides
+                if side.find(b"SPELLE64") and side.find(b"SPELLN64"))
+
+    disk = _sir_deric_specimen()
+    party = roster.Party(str(disk))
+    source = party.source or convert.Source.detect(disk)
+    try:
+        assets = saveplan.resolve_assets(
+            source, "dos", game_files=convertdrops.game_files,
+            dos_folder=dosbox.find_game("SECRET"))
+    except FileNotFoundError:
+        pytest.skip("needs the DOS Silver Blades archive ($FR_ARCHIVES)")
+    except saveplan.MissingAssets as exc:
+        pytest.skip(f"needs {', '.join(exc.missing)}")
+    plan = saveplan.prepare_save_as(party, "dos", tmp_path / "out", assets)
+    assert isinstance(plan, saveplan.SavePlan)
+    dos = tmp_path / "dos"
+    dos.mkdir()
+    table = FIELDS_BY_NAME_FOR[SSB_KEY]
+    deric = None
+    for name, data in plan.files.items():
+        (dos / name).write_bytes(data)
+        if (name.upper().startswith("CHRDAT") and name.upper().endswith(".SAV")
+                and data[1:1 + data[0]] == b"SIR DERIC"):
+            deric = data
+    assert deric is not None
+    assert deric[table["unnamed_0ab"].offset] == picture
+
+    game, save0, _save1 = _save_as_c64(app, tmp_path, dos, None)
+    raw0 = save0.to_bytes()
+    (member,) = [m for m in save0.characters
+                 if str(m.record.get("name")) == "SIR DERIC"]
+    record = member.record.to_bytes()
+    # Fails without the picture write in c64_codec.write: 0x0E6 stays 0.
+    assert (record[0x0E5], record[0x0E6], record[0x0E7]) == (
+        companions.story_byte(mon), picture, 0x01)
+    assert record[0x099] == 1
+    at = game.icon(member.index)
+    assert raw0[at:at + game.icon_size] == icon
