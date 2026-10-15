@@ -1098,6 +1098,33 @@ game wrote it; the 100 is in the game's record.
 
 **Version.** Curse of the Azure Bonds, Amiga.
 
+## N29. A Confusion can free an Amiga Curse zombie player character from the computer's control
+
+**What the game does.** A Confusion's run-away arm sets the flee flag and adds
+effect 142, and the end of 142 clears the member's `$B3` control byte (`/Curse`
+0x10AB4 and 0x1269A). CONFIRMED from the code (WISH-303 comment ab07def3). On a
+zombie player character that leaves a record no Animate Dead writes: live, the
+zombie BRUTUS was confused in the Tilverton brawl, read effect 142, then status
+3, then control 0, and was printed BRUTUS IS FORCED TO FLEE. The game saved him
+at status okay and control 0, with the zombie's creature type 4, movement 6 and
+turning class 2. CONFIRMED in three fights (comments f994518f, a23beb2c,
+84b9ef84).
+
+**How a player ends up there.** A cleric animates a fallen player character,
+and in a later fight a Confusion, the party's own or an enemy's, catches the
+zombie and he runs off the map.
+
+**What the player sees.** Not established. The record says he is an ordinary
+member under the player's orders who still moves at the zombie's 6, but nobody
+has viewed him or played a fight with him in Amiga Curse after his escape.
+Viewing his sheet and playing one fight would settle it.
+
+**Our side.** Wish converts him as a living player character
+([`117-save-conversion.md`](117-save-conversion.md), "A zombie player character
+converts living; a zombie companion stays a zombie").
+
+**Version.** Curse of the Azure Bonds, Amiga.
+
 ## Not yet confirmed
 
 Four findings that a player *would* notice, and that are kept out of

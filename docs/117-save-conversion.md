@@ -2792,6 +2792,55 @@ replaced the earlier rule that converted a dispelled Pool of Radiance zombie as
 dead, because the C64 writes the same bytes for a dispelled zombie and for one
 animated while all 64 effect rows were taken, so no byte separates the histories.
 
+**A zombie who runs from a fight comes back at status okay with the zombie's
+body.** In Amiga Curse a Confusion (effect 35) rolls 1-100 on each of the
+confused member's turns (handler `/Curse` 0x10A94). A roll of 1-10 makes him run
+away: it sets the flee flag (combat block +0x12) and quickfight, adds effect 142
+and prints RUNS AWAY (0x10AB4). A roll of 61-80 makes him go berserk and adds
+effect 137 (0x10B36). While the flag is set, each of his computer turns prints
+IS FORCED TO FLEE (0x6764). When 142 ends, its handler clears a `$B3` control
+byte, quickfight and the flag (0x1269A). CONFIRMED from the code (WISH-303
+comment ab07def3). Live, a confused zombie player character fled, left the map,
+and Curse saved him at status okay and control 0, still with creature type 4,
+movement 6 and turning class 2. CONFIRMED in three fights (comments f994518f,
+a23beb2c, 84b9ef84). Only Animate Dead writes creature type 4, so
+`zombie_player` takes a Pool of Radiance or Curse member at status okay with
+that type, who is not a companion, as a zombie player character, and he
+converts living like any other. No fight has yet produced the berserk arm.
+
+**The C64 sheet prints a cached movement.** C64 Curse prints movement from the
+member's 32-byte roster block (+0x1B, read at `LIBRARY $37A5`) and rebuilds that
+byte from the record (`LIBRARY $3918`) only when a fight starts (`ECL64 $8563`);
+loading and camping do not rebuild it. A converted zombie whose source still
+held movement 6 would therefore show MOVEMENT 6 until his first fight, so Wish
+writes that byte for Curse by the same rule as `$3918`, as it does for Pool of
+Radiance (`derive.expected_movement`), and his sheet shows his living movement
+from the first load. CONFIRMED from the disks and the code (comment 89a46db5).
+DOS Curse rebuilds movement on load.
+
+**Taken on into Silver Blades or Pools of Darkness, he stays a 6-mover, and
+nothing marks him as a zombie.** That is the games' own import, not Wish. Silver
+Blades' ADD > Curse copies his status and control byte, keeps base and current
+movement, drops the creature type (the title has no such field) and zeroes his
+turning class: Amiga `/Secret` importer 0x26CFA (movement 0x26E68 and 0x270D6,
+type bytes skipped at 0x26EDA and 0x26EE0, record cleared at 0x26D0C), DOS
+`SECRET/GAME.OVR` importer 0x24CB0 (movement 0x24FAE and 0x2558D, zero fill
+0x24CC4). Pools of Darkness' import from Silver Blades copies both movement
+bytes and the zeroed turning class: Amiga `/Pools of Darkness` importer 0x26000
+(0x2608A, 0x26222), DOS `DARKNESS/GAME.OVR` Moves at 0x11B02 and 0x11C1A. In
+none of the four engines does anything else write 12 to base movement besides
+character creation (Amiga Silver Blades 0xD8D4, DOS 0x1F4B0, Amiga Pools of
+Darkness 0xE936, DOS 0x15F0E) and, in Pools of Darkness, the script field
+writer (Amiga 0x11D4E, DOS 0x6C98). Current movement is rebuilt from the base,
+so an unarmoured got-away zombie moves 6 in every fight of either title.
+CONFIRMED from the code (WISH-303 comment b282e317); the Amiga imports of this
+record were not played, and the Pools of Darkness scripts were not swept for a
+movement write. Wish converts that record to the same 6-mover on the other port
+of the same title, because no byte in it identifies a zombie and the 6 is what
+the source game holds. A got-away zombie reaches DOS or the C64 only through
+Wish's Curse conversion, which already makes him a 12-mover, and DOS Silver
+Blades' import copies that 12.
+
 | Title | Kind | Route | Grade |
 |---|---|---|---|
 | Pool of Radiance | player | C64 to DOS | CONFIRMED live: sheet OKAY, walk, game save (3ba79bfa, d76a4167) |
@@ -2800,14 +2849,16 @@ animated while all 64 effect rows were taken, so no byte separates the histories
 | Pool of Radiance | player | Amiga to C64 | CONFIRMED offline: converts to the same character bytes as the DOS route |
 | Pool of Radiance | companion | C64 to Amiga | CONFIRMED live: game-written slot keeps `$B2`, status 1; sheet reads animated (9e91f7f5, 02c33514) |
 | Curse of the Azure Bonds | player | Amiga to DOS, Amiga to C64, DOS to Amiga | CONFIRMED live (cc956213, 57d3c040, a8092f54) |
+| Curse of the Azure Bonds | player who got away from a fight | Amiga to DOS, Amiga to C64 | CONFIRMED live: sheet OKAY, walk, his own command bars (3eb1b28f); his C64 sheet's movement before a fight, as Wish now writes it, is not yet seen live |
 | Curse of the Azure Bonds | companion | Amiga to DOS | CONFIRMED live (98da46fc, f373d320) |
 | Curse of the Azure Bonds | companion | Amiga to C64 | CONFIRMED live: sheet reads DEAD, as the C64 shows a zombie; his fight is not played (32d7270e) |
 
 Not played in the destination game: Pool of Radiance player Amiga to DOS and DOS
 to Amiga, Pool of Radiance companion Amiga to C64, and Curse of the Azure Bonds
-companion to the Amiga from DOS or the C64. Whether a player can have a zombie
-in Silver Blades or Pools of Darkness is not established; their conversion code
-is pinned by tests only.
+companion to the Amiga from DOS or the C64. Whether a player can have an
+animated zombie in Silver Blades or Pools of Darkness is not established; their
+conversion code is pinned by tests only. A zombie who got away in Curse arrives
+there as a living 6-mover, above.
 
 ### The portrait, which is one menu written two ways (#57 (Convert the character portrait across ports))
 
