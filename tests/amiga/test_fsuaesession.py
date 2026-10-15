@@ -109,7 +109,7 @@ def lane(tmp_path, monkeypatch, clock):
     Proc.started = []
     monkeypatch.setattr(Gdb, "unanswered", 0)
     state = types.SimpleNamespace(slot=slot, keys=[], claimed=[], gdbs=[], shots=[], environ=dict(SILENT),
-                                  window=True, binary=binary)
+                                  window=True, binary=binary, key_windows=[])
 
     def claim(game, note=""):
         state.claimed.append((game, note))
@@ -127,7 +127,9 @@ def lane(tmp_path, monkeypatch, clock):
     monkeypatch.setattr(fsuaegdb.subprocess, "Popen", Proc)
     monkeypatch.setattr(amiga, "FsuaeGdb", gdb)
     monkeypatch.setattr(fsuaesession.FsuaeGuest, "_environment", lambda self: dict(state.environ))
-    monkeypatch.setattr(fsuaepor, "keys", lambda args: state.keys.append(args.key[0]))
+    monkeypatch.setattr(fsuaepor, "keys", lambda args: (state.keys.append(args.key[0]),
+                                                        state.key_windows.append(args.window)))
+    monkeypatch.setattr(fsuaegdb, "window_size", lambda display, window: None)
     monkeypatch.setattr(fsuaepor, "find_windows", lambda display, timeout=None: ["1"] if state.window else [])
     monkeypatch.setattr(fsuaegdb, "press", lambda display, key, settle: state.shots.append(key))
     return state
@@ -194,6 +196,30 @@ def test_start_mounts_drives_in_order_with_a_third_drive_and_the_spare_in_the_sw
     assert lane.gdbs[0].kw == {"port": lane.slot.port, "resume": False}
     assert lane.gdbs[0].resumed == 1
     assert lane.gdbs[0].reads == [(fsuaegdb.VHPOSR, 2)]
+
+
+def test_start_without_attach_never_connects_the_debugger_and_still_checks_silence(lane, tmp_path):
+    guest = fsuaesession.FsuaeGuest(game="amiga-pool")
+    guest.claim("wish1-test", 30)
+    guest.put(_disk(tmp_path, "one.src"), guest.remote_path("1", "wish1-test", "one"), 30)
+    guest.start("wish1-test", guest.remote_path("1", "wish1-test", "one"), timeout=30, attach=False)
+    assert lane.gdbs == [] and guest.gdb is None
+    guest.stop("wish1-test", 30)
+    lane.environ.pop("SDL_AUDIODRIVER")
+    other = fsuaesession.FsuaeGuest(game="amiga-pool")
+    other.claim("wish1-test", 30)
+    other.put(_disk(tmp_path, "one.src"), other.remote_path("1", "wish1-test", "one"), 30)
+    with pytest.raises(RouteError):
+        other.start("wish1-test", other.remote_path("1", "wish1-test", "one"), timeout=30, attach=False)
+    assert lane.gdbs == []
+
+
+def test_a_key_goes_to_the_largest_of_two_windows(lane, tmp_path, monkeypatch):
+    guest = _started(tmp_path, lane)
+    monkeypatch.setattr(fsuaepor, "find_windows", lambda display, timeout=None: ["10x10", "main"])
+    monkeypatch.setattr(fsuaegdb, "window_size", lambda display, w: (10, 10) if w == "10x10" else (720, 568))
+    guest.press("wish1-test", "RET", 60)
+    assert lane.key_windows == ["main"]
 
 
 def test_a_first_read_lost_with_the_continue_is_sent_again_and_the_start_goes_on(lane, tmp_path, monkeypatch):
@@ -367,6 +393,7 @@ def _doubled_frame(path, size=(754, 576)):
 
 def test_grab_asks_for_the_emulators_screenshot_and_cuts_it_to_the_amiga_screen(lane, tmp_path, monkeypatch):
     guest = _started(tmp_path, lane)
+    assert guest.last_shot is None
 
     def alt_s(display, key, settle):
         lane.shots.append(key)
@@ -376,6 +403,7 @@ def test_grab_asks_for_the_emulators_screenshot_and_cuts_it_to_the_amiga_screen(
     raw, cropped = tmp_path / "raw.png", tmp_path / "crop.png"
     assert guest.grab("title", raw, cropped, 10) is True
     assert lane.shots == ["alt+s"]
+    assert guest.last_shot == {"source": "fsuae-alt-s", "file": "FS-UAE_Full_261004-0000_01.png"}
     with Image.open(raw) as image:
         assert image.size == (754, 576)
     with Image.open(cropped) as image:
@@ -412,6 +440,7 @@ def test_shot_copies_the_emulators_own_screenshot_uncut(lane, tmp_path, monkeypa
     monkeypatch.setattr(fsuaegdb, "press", lambda display, key, settle: _doubled_frame(
         guest.work / "shots" / "FS-UAE_Full_261004-0000_01.png"))
     guest.shot(tmp_path / "leg.png")
+    assert guest.last_shot == {"source": "fsuae-alt-s", "file": "FS-UAE_Full_261004-0000_01.png"}
     assert (tmp_path / "leg.png").read_bytes() == (
         guest.work / "shots" / "FS-UAE_Full_261004-0000_01.png").read_bytes()
     monkeypatch.setattr(fsuaegdb, "press", lambda display, key, settle: None)

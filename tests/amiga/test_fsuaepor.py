@@ -626,3 +626,17 @@ def test_pod_panel_names_the_picker_rows_for_a_payload_not_on_the_disk(tmp_path)
     with pytest.raises(SystemExit) as exc:
         fsuaepor.pod_panel(args)
     assert "MISSING.pc" in str(exc.value) and "ONE.pc" in str(exc.value)
+
+
+def test_keys_focus_the_window_the_caller_names_else_the_first(monkeypatch):
+    import argparse
+
+    focused = []
+    monkeypatch.setattr(fsuaepor, "find_windows", lambda display, timeout=None: ["10x10", "main"])
+    monkeypatch.setattr(fsuaepor, "focus", lambda display, window: focused.append(window))
+    monkeypatch.setattr(fsuaepor.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(fsuaepor.time, "sleep", lambda s: None)
+    base = dict(display=":9", key=["Return"], hold=0, settle=0)
+    fsuaepor.keys(argparse.Namespace(**base, window="main"))
+    fsuaepor.keys(argparse.Namespace(**base))
+    assert focused == ["main", "10x10"]

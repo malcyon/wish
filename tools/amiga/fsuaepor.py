@@ -808,14 +808,19 @@ def focus(display: str, window: str) -> None:
 
 
 def keys(args) -> int:
-    """Each key in turn to the emulator's window, focused first (SDL needs it)."""
+    """Each key in turn to the emulator's window, focused first (SDL needs it).
+
+    `args.window` names the main window when the caller knows it; the emulator also keeps a
+    10x10 helper window, which `find_windows` may list first.
+    """
     env = _xenv(args.display)
     found = find_windows(args.display)
     if not found:
         raise SystemExit(f"no emulator window (named {WINDOW_NAME!r}) on "
                          f"{args.display}")
+    target = getattr(args, "window", None) or found[0]
     for key in args.key:
-        focus(args.display, found[0])
+        focus(args.display, target)
         subprocess.run(["xdotool", "keydown", key], env=env, check=True)
         time.sleep(args.hold)
         subprocess.run(["xdotool", "keyup", key], env=env, check=True)

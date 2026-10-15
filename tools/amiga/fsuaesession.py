@@ -61,6 +61,8 @@ class FsuaeGuest:
         self.xvfb: Any = None
         self.emulator: Any = None
         self.gdb: Any = None
+        #: The newest screenshot taken, as `Controller._capture` records it; None before the first.
+        self.last_shot: dict[str, str] | None = None
         self._started = 0.0
         self._last_key: float | None = None
         self._keyed = False
@@ -153,8 +155,12 @@ class FsuaeGuest:
     # -- starting and stopping --------------------------------------------------
 
     def start(self, holder: str, *drives: str | None, timeout: float,
-              options: tuple[str, ...] = (), config: str | None = None) -> str:
-        """Start the emulator with `drives` in DF0 upward, every other staged disk in the swap list."""
+              options: tuple[str, ...] = (), config: str | None = None, attach: bool = True) -> str:
+        """Start the emulator with `drives` in DF0 upward, every other staged disk in the swap list.
+
+        `attach=False` leaves the debugger connection to Wish's helper: the emulator closes its
+        listening socket when its client leaves, so this guest must not connect.
+        """
         work = self._need_slot("start")
         if self.emulator is not None:
             raise RouteError("the emulator was already started")
@@ -178,7 +184,8 @@ class FsuaeGuest:
         self.xvfb, self.emulator = fsuaegdb.start_processes(args, True)
         self._started = time.monotonic()
         try:
-            self._attach(timeout)
+            if attach:
+                self._attach(timeout)
             self._require_silence(work)
         except BaseException:
             self._take_down()
@@ -298,6 +305,7 @@ class FsuaeGuest:
         found = self._shoot(timeout)
         if found is None:
             raise RouteError(f"FS-UAE wrote no screenshot within {timeout:.0f}s")
+        self.last_shot = {"source": "fsuae-alt-s", "file": found.name}
         shutil.copyfile(found, path)
 
     def grab(self, state: str, raw: pathlib.Path, cropped: pathlib.Path, timeout: float) -> bool:
@@ -318,6 +326,7 @@ class FsuaeGuest:
                 raise RouteError(f"FS-UAE wrote no screenshot for {state} within {timeout:.0f}s")
             return False
         self._screened = True
+        self.last_shot = {"source": "fsuae-alt-s", "file": path.name}
         shutil.copyfile(path, raw)
         try:
             screens.canonical_file(raw, cropped)
@@ -357,8 +366,9 @@ class FsuaeGuest:
         from tools.amiga import fsuaepor  # noqa: PLC0415
 
         fsuaegdb.check_shift_letter(keysym)
+        window = fsuaegdb.largest_window(self.slot.display, fsuaepor.find_windows(self.slot.display))
         fsuaepor.keys(argparse.Namespace(display=self.slot.display, key=[keysym],
-                                         hold=HOLD, settle=0.0))
+                                         hold=HOLD, settle=0.0, window=window))
         self._last_key = time.monotonic()
 
     def note_recognised(self) -> None:
