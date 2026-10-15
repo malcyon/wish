@@ -9604,9 +9604,10 @@ class CurseRun(PoolRun):
         answer the join its arrival script starts by its text
         (`joinstep.JoinAnswerer`) until the world bar is back with each
         joining name on the party panel.  The area must have an `arrival`
-        row in `joinstep.JOIN_SITES`.  Before the trip, a party already in
-        AREA (its entry 4 would see AREA as the came-from and play nothing),
-        a joining name already in a panel name field, a full panel, or a set
+        row in `joinstep.JOIN_SITES`.  Before the trip, an area byte or a
+        party panel that cannot be read, a party already in AREA (its entry
+        4 would see AREA as the came-from and play nothing), a joining name
+        already in a panel name field, a full panel, or a set
         `first_visit` bit (the scene would not play) fails the step with
         nothing written."""
         try:
@@ -9620,11 +9621,17 @@ class CurseRun(PoolRun):
             raise self.fail("world", "the world bar never came back")
         ft = auto_actions.FastTravel(self.game)
         here = ft.current_area(SessTarget(self.sess), ft.addresses)
+        if here is None:
+            raise self.fail("join-arrival", "the area byte could not be read")
         if here == area:
             raise self.fail("join-arrival", f"the party is already in area "
                                             f"{area}; its arrival join plays "
                                             f"only on entry from another area")
         names = self.panel_name_fields()
+        if not names:
+            # A party is never empty, so no names is a panel not read.
+            raise self.fail("join-arrival", "the party panel could not be "
+                                            "read")
         already = [n for n in site.joins if n in names]
         if already:
             raise self.fail("join-arrival", f"{', '.join(already)} already in "
@@ -9676,7 +9683,8 @@ class CurseRun(PoolRun):
     def panel_name_fields(self) -> list[str]:
         """Each member's whole name field on the world panel: the row from
         `PARTY_COLUMN` up to the column the `AC` heading starts at, as
-        `Session.party_rows` reads it, stripped."""
+        `Session.party_rows` reads it, stripped; empty when the panel or its
+        heading could not be read."""
         rows = self.sess.stable_party_rows()
         screen = self.sess.screen()
         if screen is None or not rows:

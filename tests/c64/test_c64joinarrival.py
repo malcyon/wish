@@ -177,13 +177,22 @@ def test_the_trip_hands_over_at_the_join_menu_outside_the_key_window(
     del run.trip                          # the real one, through FastTravel
     run.clock = game.clock
     run.budget = lambda timeout, what: None
-    run.sess.prompting = 0
+    sess.prompting, answered = False, []
+
+    def handle_prompt(s=None):
+        # The session's own answer: attach the side the prompt names.
+        if sess.prompting:
+            answered.append("INSERT SIDE D")
+            sess.prompting = False
+            return True
+        return False
 
     def settle(seconds=0):
+        # `Session.settle` answers disk prompts while it waits.
         game.now += seconds
-        sess.prompting = max(0, sess.prompting - 1)
+        handle_prompt()
 
-    sess.settle = settle
+    sess.handle_prompt, sess.settle = handle_prompt, settle
     shown = sess.screen
     sess.screen = lambda: PROMPT if sess.prompting else shown()
 
@@ -198,14 +207,42 @@ def test_the_trip_hands_over_at_the_join_menu_outside_the_key_window(
                             ok=True, reason=""))
 
     def travel(self, target, area=None, **kw):
-        sess.travelled, sess.area, sess.prompting = True, area.id, 2
+        sess.travelled, sess.area, sess.prompting = True, area.id, True
         return A.auto_actions.Outcome(True, "Traveling.", ())
 
     monkeypatch.setattr(A.auto_actions.FastTravel, "run", travel)
     got = run.join_arrival("68")
+    assert answered == ["INSERT SIDE D"]
     assert got["trip"]["areas_seen"] == [0x10, 0x44]
     assert game.keys == [R, R, R]
     assert game.now < A.WARP_IDLE_SECONDS
+
+
+def test_an_unreadable_area_byte_travels_nowhere(monkeypatch):
+    game = Game(compound_script())
+    sess = FakeSession(game)
+    sess.area = None
+    trips: list = []
+    run = _run(monkeypatch, sess, trips)
+    with pytest.raises(A.StepFailed, match="area byte could not be read"):
+        run.join_arrival("68")
+    assert trips == [] and sess.reads == [] and game.keys == []
+
+
+@pytest.mark.parametrize("panel", ["redrawing", "no heading"])
+def test_an_unreadable_party_panel_travels_nowhere(monkeypatch, panel):
+    game = Game(compound_script())
+    sess = FakeSession(game)
+    if panel == "redrawing":
+        sess.stable_party_rows = lambda: []
+    else:
+        sess.screen = lambda: screen({FIRST_ROW: " " * A.S.PARTY_COLUMN
+                                      + "PAINE", 24: WORLD}, (24, 0, 3))
+    trips: list = []
+    run = _run(monkeypatch, sess, trips)
+    with pytest.raises(A.StepFailed, match="party panel could not be read"):
+        run.join_arrival("68")
+    assert trips == [] and sess.reads == [] and game.keys == []
 
 
 def test_join_arrival_from_inside_the_area_travels_nowhere(monkeypatch):
