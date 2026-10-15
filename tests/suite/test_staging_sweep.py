@@ -124,6 +124,9 @@ ARTEFACT_COPIES: dict[tuple[str, str], str] = {
     ("convert/convertrun.py", 'out / "sheet.png"'): "the character sheet this run shot",
     ("convert/convertrun.py", 'out / "stuck.png"'): "the screen this run was stuck on",
     ("convert/convertrun.py", 'out / "walked.png"'): "the world after this run walked",
+    ("convert/convertrun.py", "source / p.name"):
+        "the files Save As wrote into this run's own --out, copied into a "
+        "fresh subdirectory of it for the acceptance driver to stage",
     ("curse_of_the_azure_bonds/cursememorize.py", "shots / png.name"):
         "this run's own shots directory, emptied of *.png files once the slot "
         "was claimed; the *.png files already in `out/shots` are removed first",

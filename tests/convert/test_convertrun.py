@@ -644,7 +644,7 @@ def test_a_silver_blades_disk_goes_to_the_c64_acceptance_driver(
                                  "II", True, None)
     assert len(argvs) == 1
     argv = argvs[0]
-    assert argv[1].endswith("tools/c64/acceptance.py")
+    assert pathlib.Path(argv[1]).parts[-3:] == ("tools", "c64", "acceptance.py")
     assert argv[argv.index("--title") + 1] == "ssb"
     assert not any(a.endswith("savecheck.py") for a in argv)
     assert played["returncode"] == 0
@@ -677,7 +677,7 @@ def test_a_later_dos_title_goes_to_the_dos_acceptance_driver(
     save.write_bytes(b"")
     played = convertrun.play_dos([save], "A", tmp_path, 2, "D", None, key)
     argv = argvs[0]
-    assert argv[1].endswith("tools/dos/acceptance.py")
+    assert pathlib.Path(argv[1]).parts[-3:] == ("tools", "dos", "acceptance.py")
     assert argv[argv.index("--title") + 1] == short
     assert (tmp_path / "acceptance-dos-source" / "SAVGAMA.DAT").is_file()
     assert played["returncode"] == 0
