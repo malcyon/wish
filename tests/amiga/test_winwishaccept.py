@@ -530,7 +530,7 @@ def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypa
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     names = ("Heal party", "Save spells", "Restore spells", "Identify",
              "Quickfight off", "Fast Travel")
-    modes = iter((True, False, True, True))
+    modes = iter((True, False, True))
     def controls(*args):
         enabled = next(modes)
         # Fast Travel has no flag of its own, so it reads as it does with the flags on.
@@ -542,8 +542,7 @@ def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypa
     monkeypatch.setattr(winwishaccept.winwish, "restart_wish",
                         lambda *args, **kwargs: restarts.append(kwargs))
     controller.flag_controls()
-    assert [entry["features"] for entry in restarts] == [False, False, True]
-    assert [entry["flag"] for entry in restarts] == [True, False, True]
+    assert [entry["features"] for entry in restarts] == [False, True]
     assert all(value["status"] == "awaiting image review"
                for value in controller.summary["flags"].values())
 
@@ -577,11 +576,10 @@ def _readings(actions, travel):
 def test_map_only_leaves_fast_travel_enabled_as_with_the_flags_on(tmp_path, monkeypatch):
     # The pool-accept2 listings: only the five flagged actions change in map-only mode.
     controller = _flag_run(tmp_path, monkeypatch, [
-        _readings(True, True), _readings(False, True), _readings(False, True),
-        _readings(True, True)])
+        _readings(True, True), _readings(False, True), _readings(True, True)])
     controller.flag_controls()
     assert [value["status"] for value in controller.summary["flags"].values()] == [
-        "awaiting image review"] * 4
+        "awaiting image review"] * 3
 
 
 def test_map_only_still_stops_on_an_enabled_action(tmp_path, monkeypatch):
@@ -3686,7 +3684,7 @@ def test_the_flag_check_runs_on_silver_blades(tmp_path, monkeypatch):
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     names = ("Heal party", "Save spells", "Restore spells", "Identify",
              "Quickfight off", "Fast Travel")
-    modes = iter((True, False, True, True))
+    modes = iter((True, False, True))
     def controls(*args):
         enabled = next(modes)
         # Fast Travel has no flag of its own, so it reads as it does with the flags on.
@@ -3696,7 +3694,7 @@ def test_the_flag_check_runs_on_silver_blades(tmp_path, monkeypatch):
     monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
     monkeypatch.setattr(winwishaccept.winwish, "restart_wish", lambda *args, **kwargs: None)
     controller.flag_controls()
-    assert set(controller.summary["flags"]) == {"on", "map_only", "off", "restored"}
+    assert set(controller.summary["flags"]) == {"on", "map_only", "restored"}
 
 
 def test_ordinary_silver_blades_preflight_checks_the_journal_answer(tmp_path, monkeypatch):

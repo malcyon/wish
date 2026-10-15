@@ -9,6 +9,7 @@ socket per emulator run, and an Amiga target kept away from C64 addresses.
 
 import os
 import socket
+import types
 
 import pytest
 from gamedata import synthetic_geo
@@ -25,9 +26,10 @@ from wish import backends as bk
 from wish import fsuae
 
 
-def without_winuae():
-    """The rows other than the always-offered WinUAE one, which these tests do not concern."""
-    return [b for b in bk.backends() if b.name != "WinUAE (Amiga)"]
+@pytest.fixture(autouse=True)
+def _not_windows(monkeypatch):
+    """WinUAE is offered on Windows only; these tests count the other rows."""
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
 
 
 BLADES = amiga.MACHINES["secret-of-the-silver-blades"]
@@ -600,21 +602,21 @@ def test_the_amiga_row_is_absent_by_default(monkeypatch):
     cannot connect."""
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     assert bk.amiga_fsuae_enabled() is False
-    assert [b.name for b in without_winuae()] == ["VICE (C64)"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 @pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
 def test_a_forgotten_setting_does_not_turn_the_amiga_row_on(monkeypatch, value):
     monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
     assert bk.amiga_fsuae_enabled() is False
-    assert [b.name for b in without_winuae()] == ["VICE (C64)"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
 def test_the_amiga_row_appears_when_the_flag_is_set(monkeypatch, value):
     monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
     assert bk.amiga_fsuae_enabled() is True
-    row, = [b for b in without_winuae() if b.name != "VICE (C64)"]
+    row, = [b for b in bk.backends() if b.name != "VICE (C64)"]
     assert row.name == "FS-UAE (Amiga)"
     assert row.setup_hint == ("Run the game in grahambates' fork of FS-UAE, "
                               "not stock FS-UAE.")
@@ -633,9 +635,9 @@ def test_the_amiga_row_probes_without_connecting_and_opens_the_cached_socket(
 def test_the_two_flags_are_independent(monkeypatch):
     monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
     monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
-    assert [b.name for b in without_winuae()] == ["VICE (C64)", "FS-UAE (Amiga)"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)", "FS-UAE (Amiga)"]
     monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
-    assert [b.name for b in without_winuae()] == ["VICE (C64)", "C64 Ultimate",
+    assert [b.name for b in bk.backends()] == ["VICE (C64)", "C64 Ultimate",
                                                "FS-UAE (Amiga)"]
 
 

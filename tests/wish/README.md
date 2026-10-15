@@ -21,6 +21,6 @@ Tests for the application in `wish/`: the window, preferences, game folders, the
 | `test_reopentitle.py` | Checks that a window opened over a game that is already running, with no save open, labels and stores the map under the title of the maps it loads, so a reopened Wish keeps Silver Blades' or Curse's place names and finds the squares already explored. |
 | `test_taskbaricon.py` | Checks that the window icon is the artist's committed PNG scaled down. |
 | `test_windowslayout.py` | Checks the window and dialog layout rules that only broke on Windows, with the screen, frame and style faked. |
-| `test_winuaebackend.py` | Checks that the WinUAE row is offered with no variable set, that its probe lists pipes without opening one, and that a connection releases the pipe when the target closes or the connect fails. |
+| `test_winuaebackend.py` | Checks that the WinUAE row is offered on Windows with no variable set and absent elsewhere, that its probe lists pipes without opening one, and that a connection releases the pipe when the target closes or the connect fails. |
 | `test_wish.py` | Checks the one-window application headless: backends and their probes, the session, the status line, the tabs and the import rules. |
 | `test_wronggame.py` | Checks that the window notices a machine running a different game from the one it believes and blocks Level up and Fast Travel. |

@@ -8,6 +8,7 @@ a fake backend hands one over.
 import ast
 import os
 import pathlib
+import types
 
 import pytest
 from gamedata import disk_dir, disk_path
@@ -115,10 +116,10 @@ def test_a_target_that_answers_for_itself_is_believed():
 from goldbox import c64_port  # noqa: E402
 
 
-def without_winuae():
-    """The rows other than the always-offered WinUAE one, which these tests do not concern."""
-    return [b for b in bk.backends() if b.name != "WinUAE (Amiga)"]
-
+@pytest.fixture(autouse=True)
+def _not_windows(monkeypatch):
+    """WinUAE is offered on Windows only; these tests count the other rows."""
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
 
 
 def test_the_outdoor_word_no_longer_reads_as_a_south_facing_indoors():
@@ -248,7 +249,7 @@ def test_the_ultimate_is_absent_by_default(monkeypatch):
     backend it hangs the game on is not in the list at all, not merely
     unable to connect."""
     monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
-    names = [b.name for b in without_winuae()]
+    names = [b.name for b in bk.backends()]
     assert names == ["VICE (C64)"]
     assert bk.ultimate_enabled() is False
 
@@ -257,14 +258,14 @@ def test_the_ultimate_is_absent_by_default(monkeypatch):
 def test_a_forgotten_setting_does_not_turn_the_ultimate_on(monkeypatch, value):
     monkeypatch.setenv(bk.ULTIMATE_ENV, value)
     assert bk.ultimate_enabled() is False
-    assert [b.name for b in without_winuae()] == ["VICE (C64)"]
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
 def test_the_ultimate_appears_when_the_flag_is_set(monkeypatch, value):
     monkeypatch.setenv(bk.ULTIMATE_ENV, value)
     assert bk.ultimate_enabled() is True
-    names = [b.name for b in without_winuae()]
+    names = [b.name for b in bk.backends()]
     assert names == ["VICE (C64)", "C64 Ultimate"]
 
 

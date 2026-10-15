@@ -77,7 +77,7 @@ have no usable interface, and a real C64 would need a resident stub or a DMA
 cartridge — a lot of fragility for very few users.
 
 **There is a third now, for a different machine**: an Amiga under WinUAE or a
-patched FS-UAE, in `automap/amiga.py`. The window offers WinUAE (Windows) always and FS-UAE (Linux) only behind
+patched FS-UAE, in `automap/amiga.py`. The window offers WinUAE on Windows, with no variable, and FS-UAE (Linux) only behind
 `WISH_EXPERIMENTAL_AMIGA_FSUAE` — see
 "[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
 does, what it cost to make the shared code take it, and what is left.
@@ -1224,7 +1224,7 @@ directory and opens nothing, because WinUAE serves one client at a time.
   many bytes went. The game redraws a changed field on its next redraw of the
   row or the sheet; the pipe does not make it.
 * **The row exists.** `wish.winuae.AMIGA_WINUAE` is "WinUAE (Amiga)", with the
-  hint "Run the game in WinUAE on this computer."; it is always listed, before the
+  hint "Run the game in WinUAE on this computer."; it is listed on Windows only, before the
   FS-UAE row. On Windows or with the FS-UAE flag on, the window loads the Amiga-only titles' maps and offers the
   Pools of Darkness folder.
 * **`WISH_WINUAE_PIPE` names the pipe Wish opens,** for test runs where another

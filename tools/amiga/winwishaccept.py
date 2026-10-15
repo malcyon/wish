@@ -1433,10 +1433,9 @@ class Controller:
                 parts = line.split("|")
                 if len(parts) >= 4 and parts[1] in controls_wanted:
                     controls.setdefault(parts[1], []).append(parts[3])
-            if name in ("on", "map_only", "restored"):
-                missing = [key for key in controls_wanted if len(controls.get(key, ())) != 1]
-                if missing:
-                    raise AcceptanceStop(f"{name} flags: absent or ambiguous controls {missing}; kept {listed}")
+            missing = [key for key in controls_wanted if len(controls.get(key, ())) != 1]
+            if missing:
+                raise AcceptanceStop(f"{name} flags: absent or ambiguous controls {missing}; kept {listed}")
             if name == "on":
                 flags_on_travel = controls["Fast Travel"][0]
             if name == "map_only":

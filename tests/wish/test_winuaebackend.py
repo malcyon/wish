@@ -28,11 +28,24 @@ def fresh():
 
 # -- the row -------------------------------------------------------------------
 
-def test_the_winuae_row_is_offered_with_no_variable_set(monkeypatch):
+def _platform(monkeypatch, name):
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform=name))
+
+
+def test_the_winuae_row_is_offered_on_windows_with_no_variable_set(monkeypatch):
     for name in os.environ:
         if name.startswith("WISH_EXPERIMENTAL_"):
             monkeypatch.delenv(name)
+    _platform(monkeypatch, "win32")
     assert [b.name for b in bk.backends()] == ["VICE (C64)", "WinUAE (Amiga)"]
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_the_winuae_row_is_absent_off_windows(monkeypatch, platform):
+    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
+    _platform(monkeypatch, platform)
+    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
 
 
 def test_the_winuae_row_is_the_approved_one():
@@ -49,6 +62,7 @@ def test_each_platforms_rows_are_grouped_with_the_c64_ones_first(
         monkeypatch):
     for env in (bk.AMIGA_FSUAE_ENV, bk.ULTIMATE_ENV):
         monkeypatch.setenv(env, "1")
+    _platform(monkeypatch, "win32")
     assert [b.name for b in bk.backends()] == [
         "VICE (C64)", "C64 Ultimate", "WinUAE (Amiga)", "FS-UAE (Amiga)"]
 

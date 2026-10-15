@@ -40,8 +40,8 @@ unset it is absent in the same way: no entry, no probe, no import of
 `wish.fsuae`. `docs/96-live-memory-automapper.md` says what it reads and what
 the fork needs.
 
-**The WinUAE backend is always offered**, with `wish.winuae.AMIGA_WINUAE` as its
-row; its probe answers False off Windows.
+**The WinUAE backend is offered on Windows and absent elsewhere**, with
+`wish.winuae.AMIGA_WINUAE` as its row; it needs no variable.
 """
 
 from __future__ import annotations
@@ -144,7 +144,7 @@ def _ultimate() -> list[Backend]:
 def amiga_enabled() -> bool:
     """Does Wish name Pools of Darkness from Amiga disks?
 
-    On Windows WinUAE is always offered; elsewhere only the FS-UAE flag does.
+    On Windows WinUAE needs no variable; elsewhere only the FS-UAE flag turns it on.
     """
     return amiga_fsuae_enabled() or sys.platform == "win32"
 
@@ -185,10 +185,12 @@ def _amiga_fsuae() -> list[Backend]:
 
 
 def _amiga_winuae() -> list[Backend]:
-    """WinUAE on this machine, if its module imports.
+    """WinUAE, on Windows only, if its module imports.
 
     Built like `_amiga_fsuae()`.
     """
+    if sys.platform != "win32":
+        return []
     try:
         from .winuae import AMIGA_WINUAE
     except Exception as exc:
