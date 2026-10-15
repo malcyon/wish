@@ -291,6 +291,13 @@ are the survivors that a player character reads `$00` at. `wish` leaves them
 alone, because rewriting bytes we do not understand is how a lossless editor
 stops being lossless.
 
+**Two of the six have a meaning after all, and are still fill on a joined
+companion.** `0x0E5` is the story picture, and `0x0FB` is `monster_count`, the
+number of copies a script's LOAD MONSTER command loaded, which the command's
+handler stores in every C64 title; a companion's `$FF` there is his `MON`
+file's own byte, which every reader on a party slot treats as it treats a
+player's `$00` (`docs/20-character-record.md`).
+
 **This set held eight bytes until `#224 (0x0B9 and 0x0BA are documented both as
 an NPC marker and as the dual-class slot)`, and two of them were never
 residue.** `0x0B9` and `0x0BA` are a dual-classed human's old class slot and the

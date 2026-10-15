@@ -340,7 +340,7 @@ class TestStagingPage:
 
     def test_the_monster_is_MON04_bar_two_bytes(self):
         """The game fills strength_index in from the ability score, and
-        overwrites one of the NPC marker bytes."""
+        monster_count from the count its LOAD MONSTER command was given."""
         import pathlib as _p
         disk = _p.Path(f"{self.DISKS}/POOL1.D64.orig")
         if not disk.exists():

@@ -535,6 +535,16 @@ _DECLARED: Sequence[Field] = (
            "conversion reports as having nowhere to go). npc_party.d64's "
            "five NPCs read $80, $B1 and $B2 twice more, none of which is "
            "bit 0 set on any reading"),
+    _field(0x0B7, 1, _RAW, "region_0b7", "unknown @0x0B7", _NOPE,
+           "referenced by no code in Pool of Radiance, Curse or Silver "
+           "Blades: no absolute operand in any of their files (one hit in "
+           "Curse's art file SPRITE19 is bitmap data) and no immediate "
+           "LDY/LDX #$B7 before an indirect access. Zero in every player "
+           "character, $FF in all 70 Curse MON files and 0 in the joinable "
+           "Silver Blades ones -- the authors' fill, as region_0e4's note "
+           "describes. A Curse companion who joined on the C64 holds his "
+           "file's $FF, and goldbox.companions.JOIN_KEPT has the C64 writer "
+           "give a converted one the same"),
     _field(0x0B9, 1, _U8, "dual_class_slot", "Dual class: old class slot", _OK,
            "the slot in the per-class level array at 0x0C9 that a dual-classed "
            "human left behind, with the level it was left at in 0x0BA. Curse "
@@ -634,7 +644,12 @@ _DECLARED: Sequence[Field] = (
            "of 0x0AB is unnamed, so the conversion drops it with no issue "
            "behind it). Not a candidate region: unlike the identity pair it "
            "once sat beside, it shows no structure of its own -- zero in "
-           "every player character we hold, BRUTUS included"),
+           "every player character we hold, BRUTUS included. In Curse it is "
+           "still read by nothing; its one writer is SPELLE20's import "
+           "(+0x0415), which copies byte 0xAE of the record it imports. A "
+           "Curse companion who joined on the C64 holds his MON file's $FF, "
+           "and goldbox.companions.JOIN_KEPT has the C64 writer give a "
+           "converted one the same"),
     _field(0x0E5, 1, _U8, "story_picture", "Story companion picture", _OK,
            "the picture a party member is drawn with at the start of a "
            "fight, in place of his 36-byte icon. Curse COM.PREP $1490 and "
@@ -909,6 +924,20 @@ _DECLARED: Sequence[Field] = (
            "so the Krynn games reuse the slot. The shipped Champions and Death "
            "Knights parties carry class_bits 0x10 with the whole array zero, "
            "so no record has yet shown a value in this byte on any title"),
+    _field(0x0CE, 1, _U8, "level_monk", "Class-level slot 5 (monk)", _MAYBE,
+           "slot 5 of the per-class level array, class_bits bit 5 (32). "
+           "level_knight's note gives the order the engine's own "
+           "item-restriction bits put the eight slots in, which leaves "
+           "monk here; the order is CONFIRMED and the name PROBABLE, on "
+           "the same footing as level_knight. No Realms title instantiates "
+           "a monk, and no absolute reference in any Curse or Silver Blades "
+           "file names this byte (a lone hit in Curse's art file PIC78 is "
+           "bitmap data). Zero in every player character; $FF in 63 of "
+           "Curse's 70 MON files, all seven joinable ones among them, and "
+           "0 in all five joinable Silver Blades files. A Curse companion "
+           "who joined on the C64 holds his file's $FF, and "
+           "goldbox.companions.JOIN_KEPT has the C64 writer give a "
+           "converted one the same"),
     _field(0x0CF, 1, _U8, "level_paladin", "Paladin level", _OK,
            "slot 6 of the per-class level array, class_bits bit 6 (64). "
            "CONFIRMED on SSI's own pre-generated Curse party, whose paladin "
@@ -920,6 +949,18 @@ _DECLARED: Sequence[Field] = (
            "CONFIRMED on Curse's pre-generated ranger, 0x0D0 = 5 with "
            "class_bits = 128. Silver Blades and Death Knights use both this "
            "slot and the paladin one; Pool of Radiance leaves both zero"),
+    _field(0x0D3, 2, _RAW, "region_0d3", "unknown @0x0D3", _NOPE,
+           "two bytes with no meaning established in Curse, and a different "
+           "one in Silver Blades. Curse: nothing reads either; the only "
+           "writer is SPELLE20's import reset (+0x058B), which zeroes both "
+           "beside the portrait bytes. Silver Blades: GEN $2272 zeroes both "
+           "and COMBAT tests them as bits -- $15B5 0x0D3 for non-zero, "
+           "$1B73 0x0D4 AND #$02, $1BCF 0x0D4 AND #$10 -- so they are flags "
+           "there, beside the 0x0D5 that COMBAT also tests as bits ($1B68 "
+           "AND #$02, $1C27 AND #$08). $FF/0 in all seven joinable Curse MON "
+           "files and 0/0 in all five joinable Silver Blades ones; "
+           "goldbox.companions.JOIN_KEPT gives a converted Curse companion "
+           "his file's bytes"),
     _field(0x0D5, 1, _U8, "infravision", "Infravision (tens of feet)", _OK,
            "6 for every dwarf/elf/half-elf, 0 for every human, across 12 "
            "specimens -- i.e. 60 feet"),
@@ -1007,6 +1048,26 @@ _DECLARED: Sequence[Field] = (
            "`docs/80-fields-wanted.md`, CONFIRMED there independently on "
            "GOBLIN GUARD 10, HOBGOBLIN 20 and OGRE 90. A monster's field: "
            "zero in every player export"),
+    _field(0x0FB, 1, _U8, "monster_count", "Copies loaded with it", _OK,
+           "the number of copies the script's LOAD MONSTER command loaded "
+           "this creature with. The command's handler reads three operands "
+           "-- the MON id, the count and the picture -- and stores the "
+           "count both in its loop counter and here, then decrements the "
+           "counter once per copy: Curse DUNGEON $1C98 JSR $1D32 / STA "
+           "$7F41 / STA $7CFB, $1D0B DEC $7F41 / BNE $1CAF; Silver Blades "
+           "DUNGEON $1BC8-$1BCE and Pool of Radiance DUNGEON $1AF0-$1AF3 "
+           "make the same two stores. CONFIRMED from the code in all three "
+           "titles. Its readers: COMBAT keeps a cast spell memorised when "
+           "this is 1-127 and clears it when 0 or $80 and above (Curse "
+           "$0CAB, Silver Blades $0C88, Pool $238B); SECSET64 (Curse "
+           "$0C3A) acts only on 2-127; COM.PREP $12C4 empties a record "
+           "holding 0 here and DUNGEON $1BDA picks a screen mode from it, "
+           "both for records 8 and above only. So on a party slot a "
+           "player's 0 and the $FF a joined companion holds take the same "
+           "branch everywhere. $FF in every Curse MON file, 0 in the "
+           "joinable Silver Blades ones; one loaded Pool orc held 6 "
+           "(docs/50-experiments.md). goldbox.companions.JOIN_KEPT gives "
+           "a converted Curse companion his file's $FF"),
     _field(0x0F9, 1, _U8, "experience_per_hit_point",
            "Experience per hit point", _OK,
            "the multiplier `experience_award`'s note describes: GOBLIN GUARD "

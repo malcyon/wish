@@ -415,6 +415,17 @@ DELTAS_BY_KEY: dict[str, C64Deltas] = {
                        SILVER_BLADES_RECORD)}
 
 
+def _splice(rec: CharacterRecord, offset: int, data: bytes) -> None:
+    """Write `data` at `offset`, inside the one layout field that holds it."""
+    for f in _layout():
+        if f.offset <= offset and offset + len(data) <= f.end:
+            raw = bytearray(rec.get_raw(f.name))
+            raw[offset - f.offset:offset - f.offset + len(data)] = data
+            rec.set_raw(f.name, bytes(raw))
+            return
+    raise ValueError(f"{offset:#05x}+{len(data)} crosses a field boundary")
+
+
 def status_from_byte(raw: int, *, animated_title: bool
                      ) -> tuple[str | None, bool | None]:
     """The neutral status name and in-play flag a roster status byte holds.
@@ -1806,7 +1817,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
         for f in _LEVEL_ORDER:
             dst = _field(f)
             emit(levels, f, dst.offset, dst.size)
-    rep.note(0x0CE, 1, "the C64's unused sixth level slot: zero")
+    rep.note(0x0CE, 1, "level_monk: zero, as for every character but a "
+             "joined companion -- no title offers a monk")
 
     # -- the paladin's two bytes and his rows in the shared effect arrays ----
     # (#600, #626, #628).  0x012 is cure-disease uses, 0x013 lay-on-hands;
@@ -3225,6 +3237,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                       f"story_picture ${story:02X}: MON{mon_id:02X}'s own "
                       "byte, which the combat start reads to draw him with "
                       "his own monster art")
+    # -- what the C64 join copies from his MON file and no port converts -----
+    # A matched companion gets his file's own bytes there, as the C64's own
+    # join gives him (goldbox.companions.JOIN_KEPT); everybody else keeps the
+    # closing sweep's zero.
+    kept_from = companion_mon(char, companions)
+    if kept_from is not None:
+        for offset, data in companions.join_kept(kept_from):
+            _splice(rec, offset, data)
+            rep.note(offset, len(data),
+                     f"MON{kept_from:02X}'s own byte{'s' * (len(data) > 1)}, "
+                     "which the C64 join copies and no other port's record "
+                     "holds")
     if (companions is None and char.get("npc") and identity is not None
             and deltas.key in NO_COMPANION_PICTURE
             and char.get("npc_control_byte") != DOS_PC_TAKEN_OVER):
@@ -3799,7 +3823,15 @@ READ_TARGETS: dict[str, str] = (
                           "dual_class and only when dual_class_level is "
                           "non-zero; a slot naming no class is warned about "
                           "rather than guessed at",
-       "dual_class_level": "see dual_class_slot: the two are one field"}
+       "dual_class_level": "see dual_class_slot: the two are one field",
+       "level_monk": "not read: no Realms title offers a monk, and a Curse "
+                     "companion's $FF is his MON file's fill, which `write` "
+                     "gives him back from the companion table",
+       "monster_count": "not read: the count of copies a script's LOAD "
+                        "MONSTER loaded, which every reader treats alike "
+                        "for a player's 0 and a joined companion's $FF on "
+                        "a party slot; `write` gives a Curse companion his "
+                        "MON file's $FF back from the companion table"}
     | {f: "read into neutral levels, named by the class bit"
        for f in _LEVEL_ORDER}
     | {name: f"dropped: {why}" for name, why in READ_DROPPED}

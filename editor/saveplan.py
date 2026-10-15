@@ -1390,6 +1390,10 @@ KEPT_FIELDS = (
 #:   way -- and `write` is not always given the arrays (`editor/roster.py`'s
 #:   own callers, for one), so a Save As through those routes still cannot be
 #:   held to the byte;
+#: * `level_monk` and `monster_count` -- no DOS or Amiga field holds either;
+#:   a player holds 0 in both and a joined Curse companion his `MON` file's
+#:   `$FF`, which `c64_codec.write` gives back from the companion table
+#:   (`goldbox.companions.JOIN_KEPT`);
 #: * `dual_class_slot` and `dual_class_level` -- neither Pool of Radiance
 #:   reads the pair (no C64 file and no DOS `GAME.OVR` site refers to it), and
 #:   the DOS writer holds its constant 0, so `_expected_dual_class` expects 0
@@ -1412,7 +1416,8 @@ _NOT_COMPARED = ("identity_pair", "story_picture", "party_order", "item_effects"
                  "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
                  "thief_move_silently", "thief_hide_in_shadows",
                  "thief_hear_noise", "thief_climb_walls",
-                 "thief_read_languages", "lay_on_hands_uses")
+                 "thief_read_languages", "lay_on_hands_uses",
+                 "level_monk", "monster_count")
 
 
 def kept(record: CharacterRecord) -> "dict[str, Any]":

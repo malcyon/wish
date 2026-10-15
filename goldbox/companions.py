@@ -11,6 +11,9 @@ three things a conversion to or from the C64 needs about him:
   joins write for that file, which is the bare `MON` id in both titles;
 * :meth:`Companions.story_byte` -- the `0x0E5` byte his `MON` file holds,
   which `COM.PREP` reads to draw a story companion with his own `COMPIC` art;
+* :meth:`Companions.join_kept` -- the other bytes his `MON` file gives a
+  C64 join that no port's record converts, so that a companion converted
+  into the C64 holds what the C64's own join gives him;
 
 plus :attr:`Companions.default_icon`, the 36-byte icon `INIT` seeds every
 party slot with, and so the one a companion who joins an unused slot fights
@@ -49,6 +52,29 @@ REGION_SIZE = 4
 STORY_OFFSET = 0x0E5
 
 HEX_DIGITS = b"0123456789ABCDEFabcdef"
+
+#: The record runs `(offset, size)` a C64 join keeps from the companion's
+#: `MON` file that no DOS or Amiga field converts, per title.  `ADDNPC`
+#: (Curse `DUNGEON $28E2`) loads the whole `MON` file over the slot's
+#: record and then writes only `0x0D1`-`0x0D2` (zero), the control byte
+#: `0x0B8`, `0x10C`-`0x10D`, and what the strength and roster recomputes
+#: rebuild, so every byte here is his file's own: `$FF` at `0x0B7`,
+#: `level_monk`, `0x0D3`, `region_0e4` and `monster_count` in all seven
+#: joinable Curse files, `$FF` at `0x088`-`0x097` in four of them, and
+#: per-monster values at `0x01B`, `0x06C`-`0x06D` and `0x11C`.  The C64
+#: writer has no source for any of them and writes 0 for every other
+#: character.  No absolute or immediate-indexed reference in any of Curse's
+#: 412 files reads `0x01B`-`0x01F`, `0x06C`-`0x070`, `0x088`-`0x097`,
+#: `0x0B7`, `0x0D3`-`0x0D4`, `0x0E4` or `0x11C`; `level_monk` is one slot
+#: of the class-level array, and the readers of `monster_count` take the
+#: same branch for `$FF` as for 0 on a party slot (`goldbox/layout.py`).
+#: Silver Blades has no row: its five joinable files hold 0 at every byte
+#: the writer leaves unsourced, and `0x01B`-`0x01F` is its memorised-spell
+#: list, which is converted.
+JOIN_KEPT: dict[str, tuple[tuple[int, int], ...]] = {
+    CURSE_KEY: ((0x01B, 5), (0x06C, 5), (0x088, 16), (0x0B7, 1), (0x0CE, 1),
+                (0x0D3, 2), (0x0E4, 1), (0x0FB, 1), (0x11C, 1)),
+}
 
 #: The `MON` ids each title's `ADDNPC` statements name, from a control-flow
 #: walk of every area script on the C64 sides; the DOS scripts name the same.
@@ -142,11 +168,13 @@ def _mon_id(entry_name: bytes) -> int | None:
 
 @dataclass(frozen=True)
 class Monster:
-    """One `MON` file: its id, its name and its `0x0E4`-`0x0E7` bytes."""
+    """One `MON` file: its id, its name, its `0x0E4`-`0x0E7` bytes, and the
+    whole 480-byte payload when it was read off a disk."""
 
     mon_id: int
     name: str
     region: bytes
+    payload: bytes = b""
 
     @property
     def story_byte(self) -> int:
@@ -208,7 +236,8 @@ class Companions:
                 payloads[mon_id] = payload
                 monsters[mon_id] = Monster(
                     mon_id, _name_from(payload),
-                    payload[REGION_OFFSET:REGION_OFFSET + REGION_SIZE])
+                    payload[REGION_OFFSET:REGION_OFFSET + REGION_SIZE],
+                    payload)
             if icon is None and image.find(b"SPELLE64") and image.find(b"SPELLN64"):
                 icon = IconParts.load(image).default_icon()
         if icon is None:
@@ -249,3 +278,15 @@ class Companions:
         if mon_id not in self.monsters:
             raise KeyError(f"no MON{mon_id:02X} on these disks")
         return self.monsters[mon_id].story_byte
+
+    def join_kept(self, mon_id: int) -> list[tuple[int, bytes]]:
+        """`(offset, bytes)` for each :data:`JOIN_KEPT` run of this title, as
+        `MON<mon_id>` holds it: what a C64 join leaves there."""
+        monster = self.monsters.get(mon_id)
+        if monster is None:
+            raise KeyError(f"no MON{mon_id:02X} on these disks")
+        runs = JOIN_KEPT.get(self.key, ())
+        if runs and len(monster.payload) != MON_SIZE:
+            raise ValueError(f"MON{mon_id:02X} was not read whole")
+        return [(offset, monster.payload[offset:offset + size])
+                for offset, size in runs]
