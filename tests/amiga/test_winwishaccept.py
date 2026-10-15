@@ -3543,7 +3543,7 @@ def test_the_full_silver_blades_route_fits_the_ordinary_key_limit(tmp_path, monk
     controller = _ordinary_ssb_controller(tmp_path, monkeypatch)
     keys = sum(1 for phase in controller.route.phases for step in phase.steps
                if step.kind in ("key", "turn", "move", "insert"))
-    assert winwishaccept.ORDINARY_MAPPING_COMMANDS == {"ssb": 44} == {"ssb": keys}
+    assert winwishaccept.ORDINARY_MAPPING_COMMANDS["ssb"] == 44 == keys
     for _ in range(44):
         controller._count()
     with pytest.raises(winwishaccept.AcceptanceStop, match="44-command mapping cap"):

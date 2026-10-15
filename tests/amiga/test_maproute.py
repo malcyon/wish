@@ -80,7 +80,8 @@ def test_every_title_with_a_measured_source_is_ready_and_the_tilverton_curse_sav
 
     assert set(phases) == {"load", "stationary", "walk", "transition", "reload",
                            "reopen_step"} | ({"outdoor"} if title in ("pool", "curse") else set()) | (
-                               {"walkout"} if title == "pool" else set())
+                               {"walkout"} if title == "pool" else set()) | (
+                               {"village"} if title == "darkness" else set())
     if title == "curse":
         assert not phases["transition"].ready
         assert phases["transition"].reason in route.unresolved
@@ -347,6 +348,9 @@ _CURSE_KEYS = (
     ("reopen_step", "NP4", "world", None), ("reopen_step", "NP4", "world", None),
     ("reopen_step", "NP8", "world", None),
 )
+#: The Pools of Darkness village capture boot's own crops, kept with its run outside the crop
+#: folders the guard maps label; a frame named with `/` is under the acceptance cache folder.
+_PODCAP = "WISH-396/podcap1/shots"
 _DARKNESS_KEYS = (
     ("load", "P", "party_menu", "05-esc3"), ("load", "L", "load_from", "06-L"),
     ("load", "P", "load_picker", "07-P"), ("load", "B", "disk2_prompt", "09-prompt"),
@@ -368,6 +372,17 @@ _DARKNESS_KEYS = (
     ("reload", "Y", "load_from", "42-Y"), ("reload", "P", "load_picker", "43-P"),
     ("reload", "B", "loaded_menu", "45-after_B"), ("reload", "B", "world", "46-B"),
     ("reopen_step", "NP8", "world", "47-reopen_NP8"),
+    ("village", "E", "camp", "27-camp"), ("village", "L", "load_anyway", "28-camp_L"),
+    ("village", "Y", "load_from", "29-Y"), ("village", "P", "load_picker", "30-P"),
+    ("village", "D", "loaded_menu", "31-D"), ("village", "B", "world", "33-B"),
+    ("village", "NP8", "world", f"{_PODCAP}/23-ov_NP8_1"),
+    ("village", "NP8", "world", f"{_PODCAP}/24-ov_NP8_2"),
+    ("village", "NP4", "world", f"{_PODCAP}/25-ov_NP4_3"),
+    ("village", "NP4", "world", f"{_PODCAP}/26-ov_NP4_4"),
+    ("village", "NP4", "world", f"{_PODCAP}/27-ov_NP4_5"),
+    ("village", "NP4", "yes_no", f"{_PODCAP}/28-ov_NP4_6"),
+    ("village", "Y", "continue", f"{_PODCAP}/31-afterY_9"),
+    ("village", "RET", "world", f"{_PODCAP}/36-ret1"),
 )
 _CAPTURES = {"pool": ("wish1-pcap1", _POOL_KEYS), "curse": ("wish1-cccap1", _CURSE_KEYS),
              "darkness": ("wish1-cdcap1", _DARKNESS_KEYS)}
@@ -452,6 +467,46 @@ def test_pools_of_darkness_loads_into_geo21_and_keeps_the_overland_bytes(tmp_pat
     assert dict(mulmaster.expected.engine) == {"area": 19, "x": 0, "y": 3, "facing": 1}
 
 
+def test_pools_of_darkness_reads_the_area_id_in_mulmaster_aerie_and_the_unnamed_village(
+        tmp_path: Path):
+    """GEO13 is Mulmaster's and Zhentil Keep's map, and GEO14 no area names, so only the game's
+    own area byte, data hunk +0x7A0A, says which place each checkpoint stands in."""
+    route = maproute.route_for("darkness", _manifest("darkness", tmp_path))
+    steps = {s.checkpoint: s for p in route.phases for s in p.steps if s.checkpoint}
+    area_id = (maproute.Read("area_id", "base", 0x7A0A, 1),)
+
+    assert [name for name, s in steps.items() if s.reads == area_id] == [
+        "pod_mulmaster", "pod_reloaded", "pod_village"]
+    assert [p.name for p in route.phases][-2:] == ["reopen_step", "village"]
+    village = steps["pod_village"]
+    assert dict(village.expected.engine) == {"area": 20, "x": 5, "y": 7, "facing": 1}
+    assert (village.expected.compare_to, village.expected.relation) == (
+        "pod_reopen_step", "area_changed")
+    phase = next(p for p in route.phases if p.name == "village")
+    assert [s.kind for s in phase.steps].count("encounters") == 2
+    walk = [s for s in phase.steps if s.kind == "move"]
+    assert [s.key for s in walk] == ["NP8", "NP8", "NP4", "NP4", "NP4", "NP4"]
+
+
+def test_the_whole_pools_of_darkness_route_fits_its_own_key_limit(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from tools.amiga import winwishaccept
+
+    route = maproute.route_for("darkness", _manifest("darkness", tmp_path))
+    keys = sum(1 for phase in route.phases for step in phase.steps
+               if step.kind in ("key", "turn", "move", "insert"))
+    cap = winwishaccept.ORDINARY_MAPPING_COMMANDS["darkness"]
+
+    assert cap == keys > winwishaccept.MAX_MAPPING_COMMANDS
+    runner = SimpleNamespace(reconnect_limit=None, args=SimpleNamespace(discover=None),
+                             route=SimpleNamespace(title="darkness"), mapping_commands=0)
+    for _ in range(keys):
+        winwishaccept.Controller._count(runner)
+    with pytest.raises(winwishaccept.AcceptanceStop, match=f"{cap}-command mapping cap"):
+        winwishaccept.Controller._count(runner)
+
+
 def _kept_crops(prefix: str):
     from tools.registry import scratch
 
@@ -472,7 +527,8 @@ def test_every_screen_a_route_waits_for_matches_the_capture_frame_that_showed_it
         title: str, tmp_path: Path):
     """Reads the capture boots' frames, so it skips on a machine without them."""
     crops, prefix = _kept_crops(_CAPTURES[title][0])
-    frames = [(state, crops / (f"{frame}.png" if "__" in frame else f"{prefix}__{frame}.png"))
+    frames = [(state, crops.parent / f"{frame}.png" if "/" in frame
+               else crops / (f"{frame}.png" if "__" in frame else f"{prefix}__{frame}.png"))
               for _, _, state, frame in _CAPTURES[title][1] if frame]
     if not all(path.is_file() for _, path in frames):
         pytest.skip(f"the {title} capture frames are not on this machine")

@@ -597,12 +597,15 @@ def _curse_phases() -> tuple[Phase, ...]:
 
 #: The overland party's flag, x and y: the long at data hunk +0x57AC points at them, +0x24.
 _POD_OVERLAND = (Read("overland", "base", 0x57AC, 3, hop=0x24),)
+#: The game's own area id (the trip rows' area byte), which names a map two areas share.
+_POD_AREA_ID = (Read("area_id", "base", 0x7A0A, 1),)
 
 
 def _darkness_phases() -> tuple[Phase, ...]:
     """Slot B in Aerie: turns and a walk there, camp LOAD of slot D on the overland, four
     overland steps to Mulmaster's question, YES and MOVE ON, then camp LOAD of slot B. The overland checkpoints
-    carry no verdict and keep the party bytes for the record."""
+    carry no verdict and keep the party bytes for the record. After the reopened step, camp
+    LOAD of slot D again and six overland steps to the village of area 20, a map no area names."""
     aerie = {"area": 33, "y": 2}
     stationary = _turns("pod", "loaded", {**aerie, "x": 1}, (0, 3, 0, 1))
     walk = _phase(
@@ -638,13 +641,13 @@ def _darkness_phases() -> tuple[Phase, ...]:
         Step("encounters", "yes_no", encounters=False),
         Step("key", "mulmaster_guards", key="Y"),
         Step("key", "world", key="M", checkpoint="pod_mulmaster",
-             expected=_at(19, 0, 3, 1, "pod_walk_end", "area_changed")),
+             expected=_at(19, 0, 3, 1, "pod_walk_end", "area_changed"), reads=_POD_AREA_ID),
     )
     reload = _phase(
         "reload", "world", *camp_load,
         Step("key", "loaded_menu", key="B"),
         Step("key", "world", key="B", checkpoint="pod_reloaded",
-             expected=_at(33, 1, 2, 1, "pod_mulmaster", "area_changed")),
+             expected=_at(33, 1, 2, 1, "pod_mulmaster", "area_changed"), reads=_POD_AREA_ID),
     )
     reopen = _phase(
         "reopen_step", "world",
@@ -653,7 +656,22 @@ def _darkness_phases() -> tuple[Phase, ...]:
              expected=_at(33, 2, 2, 1, "pod_reloaded", "moved")),
         Step("encounters", "world", encounters=False),
     )
-    return stationary, walk, transition, reload, reopen
+    # Slot D at overland 34,14: north twice and west four times to the village square 30,12,
+    # whose question's YES loads area 20 on GEO14 at 5,7 facing east.
+    village = _phase(
+        "village", "world", *camp_load,
+        Step("key", "loaded_menu", key="D"),
+        Step("key", "world", key="B"),
+        Step("snapshot", "world", snapshot="pod_village_overland"),
+        Step("encounters", "world", encounters=True),
+        *(Step("move", "world", key=key) for key in ("NP8", "NP8", "NP4", "NP4", "NP4")),
+        Step("move", "yes_no", key="NP4"),
+        Step("encounters", "yes_no", encounters=False),
+        Step("key", "continue", key="Y"),
+        Step("key", "world", key="RET", checkpoint="pod_village",
+             expected=_at(20, 5, 7, 1, "pod_reopen_step", "area_changed"), reads=_POD_AREA_ID),
+    )
+    return stationary, walk, transition, reload, reopen, village
 
 
 def _phases(title: str, load: Phase, slot: str, curse_yulash: bool = False

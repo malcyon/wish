@@ -53,8 +53,9 @@ PERSIST_BRANCH_STATES = {
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
-#: Ordinary-run key limits above the default; the full Silver Blades route presses 44 keys.
-ORDINARY_MAPPING_COMMANDS = {"ssb": 44}
+#: Ordinary-run key limits above the default; the full Silver Blades route presses 44 keys,
+#: and the full Pools of Darkness route, with its village leg, 53.
+ORDINARY_MAPPING_COMMANDS = {"ssb": 44, "darkness": 53}
 #: The camp reload adds Y, the slot letter, B, E and N to the 38 keys before them.
 CAMP_LOAD_MAPPING_COMMANDS = 43
 #: Seconds to wait for each guarded camp LOAD screen, and for the disk load after the slot.
