@@ -581,6 +581,41 @@ def test_read_takes_the_outcome_from_a_receipt_or_an_option_and_needs_one(tmp_pa
     assert "one of --receipt and --outcome" in capsys.readouterr().err
 
 
+def test_read_judges_a_receipt_with_no_fight_as_unfought(tmp_path, capsys):
+    manifest = tmp_path / "m.json"
+    manifest.write_text(json.dumps(_manifest()))
+    found = _read([_member(name) for name in NAMES]) | {"verify": [], "loaded_slot_unchanged": True}
+    base = ["read", "--manifest", str(manifest), "--disk", "d.adf", "--member", "EVOKER"]
+    judged = []
+
+    def verdict(found, manifest, members, outcome="won"):
+        judged.append(outcome)
+        return []
+
+    with mock.patch.object(cursefight, "read_back", return_value=found), \
+            mock.patch.object(cursefight, "verdict", verdict):
+        for body in ({"fight": False}, {"outcome": "won", "fight": True}):
+            receipt = tmp_path / "r.json"
+            receipt.write_text(json.dumps(body))
+            assert cursefight.main([*base, "--receipt", str(receipt)]) == 0
+        # A receipt that neither names an outcome nor says no fight was made is
+        # not guessed at.
+        receipt.write_text(json.dumps({}))
+        assert cursefight.main([*base, "--receipt", str(receipt)]) == 2
+    assert judged == ["unfought", "won"]
+    assert "not won, lost or unfought" in capsys.readouterr().err
+
+
+def test_verdict_checks_the_picture_only_for_a_member_staged_with_one():
+    members = [_member(name, picture=0x16) for name in NAMES]
+    assert cursefight.verdict(_read(members), _manifest(), ["EVOKER"], "unfought") == []
+    staged = _manifest()
+    staged["fight"]["members"]["EVOKER"]["picture"] = 0x16
+    members[-1]["picture"] = 0x17
+    assert cursefight.verdict(_read(members), staged, ["EVOKER"], "unfought") == [
+        "EVOKER was saved with picture 23, staged with 22"]
+
+
 def test_drive_answers_the_injuries_question_before_the_punch_bar(tmp_path, monkeypatch):
     script = [*DRIVE[:11], "injuries", "injuries", "tavern", *DRIVE[12:]]
     found, game, screens, _walked = _drive(tmp_path, monkeypatch, script=script)

@@ -21,7 +21,15 @@ from gamedata import specimen_root
 from PyQt6.QtWidgets import QApplication
 
 from editor import convert, roster, saveplan
-from goldbox import amiga_later, c64_codec, dos_codec, dos_port, dos_savegame
+from goldbox import (
+    amiga_adf,
+    amiga_later,
+    amiga_savegame,
+    c64_codec,
+    dos_codec,
+    dos_port,
+    dos_savegame,
+)
 from goldbox.companions import (
     COMPANION_FILL,
     CURSE_KEY,
@@ -305,3 +313,81 @@ def test_the_amiga_fill_is_what_every_joinable_amiga_record_holds():
         assert (_field(record, "icon_head")[0], _field(record, "icon_body")[0],
                 _field(record, "icon_colours")) == (head, body, colours)
     assert found == names
+
+
+#: The combat picture each companion's `MON` file names (ALIAS `MON16`,
+#: DRAGONBAIT `MON17`), which the C64 join copies to `0x0E5` and `0x0E6`.
+STORY_PICTURE = {"ALIAS": 0x16, "DRAGONBAIT": 0x17}
+AMIGA_PIT_SAVE = "curse-c64join-alias-dragonbait-amiga-pit-save"
+C64_JOIN_DOS_RESAVE = "curse-c64join-alias-dragonbait-dos-resave"
+
+
+def _assert_the_c64_figure(neutral_party) -> None:
+    """Each companion in `neutral_party` is written with his own C64 figure.
+
+    The story byte at `0x0E5` and the picture at `0x0E6` are his `MON` file's;
+    `0x0E7` holds the converted mark; the size byte is 1, and the icon is the
+    default the C64 join leaves in his slot, the one the C64 game itself draws
+    with before COM.PREP swaps in his picture.
+    """
+    table = _table()
+    seen = set()
+    for neutral in neutral_party:
+        name = str(neutral.get("name"))
+        if name not in COMPANIONS:
+            continue
+        seen.add(name)
+        rec, _ = c64_codec.write(neutral, icon=table.default_icon,
+                                 companions=table)
+        raw = rec.to_bytes()
+        pic = STORY_PICTURE[name]
+        assert (raw[0x0E5], raw[0x0E6], raw[0x0E7]) == (pic, pic, 0x01), name
+        assert raw[0x099] == 1, name
+        assert raw[0x220:0x220 + len(table.default_icon)] == table.default_icon
+    assert seen == set(COMPANIONS)
+
+
+def test_a_c64_joined_companion_through_dos_comes_back_with_his_c64_figure(
+        app, tmp_path):
+    """Specimen: the native C64 join, to DOS as Wish writes it, to the C64."""
+    plan = _prepare(app, tmp_path, "dos")
+    party = [dos_codec.to_neutral(dos_codec.DosCharacter(data))
+             for name, data in plan.files.items()
+             if name.upper().startswith("CHRDAT")
+             and name.upper().endswith(".SAV")]
+    # Fails without the story write in c64_codec.write: 0x0E5 stays 0.
+    _assert_the_c64_figure(party)
+
+
+def test_a_c64_joined_companion_through_the_amiga_comes_back_with_his_c64_figure(
+        app, tmp_path):
+    """Specimen: the native C64 join, to the Amiga as Wish writes it, to the C64."""
+    plan = _prepare(app, tmp_path, "amiga")
+    party = []
+    for name, data in plan.files.items():
+        written = tmp_path / f"written-{name}"
+        written.write_bytes(data)
+        party += [amiga_later.to_neutral_later(member.native)
+                  for member in roster.Party(
+                      convert.Source.detect(written)).members]
+    _assert_the_c64_figure(party)
+
+
+def test_the_amiga_games_own_save_of_a_c64_joined_party_converts_to_the_c64_figure():
+    """Specimen: Amiga Curse's own save (slot B) of a party that joined on the C64.
+
+    Slot A was written by Wish and slot B by the running Amiga game, which
+    loaded A and saved; the specimen's provenance records both.
+    """
+    folder = gamedata.specimen(AMIGA_PIT_SAVE, "amiga")
+    disk = amiga_adf.AmigaDisk.open(folder / "fetched-save.adf")
+    slot = amiga_savegame.read_slot(disk, "B", CURSE_KEY)
+    _assert_the_c64_figure(
+        [amiga_later.to_neutral_later(c) for c in slot.characters])
+
+
+def test_the_dos_games_own_resave_of_a_c64_joined_party_converts_to_the_c64_figure():
+    """Specimen: DOS Curse's own resave of a party that joined on the C64."""
+    folder = gamedata.specimen(C64_JOIN_DOS_RESAVE)
+    _assert_the_c64_figure(
+        [dos_codec.to_neutral(c) for c in dos_codec.read_party(folder, "D")])
