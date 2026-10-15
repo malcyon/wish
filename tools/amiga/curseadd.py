@@ -340,6 +340,7 @@ class Screens:
         self.deadline, self.clock, self.sleep = deadline, clock, sleep
         self.events: list[dict] = []
         self.count = 0
+        self.grabbed = False
         out.mkdir(parents=True)
 
     def left(self, cap: float) -> float:
@@ -352,7 +353,8 @@ class Screens:
         self.count += 1
         raw = self.out / f"{self.count:03d}-{label}-raw.png"
         crop = self.out / f"{self.count:03d}-{label}.png"
-        if not self.guest.grab(label, raw, crop, self.left(20)):
+        self.grabbed = bool(self.guest.grab(label, raw, crop, self.left(20)))
+        if not self.grabbed:
             return [], raw
         return [s for s in self.known if s in self.guards and self.guards(s, crop)], crop
 
@@ -396,8 +398,10 @@ class Screens:
             require(now - changed_at < idle,
                     f"the boot frame stayed unchanged for {idle:.0f}s before the party menu")
             seen, shot = self.look("boot")
-            frame = hashlib.sha256(shot.read_bytes()).hexdigest() if shot.exists() else None
-            if frame != last:
+            # A failed grab shows nothing, so it is neither a change nor a stall.
+            frame = (hashlib.sha256(shot.read_bytes()).hexdigest()
+                     if self.grabbed and shot.exists() else None)
+            if frame is not None and frame != last:
                 last, changed_at = frame, self.clock()
             if "title" in seen:
                 self.events.append({"screen": "title", "shot": str(shot)})
@@ -414,10 +418,10 @@ class Screens:
             self.sleep(3.0)
 
 
-class PartyRead(list):
-    """The members read, with the seconds each pipe call took in `pipe_calls`."""
-
-    pipe_calls: list[float]
+#: Seconds each pipe call of the latest live read took. The read runs on a worker thread that
+#: may still be waiting when `bounded` gives up, so the list is shared and only appended to
+#: there; `list(...)` of it is a single atomic copy under the GIL.
+PIPE_CALLS: list[float] = []
 
 
 def read_live(holder: str) -> list[dict]:
@@ -425,14 +429,13 @@ def read_live(holder: str) -> list[dict]:
     from automap import amiga, amigaparty  # noqa: PLC0415
 
     pipe = amiga.WinuaePipe(holder=holder)
+    pipe.call_seconds = PIPE_CALLS
     target = amiga.AmigaTarget(pipe, amiga.MACHINES[TITLE])
     target.locate()
     members = amigaparty.read_party(target)
     require(members is not None, "the party list does not read")
-    read = PartyRead({"name": m.name, "control": m.raw[0xF7], "status": m.raw[0x19A],
-                      "type": m.raw[0x11B]} for m in members)
-    read.pipe_calls = list(pipe.call_seconds)
-    return read
+    return [{"name": m.name, "control": m.raw[0xF7], "status": m.raw[0x19A],
+             "type": m.raw[0x11B]} for m in members]
 
 
 def check_live(live: list[dict], manifest: dict) -> dict:
@@ -525,9 +528,13 @@ def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> di
         if screens.wait(("add_picker", "loaded_menu"), 30) == "add_picker":
             screens.press("E", "add_picker")
             screens.wait(("loaded_menu",), 30, past=("add_picker",))
-    live = bounded(reader, holder, screens.left(READ_LIMIT))
-    found: dict[str, Any] = {"live": list(live), "live_fields": check_live(live, manifest),
-                             "pipe_call_seconds": list(getattr(live, "pipe_calls", []))}
+    PIPE_CALLS.clear()
+    try:
+        live = bounded(reader, holder, screens.left(READ_LIMIT))
+    except RouteError as exc:
+        raise RouteError(f"{exc}; pipe calls took {list(PIPE_CALLS)} s") from exc
+    found: dict[str, Any] = {"live": live, "live_fields": check_live(live, manifest),
+                             "pipe_call_seconds": list(PIPE_CALLS)}
     # ADD leaves the last character added highlighted; NP7 moves up the list.
     for number in range(count):
         if number:

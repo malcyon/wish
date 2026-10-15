@@ -596,21 +596,24 @@ def test_stage_puts_a_registered_pool_character_beside_curse_slot_a(tmp_path):
 class FramedGuest(FakeGuest):
     """Shows the unknown screen (the credits) with a crop that `frame(now)` names, then the title."""
 
-    def __init__(self, clock, frame, title_at=None):
+    def __init__(self, clock, frame, title_at=None, fails=lambda n: False):
         super().__init__([None], clock)
-        self.frame, self.title_at = frame, title_at
+        self.frame, self.title_at, self.fails, self.grabs = frame, title_at, fails, 0
 
     def grab(self, label, raw, crop, timeout):
         self.clock.now += 1
+        self.grabs += 1
+        if self.fails(self.grabs):
+            return False
         shown = self.title_at is not None and self.clock.now >= self.title_at
         self.current = "title" if shown else None
         crop.write_bytes(f"frame {self.frame(self.clock.now)}".encode())
         return True
 
 
-def _framed(tmp_path, frame, title_at=None):
+def _framed(tmp_path, frame, title_at=None, fails=lambda n: False):
     clock = Clock()
-    guest = FramedGuest(clock, frame, title_at)
+    guest = FramedGuest(clock, frame, title_at, fails)
     return curseadd.Screens(guest, "holder", tmp_path / "shots", FakeGuards(guest), 10_000,
                             clock=clock, sleep=clock.sleep), clock
 
@@ -630,6 +633,14 @@ def test_a_frozen_boot_frame_stops_the_wait_after_the_idle_span(tmp_path):
     assert curseadd.BOOT_IDLE <= clock.now < curseadd.BOOT_IDLE + 10
 
 
+def test_flaky_grabs_between_frozen_frames_do_not_reset_the_idle_span(tmp_path):
+    """A failed grab is no new frame, so alternating failures cannot keep a frozen boot alive."""
+    screens, clock = _framed(tmp_path, lambda now: 0, fails=lambda n: n % 2 == 0)
+    with pytest.raises(RouteError, match="unchanged for 150s"):
+        screens.to_party_menu()
+    assert clock.now < curseadd.BOOT_IDLE + 20
+
+
 def test_a_boot_that_never_stops_changing_stops_at_the_ceiling(tmp_path):
     screens, clock = _framed(tmp_path, lambda now: int(now))
     with pytest.raises(RouteError, match="did not show within 900s"):
@@ -645,22 +656,23 @@ def test_a_party_read_that_answers_at_70_seconds_is_within_the_limit(tmp_path):
                             screens.left(curseadd.READ_LIMIT)) == _live("GALAIN")
 
 
-def test_the_live_read_reports_how_long_each_pipe_call_took(monkeypatch):
+def test_the_live_read_shares_its_pipe_call_list_with_the_receipt(monkeypatch):
     from automap import amiga, amigaparty
 
     class Pipe:
         def __init__(self, holder):
-            self.call_seconds = [0.4, 31.2]
+            self.call_seconds = []
 
     class Member:
         name, raw = "GALAIN", bytes(0x200)
 
-    monkeypatch.setattr(amiga, "WinuaePipe", Pipe)
+    made = []
+    monkeypatch.setattr(amiga, "WinuaePipe", lambda holder: made.append(Pipe(holder)) or made[0])
     monkeypatch.setattr(amiga, "AmigaTarget",
                         lambda pipe, machine: type("T", (), {"locate": lambda self: None})())
     monkeypatch.setattr(amigaparty, "read_party", lambda target: [Member()])
     live = curseadd.read_live("holder")
-    assert live.pipe_calls == [0.4, 31.2] and live[0]["name"] == "GALAIN"
+    assert made[0].call_seconds is curseadd.PIPE_CALLS and live[0]["name"] == "GALAIN"
 
 
 def test_drive_puts_the_pipe_call_durations_in_the_receipt(tmp_path):
@@ -668,9 +680,24 @@ def test_drive_puts_the_pipe_call_durations_in_the_receipt(tmp_path):
     manifest = _manifest(tmp_path, ["ROSALIND"])
 
     def reader(holder):
-        live = curseadd.PartyRead(_live("GALAIN", "HOLLAND", "ROSALIND"))
-        live.pipe_calls = [0.5, 29.0]
-        return live
+        curseadd.PIPE_CALLS.extend([0.5, 29.0])
+        return _live("GALAIN", "HOLLAND", "ROSALIND")
 
     found = curseadd.drive(screens, manifest, "holder", reader)
     assert found["pipe_call_seconds"] == [0.5, 29.0]
+
+
+def test_a_party_read_that_hangs_still_reports_the_calls_it_made(tmp_path, monkeypatch):
+    screens, _ = _screens(tmp_path, ROUTE_ONE)
+    monkeypatch.setattr(curseadd, "READ_LIMIT", 0.2)
+    never = threading.Event()
+
+    def reader(holder):
+        curseadd.PIPE_CALLS.append(0.7)
+        never.wait()
+
+    try:
+        with pytest.raises(RouteError, match=r"no answer in .*pipe calls took \[0\.7\] s"):
+            curseadd.drive(screens, _manifest(tmp_path, ["ROSALIND"]), "holder", reader)
+    finally:
+        never.set()

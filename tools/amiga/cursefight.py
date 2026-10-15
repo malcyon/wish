@@ -157,7 +157,7 @@ TAVERN_LINGER = 15.0
 MAP_SETTLE = 6.0
 #: Seconds the run waits for a step or a turn to show in the party's live square.
 MOVE_LIMIT = 20.0
-READ_LIMIT = 60.0
+READ_LIMIT = curseadd.READ_LIMIT
 POST_WRITE_WAIT = 20.0
 SLOT = curseadd.SLOT
 
@@ -741,7 +741,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
     fight_ = manifest["fight"]
     pit = fight_.get("kind") == PIT
     found = {} if found is None else found
-    screens.to_party_menu(300)
+    screens.to_party_menu()
     screens.press("L", "title")
     screens.wait(("load_picker",), 60, past=("title",))
     screens.press(fight_["load"], "load_picker")

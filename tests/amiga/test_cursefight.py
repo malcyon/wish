@@ -1285,3 +1285,9 @@ def test_verdict_of_an_unfought_save_skips_quickfight_and_checks_the_picture():
     members[-1]["picture"] = 0
     assert cursefight.verdict(_read(members), manifest, ["EVOKER"], "unfought") == [
         "EVOKER was saved with picture 0, staged with 22"]
+
+
+def test_the_fight_driver_reads_the_party_with_the_shared_limit():
+    from tools.amiga import curseadd, ssbfight
+
+    assert cursefight.READ_LIMIT == ssbfight.READ_LIMIT == curseadd.READ_LIMIT >= 70
