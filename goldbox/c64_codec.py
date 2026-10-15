@@ -980,12 +980,15 @@ def thac0_current_byte(base_byte: int, hit_bonus: int, bonus_flag: bool) -> int:
     return (base_byte + hit_bonus) & 0xFF
 
 
-#: `COM.PREP $1682`, indexed by dexterity 3-21: what dexterity gives to hit
-#: at range, which `COM.PREP $1633` caches at record `0x0EC` and the roster
-#: rebuild adds for a ranged weapon.  CONFIRMED for 3-21 in Pool of Radiance;
-#: the table beyond 21 is unread, so 22 and over, and anything under 3, take
-#: the nearest read row as a fallback and nothing more.
-_MISSILE_BY_DEX = (-3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3, 3, 4)
+#: `COM.PREP $1682` in Pool of Radiance and `$178B` in Curse of the Azure
+#: Bonds, indexed by dexterity 3-25: what dexterity gives to hit at range,
+#: which `COM.PREP` caches at record `0x0EC` and the roster rebuild adds for a
+#: ranged weapon.  CONFIRMED by reading both overlays' bytes: the two tables
+#: are identical through dexterity 25 (the last row 22-25 is 4, 4, 5, 5), so
+#: one table serves both titles.  Anything under 3 takes the lowest row and
+#: anything over 25, which no character holds, the highest.
+_MISSILE_BY_DEX = (-3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 3, 3,
+                   4, 4, 4, 5, 5)
 
 #: The item types whose readied plus a launcher adds to the roster THAC0 in
 #: Pool of Radiance: `LIBRARY $36F9` takes type `$1C` for weapon-flag bit 7
@@ -996,7 +999,7 @@ _AMMO_BIT7_TYPE, _AMMO_BIT0_TYPE = 0x1C, 0x49
 def missile_adjustment(dexterity: int) -> int:
     """What `COM.PREP $1682` gives a dexterity, as the signed value stored at
     record `0x0EC`."""
-    return _MISSILE_BY_DEX[min(max(int(dexterity), 3), 21) - 3]
+    return _MISSILE_BY_DEX[min(max(int(dexterity), 3), 25) - 3]
 
 
 def _signed_plus(raw: bytes) -> int:

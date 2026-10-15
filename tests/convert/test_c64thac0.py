@@ -222,11 +222,20 @@ def test_a_launcher_takes_its_ammunitions_plus():
 
 def test_the_dex_term_is_the_missile_table_not_dexterity_itself():
     table = {3: -3, 4: -2, 5: -1, 6: 0, 15: 0, 16: 1, 17: 2, 18: 3, 20: 3,
-             21: 4, 25: 4}
+             21: 4, 22: 4, 23: 4, 24: 5, 25: 5}
     for dexterity, want in table.items():
         assert c64_codec.missile_adjustment(dexterity) == want
         rec, _ = _pool([_item(2)], dexterity=dexterity)
         assert rec.get("missile_attack_adjustment") == want
+
+
+def test_a_dexterity_24_bowman_gets_the_games_step_of_5():
+    """`COM.PREP`'s table (Pool `$1682`, Curse `$178B`, identical bytes) holds
+    5 at dexterity 24 and 25; a clamp at 21 gave a bowman 4."""
+    for dexterity in (24, 25):
+        rec, _ = _pool([_item(2)], dexterity=dexterity)
+        assert rec.get("missile_attack_adjustment") == 5
+        assert rec.get("thac0") == rec.get("thac0_base") + 5
 
 
 def test_without_a_table_the_pool_byte_is_the_strength_only_one():
