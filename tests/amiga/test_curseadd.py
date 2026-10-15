@@ -591,3 +591,86 @@ def test_stage_puts_a_registered_pool_character_beside_curse_slot_a(tmp_path):
         curseadd.stage(prep, source, ["ROSALIND", "CONJURER", "ADDERLY"], tmp_path / "out2",
                        source_drawer="save",
                        load="A")
+
+
+class FramedGuest(FakeGuest):
+    """Shows the unknown screen (the credits) with a crop that `frame(now)` names, then the title."""
+
+    def __init__(self, clock, frame, title_at=None):
+        super().__init__([None], clock)
+        self.frame, self.title_at = frame, title_at
+
+    def grab(self, label, raw, crop, timeout):
+        self.clock.now += 1
+        shown = self.title_at is not None and self.clock.now >= self.title_at
+        self.current = "title" if shown else None
+        crop.write_bytes(f"frame {self.frame(self.clock.now)}".encode())
+        return True
+
+
+def _framed(tmp_path, frame, title_at=None):
+    clock = Clock()
+    guest = FramedGuest(clock, frame, title_at)
+    return curseadd.Screens(guest, "holder", tmp_path / "shots", FakeGuards(guest), 10_000,
+                            clock=clock, sleep=clock.sleep), clock
+
+
+def test_a_slow_boot_that_keeps_drawing_reaches_the_party_menu(tmp_path):
+    """A loaded host pages through the credits for 400 s, which the old 300 s wait cut off."""
+    screens, clock = _framed(tmp_path, lambda now: int(now // 20), title_at=400)
+    screens.to_party_menu()
+    assert clock.now >= 400
+    assert screens.events[-1]["screen"] == "title"
+
+
+def test_a_frozen_boot_frame_stops_the_wait_after_the_idle_span(tmp_path):
+    screens, clock = _framed(tmp_path, lambda now: 0)
+    with pytest.raises(RouteError, match="unchanged for 150s"):
+        screens.to_party_menu()
+    assert curseadd.BOOT_IDLE <= clock.now < curseadd.BOOT_IDLE + 10
+
+
+def test_a_boot_that_never_stops_changing_stops_at_the_ceiling(tmp_path):
+    screens, clock = _framed(tmp_path, lambda now: int(now))
+    with pytest.raises(RouteError, match="did not show within 900s"):
+        screens.to_party_menu()
+    assert curseadd.BOOT_CEILING <= clock.now < curseadd.BOOT_CEILING + 10
+
+
+def test_a_party_read_that_answers_at_70_seconds_is_within_the_limit(tmp_path):
+    """The read runs on a thread, so the bound is its argument: it must allow a 70 s answer."""
+    screens, _ = _screens(tmp_path, [None])
+    assert screens.left(curseadd.READ_LIMIT) >= 70
+    assert curseadd.bounded(lambda holder: _live("GALAIN"), "h",
+                            screens.left(curseadd.READ_LIMIT)) == _live("GALAIN")
+
+
+def test_the_live_read_reports_how_long_each_pipe_call_took(monkeypatch):
+    from automap import amiga, amigaparty
+
+    class Pipe:
+        def __init__(self, holder):
+            self.call_seconds = [0.4, 31.2]
+
+    class Member:
+        name, raw = "GALAIN", bytes(0x200)
+
+    monkeypatch.setattr(amiga, "WinuaePipe", Pipe)
+    monkeypatch.setattr(amiga, "AmigaTarget",
+                        lambda pipe, machine: type("T", (), {"locate": lambda self: None})())
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: [Member()])
+    live = curseadd.read_live("holder")
+    assert live.pipe_calls == [0.4, 31.2] and live[0]["name"] == "GALAIN"
+
+
+def test_drive_puts_the_pipe_call_durations_in_the_receipt(tmp_path):
+    screens, _ = _screens(tmp_path, ROUTE_ONE)
+    manifest = _manifest(tmp_path, ["ROSALIND"])
+
+    def reader(holder):
+        live = curseadd.PartyRead(_live("GALAIN", "HOLLAND", "ROSALIND"))
+        live.pipe_calls = [0.5, 29.0]
+        return live
+
+    found = curseadd.drive(screens, manifest, "holder", reader)
+    assert found["pipe_call_seconds"] == [0.5, 29.0]

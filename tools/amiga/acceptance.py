@@ -388,6 +388,10 @@ MEASURE_BOOT_POLL = 10.0
 MEASURE_TITLE_SPAN = 120.0
 GUARD_POLL = 5.0
 GUARD_LIMIT = 120.0
+#: Seconds the title wait goes on while its frame keeps changing; an emulator slowed by host
+#: load takes longer than any fixed span to page through the credits, so only a frame that
+#: stops changing, or this ceiling, ends the wait.
+TITLE_CEILING = 900.0
 # A key pressed while the disk is being written is swallowed, so the screen
 # after the write gets the same long first wait as the load picker.
 POST_WRITE_WAIT = 20.0
@@ -2857,8 +2861,12 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
 
     def until_guard(state: str, name: str, first_wait: float,
                     poll: float, limit: float, *, strict: bool = True,
-                    unchanged_from: str | None = None) -> str:
+                    unchanged_from: str | None = None,
+                    ceiling: float | None = None) -> str:
         """Wait, then grab every `poll` seconds until the guard matches; keep the last crop.
+
+        With a `ceiling`, `limit` is how long one frame may stay unchanged and the wait fails
+        only then or after `ceiling` seconds in all, so a slow boot that keeps drawing is not cut.
 
         A state that is not `strict` and never matches falls back to a settled capture.
         A match whose digest is `unchanged_from` is not accepted: the guard may match the screen
@@ -2867,7 +2875,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         be drawn before its rows; the limit raises that identity error if no frame passes.
         """
         wait(first_wait)
-        started = time.monotonic()
+        started = began = time.monotonic()
+        last_frame = ""
         done: dict[str, int] = {}
         crop = shots / f"{name}.png"
         stale = False
@@ -2875,6 +2884,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         first_unknown = False
         while True:
             digest = capture(name, check=False, settle=False)
+            if ceiling is not None and digest and digest != last_frame:
+                last_frame, started = digest, time.monotonic()
             if digest:
                 look_for_messages(crop, name)
                 hit = recognise(state, crop, done)
@@ -2911,7 +2922,10 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
                     # The limit measures waiting for the screen, not the time spent acting on
                     # a screen; each interstitial row's count and the route deadline bound it.
                     started = time.monotonic()
-            if time.monotonic() - started >= limit:
+            out_of_ceiling = ceiling is not None and time.monotonic() - began >= ceiling
+            if out_of_ceiling or time.monotonic() - started >= limit:
+                if out_of_ceiling:
+                    limit = ceiling
                 if wrong["error"] is not None:
                     raise wrong["error"]
                 if stale:
@@ -2930,7 +2944,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         if _guards(guard, state):
             limit = title.wait_limits.get(state, GUARD_LIMIT) if title else GUARD_LIMIT
             return until_guard(state, name, first_wait, GUARD_POLL, limit, strict=strict,
-                               unchanged_from=unchanged_from)
+                               unchanged_from=unchanged_from,
+                               ceiling=TITLE_CEILING if state == "title" else None)
         wait(first_wait)
         done: dict[str, int] = {}
         digest = settle_unguarded(state, name)
@@ -3299,7 +3314,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
         does not press the move key again for it.
         """
         nonlocal previous, previous_state, previous_world
-        until_guard("title", "title", 0, TITLE_POLL, title_limit)
+        until_guard("title", "title", 0, TITLE_POLL, title_limit,
+                    ceiling=TITLE_CEILING)
         machine, kept = earlier["machine"], earlier["kept"]
         receipt = guest.restore(RESUME, holder, fresh=True)
         log("restore", name=RESUME, fresh=True, receipt=str(receipt))
@@ -3467,7 +3483,8 @@ def run_recon(manifest_path: pathlib.Path, *, guest: Any, guard: Any = None,
             result["completed"] = changed and not stopped_at_write
         else:
             if earlier is None:
-                previous = until_guard("title", "title", 0, TITLE_POLL, title_limit)
+                previous = until_guard("title", "title", 0, TITLE_POLL, title_limit,
+                                       ceiling=TITLE_CEILING)
                 previous_world = ""
                 previous_state = ""
             # Leaving the credits with ESC can land on the party menu, which `P` opens.

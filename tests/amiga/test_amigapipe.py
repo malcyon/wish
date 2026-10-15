@@ -1723,3 +1723,12 @@ def test_soft_reset_over_ssh_without_a_holder_is_blocked():
     with pytest.raises(ValueError, match="lane holder"):
         amiga.WinuaePipe(runner=guest).soft_reset()
     assert guest.scripts == []
+
+
+def test_each_round_trips_duration_is_kept_even_when_it_fails():
+    answers = iter(["<<end>>\n", "<<error>> no pipe\n"])
+    p = amiga.WinuaePipe(runner=lambda argv, timeout: next(answers), holder=HOLDER)
+    p._execute("x")
+    with pytest.raises(amiga.PipeError):
+        p._execute("x")
+    assert len(p.call_seconds) == 2 and all(s >= 0 for s in p.call_seconds)

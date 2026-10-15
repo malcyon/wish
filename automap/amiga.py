@@ -1188,6 +1188,8 @@ class WinuaePipe:
         self.holder = holder
         #: Every command this session sent, for a run log.
         self.sent: list[str] = []
+        #: Seconds each round trip took, in order, so a slow run shows where the time went.
+        self.call_seconds: list[float] = []
         self._cursor_owned: list[int] = []
 
     def _cursor_report_command(self, command: str) -> str:
@@ -1747,7 +1749,11 @@ Write-Output '<<end>>'
 
     def _execute(self, script: str) -> str:
         """Run one script on the guest and check it got to the end."""
-        out = self._run(self._argv(script), self.timeout)
+        started = time.monotonic()
+        try:
+            out = self._run(self._argv(script), self.timeout)
+        finally:
+            self.call_seconds.append(round(time.monotonic() - started, 3))
         if "<<error>>" in out:
             raise PipeError(self._error(out))
         if "<<timeout>>" in out:

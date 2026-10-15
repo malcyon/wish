@@ -298,8 +298,13 @@ ALLOWED_KEYS = {
     "add_from": frozenset({"P"}), "add_picker": frozenset({"A", "NP1", "E"}),
     "sheet": frozenset({"E"}), "save_picker": frozenset("ABCDEFGHIJ"),
 }
-#: Seconds the live party read may take before the run stops without saving.
-READ_LIMIT = 60.0
+#: Seconds the live party read may take before the run stops without saving: three times the
+#: 60 s that timed out when the host was loaded (the same read answers in about 30 s idle).
+READ_LIMIT = 180.0
+#: Seconds one boot frame may stay unchanged before the wait for the party menu stops, and the
+#: seconds in all it may take: a loaded host stretches the credits, which keep changing.
+BOOT_IDLE = 150.0
+BOOT_CEILING = 900.0
 #: Seconds the game is left to finish writing after the save message clears.
 POST_WRITE_WAIT = 20.0
 TITLE = route_curse.CURSE_KEY
@@ -375,13 +380,25 @@ class Screens:
         self.guest.press(self.holder, key, timeout=self.left(30))
         self.events.append({"from": on, "key": key})
 
-    def to_party_menu(self, limit: float) -> None:
-        """Wait out the boot, pressing ESC on the intro and the front end until the party menu."""
-        end = self.clock() + self.left(limit)
+    def to_party_menu(self, idle: float = BOOT_IDLE, ceiling: float = BOOT_CEILING) -> None:
+        """Wait out the boot, pressing ESC on the intro and the front end until the party menu.
+
+        The wait goes on while the frame keeps changing; it fails after `idle` seconds on one
+        unchanged frame or `ceiling` seconds in all.
+        """
+        began = self.clock()
+        end = began + self.left(ceiling)
+        changed_at, last = began, None
         escapes, pressed_on, pressed_at = 0, None, 0.0
         while True:
-            require(self.clock() < end, f"the party menu did not show within {limit:.0f}s")
+            now = self.clock()
+            require(now < end, f"the party menu did not show within {ceiling:.0f}s")
+            require(now - changed_at < idle,
+                    f"the boot frame stayed unchanged for {idle:.0f}s before the party menu")
             seen, shot = self.look("boot")
+            frame = hashlib.sha256(shot.read_bytes()).hexdigest() if shot.exists() else None
+            if frame != last:
+                last, changed_at = frame, self.clock()
             if "title" in seen:
                 self.events.append({"screen": "title", "shot": str(shot)})
                 return
@@ -397,16 +414,25 @@ class Screens:
             self.sleep(3.0)
 
 
+class PartyRead(list):
+    """The members read, with the seconds each pipe call took in `pipe_calls`."""
+
+    pipe_calls: list[float]
+
+
 def read_live(holder: str) -> list[dict]:
     """The running party from memory: name, control, status and type of each member."""
     from automap import amiga, amigaparty  # noqa: PLC0415
 
-    target = amiga.AmigaTarget(amiga.WinuaePipe(holder=holder), amiga.MACHINES[TITLE])
+    pipe = amiga.WinuaePipe(holder=holder)
+    target = amiga.AmigaTarget(pipe, amiga.MACHINES[TITLE])
     target.locate()
     members = amigaparty.read_party(target)
     require(members is not None, "the party list does not read")
-    return [{"name": m.name, "control": m.raw[0xF7], "status": m.raw[0x19A],
-             "type": m.raw[0x11B]} for m in members]
+    read = PartyRead({"name": m.name, "control": m.raw[0xF7], "status": m.raw[0x19A],
+                      "type": m.raw[0x11B]} for m in members)
+    read.pipe_calls = list(pipe.call_seconds)
+    return read
 
 
 def check_live(live: list[dict], manifest: dict) -> dict:
@@ -473,7 +499,7 @@ def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> di
     """Load, add every staged character, view each and save once; return what was read live."""
     add = manifest["add"]
     count = len(add["copies"])
-    screens.to_party_menu(300)
+    screens.to_party_menu()
     screens.press("L", "title")
     screens.wait(("load_picker",), 60, past=("title",))
     screens.press(add["load"], "load_picker")
@@ -500,7 +526,8 @@ def drive(screens: Screens, manifest: dict, holder: str, reader: Callable) -> di
             screens.press("E", "add_picker")
             screens.wait(("loaded_menu",), 30, past=("add_picker",))
     live = bounded(reader, holder, screens.left(READ_LIMIT))
-    found: dict[str, Any] = {"live": live, "live_fields": check_live(live, manifest)}
+    found: dict[str, Any] = {"live": list(live), "live_fields": check_live(live, manifest),
+                             "pipe_call_seconds": list(getattr(live, "pipe_calls", []))}
     # ADD leaves the last character added highlighted; NP7 moves up the list.
     for number in range(count):
         if number:
