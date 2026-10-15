@@ -922,6 +922,120 @@ def test_levelup_checks_every_selected_record_byte_and_hit_point_arithmetic(tmp_
         controller._verify_action("levelup", context, [{**valid, "items": []}])
 
 
+def _pod_party(ready_slots, tmp_path):
+    """Four Pools of Darkness members; those in `ready_slots` already have the fighter's
+    experience for the next level."""
+    from automap import amigalevelup as levelup
+    from automap import amigaparty
+
+    row = amigaparty.ROWS[levelup.POOLS_OF_DARKNESS]
+    members = []
+    for slot in range(4):
+        raw = bytearray(row.record_size)
+        raw[row.slot], raw[0x58], raw[0x79], raw[0x9D + 2] = slot, 5, 18, 8
+        raw[0x81], raw[0x191] = 80, 50
+        experience = levelup.pod_threshold(2, 9) if slot in ready_slots else 0
+        raw[levelup._POD_EXPERIENCE:levelup._POD_EXPERIENCE + 4] = experience.to_bytes(4, "big")
+        raw[row.name:row.name + 2] = b"M" + bytes([ord("0") + slot])
+        members.append(amigaparty.AmigaMember(row, slot, 0x1000 + 0x200 * slot, bytes(raw)))
+    return members
+
+
+def _levelup_controller(tmp_path, monkeypatch, members):
+    from automap import amigalevelup as levelup
+    from automap import amigaparty
+
+    route = _route()
+    route.title, route.game_key = "darkness", levelup.POOLS_OF_DARKNESS
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    writes = []
+
+    class Target:
+        def write(self, address, data):
+            writes.append((address, bytes(data)))
+            for index, member in enumerate(members):
+                at = address - member.address
+                if 0 <= at < len(member.raw):
+                    raw = bytearray(member.raw)
+                    raw[at:at + len(data)] = data
+                    members[index] = dataclasses.replace(member, raw=bytes(raw))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(controller, "_fresh_party", lambda: (Target(), list(members)))
+    monkeypatch.setattr(amigaparty, "read_party", lambda target: list(members))
+    return controller, writes
+
+
+def test_levelup_picks_the_first_eligible_member_when_several_cards_are_enabled(
+        tmp_path, monkeypatch):
+    members = _pod_party({1, 2, 3}, tmp_path)
+    controller, writes = _levelup_controller(tmp_path, monkeypatch, members)
+    context = controller._action_input(SimpleNamespace(kind="levelup", selector="levelup"))
+    assert context["slot"] == 1 and context["member"] == "M1"
+    assert writes == []
+
+
+def test_levelup_stages_the_first_member_that_can_be_raised_when_none_is_eligible(
+        tmp_path, monkeypatch):
+    from automap import amigalevelup as levelup
+
+    members = _pod_party(set(), tmp_path)
+    controller, writes = _levelup_controller(tmp_path, monkeypatch, members)
+    context = controller._action_input(SimpleNamespace(kind="levelup", selector="levelup"))
+    assert context["slot"] == 0
+    assert writes == [(members[0].address + levelup._POD_EXPERIENCE,
+                       levelup.pod_threshold(2, 9).to_bytes(4, "big"))]
+
+
+def test_levelup_clicks_the_chosen_members_own_card_among_several_enabled(tmp_path, monkeypatch):
+    members = _pod_party({0, 1, 2, 3}, tmp_path)
+    controller, _ = _levelup_controller(tmp_path, monkeypatch, members)
+    listing = [f"Button|Level up M{n}|card_{n}_level_up|enabled=True" for n in range(4)]
+    clicks = []
+
+    def ui(guest, holder, command, labels=(), **kwargs):
+        if command == "click":
+            clicks.append(kwargs["automation_id"])
+            return None
+        return listing
+
+    monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
+    context = {"kind": "levelup", "member": "M2", "evidence": [], "clicks": []}
+    controller._unique_action(automation_id="card_2_level_up", context=context)
+    assert clicks == ["card_2_level_up"]
+    wrong = {"kind": "levelup", "member": "M3", "evidence": [], "clicks": []}
+    with pytest.raises(winwishaccept.AcceptanceStop, match="does not name M3"):
+        controller._unique_action(automation_id="card_2_level_up", context=wrong)
+
+
+def test_levelup_stops_when_a_member_other_than_the_selected_one_changes(tmp_path, monkeypatch):
+    from automap import amigalevelup as levelup
+
+    members = _pod_party({0, 1}, tmp_path)
+    controller, _ = _levelup_controller(tmp_path, monkeypatch, members)
+    records = [controller._member_record(member) for member in members]
+    context = {"slot": 0, "baseline": records, "levelup_effects": []}
+
+    class Dice:
+        def randint(self, low, high):
+            return 9
+
+    def trained(member):
+        return levelup.apply_to(member.raw, levelup.plan_member(member, levelup.POOLS_OF_DARKNESS,
+                                                                  rng=Dice())).hex()
+
+    after = [dict(record) for record in records]
+    after[0]["raw"] = trained(members[0])
+    controller._verify_action("levelup", context, after)
+    after[1]["raw"] = trained(members[1])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, after)
+
+
 def _packed_map(raw):
     """Encode a synthetic DAX block with literal runs in reverse read order."""
     bits = []

@@ -1697,6 +1697,30 @@ class Controller:
                 "raw": member.raw.hex(), "items": [
                     [node.address, node.raw.hex()] for node in member.item_nodes]}
 
+    def _next_fighter_threshold(self, member: Any) -> int | None:
+        """Experience that makes the member's fighter ready, or None when it cannot."""
+        from automap import amigalevelup  # noqa: PLC0415
+
+        if self.route.game_key != amigalevelup.POOLS_OF_DARKNESS:
+            return None
+        levels = amigalevelup.summary(member.raw, self.route.game_key)["levels"]
+        fighter = amigalevelup.POD_SLOTS.index("fighter")
+        if levels[fighter] <= 0:
+            return None
+        threshold = amigalevelup.pod_threshold(fighter, levels[fighter] + 1)
+        staged = bytearray(member.raw)
+        staged[amigalevelup._POD_EXPERIENCE:amigalevelup._POD_EXPERIENCE + 4] = (
+            threshold.to_bytes(4, "big"))
+        if "fighter" not in amigalevelup.ready_classes(staged, self.route.game_key):
+            return None
+        return threshold
+
+    def _stageable_levelup_member(self, party: Any) -> Any:
+        for member in sorted(party, key=lambda item: item.slot):
+            if self._next_fighter_threshold(member) is not None:
+                return member
+        raise AcceptanceStop("No member is ready for Level up and none can be staged")
+
     def _action_input(self, action: Any) -> dict[str, Any]:
         """Stage only the plan's named input on a newly resolved member."""
         from automap import amigalevelup, amigaparty  # noqa: PLC0415
@@ -1705,7 +1729,6 @@ class Controller:
         before = [self._member_record(member) for member in party]
         choice = None
         try:
-            candidates = []
             for member in sorted(party, key=lambda item: item.slot):
                 if action.selector == "hp" and member.hp_max >= 6 and member.hp > 0:
                     choice = member
@@ -1716,24 +1739,13 @@ class Controller:
                 elif action.selector == "controlled" and (member.row.control is None or
                         not member.row.control.value(member.raw)):
                     choice = member
-                elif action.selector == "pod_levelup":
-                    levels = amigalevelup.summary(member.raw, self.route.game_key)["levels"]
-                    fighter = amigalevelup.POD_SLOTS.index("fighter")
-                    if levels[fighter] > 0:
-                        threshold = amigalevelup.pod_threshold(fighter, levels[fighter] + 1)
-                        staged = bytearray(member.raw)
-                        staged[amigalevelup._POD_EXPERIENCE:amigalevelup._POD_EXPERIENCE + 4] = (
-                            threshold.to_bytes(4, "big"))
-                        if "fighter" in amigalevelup.ready_classes(staged, self.route.game_key):
-                            candidates.append(member)
+                elif action.selector == "levelup" and amigalevelup.ready_classes(
+                        member.raw, self.route.game_key):
+                    choice = member
                 if choice is not None:
                     break
-            if action.selector == "pod_levelup":
-                eligible = [member for member in party if
-                            amigalevelup.ready_classes(member.raw, self.route.game_key)]
-                if eligible or not candidates:
-                    raise AcceptanceStop("Level up has an existing eligible member or no ready fighter")
-                choice = candidates[0]
+            if action.selector == "levelup" and choice is None:
+                choice = self._stageable_levelup_member(party)
             if choice is None:
                 raise AcceptanceStop(f"no existing input for {action.selector}")
             context: dict[str, Any] = {"member": choice.name, "slot": choice.slot,
@@ -1763,11 +1775,13 @@ class Controller:
             elif action.kind == "levelup":
                 if self.route.title != "darkness":
                     raise AcceptanceStop("Level up is observed without a press on this title")
-                levels = amigalevelup.summary(choice.raw, self.route.game_key)["levels"]
-                fighter = amigalevelup.POD_SLOTS.index("fighter")
-                threshold = amigalevelup.pod_threshold(fighter, levels[fighter] + 1)
-                offset = amigalevelup._POD_EXPERIENCE
-                target.write(choice.address + offset, threshold.to_bytes(4, "big"))
+                if amigalevelup.ready_classes(choice.raw, self.route.game_key):
+                    # Already eligible: nothing is staged, the record is the baseline.
+                    threshold = amigalevelup.summary(choice.raw, self.route.game_key)["experience"]
+                else:
+                    threshold = self._next_fighter_threshold(choice)
+                    target.write(choice.address + amigalevelup._POD_EXPERIENCE,
+                                 threshold.to_bytes(4, "big"))
                 context["staged"] = {"experience": threshold}
             staged_party = amigaparty.read_party(target)
             if not staged_party:
@@ -1910,9 +1924,6 @@ class Controller:
         if len(matches) != 1 or "enabled=True" not in matches[0]:
             raise AcceptanceStop(f"{label or automation_id}: absent, ambiguous or disabled; kept {path}")
         if context["kind"] == "levelup":
-            enabled = [line for line in listing if "_level_up" in line and "enabled=True" in line]
-            if enabled != matches:
-                raise AcceptanceStop(f"Level up has another enabled card; kept {path}")
             if context["member"] not in matches[0]:
                 raise AcceptanceStop(f"Level up card does not name {context['member']}; kept {path}")
         self._count(action=True)

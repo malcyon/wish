@@ -85,7 +85,7 @@ class Phase:
 class Action:
     kind: Literal["heal", "spells", "identify", "quickfight", "levelup"]
     enabled: bool
-    selector: Literal["hp", "memorised", "item", "controlled", "pod_levelup"] | None
+    selector: Literal["hp", "memorised", "item", "controlled", "levelup"] | None
     show: Phase | None
     back: Phase | None
 
@@ -301,7 +301,7 @@ def _actions(title: str) -> tuple[Action, ...]:
         action("spells", "memorised"),
         action("identify", "item"),
         action("quickfight", "controlled" if title != "darkness" else None),
-        action("levelup", "pod_levelup" if title == "darkness" else None),
+        action("levelup", "levelup"),
     )
 
 
