@@ -68,6 +68,8 @@ class Game:
         self.parties = list(parties)
         self.holder = "holder"
         self.walking = True
+        # One fight-mode reading per poll of an unguarded screen; the last one stays.
+        self.modes = [True]
 
     # Guest
     def grab(self, label, raw, crop, timeout):
@@ -109,6 +111,9 @@ class Game:
 
     def party(self):
         return self.parties.pop(0)
+
+    def in_fight(self):
+        return self.modes.pop(0) if len(self.modes) > 1 else self.modes[0]
 
 
 def _screens(tmp_path, game, clock, budget=100_000):
@@ -277,6 +282,77 @@ def test_fight_waits_through_unknown_screens_that_keep_changing(tmp_path, monkey
     assert found["bars"][0]["owner"] == "EVOKER"
 
 
+def _animated(monkeypatch):
+    frames = iter(range(100_000))
+    monkeypatch.setattr(cursefight, "_digest", lambda shot: str(next(frames)))
+
+
+def test_fight_stops_on_an_animated_unknown_screen_outside_a_fight(tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, [None])
+    game.walking = False
+    game.modes = [False]
+    _animated(monkeypatch)
+    with pytest.raises(RouteError, match="no guard matching"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert game.keys == [] and clock.now < cursefight.FIGHT_STALL + 10
+
+
+def test_fight_waits_out_a_long_unguarded_stretch_while_the_game_is_in_a_fight(
+        tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, [None, "combat_bar", "combat_bar", *[None] * 240, "continue_battle",
+                        "party_won", "world"], owners=[_owner("EVOKER")])
+    game.walking = False
+    _animated(monkeypatch)
+    found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert clock.now > 600 and found["outcome"] == "won"
+
+
+def test_fight_stops_when_the_fight_mode_ends_during_an_unguarded_stretch(tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, [None])
+    game.walking = False
+    game.modes = [True] * 100 + [False]
+    _animated(monkeypatch)
+    with pytest.raises(RouteError, match="no guard matching"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert 250 < clock.now < 250 + cursefight.FIGHT_STALL + 10
+
+
+@pytest.mark.parametrize("failure", ["raises", "none"])
+def test_a_failed_mode_read_counts_as_not_in_a_fight(monkeypatch, failure):
+    from types import SimpleNamespace
+
+    from automap import amigaparty
+
+    def mode(target):
+        if failure == "raises":
+            raise OSError("pipe closed")
+
+    memory = cursefight.Memory("holder")
+    memory._target = object()
+    monkeypatch.setattr(amigaparty, "row_for", lambda target: SimpleNamespace(combat_value=5))
+    monkeypatch.setattr(amigaparty, "mode", mode)
+    assert memory.in_fight() is False
+    monkeypatch.setattr(amigaparty, "mode", lambda target: 5)
+    assert memory.in_fight() is True
+    monkeypatch.setattr(amigaparty, "mode", lambda target: 6)
+    assert memory.in_fight() is False
+
+
+def test_fight_keeps_going_while_guards_match_and_keys_are_answered(tmp_path, monkeypatch):
+    clock = Clock()
+    script = [None, "combat_bar", "combat_bar", *["treasure", None] * 60,
+              "continue_battle", "party_won", "world"]
+    game = Game(clock, script, owners=[_owner("EVOKER")])
+    game.walking = False
+    game.modes = [False]
+    _animated(monkeypatch)
+    found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
+    assert clock.now > cursefight.FIGHT_STALL and found["outcome"] == "won"
+
+
 @pytest.mark.parametrize("screen", ["combat_bar", "continue_battle", "treasure"])
 def test_fight_stops_on_a_known_screen_that_never_changes(tmp_path, screen):
     clock = Clock()
@@ -308,7 +384,7 @@ def test_fight_stops_on_a_map_that_stays_after_punch(tmp_path):
 
 def test_fight_stops_at_its_time_limit(tmp_path, monkeypatch):
     clock = Clock()
-    game = Game(clock, [None])
+    game = Game(clock, ["treasure"])
     game.walking = False
     frames = iter(range(10_000))
     monkeypatch.setattr(cursefight, "_digest", lambda shot: str(next(frames)))

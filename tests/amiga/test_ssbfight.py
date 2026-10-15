@@ -110,6 +110,9 @@ class Game:
     def party(self):
         return self.parties.pop(0)
 
+    def in_fight(self):
+        return True
+
     def variable(self, var):
         assert var == ssbfight.GATE
         return self.gate

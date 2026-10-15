@@ -143,9 +143,10 @@ TURN_KEYS = {1: ("NP6",), 2: ("NP6", "NP6"), 3: ("NP4",)}
 STEP = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
 #: Load errors a run answers before it stops; a slot holding a Pool import shows four.
 LOAD_ERRORS = 8
-#: Seconds any screen may stay unchanged mid-fight before the run stops: the QUICK turns
-#: redraw the field all the time, and a still screen is a key the game ignores or a question
-#: nobody answers.
+#: Seconds any screen may stay unchanged mid-fight, or an unguarded screen may stay up with
+#: no guard matching and no key pressed while the game is not in a fight, before the run
+#: stops: a still screen is a key the game ignores or a question nobody answers, and an
+#: animated one no guard knows is a bar nobody answers.
 FIGHT_STALL = 90.0
 #: Seconds the whole fight may take; a fight of QUICK turns takes about ten minutes.
 FIGHT_LIMIT = 1500.0
@@ -436,6 +437,17 @@ class Memory:
         require(members is not None, "the party list does not read")
         return [{"name": m.name, **self.fields(m.raw)} for m in members]
 
+    def in_fight(self) -> bool:
+        """Whether the game's mode byte reads as a fight; a read that fails reads as not."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        try:
+            target = self.target()
+            row = amigaparty.row_for(target)
+            return row is not None and amigaparty.mode(target) == row.combat_value
+        except Exception:  # noqa: BLE001 - a failed read must not end the run by itself
+            return False
+
     def variable(self, var: int) -> int | None:
         """A script variable's value in the running game, None when it does not read."""
         from automap import amigavars  # noqa: PLC0415
@@ -630,7 +642,7 @@ def fight(screens: Screens, memory: Memory, members: list[str],
     answered: list[dict] = []
     if found is not None:
         found.update(bars=bars, answered=answered)
-    started = still_since = screens.clock()
+    started = still_since = guided = screens.clock()
     settle_from = None
     lost = won = False
     last: object = object()
@@ -640,6 +652,8 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         seen, shot = screens.look("fight")
         state = next((s for s in rules.known if s in seen), None)
         digest = _digest(shot)
+        if state is not None:
+            guided = screens.clock()
         # A grab with no crop counts as one more of the same, so a stuck one stops the run too.
         if digest != last:
             last, still_since = digest, screens.clock()
@@ -667,6 +681,14 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         require(screens.clock() - still_since < FIGHT_STALL,
                 f"{named} stayed {FIGHT_STALL:.0f}s unchanged mid-fight; shot {shot}")
         if state is None:
+            # An animated picture keeps changing the frame, so the digest above never trips;
+            # the monster turns of a fight are such pictures, and the game's mode byte tells
+            # them from a stalled bar.
+            if memory.in_fight():
+                guided = screens.clock()
+            require(screens.clock() - guided < FIGHT_STALL,
+                    f"{named} stayed {FIGHT_STALL:.0f}s with no guard matching and no key "
+                    f"pressed outside a fight; shot {shot}")
             screens.sleep(1.5)
             continue
         if state == "combat_bar":
