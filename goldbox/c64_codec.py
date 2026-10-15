@@ -1337,7 +1337,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # Curse's `LIBRARY $387E` is Pool's `$368F` block read from the code: the
     # same type-flag bits, and readied types 0x1C and 0x49 as the ammunition.
     # The table `COM.PREP $1740` caches 0x0EC from (`$178B`) equals the one
-    # here for dexterity 3-21.  Of the 116 engine-written C64 Curse roster
+    # here for dexterity 3-25.  Of the 116 engine-written C64 Curse roster
     # blocks with 0x0EC set, 112 agree with `readied_thac0_current_byte` and
     # the other four are one character whose block was not rebuilt after
     # shopping; none holds a bowman.  Silver Blades is unread, so it keeps

@@ -295,7 +295,14 @@ def test_the_byte_wraps_mod_256_like_the_engines_adc():
 
 
 def test_a_dexterity_below_3_takes_the_lowest_read_row():
-    assert c64_codec.missile_adjustment(1) == -3
+    for dexterity in (2, 1, 0, -5):
+        assert c64_codec.missile_adjustment(dexterity) == -3
+
+
+def test_a_dexterity_above_25_takes_the_highest_read_row():
+    """No character holds one; the table ends at 25, whose step is 5."""
+    for dexterity in (26, 30, 255):
+        assert c64_codec.missile_adjustment(dexterity) == 5
 
 
 def test_a_readied_weapon_of_an_unknown_type_counts_as_no_weapon():
