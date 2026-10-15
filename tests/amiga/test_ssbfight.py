@@ -110,6 +110,8 @@ class Game:
     def party(self):
         return self.parties.pop(0)
 
+    mode_error = None
+
     def in_fight(self):
         return True
 

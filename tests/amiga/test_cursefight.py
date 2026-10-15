@@ -112,6 +112,8 @@ class Game:
     def party(self):
         return self.parties.pop(0)
 
+    mode_error = None
+
     def in_fight(self):
         return self.modes.pop(0) if len(self.modes) > 1 else self.modes[0]
 
@@ -320,25 +322,91 @@ def test_fight_stops_when_the_fight_mode_ends_during_an_unguarded_stretch(tmp_pa
     assert 250 < clock.now < 250 + cursefight.FIGHT_STALL + 10
 
 
-@pytest.mark.parametrize("failure", ["raises", "none"])
-def test_a_failed_mode_read_counts_as_not_in_a_fight(monkeypatch, failure):
-    from types import SimpleNamespace
+def test_the_stop_names_the_last_mode_read_error(tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, [None])
+    game.walking = False
+    game.modes = [False]
+    game.mode_error = "OSError: pipe closed"
+    _animated(monkeypatch)
+    with pytest.raises(RouteError, match="mode read: OSError: pipe closed"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
 
+
+class _Pipe:
+    """A located target whose mode byte reads as `modes` in turn; an Exception raises."""
+
+    def __init__(self, monkeypatch, modes, row=5):
+        from types import SimpleNamespace
+
+        from automap import amigaparty
+
+        self.modes = list(modes)
+        self.reads = 0
+        monkeypatch.setattr(amigaparty, "row_for", lambda target: SimpleNamespace(combat_value=row))
+        monkeypatch.setattr(amigaparty, "mode", self.mode)
+
+    def mode(self, target):
+        self.reads += 1
+        value = self.modes.pop(0) if len(self.modes) > 1 else self.modes[0]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+def _memory(target=object()):
+    memory = cursefight.Memory("holder")
+    memory._target = target
+    return memory
+
+
+def test_a_failed_mode_read_keeps_the_last_state_the_game_was_read_in(monkeypatch):
+    _Pipe(monkeypatch, [5, OSError("pipe closed"), None, 6])
+    memory = _memory()
+    assert memory.in_fight() is True and memory.mode_error is None
+    assert memory.in_fight() is True and "pipe closed" in memory.mode_error
+    assert memory.in_fight() is True and "did not read" in memory.mode_error
+    assert memory.in_fight() is False and memory.mode_error is None
+
+
+def test_a_mode_read_that_never_worked_reads_as_not_in_a_fight(monkeypatch):
+    _Pipe(monkeypatch, [OSError("pipe closed")])
+    memory = _memory()
+    assert memory.in_fight() is False and "pipe closed" in memory.mode_error
+
+
+def test_a_mode_read_that_hangs_fails_after_its_limit(monkeypatch):
+    import threading
+
+    release = threading.Event()
+    pipe = _Pipe(monkeypatch, [5])
+    monkeypatch.setattr(pipe, "mode", lambda target: release.wait(5) and 5)
     from automap import amigaparty
 
-    def mode(target):
-        if failure == "raises":
-            raise OSError("pipe closed")
+    monkeypatch.setattr(amigaparty, "mode", pipe.mode)
+    monkeypatch.setattr(cursefight, "MODE_READ_LIMIT", 0.05)
+    memory = _memory()
+    try:
+        assert memory.in_fight() is False and "no answer" in memory.mode_error
+    finally:
+        release.set()
 
-    memory = cursefight.Memory("holder")
+
+def test_the_mode_read_never_locates_the_game(monkeypatch):
+    pipe = _Pipe(monkeypatch, [5])
+    tries = []
+
+    class Unlocated(cursefight.Memory):
+        def target(self):
+            tries.append(1)
+            raise OSError("no machine found")
+
+    memory = Unlocated("holder")
+    for _ in range(5):
+        assert memory.in_fight() is False
+    assert tries == [] and pipe.reads == 0 and "not located" in memory.mode_error
     memory._target = object()
-    monkeypatch.setattr(amigaparty, "row_for", lambda target: SimpleNamespace(combat_value=5))
-    monkeypatch.setattr(amigaparty, "mode", mode)
-    assert memory.in_fight() is False
-    monkeypatch.setattr(amigaparty, "mode", lambda target: 5)
-    assert memory.in_fight() is True
-    monkeypatch.setattr(amigaparty, "mode", lambda target: 6)
-    assert memory.in_fight() is False
+    assert memory.in_fight() is True and memory.mode_error is None
 
 
 def test_fight_keeps_going_while_guards_match_and_keys_are_answered(tmp_path, monkeypatch):

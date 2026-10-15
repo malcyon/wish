@@ -159,6 +159,8 @@ MAP_SETTLE = 6.0
 #: Seconds the run waits for a step or a turn to show in the party's live square.
 MOVE_LIMIT = 20.0
 READ_LIMIT = curseadd.READ_LIMIT
+#: Seconds one read of the game's mode byte may take before it counts as failed.
+MODE_READ_LIMIT = 5.0
 POST_WRITE_WAIT = 20.0
 SLOT = curseadd.SLOT
 
@@ -400,6 +402,9 @@ class Memory:
     def __init__(self, holder: str):
         self.holder = holder
         self._target: Any = None
+        self._in_fight: bool | None = None
+        #: The last mode read's error, None while the reads work.
+        self.mode_error: str | None = None
 
     def target(self) -> Any:
         if self._target is None:
@@ -438,15 +443,32 @@ class Memory:
         return [{"name": m.name, **self.fields(m.raw)} for m in members]
 
     def in_fight(self) -> bool:
-        """Whether the game's mode byte reads as a fight; a read that fails reads as not."""
+        """Whether the game's mode byte reads as a fight, from the last read that worked.
+
+        A read that fails keeps the last answer and leaves its error in `mode_error`; before
+        any read has worked it reads as not in a fight. It never locates the game: the sweep
+        is the run's own step, and one that outlasts the read limit would fail every poll.
+        """
         from automap import amigaparty  # noqa: PLC0415
 
-        try:
-            target = self.target()
+        target = self._target
+        if target is None:
+            self.mode_error = "the game is not located yet"
+            return bool(self._in_fight)
+
+        def read(_holder: str) -> bool:
             row = amigaparty.row_for(target)
-            return row is not None and amigaparty.mode(target) == row.combat_value
-        except Exception:  # noqa: BLE001 - a failed read must not end the run by itself
-            return False
+            require(row is not None, "the title has no party row")
+            mode = amigaparty.mode(target)
+            require(mode is not None, "the mode byte did not read")
+            return mode == row.combat_value
+
+        try:
+            self._in_fight = curseadd.bounded(read, self.holder, MODE_READ_LIMIT)
+            self.mode_error = None
+        except RouteError as exc:
+            self.mode_error = str(exc)
+        return bool(self._in_fight)
 
     def variable(self, var: int) -> int | None:
         """A script variable's value in the running game, None when it does not read."""
@@ -688,7 +710,9 @@ def fight(screens: Screens, memory: Memory, members: list[str],
                 guided = screens.clock()
             require(screens.clock() - guided < FIGHT_STALL,
                     f"{named} stayed {FIGHT_STALL:.0f}s with no guard matching and no key "
-                    f"pressed outside a fight; shot {shot}")
+                    f"pressed outside a fight"
+                    + (f" (mode read: {memory.mode_error})" if memory.mode_error else "")
+                    + f"; shot {shot}")
             screens.sleep(1.5)
             continue
         if state == "combat_bar":
