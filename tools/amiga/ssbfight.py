@@ -653,7 +653,8 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
                 f"{attempt['number']}'s after_defeat")
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
                                       screens.left(READ_LIMIT))
-    found["members"] = check_members(found["after"], manifest, members)
+    found["members"] = (check_members(found["after"], manifest, members) if members
+                        else check_bars(found["after"], found.get("bars", [])))
     if not save:
         return found
     screens.wait(("world",), 30, past=())
@@ -687,6 +688,18 @@ def check_members(party: list[dict], manifest: dict, members: list[str]) -> dict
                                     [name_key(n) for n in members])
 
 
+def check_bars(party: list[dict], bars: list[dict]) -> dict:
+    """Each member who got a command bar holds quickfight 1, whatever became of his status."""
+    found = {}
+    for owner in dict.fromkeys(bar["owner"] for bar in bars):
+        rows = [m for m in party if name_key(m["name"]) == name_key(owner)]
+        require(len(rows) == 1, f"{owner} is in the party {len(rows)} times after the fight")
+        require(rows[0]["quickfight"] == 1,
+                f"{owner} had a command bar and holds quickfight {rows[0]['quickfight']}: {rows[0]}")
+        found[owner] = rows[0]
+    return found
+
+
 def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
     """The saved slot's members and gate, and whether the loaded slot's file is still as staged."""
     fight_ = manifest["fight"]
@@ -700,10 +713,33 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
             "members": [{"name": m.name, **member_fields(m.raw)} for m in saved.characters]}
 
 
-def verdict(found: dict, manifest: dict, members: list[str]) -> list[str]:
-    """Problems with a read-back: empty when each named member was saved QUICK, as loaded."""
+#: What the game held per member after the fight, and what the saved slot must hold again.
+SAVED_ROW = ("status", "hit_points", "control", "quickfight")
+
+
+def verdict(found: dict, manifest: dict, members: list[str],
+            after: list[dict] | None = None) -> list[str]:
+    """Problems with a read-back.
+
+    With members named, empty when each was saved QUICK, as loaded. With none, the saved party
+    must equal `after`, the party as the game held it when it saved, row by row; a member the
+    fight petrified (status 7) is acceptable if he was saved so.
+    """
     keyed = {**found, "members": _keyed(found["members"])}
-    return cursefight.verdict(keyed, _keyed_manifest(manifest), [name_key(n) for n in members])
+    problems = cursefight.verdict(keyed, _keyed_manifest(manifest),
+                                  [name_key(n) for n in members])
+    if members:
+        return problems
+    if after is None:
+        return [*problems, "no reading of the party after the fight to compare the save with"]
+    held = {name_key(m["name"]): m for m in after}
+    for row in found["members"]:
+        want = held.get(name_key(row["name"]))
+        if want is None:
+            problems.append(f"{row['name']} is not in the party after the fight")
+        elif any(row[k] != want[k] for k in SAVED_ROW):
+            problems.append(f"{row['name']} was saved as {row}, held as {want} after the fight")
+    return problems
 
 
 def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
@@ -729,7 +765,6 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     require(not absent, f"{absent} are not in slot {fight_['load']}: {fight_['names']}")
     rules = guard_rules()
     if not args.capture:
-        require(bool(args.member), "name at least one --member")
         require("combat_bar" in rules, "the Silver Blades guard map has no combat_bar rule yet; "
                                        "capture the bar with --capture first")
     require(answer is not None or bool(args.journal_python),
@@ -824,7 +859,13 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             try:
                 found = read_back(pathlib.Path(fetched["path"]), manifest)
                 receipt["read_back"] = found
-                receipt["problems"] = verdict(found, manifest, list(args.member))
+                receipt["problems"] = verdict(found, manifest, list(args.member),
+                                              receipt.get("after"))
+                if not args.member and (receipt.get("outcome") != "won"
+                                        or receipt.get("saved") != fight_["save"]):
+                    receipt["problems"].append(
+                        f"outcome {receipt.get('outcome')}, saved {receipt.get('saved')}: "
+                        f"not a won fight saved to {fight_['save']}")
             except Exception as exc:  # noqa: BLE001
                 receipt["problems"] = [f"read-back: {type(exc).__name__}: {exc}"]
         else:
@@ -860,8 +901,10 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--holder", required=True)
     g.add_argument("--out", type=pathlib.Path, required=True, help="a fresh folder for the run")
     g.add_argument("--member", action="append", default=[],
-                   help="a member who must get a command bar, hold quickfight 1 after the fight "
-                        "and still stand; repeat for several")
+                   help="a conversion run's watched member: he must get a command bar, hold "
+                        "quickfight 1 after the fight and still stand; repeat for several. "
+                        "With none, every member who got a bar must hold quickfight 1 and the "
+                        "save must equal the party the game held after the fight")
     g.add_argument("--journal-python", help="the interpreter `amigabladesjournal.py` runs under")
     g.add_argument("--no-save", action="store_true",
                    help="stop after the fight's checks, saving nothing")

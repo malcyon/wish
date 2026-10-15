@@ -860,7 +860,7 @@ def _args(tmp_path, manifest, members=("PAINE",), no_save=False, capture=False,
 
 
 @pytest.mark.parametrize("problem", ["out_exists", "not_staged", "hash", "slot_taken",
-                                     "no_member", "unknown_member", "no_journal", "no_bar_guard"])
+                                     "unknown_member", "no_journal", "no_bar_guard"])
 def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
     manifest = _staged(tmp_path)
     monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: object())
@@ -879,8 +879,6 @@ def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
     elif problem == "slot_taken":
         monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present",
                             lambda disk, title: ["D", "E"])
-    elif problem == "no_member":
-        kwargs["members"] = ()
     elif problem == "unknown_member":
         kwargs["members"] = ("BRUTUS",)
     elif problem == "no_journal":
@@ -895,7 +893,8 @@ def test_run_stops_before_the_guest(tmp_path, monkeypatch, problem):
     assert guest.calls == []
 
 
-def _run(tmp_path, monkeypatch, *, drive, problems=(), no_save=False, capture=False):
+def _run(tmp_path, monkeypatch, *, drive, problems=(), no_save=False, capture=False,
+         members=("PAINE",), verdict=None, read=None):
     manifest = _staged(tmp_path)
     monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: object())
     monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present", lambda disk, title: ["D"])
@@ -905,13 +904,16 @@ def _run(tmp_path, monkeypatch, *, drive, problems=(), no_save=False, capture=Fa
     monkeypatch.setattr(ssbfight, "guard_rules", lambda: rules)
     fetched = tmp_path / "fetched-df0.adf"
     fetched.write_bytes(b"fetched")
-    monkeypatch.setattr(ssbfight, "read_back", lambda path, value: {"path": str(path)})
-    monkeypatch.setattr(ssbfight, "verdict", lambda found, value, members: list(problems))
+    monkeypatch.setattr(ssbfight, "read_back", lambda path, value: read or {"path": str(path)})
+    shown = []
+    monkeypatch.setattr(ssbfight, "verdict", verdict or (
+        lambda found, value, members, after=None: shown.append(after) or list(problems)))
     halted = []
     receipt = None
     try:
         receipt = ssbfight.run(
-            _args(tmp_path, manifest, no_save=no_save, capture=capture), guest=LaneGuest(),
+            _args(tmp_path, manifest, members=members, no_save=no_save, capture=capture),
+            guest=LaneGuest(),
             guards=object(), boot=lambda *a, **k: {"claim": "ok"}, memory=object(),
             preflight=lambda python: None,
             halt=lambda *a, **k: halted.append(k) or {"fetched": {"df0": {"path": str(fetched)}}})
@@ -1119,3 +1121,79 @@ def test_drive_with_retries_spent_ends_lost_after_every_attempt_and_saves_nothin
     assert found["outcome"] == "lost"
     assert [a["outcome"] for a in found["attempts"]] == ["lost", "lost"]
     assert not {"E", "S", "N"} & set(game.keys)
+
+
+# -- a run that names no member -----------------------------------------------------------------
+
+def _petrified_party():
+    """Five members turned to stone and one standing, all holding quickfight 1."""
+    return [_member(name, quickfight=1, status=0 if name == NAMES[0] else 7,
+                    hit_points=150 if name == NAMES[0] else 0) for name in NAMES]
+
+
+def _saved_manifest_read(party):
+    return {"verify": [], "loaded_slot_unchanged": True, "members": [dict(m) for m in party]}
+
+
+def test_run_without_a_member_reaches_the_read_back_after_a_won_fight(tmp_path, monkeypatch):
+    after = _petrified_party()
+
+    def drive(*a, found, **k):
+        found.update(outcome="won", saved="E", after=after, bars=[{"owner": "PAINE"}])
+        return found
+
+    read = _saved_manifest_read(after)
+    manifest = _manifest()
+    real_verdict = ssbfight.verdict
+    receipt, written, _ = _run(tmp_path, monkeypatch, drive=drive, members=(), read=read,
+                               verdict=lambda found, value, members, after=None:
+                               real_verdict(found, manifest, members, after))
+    assert receipt["success"] and written["problems"] == [] and written["saved"] == "E"
+
+
+def test_run_without_a_member_fails_a_win_that_was_not_saved(tmp_path, monkeypatch):
+    drive = lambda *a, **k: {"outcome": "won", "after": [], "bars": []}  # noqa: E731
+    with pytest.raises(RouteError, match="not a won fight saved"):
+        _run(tmp_path, monkeypatch, drive=drive, members=(),
+             verdict=lambda found, value, members, after=None: [])
+
+
+def test_check_bars_stops_when_a_bar_owner_holds_quickfight_zero():
+    party = [_member(name, quickfight=1) for name in NAMES]
+    party[1]["quickfight"] = 0
+    with pytest.raises(RouteError, match="PAINE had a command bar and holds quickfight 0"):
+        ssbfight.check_bars(party, [{"owner": "PAINE"}])
+
+
+def test_check_bars_ignores_status_and_hit_points():
+    party = _petrified_party()
+    assert set(ssbfight.check_bars(party, [{"owner": "PAINE"}, {"owner": "PAINE"}])) == {"PAINE"}
+
+
+def test_drive_without_members_saves_a_win_that_petrified_five(tmp_path, monkeypatch):
+    loaded = [_member(name) for name in NAMES]
+    found, game, _, _ = _drive_nomembers(tmp_path, monkeypatch, [loaded, _petrified_party()])
+    assert found["saved"] == "E" and set(found["members"]) == {"PAINE"}
+
+
+def _drive_nomembers(tmp_path, monkeypatch, parties):
+    clock = Clock()
+    game = Game(clock, DRIVE, parties=parties)
+    game.walking = False
+    monkeypatch.setattr(ssbfight, "wander", lambda *a: {"steps": [], "met": "shot"})
+    monkeypatch.setattr(ssbfight, "fight", lambda *a, **k: {
+        "outcome": "won", "bars": [{"owner": "PAINE"}]})
+    found = ssbfight.drive(_screens(tmp_path, game, clock), _manifest(), [], game,
+                           lambda holder, adf, timeout: (0, "answered"), save=True)
+    return found, game, None, None
+
+
+def test_verdict_without_a_member_compares_the_save_with_the_party_after_the_fight():
+    after = _petrified_party()
+    same = _saved_manifest_read(after)
+    assert ssbfight.verdict(same, _manifest(), [], after) == []
+    for field, value in (("status", 0), ("hit_points", 5)):
+        moved = _saved_manifest_read(after)
+        moved["members"][1][field] = value
+        problems = ssbfight.verdict(moved, _manifest(), [], after)
+        assert len(problems) == 1 and "PAINE" in problems[0]
