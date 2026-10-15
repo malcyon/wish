@@ -15,7 +15,7 @@ presses nothing on it, keeping the frame for a guard to be cut from. Memory is o
 never written.
 `--no-fight` (on `stage` and on `run`) is the save-only mode: `stage` accepts a slot in any area and
 plants no gate, and `run` loads the slot, begins, camps and saves at once, with no walk and no
-fight, then checks each member's combat picture and control byte against the loaded slot.
+fight, then checks each member's picture byte and control byte against the loaded slot.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
 
@@ -72,8 +72,9 @@ SAVED_GATE = f"saved_wander_gate_{GATE:04X}"
 NOTED = (0x4CD9, 0x4BF2, 0x4C05)
 #: A street square's map attribute: no script and bit 7 clear, the squares the roll runs on.
 STREET = 0x00
-#: Record offsets in `/Secret`: name at 0, control 0x9A, the combat picture 0xC6 (DOS 0x12B,
-#: `unnamed_0ab`, which `SILVER_BLADES_DELTAS` places there and which Curse keeps at 0x127), status
+#: Record offsets in `/Secret`: name at 0, control 0x9A, the picture byte 0xC6 (DOS 0x12B,
+#: `unnamed_0ab`, which `SILVER_BLADES_DELTAS` places there and Curse keeps at 0x127: a joined
+#: companion's own picture, a created member's identity byte), status
 #: 0x143, side 0x145, quickfight 0x146 (QUICK at 0x4A2E sets it; the turn routine reads it at
 #: 0x3DB2), hit points 0x152.
 RECORD = {"control": 0x9A, "picture": 0xC6, "status": 0x143, "side": 0x145, "quickfight": 0x146,
@@ -336,8 +337,8 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
     require(bool(SLOT.fullmatch(load)) and bool(SLOT.fullmatch(save)) and load != save,
             "the load and save letters must be two letters A-J")
     title = boot_title(issue)
-    require(load not in (title.control_letter, title.after_letter),
-            f"slot {load} is a letter the boot keeps for its own saves")
+    reserved = (title.control_letter, title.after_letter)
+    require(load not in reserved, f"slot {load} is a letter the boot keeps for its own saves")
     diskb = route_silver_blades.find_disk_b() if diskb is None else diskb
     require(sha256(diskb) == route_silver_blades.DISK_B_SHA256, f"{diskb} is not the registered disk B")
     source_hash = sha256(source_disk)
@@ -347,6 +348,7 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
     letters = amiga_savegame.slots_present(disk, TITLE)
     require(load in letters, f"slot {load} is not on {source_disk}: {letters}")
     require(save not in letters, f"slot {save} is already on {source_disk}")
+    require(save not in reserved, f"slot {save} is a letter the boot keeps for its own saves")
     saved = _slot(disk, load)
     state = amiga_savegame.state_from_savegame(saved)
     require(not world_state.has_not_set_out(state),
@@ -757,7 +759,7 @@ def verdict(found: dict, manifest: dict, members: list[str],
     fight petrified (status 7) is acceptable if he was saved so.
 
     With outcome "unfought" nobody pressed QUICK, so every member in the loaded slot, named or
-    not, is checked for his control byte, combat picture, status and hit points as loaded.
+    not, is checked for his control byte, picture byte, status and hit points as loaded.
     """
     keyed = {**found, "members": _keyed(found["members"])}
     unfought = outcome == "unfought"

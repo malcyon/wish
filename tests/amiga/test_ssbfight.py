@@ -1229,7 +1229,7 @@ class _Disk:
         pass
 
 
-def _stage_without_a_fight(tmp_path, monkeypatch, *, fight, area=68):
+def _stage_without_a_fight(tmp_path, monkeypatch, *, fight, area=68, save="B"):
     source, diskb = tmp_path / "a.adf", tmp_path / "b.adf"
     source.write_bytes(b"disk one")
     diskb.write_bytes(b"disk two")
@@ -1249,7 +1249,7 @@ def _stage_without_a_fight(tmp_path, monkeypatch, *, fight, area=68):
     monkeypatch.setattr(ssbfight, "replace_file_in_place",
                         lambda disk, path, data: written.append(data))
     monkeypatch.setattr(ssbfight, "wander_plan", lambda geo, start: PLAN)
-    path = ssbfight.stage(source, tmp_path / "out", load="A", save="B", diskb=diskb, fight=fight)
+    path = ssbfight.stage(source, tmp_path / "out", load="A", save=save, diskb=diskb, fight=fight)
     return json.loads(path.read_text())["fight"], written
 
 
@@ -1373,3 +1373,11 @@ def test_run_stops_before_the_guest_when_the_save_only_mode_is_contradicted(tmp_
         ssbfight.run(args, guest=guest, guards=object(), boot=pytest.fail, halt=pytest.fail,
                      memory=object(), preflight=lambda python: None)
     assert guest.calls == []
+
+
+@pytest.mark.parametrize("save", ["C", "F"])
+def test_stage_stops_before_writing_anything_when_the_save_letter_is_one_the_boot_keeps(
+        tmp_path, monkeypatch, save):
+    with pytest.raises(RouteError, match=f"slot {save} is a letter the boot keeps"):
+        _stage_without_a_fight(tmp_path, monkeypatch, fight=False, save=save)
+    assert not (tmp_path / "out").exists()
