@@ -159,7 +159,8 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     monkeypatch.setattr(controller, "_map_section", lambda: None)
     monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
-    monkeypatch.setattr(controller, "run_phase", lambda phase: events.append(phase.name))
+    monkeypatch.setattr(controller, "run_phase", lambda phase, namespace=None: events.append(
+        f"{namespace}:{phase.name}" if namespace else phase.name))
     monkeypatch.setattr(controller, "flag_controls", lambda: None)
     monkeypatch.setattr(controller, "run_actions", lambda: None)
     monkeypatch.setattr(controller, "_cleanup", lambda: controller.summary["cleanup"].update(errors=[]))
@@ -171,7 +172,7 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
 
     assert result["failure"] is None
     assert events == ["up", "load", "transition", "stationary", "walk", "reload",
-                      "stop_wish", "reopen_step"]
+                      "stop_wish", "reopen_step", "reconnect-load:load"]
 
 
 def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish(
@@ -195,7 +196,7 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     monkeypatch.setattr(controller, "_map_section", lambda: events.append("map-tab"))
     monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
-    monkeypatch.setattr(controller, "run_phase", lambda phase: None)
+    monkeypatch.setattr(controller, "run_phase", lambda phase, namespace=None: None)
     monkeypatch.setattr(controller, "flag_controls", lambda: None)
     monkeypatch.setattr(controller, "run_actions", lambda: None)
     monkeypatch.setattr(controller, "_cleanup", lambda: controller.summary["cleanup"].update(errors=[]))
@@ -213,10 +214,162 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
                      "reconnected.png"]
     assert tail[1] == "lane-stop"
     start = tail.index(("lane-start", "test-acw", ("C:/a.adf", "C:/b.adf"), ("nr_floppies=3",)))
-    assert tail[start + 1] == ("sleep", winwishaccept.ROSTER_SECONDS)
-    assert tail[start + 2] == ("shot", "test-acw", "wish", "reconnected.png")
+    assert tail[start + 1] == "map-tab"
+    assert tail[start + 2] == ("sleep", winwishaccept.ROSTER_SECONDS)
+    assert tail[start + 3] == ("shot", "test-acw", "wish", "reconnected.png")
     assert tail.index(("shot", "test-acw", "wish", "disconnect-2.png")) < start
     assert result["mapping"]["reconnect"]["status"] == "awaiting image review"
+
+
+def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ()),
+                           reload_step=None):
+    """A controller at the disconnect step, with the real cleanup and everything before it stubbed."""
+    route = _route()
+    clock = FakeClock()
+    events = []
+    lane = SimpleNamespace(
+        stop=lambda *args: events.append("lane-stop"),
+        start=start or (lambda *args, **kwargs: events.append("lane-start")),
+        status=lambda timeout: "no claims")
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=lane, game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+
+    def up():
+        controller.booted = True
+        controller.launch = launch
+
+    monkeypatch.setattr(controller, "_up", up)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
+    controller.phases_run = []
+
+    def run_phase(phase, namespace=None):
+        controller.phases_run.append((phase.name, namespace))
+        if namespace:
+            events.append("reload")
+            if reload_step:
+                reload_step(controller)
+
+    monkeypatch.setattr(controller, "run_phase", run_phase)
+    monkeypatch.setattr(controller, "flag_controls", lambda: None)
+    monkeypatch.setattr(controller, "run_actions", lambda: None)
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish", lambda *args: None)
+    monkeypatch.setattr(winwishaccept.winwish, "shot",
+                        lambda guest, holder, window, path: events.append(path.name))
+    monkeypatch.setattr(winwishaccept.winwish, "collect_log", lambda *args: ["wish.log"])
+    monkeypatch.setattr(winwishaccept.winwish, "down",
+                        lambda *args: events.append("down") or {})
+    return controller, events
+
+
+def test_a_game_that_cannot_be_restarted_is_found_before_the_lane_is_stopped(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, launch=None)
+
+    result = controller.run_title()
+
+    assert "launch settings were not recorded" in result["failure"]
+    assert "lane-stop" not in events and "connected.png" not in events
+    assert result["mapping"]["disconnect"]["status"] == "unproven"
+    assert events[-1] == "down"
+
+
+def test_a_failed_restart_leaves_the_row_unproven_and_still_stops_the_game_and_goes_down(
+        tmp_path, monkeypatch):
+    def start(*args, **kwargs):
+        raise winuaesession.RouteError("lane start timed out")
+
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, start=start)
+
+    result = controller.run_title()
+
+    assert "lane start timed out" in result["failure"]
+    assert result["mapping"]["reconnect"]["status"] == "unproven"
+    assert "lane start timed out" in result["mapping"]["reconnect"]["reason"]
+    assert result["mapping"]["disconnect"]["status"] == "awaiting image review"
+    assert events[-3:] == ["disconnect-2.png", "lane-stop", "down"]
+    assert result["cleanup"]["errors"] == []
+
+
+def test_a_restarted_game_is_stopped_before_cleanup_copies_the_media(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(tmp_path, monkeypatch)
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert events[-3:] == ["reconnected.png", "lane-stop", "down"]
+    assert events.count("lane-stop") == 2
+    assert events.index("lane-start") < events.index("reload") < events.index("reconnected.png")
+    assert controller.phases_run[-1] == ("load", "reconnect-load")
+
+
+def test_the_reload_keys_use_their_own_budget_and_not_the_mapping_cap(tmp_path, monkeypatch):
+    def press(controller):
+        controller._press("L")
+
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, reload_step=press)
+    cap = winwishaccept.ORDINARY_MAPPING_COMMANDS["ssb"]
+    controller.mapping_commands = cap
+    controller.action_commands = controller.action_limit
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert (controller.mapping_commands, controller.action_commands) == (cap, controller.action_limit)
+    assert controller.reconnect_commands == 1 and controller.reconnect_limit is None
+    assert controller.game.keys == ["L"]
+
+
+def test_a_second_reload_key_is_stopped_by_the_reload_budget(tmp_path, monkeypatch):
+    def press_twice(controller):
+        controller._press("L")
+        controller._press("L")
+
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, reload_step=press_twice)
+
+    result = controller.run_title()
+
+    assert "1-command reconnect cap" in result["failure"]
+    assert controller.game.keys == ["L"]
+    assert result["mapping"]["reconnect"]["status"] == "unproven"
+
+
+def test_a_failed_reload_leaves_the_reconnect_row_unproven_with_its_reason(tmp_path, monkeypatch):
+    def fail(controller):
+        raise winwishaccept.AcceptanceStop("title was not recognized")
+
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, reload_step=fail)
+
+    result = controller.run_title()
+
+    assert result["mapping"]["reconnect"]["status"] == "unproven"
+    assert "title was not recognized" in result["mapping"]["reconnect"]["reason"]
+    assert "reconnected.png" not in events
+    assert events[-2:] == ["lane-stop", "down"]
+    assert controller.reconnect_limit is None
+
+
+def test_up_records_the_floppies_and_settings_the_restart_will_reuse(tmp_path, monkeypatch):
+    route = _route()
+    route.mounted = ("a", "b", "c")
+    route.amiga_title = SimpleNamespace(wait_limits={}, title_limit=30, interstitials=(),
+                                        options=("scale=2",))
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=FakeClock(), sleep=FakeClock().sleep)
+    controller.remotes = {"a": "C:/a.adf", "b": "C:/b.adf", "c": "C:/c.adf"}
+    seen = []
+    monkeypatch.setattr(winwishaccept.winwish, "up",
+                        lambda guest, lane, values: seen.append(values) or {})
+
+    controller._up()
+
+    assert controller.launch == (("C:/a.adf", "C:/b.adf", "C:/c.adf"),
+                                 ("nr_floppies=3", "floppy2type=0", "scale=2"))
+    assert seen[0].df0 == "C:/a.adf" and seen[0].uae_option == ["scale=2"]
 
 
 @pytest.mark.parametrize("fault,reason", [

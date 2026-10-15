@@ -198,15 +198,18 @@ def _transition_phase(route: Any) -> Any:
         raise AcceptanceStop("leave-town YES needs the guarded leave-town transition")
     return phase
 
-def _action_budget(route: Any) -> int:
+def _phase_keys(phase: Any) -> int:
+    """The keys a phase sends: one per key, turn, move, insert, or typed character, and a party's members less one per select."""
     from automap import amigaparty  # noqa: PLC0415
 
-    def keys(phase: Any) -> int:
-        return sum((amigaparty.MAX_MEMBERS - 1 if step.kind == "select"
-                    else len(step.keys) if step.kind == "type" else 1)
-                   for step in phase.steps
-                   if step.kind in ("key", "turn", "move", "insert", "select", "type"))
+    return sum((amigaparty.MAX_MEMBERS - 1 if step.kind == "select"
+                else len(step.keys) if step.kind == "type" else 1)
+               for step in phase.steps
+               if step.kind in ("key", "turn", "move", "insert", "select", "type"))
 
+
+def _action_budget(route: Any) -> int:
+    keys = _phase_keys
     total = max(1, keys(next(phase for phase in route.phases if phase.name == "reload")))
     for action in route.actions:
         if action.enabled:
@@ -629,12 +632,18 @@ class Controller:
         self.route_end = self.started + args.deadline - CLEANUP_SECONDS
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
+        #: The reload after the game restarts has its own key budget, so it neither
+        #: spends the mapping cap nor is stopped by it.
+        self.reconnect_commands = 0
+        self.reconnect_limit: int | None = None
         self.action_limit = _action_budget(route)
         self.discovery = getattr(args, "discover", None) in (*LEAVE_MODES, *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
         self.encounters_on = False
         self.booted = False
+        #: Whether the game was started a second time after the disconnect grabs.
+        self.restarted = False
         #: The floppy images and WinUAE settings `_up` started the game with, for a restart.
         self.launch: tuple[tuple[str, ...], tuple[str, ...]] | None = None
         self.down_done = False
@@ -669,6 +678,11 @@ class Controller:
         return remaining
 
     def _count(self, action: bool = False) -> None:
+        if self.reconnect_limit is not None:
+            if self.reconnect_commands >= self.reconnect_limit:
+                raise AcceptanceStop(f"the {self.reconnect_limit}-command reconnect cap is reached")
+            self.reconnect_commands += 1
+            return
         name = "action_commands" if action else "mapping_commands"
         cap = (self.action_limit if action
                else CAMP_LOAD_MAPPING_COMMANDS if getattr(self.args, "discover", None) == "ssb-camp-load"
@@ -1818,6 +1832,16 @@ class Controller:
             raise AcceptanceStop(result["reason"])
         result["status"] = "awaiting image review"
 
+    def _reload_party(self) -> None:
+        """Load the party into the restarted game as the run's start did, then leave Wish on the Automapper."""
+        load = next(phase for phase in self.route.phases if phase.name == "load")
+        self.reconnect_limit = _phase_keys(load)
+        try:
+            self.run_phase(load, namespace="reconnect-load")
+        finally:
+            self.reconnect_limit = None
+        self._map_section()
+
     def _stage_media(self) -> None:
         for medium in self.route.media:
             remote = self.game.remote_path(self.route.amiga_title.issue,
@@ -2280,6 +2304,8 @@ class Controller:
                 self._await("world")
                 self._final_reload()
             self._map_section()
+            if self.launch is None:
+                raise AcceptanceStop("the game's launch settings were not recorded")
             connected = self.out / "connected.png"
             winwish.shot(self.guest, self.args.holder, "wish", connected)
             self.lane.stop(self.args.holder, self.left(60))
@@ -2293,11 +2319,11 @@ class Controller:
             self.summary["mapping"]["disconnect"] = row(
                 "awaiting image review", evidence=[str(connected), *pictures])
             # The same lane and the same Wish window: only the game comes back.
-            if self.launch is None:
-                raise AcceptanceStop("the game's launch settings were not recorded")
             drives, options = self.launch
+            self.restarted = True
             self.lane.start(self.args.holder, *drives,
                             timeout=self.left(winwish.START_SECONDS + 30), options=options)
+            self._reload_party()
             self.sleep(self.left(ROSTER_SECONDS))
             back = self.out / "reconnected.png"
             winwish.shot(self.guest, self.args.holder, "wish", back)
@@ -2311,6 +2337,12 @@ class Controller:
             if incomplete:
                 self.summary["mapping"][incomplete]["reason"] = self.summary["failure"]
         finally:
+            if self.restarted:
+                # Cleanup copies the working ADFs, which a running game holds open.
+                try:
+                    self.lane.stop(self.args.holder, 60)
+                except Exception as exc:  # noqa: BLE001
+                    self.summary["cleanup"]["restart_stop"] = str(exc)
             self._cleanup()
             (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
         return self.summary
