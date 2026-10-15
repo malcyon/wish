@@ -5,12 +5,15 @@ The screens are the rows of run `5a169821a3-f1-c64-compound-rest`
 rest stopped (`03-rested-240h.txt`) and the `COM.PREP` screen a Return later
 (`04-lost-rest.txt`), rows 16 to 24; the rows above are blank frame.  The
 command bar of another member is run `8d53cd75ea-s4-c64-patrol-fight`'s
-`04-first-bar.txt` whole: MALACHITE's turn, her name on the panel's row 2.
+`04-first-bar.txt` whole: MALACHITE's turn, her name on the panel's row 2;
+and run `b0b41a61be-f2-c64-sir-deric-view`'s, MORGAINE's turn, with SIR DERIC
+in view.
 """
 
 from __future__ import annotations
 
 import pathlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -276,63 +279,174 @@ def test_rest_fight_parses_hours_and_must_end_the_run():
         A.parse_steps(["load", "rest-fight soon"])
 
 
-PARTY = ["SIR DERIC", "Guy de Valois", "PAINE", "EPONA", "MALACHITE",
-         "DOMINIC", "MORGAINE"]
+MORGAINE_BAR = [
+    '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',
+    "$&'(&'(   ....        $                $",
+    '%)*+)*+    ....       %MORGAINE        %',
+    '%,-.,-.     ....      %                %',
+    "%...89:&'(   ....     %HIT POINTS 35   %",
+    '%...;<=)*+    ....    %                %',
+    '%...>?.,-.     ....   %AC 7            %',
+    '%.  KLM......BCD....  %                %',
+    '%.. NOP......EFG .... %                %',
+    '%...QRS....@AHIJ  ....%                %',
+    '%....     ......]^_...%                %',
+    '% ....    ...... !" ..%                %',
+    '%  ....   ......#$%  .%                %',
+    '%.....................%                %',
+    '%.....................%                %',
+    '%.....................%                %',
+    '%      ....           %                %',
+    '%       ....          %                %',
+    '%        ....         %                %',
+    '%         ....        %                %',
+    '%          ....       %                %',
+    '%           ....      %                %',
+    '&                     &                &',
+    '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',
+    'MOVE VIEW AIM QUICK DONE',
+]
+#: The aim bar, with MANUAL on it: not captured (the live run found SIR
+#: DERIC already in view and took no AIM), so its words are Pool's.
+AIM_BAR = MORGAINE_BAR[:24] + ["NEXT PREV MANUAL TARGET CENTER EXIT"]
+MANUAL_BAR = MORGAINE_BAR[:24] + ["EXIT"]
+SCREENS.update(morgaine=MORGAINE_BAR, aim=AIM_BAR, manual=MANUAL_BAR)
+MODES.update(morgaine=A.S.COMBAT, aim=A.S.COMBAT, manual=A.S.COMBAT)
+
+#: The save's party slots; SIR DERIC is slot 7 (run
+#: `b0b41a61be-f2-c64-sir-deric-view`, `rest-fight-view`).
+SLOTS = {"SIR DERIC": 7, "GUY DE VALOIS": 0, "PAINE": 1, "EPONA": 2,
+         "MALACHITE": 3, "DOMINIC": 4, "MORGAINE": 5}
 
 
-def _named(tmp_path, monkeypatch, turns, later=None, first="malachite"):
-    """The patrol fight opening on FIRST's bar, every passed turn moved by TURNS."""
-    sess = _Session("world", {("patrol", 0x0D): "prep"},
-                    later={"prep": (1, first), **(later or {})})
-    sess.turns = turns
-    run = _run(tmp_path, monkeypatch, sess)
-    run.names = PARTY
-    monkeypatch.setattr(A, "MEMBER_BAR_CHANGE", 0.5)
-    return run, sess
+class _Fight(_Session):
+    """`_Session` in the fight: the position table holds SIR DERIC at
+    `square` under the camera; AIM, MANUAL and EXIT move the bars, and a
+    joystick key on the manual bar moves the camera one square when
+    `follows`."""
+
+    def __init__(self, camera, square=(30, 14), name="SIR DERIC", follows=True):
+        super().__init__("world", {("patrol", 0x0D): "prep"},
+                         later={"prep": (1, "morgaine")})
+        self.camera, self.square, self.name = list(camera), square, name
+        self.follows = follows
+        self.turns = {"morgaine": "monster"}
+
+    def battle(self):
+        him = SimpleNamespace(index=7, x=self.square[0], y=self.square[1],
+                              name=self.name, square=tuple(self.square))
+        other = SimpleNamespace(index=5, x=27, y=14, name="MORGAINE",
+                                square=(27, 14))
+        return SimpleNamespace(camera=tuple(self.camera), combatants=(other, him))
+
+    def combat_bar(self, label, timeout=0):
+        self.sent.append(("bar", label))
+        if (self.state, label) != ("morgaine", "AIM"):
+            return False
+        self.state = "aim"
+        return True
+
+    def select_bar(self, label, row=24, timeout=0):
+        self.sent.append(("bar", label))
+        moves = {("aim", "MANUAL"): "manual", ("aim", "EXIT"): "morgaine",
+                 ("manual", "EXIT"): "aim"}
+        if (self.state, label) not in moves:
+            return False
+        self.state = moves[(self.state, label)]
+        return True
 
 
-def test_other_members_bars_are_passed_with_done_until_sir_deric_s_own(
-        tmp_path, monkeypatch):
-    """The live opening: MALACHITE's bar first.  Her turn is passed with
-    DONE (never QUICK), a monster's turn is waited out with no key, and SIR
-    DERIC's bar is captured whole with nothing pressed on it."""
-    run, sess = _named(tmp_path, monkeypatch, {"malachite": "monster"},
-                       later={"monster": (2, "deric")})
+class _Keys(_Keyboard):
+    def __init__(self, fight):
+        self.fight = fight
+
+    def key(self, name, *timing):
+        f = self.fight
+        f.sent.append(("joy", name))
+        assert f.state == "manual", f"a joystick key on {f.state}"
+        if f.follows:
+            dx, dy = next(k for k, v in A.VIEW_KEYS.items() if v == name)
+            f.camera[0] += dx
+            f.camera[1] += dy
+
+
+def _view(tmp_path, monkeypatch, fight):
+    fight.kbd = _Keys(fight)
+    run = _run(tmp_path, monkeypatch, fight)
+    run.staged_disk = tmp_path / "staged.D64"
+    monkeypatch.setattr(A, "saved_characters",
+                        lambda path: {n: {"owner": o} for n, o in SLOTS.items()})
+    return run
+
+
+def test_sir_deric_already_in_view_is_captured_with_no_aim(tmp_path, monkeypatch):
+    """The live run: MORGAINE's bar first, the camera at 25,11 and SIR DERIC
+    (slot 7) at 30,14, inside the seven-square window, so the frame is kept
+    as it stands and the turn is passed with DONE and GUARD, never QUICK."""
+    fight = _Fight((25, 11))
+    run = _view(tmp_path, monkeypatch, fight)
     got = run.patrol_fight("240h SIR DERIC")
     run.log.close()
-    assert sess.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D),
-                         ("turn", "malachite")]
-    assert got["first_bar"]["acting"] == "MALACHITE"
-    assert got["member_bar"]["who"] == "SIR DERIC"
-    assert got["member_bar"]["passed"] == ["MALACHITE"]
-    kept = (tmp_path / sorted(p.name for p in tmp_path.glob("*-member-bar-SIR-DERIC.txt"))[0])
-    assert "SIR DERIC" in kept.read_text().split("\n")[2]
-    assert sess.state == "deric"
+    assert fight.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D),
+                          ("turn", "morgaine")]
+    assert got["in_view"]["slot"] == 7 and got["in_view"]["square"] == [30, 14]
+    assert got["in_view"]["camera"] == [25, 11] and got["in_view"]["aim_bar"] is None
+    assert len(list(tmp_path.glob("*-in-view-SIR-DERIC.png"))) == 1
 
 
-def test_a_first_bar_that_is_already_his_presses_nothing(tmp_path, monkeypatch):
-    run, sess = _named(tmp_path, monkeypatch, {}, first="deric")
-    got = run.patrol_fight("240h sir  deric")
-    run.log.close()
-    assert sess.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D)]
-    assert got["member_bar"]["passed"] == []
-
-
-def test_a_fight_that_ends_before_his_bar_fails_with_the_screen_kept(
+def test_sir_deric_out_of_view_is_brought_in_with_aim_and_exited(
         tmp_path, monkeypatch):
-    run, sess = _named(tmp_path, monkeypatch, {"malachite": "world"})
-    with pytest.raises(A.StepFailed, match="fight ended before SIR DERIC's bar"):
+    """Camera three squares short: AIM, MANUAL, joystick keys east until his
+    square is in the window, the frame kept, then EXIT twice back to the
+    command bar with no action taken, and the turn passed."""
+    fight = _Fight((21, 11))
+    run = _view(tmp_path, monkeypatch, fight)
+    got = run.patrol_fight("240h SIR DERIC")
+    run.log.close()
+    assert fight.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D),
+                          ("bar", "AIM"), ("bar", "MANUAL"),
+                          ("joy", "KP_6"), ("joy", "KP_6"), ("joy", "KP_6"),
+                          ("bar", "EXIT"), ("bar", "EXIT"), ("turn", "morgaine")]
+    assert got["in_view"]["camera"] == [24, 11]
+    assert [m["key"] for m in got["in_view"]["moves"]] == ["KP_6"] * 3
+
+
+def test_a_view_that_never_reaches_him_fails_with_the_aim_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "VIEW_PRESSES", 4)
+    fight = _Fight((5, 11), follows=False)
+    run = _view(tmp_path, monkeypatch, fight)
+    with pytest.raises(A.StepFailed, match="did not come into view"):
         run.patrol_fight("240h SIR DERIC")
     run.log.close()
-    assert sess.sent[-1] == ("turn", "malachite")
+    assert fight.sent.count(("joy", "KP_6")) == 4
+    assert ("turn", "morgaine") not in fight.sent and fight.state == "manual"
+
+
+def test_a_slot_whose_record_is_not_his_takes_no_aim(tmp_path, monkeypatch):
+    """Found by slot, checked by the record's name in memory: a slot holding
+    somebody else fails before any AIM."""
+    fight = _Fight((5, 11), name="DOMINIC")
+    run = _view(tmp_path, monkeypatch, fight)
+    with pytest.raises(A.StepFailed, match="combatant 7 is 'DOMINIC'"):
+        run.patrol_fight("240h SIR DERIC")
+    run.log.close()
+    assert fight.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D)]
 
 
 def test_a_name_not_in_the_party_rests_not_at_all(tmp_path, monkeypatch):
-    run, sess = _named(tmp_path, monkeypatch, {})
+    fight = _Fight((25, 11))
+    run = _view(tmp_path, monkeypatch, fight)
     with pytest.raises(A.StepFailed, match="SIR DERICSON is not in the party"):
         run.patrol_fight("240h SIR DERICSON")
     run.log.close()
-    assert sess.sent == []
+    assert fight.sent == []
+
+
+def test_the_view_window_and_the_key_toward_a_square():
+    assert A.in_view((25, 11), (30, 14)) and A.in_view((25, 11), (31, 17))
+    assert not A.in_view((25, 11), (32, 14)) and not A.in_view((25, 11), (30, 10))
+    assert A.toward((21, 11), (30, 14)) == "KP_6"
+    assert A.toward((25, 20), (30, 14)) == "KP_9"
 
 
 def test_rest_fight_takes_a_member_after_the_duration():

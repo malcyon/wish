@@ -124,7 +124,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
 | `join MOVES` | Curse only: in an area with a row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Pit, area 17: ALIAS and DRAGONBAIT), answers up to `JOIN_ARRIVAL_PRESSES` arrival pages, fails if a joining name is already on the panel, walks every move but the last as `walk` does, steps forward onto the join square with the last (`I`), and answers the square's script screens in the site's order by their text, one KERNAL key each (`$1D`/`$9D` move a bar's highlight, `$0D` chooses), with the script's own continue bar between (its text window logged with each); a list's Return waits for the highlight on its first line; the world bar or the move sub-bar the walk left up gets no key while the square's script prints under it; any other screen, a key that changes nothing, an unreadable screen past the wait, or the world bar or the move sub-bar before the last answer (once a key is pressed, or when the screen has not changed for `FIRST_SCREEN_GRACE`) stops the step with nothing pressed on that screen; either bar after the last answer ends it; a stop puts the encounter gates back; then fails unless the panel lists every joining name; returns the screens, the keys with the row 24 each was pressed on, the square and the panel |
 | `join-arrival AREA` | Silver Blades only: for an area with an `arrival` row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Compound, area 68: SIR DERIC), fails with nothing written if a joining name is already on the panel, the panel has no room, or the row's `first_visit` bit reads set (`$4C9E` bit 0, which the scene sets as it starts); then makes `warp`'s trip with `FastTravel.run` from the area the party is in, so the arriving script's entry 4 sees another area in `$4BF2`, and answers the scene's screens in the site's order by their text as `join` does; fails unless the panel then lists every joining name; returns the trip, the `first_visit` reading, the screens, the keys, the square and the panel |
-| `rest-fight 240h` | Silver Blades only, and the last step: in the Compound (area `$44`, read live; any other area fails with nothing pressed), `ENCAMP` and `REST` for at most that long with the rest interruption left as the game sets it (not with `--no-encounters`), until the area's rest check stops the rest with `YOU ARE SPOTTED BY A PATROL.`; that page is answered with Return, `COM.PREP` gets no key, and the first command bar is captured as `first-bar` (`first_bar` in the result, with the live area and the panel's acting name) and the run ends there, or with a member named after the duration (`rest-fight 240h SIR DERIC`; a name not in the party fails before any key) every other member's command bar is passed with DONE and GUARD (`Session.combat_turn`, never QUICK) and the run ends at that member's own bar, captured as `member-bar-<NAME>` (`member_bar` in the result), failing with the screen kept when the fight leaves combat mode first or `MEMBER_BAR_TURNS` turns or `MEMBER_BAR_SECONDS` pass; a rest that runs its time, a page with other text, or the camp or world bar before the fight fails the step with the screen kept; the party never moves |
+| `rest-fight 240h` | Silver Blades only, and the last step: in the Compound (area `$44`, read live; any other area fails with nothing pressed), `ENCAMP` and `REST` for at most that long with the rest interruption left as the game sets it (not with `--no-encounters`), until the area's rest check stops the rest with `YOU ARE SPOTTED BY A PATROL.`; that page is answered with Return, `COM.PREP` gets no key, and the first command bar is captured as `first-bar` (`first_bar` in the result, with the panel's acting name; the live area is not read in combat, where it reads 100) and the run ends there, or with a member named after the duration (`rest-fight 240h SIR DERIC`; a name not in the party fails before any key) that member is found at the first command bar by his party slot in the position table (his record's name in memory checked, never the panel), and brought into the `VIEW`-square window at the camera: if he is not in it, AIM, MANUAL when offered, and joystick keys toward him (at most `VIEW_PRESSES`), captured as `in-view-<NAME>` (`in_view` in the result), then EXIT back to the command bar with no action taken and the turn passed with DONE and GUARD (`Session.combat_turn`, never QUICK); him not coming into view, or the command bar not coming back, fails the step with the screen kept; a rest that runs its time, a page with other text, or the camp or world bar before the fight fails the step with the screen kept; the party never moves |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -10702,17 +10702,22 @@ class SilverRun(CurseRun):
         screen kept.
 
         With a member named after the duration (`240h SIR DERIC`) the step
-        goes on to that member's own command bar (`member_bar`): every other
-        member's bar is passed with DONE and GUARD (`Session.combat_turn`,
-        never QUICK), and his bar is captured as `member-bar-<NAME>`, where
-        the game centres the view on him.  A name not in the party fails the
-        step before any key."""
+        brings that member into the combat view at the first command bar
+        (`bring_into_view`), whoever's bar it is: a companion the game plays
+        itself is never given a bar of his own.  He is found by his party
+        slot in the save and the position table, never by panel text.  A
+        name not in the party fails the step before any key."""
         duration, who = parse_rest_fight(arg)
         minutes, hours = parse_rest(duration)
-        if who is not None and who not in [n.upper() for n in self.names]:
-            raise self.fail("rest-fight", f"{who} is not in the party "
-                                          f"({', '.join(self.names)}); nothing "
-                                          f"was pressed")
+        slot = None
+        if who is not None:
+            slots = {n.upper(): v["owner"]
+                     for n, v in saved_characters(self.staged_disk).items()}
+            if who not in slots:
+                raise self.fail("rest-fight", f"{who} is not in the party "
+                                              f"({', '.join(slots)}); nothing "
+                                              f"was pressed")
+            slot = slots[who]
         # The area is memory, read before any key: `to_world` answers a
         # page still up, which outside the Compound is not ours to answer.
         area = self.area_now()
@@ -10741,8 +10746,10 @@ class SilverRun(CurseRun):
         rows = self.capture("first-bar")
         if shown is None:
             raise self.fail("rest-fight", "no command bar came up in the fight")
-        first_bar = {"seen": True, "bar": rows[24].strip() if rows else "",
-                     "area": self.area_now()}
+        # No area is read here: in combat the live area reads 100, not the
+        # Compound's 68 (run `b0b41a61be-f2-c64-sir-deric-view`), so the
+        # area is the one read before the rest, and the party never moved.
+        first_bar = {"seen": True, "bar": rows[24].strip() if rows else ""}
         first_bar["acting"] = panel_name(rows) or None
         self.log.emit("rest-fight-first-bar", **first_bar)
         result = {"area": area, "position": square, "asked": [minutes, hours],
@@ -10751,50 +10758,94 @@ class SilverRun(CurseRun):
                   "rest_interrupt": got.get("rest_interrupt"),
                   "pages": pages, "text": text, "first_bar": first_bar}
         if who is not None:
-            result["member_bar"] = self.member_bar(who, rows)
+            result["in_view"] = self.bring_into_view(who, slot)
         return result
 
-    def member_bar(self, who: str, rows: list[str]) -> dict:
-        """From a command bar to WHO's own: each other member's command bar
-        is passed with `Session.combat_turn` (DONE, then GUARD or QUIT; never
-        QUICK, which would take WHO's bar away from the run), monsters' turns
-        and blank bars are waited out, and WHO's bar is captured as
-        `member-bar-<WHO>` with nothing pressed on it.  The fight leaving
-        combat mode, more than `MEMBER_BAR_TURNS` passed turns, or
-        `MEMBER_BAR_SECONDS` fails the step with the screen kept."""
-        passed: list[str] = []
-        end = self.clock() + self.budget(MEMBER_BAR_SECONDS, f"{who}'s bar")
-        out = 0
-        while True:
-            if is_command_bar(rows):
-                acting = " ".join(panel_name(rows).split()) or None
-                if acting == who:
-                    shot = self.capture(f"member-bar-{who}", rows)
-                    got = {"who": who, "passed": passed,
-                           "bar": shot[24].strip(), "area": self.area_now()}
-                    self.log.emit("rest-fight-member-bar", **got)
-                    return got
-                if len(passed) >= MEMBER_BAR_TURNS:
-                    raise self.fail("rest-fight", f"{who}'s bar did not come in "
-                                                  f"{len(passed)} passed turns: "
-                                                  f"{passed}")
-                chose = self.sess.combat_turn()
-                passed.append(acting or "?")
-                self.log.emit("rest-fight-pass", acting=acting, chose=chose)
-                self.wait_rows(lambda r, was=rows: r != was, MEMBER_BAR_CHANGE,
-                               "the next turn")
-            elif self.sess.mode() != S.COMBAT:
-                out += 1
-                if out >= 2:
-                    raise self.fail("rest-fight", f"the fight ended before {who}'s "
-                                                  f"bar, after {passed}")
+    def combatant_at_slot(self, slot: int, who: str):
+        """The fight's reading and the combatant at position-table index
+        SLOT (the party in save-slot order), failing the step with the
+        screen kept when the table is unread or that record is not WHO's."""
+        b = self.sess.battle()
+        him = None if b is None else next(
+            (c for c in b.combatants if c.index == slot), None)
+        if him is None:
+            raise self.fail("rest-fight", f"the position table has no combatant "
+                                          f"{slot} for {who}")
+        if " ".join(him.name.split()).upper() != who:
+            raise self.fail("rest-fight", f"combatant {slot} is {him.name!r} in "
+                                          f"memory, not {who}")
+        return b, him
+
+    def bring_into_view(self, who: str, slot: int) -> dict:
+        """At a command bar: WHO on screen, captured as `in-view-<WHO>`, then
+        the turn passed with `Session.combat_turn` (DONE, then GUARD or QUIT).
+
+        WHO is combatant SLOT of the position table, his record's name read
+        from memory as a check.  He is in view when his square lies in the
+        `combat.VIEW`-square window whose top-left is the camera
+        (`combat.CAMERA`).  If he is not, AIM is taken, then MANUAL when the
+        aim bar offers it, and the joystick keys move the cursor toward him,
+        the camera following, for at most `VIEW_PRESSES` keys; then EXIT,
+        until the command bar is back, takes no action.  He never coming into
+        view, or the command bar not coming back, fails the step with the
+        screen kept."""
+        b, him = self.combatant_at_slot(slot, who)
+        moves: list[dict] = []
+        aimed = in_view(b.camera, him.square)
+        aim_bar = None
+        if not aimed:
+            if not self.sess.combat_bar("AIM", timeout=12):
+                raise self.fail("rest-fight", "AIM could not be taken on the "
+                                              "command bar")
+            self.sess.settle(1.0)
+            aim_bar = self.capture("aim")[24].strip()
+            if "MANUAL" in aim_bar.split():
+                if not self.sess.select_bar("MANUAL", timeout=10):
+                    raise self.fail("rest-fight", f"MANUAL could not be taken on "
+                                                  f"{aim_bar!r}")
+                self.sess.settle(1.0)
+                self.capture("aim-manual")
+            for _ in range(VIEW_PRESSES):
+                b, him = self.combatant_at_slot(slot, who)
+                if in_view(b.camera, him.square):
+                    aimed = True
+                    break
+                key = toward(b.camera, him.square)
+                moves.append({"key": key, "camera": list(b.camera)})
+                self.sess.kbd.key(key, 0.15, 0.30)
+                self.sess.settle(0.6)
             else:
-                out = 0
-            if self.clock() >= end:
-                raise self.fail("rest-fight", f"{who}'s bar did not come in "
-                                              f"{MEMBER_BAR_SECONDS:g} s: {passed}")
-            self.sess.settle(0.5)
+                b, him = self.combatant_at_slot(slot, who)
+                aimed = in_view(b.camera, him.square)
+        got = {"who": who, "slot": slot, "square": list(him.square),
+               "camera": list(b.camera), "aim_bar": aim_bar, "moves": moves}
+        self.log.emit("rest-fight-view", aimed=aimed, **got)
+        if not aimed:
+            raise self.fail("rest-fight", f"{who} at {him.x},{him.y} did not come "
+                                          f"into view (camera {b.camera}) in "
+                                          f"{len(moves)} keys")
+        got["shot"] = self.capture(f"in-view-{who}")[24].strip()
+        if aim_bar is not None:
+            self.back_to_command_bar()
+        got["chose"] = self.sess.combat_turn()
+        return got
+
+    def back_to_command_bar(self) -> None:
+        """EXIT off the aim bars until the command bar is back, at most
+        `VIEW_EXITS` times; no EXIT on the bar, or no command bar, fails the
+        step with the screen kept."""
+        for _ in range(VIEW_EXITS):
             rows = self.rows()
+            if is_command_bar(rows):
+                return
+            if "EXIT" not in (rows[24].split() if rows else []):
+                raise self.fail("rest-fight", f"no EXIT on {self.bar().strip()!r} "
+                                              f"to leave the aim")
+            self.sess.select_bar("EXIT", timeout=10)
+            self.sess.settle(1.0)
+        if not is_command_bar(self.rows()):
+            raise self.fail("rest-fight", f"the command bar did not come back "
+                                          f"after {VIEW_EXITS} EXITs")
 
     def follow_patrol(self, got: dict) -> tuple[list[str], list[str]]:
         """From the rest's stop to the fight: each `PRESS ... TO CONTINUE`
@@ -10850,12 +10901,14 @@ class SilverRun(CurseRun):
 #: after Return `SETUPMON` and the fight, on the square the party camped on.
 REST_FIGHT_AREA = 0x44
 REST_FIGHT_TEXT = "YOU ARE SPOTTED BY A PATROL."
-#: `rest-fight DURATION WHO`: how many other members' turns may be passed,
-#: how long the wait for WHO's bar may take, and how long a passed turn may
-#: leave the screen unchanged before the next look.
-MEMBER_BAR_TURNS = 24
-MEMBER_BAR_SECONDS = 600.0
-MEMBER_BAR_CHANGE = 10.0
+#: `rest-fight DURATION WHO`: how many joystick keys may move the aim
+#: cursor toward WHO, and how many EXITs may lead back to the command bar.
+VIEW_PRESSES = 40
+VIEW_EXITS = 3
+#: The joystick keys (port 2, `laterbattle.KEYS`) by the sign of the step,
+#: x growing east and y growing south on the combat map.
+VIEW_KEYS = {(0, -1): "KP_8", (0, 1): "KP_2", (1, 0): "KP_6", (-1, 0): "KP_4",
+             (1, -1): "KP_9", (-1, -1): "KP_7", (1, 1): "KP_3", (-1, 1): "KP_1"}
 
 
 def parse_rest_fight(arg: str) -> tuple[str, str | None]:
@@ -10865,6 +10918,24 @@ def parse_rest_fight(arg: str) -> tuple[str, str | None]:
     parse_rest(duration)
     who = " ".join(who.split()).upper()
     return duration, who or None
+
+
+def in_view(camera, square) -> bool:
+    """SQUARE lies in the window the camera's top-left square starts."""
+    from automap import combat  # noqa: PLC0415
+
+    (cx, cy), (x, y) = camera, square
+    return cx <= x < cx + combat.VIEW and cy <= y < cy + combat.VIEW
+
+
+def toward(camera, square) -> str:
+    """The joystick key that moves the view's centre toward SQUARE."""
+    from automap import combat  # noqa: PLC0415
+
+    mid = combat.VIEW // 2
+    dx = (square[0] > camera[0] + mid) - (square[0] < camera[0] + mid)
+    dy = (square[1] > camera[1] + mid) - (square[1] < camera[1] + mid)
+    return VIEW_KEYS[(dx, dy)]
 
 
 def is_command_bar(rows: list[str]) -> bool:
