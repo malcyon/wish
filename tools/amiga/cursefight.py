@@ -148,13 +148,17 @@ ALLOWED_KEYS = {
     "continue": frozenset({"RET"}), "tossed": frozenset({"RET"}),
     "party_won": frozenset({"RET"}),
     "tavern": frozenset({"P", "L"}), "injuries": frozenset({"I"}),
-    "combat_bar": frozenset({"Q", "C", "D"}), "continue_battle": frozenset({"N"}),
+    "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
     "investigate": frozenset({"N"}), "camp": frozenset({"S"}),
     "camp_save_picker": frozenset("ABCDEFGHIJ"), "exit_game": frozenset({"N"}),
     "attack_evade": frozenset({"A"}), "party_destroyed": frozenset({"RET"}),
-    # The cast: CAST on the list, NEXT and TARGET on the aim menu (never EXIT), and NO to the
-    # abort question.
+}
+#: A `--cast` run's keys: CAST and DONE on a bar as well as QUICK, CAST on the list, NEXT and
+#: TARGET on the aim menu (never EXIT), and NO to the abort question. A fight with no cast
+#: keeps `ALLOWED_KEYS`.
+CAST_ALLOWED_KEYS = {
+    **ALLOWED_KEYS, "combat_bar": frozenset({"Q", "C", "D"}),
     "spell_list": frozenset({"C"}), "aim": frozenset({"N", "T"}), "abort_spell": frozenset({"N"}),
 }
 #: Answers to the screens that come between the first command bar and the map.
@@ -280,6 +284,14 @@ class Screens(curseadd.Screens):
 class PitScreens(curseadd.Screens):
     known = PIT_KNOWN
     allowed = ALLOWED_KEYS
+
+
+class CastScreens(Screens):
+    allowed = CAST_ALLOWED_KEYS
+
+
+class CastPitScreens(PitScreens):
+    allowed = CAST_ALLOWED_KEYS
 
 
 def guard_rules() -> dict:
@@ -865,8 +877,11 @@ class Cast:
     reads the watched member and the caster, and a cast event checks that exactly one
     memorised copy was spent.
 
-    With `capture`, the list and the aim menu are taken from memory and a held frame: the list
-    gets CAST, and the aim menu's frame ends the fight with nothing pressed on it.
+    With `capture`, a frame is kept for the list and one for the aim menu, and the aim menu's
+    frame ends the fight with nothing pressed on it. Only the guarded list gets CAST; an
+    unguarded frame never gets a key, because the list's ids stay in memory after the list
+    closes and so cannot tell a fresh list from a stale one. An unguarded frame memory takes
+    for the list is kept and ends the fight there.
     """
 
     def __init__(self, memory: Any, caster: str, spell: int, aim: str, watch: str, *,
@@ -930,7 +945,9 @@ class Cast:
         return "C"
 
     def bar_again(self, owner: dict, screens: Any) -> bool:
-        """Whether a caster's bar still showing just after CAST is that same bar, not a new one."""
+        """Whether a caster's bar still showing just after CAST is that same bar, not a new one.
+
+        A bar that outlasts `CAST_LINGER` is taken as CAST not having opened the list."""
         if self.phase != "chose" or owner["name"] != self.caster:
             return False
         require(screens.clock() - self._chose_at < CAST_LINGER,
@@ -1018,35 +1035,49 @@ class Cast:
         event["casting_after_target"] = curseadd.bounded(
             lambda _h: self.memory.casting(caster), self.memory.holder, screens.left(READ_LIMIT))
 
-    def unguarded(self, screens: Any, shot: Any, digest: str | None, still_since: float) -> bool:
-        """With `capture`, take a held unguarded frame as the list or the aim menu when memory
-        agrees; True when it pressed a key. Raises `Captured` at the aim menu."""
+    def keep_list(self, screens: Any, shot: Any) -> None:
+        """With `capture`, keep the guarded list's frame before it gets CAST."""
+        if self.capture:
+            self.captures.append({"screen": "spell_list", "shot": str(shot)})
+            screens.events.append({"capture": self.captures[-1]})
+            self._list_digest = _digest(shot)
+
+    def keep_aim(self, screens: Any, shot: Any) -> None:
+        """Keep the aim menu's frame with the target globals, and end the fight there."""
+        pointer, casting = self._in_turn(screens)
+        target, count = curseadd.bounded(lambda _h: self.memory.aim(), self.memory.holder,
+                                         screens.left(READ_LIMIT))
+        self.captures.append({"screen": "aim", "shot": str(shot), "pointer": pointer,
+                              "target": target, "count": count, "casting": casting})
+        screens.events.append({"capture": self.captures[-1]})
+        raise Captured(str(shot))
+
+    def unguarded(self, screens: Any, shot: Any, digest: str | None, still_since: float) -> None:
+        """With `capture`, keep a held unguarded frame memory takes for the list or the aim
+        menu and end the fight there (`Captured`). Nothing is ever pressed on such a frame.
+
+        In phase `chose` it is the list when the caster is in turn and a list reads in memory,
+        which may be the last list's ids; in phase `begun`, entered only by CAST on the guarded
+        list, it is the aim menu when the caster is in turn and the frame is not the list's."""
         if not self.capture or self.phase not in ("chose", "begun"):
-            return False
+            return
         if digest is None or screens.clock() - still_since < CAPTURE_STILL:
-            return False
+            return
         if self.phase == "chose":
             pointer, _casting = self._in_turn(screens)
             head, ids = curseadd.bounded(lambda _h: self.memory.spell_list(), self.memory.holder,
                                          screens.left(READ_LIMIT))
             if pointer != self._address(self.caster, screens) or not head or not ids:
-                return False
-            self.captures.append({"screen": "spell_list", "shot": str(shot), "ids": ids})
-            screens.events.append({"capture": self.captures[-1]})
-            self._list_digest = digest
-            self.on_list(screens, shot)
-            return True
-        if digest == self._list_digest:
-            return False
-        pointer, casting = self._in_turn(screens)
-        if pointer == self._address(self.caster, screens):
-            target, count = curseadd.bounded(lambda _h: self.memory.aim(), self.memory.holder,
-                                             screens.left(READ_LIMIT))
-            self.captures.append({"screen": "aim", "shot": str(shot), "target": target,
-                                  "count": count, "casting": casting})
+                return
+            self.captures.append({"screen": "spell_list", "shot": str(shot), "ids": ids,
+                                  "guarded": False})
             screens.events.append({"capture": self.captures[-1]})
             raise Captured(str(shot))
-        return False
+        if digest == self._list_digest:
+            return
+        pointer, _casting = self._in_turn(screens)
+        if pointer == self._address(self.caster, screens):
+            self.keep_aim(screens, shot)
 
     def log(self) -> dict:
         return {"caster": self.caster, "spell": self.spell, "aim": self.aim_at,
@@ -1108,9 +1139,8 @@ def fight(screens: Screens, memory: Memory, members: list[str],
                 f"{named} stayed {FIGHT_STALL:.0f}s unchanged mid-fight; shot {shot}")
         if state is None:
             try:
-                if cast is not None and cast.unguarded(screens, shot, digest, still_since):
-                    guided = screens.clock()
-                    continue
+                if cast is not None:
+                    cast.unguarded(screens, shot, digest, still_since)
             except Captured:
                 captured = True
                 break
@@ -1144,7 +1174,15 @@ def fight(screens: Screens, memory: Memory, members: list[str],
                 key = cast.on_bar(owner, screens, len(bars))
         elif cast is not None and state in ("spell_list", "aim", "abort_spell"):
             if state == "spell_list":
+                cast.keep_list(screens, shot)
                 cast.on_list(screens, shot)
+            elif state == "aim" and cast.capture:
+                answered.append({"screen": state, "shot": str(shot)})
+                try:
+                    cast.keep_aim(screens, shot)
+                except Captured:
+                    captured = True
+                    break
             elif state == "aim":
                 cast.on_aim(screens, shot)
             else:
@@ -1501,7 +1539,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                                holder=args.holder, audio_proof=proof, wait_lane=args.wait_lane,
                                timeout=300, command=command)
         booted = True
-        screens = (PitScreens if pit else Screens)(
+        screens = ((CastPitScreens if pit else CastScreens) if cast is not None
+                   else (PitScreens if pit else Screens))(
             guest, args.holder, args.out / "screens", guards, clock() + args.budget,
             clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory,

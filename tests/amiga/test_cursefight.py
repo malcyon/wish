@@ -127,7 +127,7 @@ def _keys_allowed(screens, game):
     pressed = [event for event in screens.events if "key" in event]
     assert [event["key"] for event in pressed] == game.keys
     for event in pressed:
-        assert event["key"] in cursefight.ALLOWED_KEYS[event["from"]], event
+        assert event["key"] in type(screens).allowed[event["from"]], event
 
 
 def test_guard_rules_add_the_fight_screens_to_the_curse_map():
@@ -139,7 +139,7 @@ def test_guard_rules_add_the_fight_screens_to_the_curse_map():
 
 
 def test_every_allowed_key_is_an_amiga_key():
-    for keys in cursefight.ALLOWED_KEYS.values():
+    for keys in (*cursefight.ALLOWED_KEYS.values(), *cursefight.CAST_ALLOWED_KEYS.values()):
         for key in keys:
             assert amigakeys.lookup(key).amiga is not None, key
 
@@ -1498,6 +1498,11 @@ class CastGame(Game):
         return self.aims.pop(0) if len(self.aims) > 1 else self.aims[0]
 
 
+def _cast_screens(tmp_path, game, clock):
+    return cursefight.CastScreens(game, "holder", tmp_path / "shots", game, 100_000,
+                                  clock=clock, sleep=clock.sleep)
+
+
 def _cast(game, capture=False):
     return cursefight.Cast(game, "GALAIN", 0x52, "BRUTUS", "BRUTUS", capture=capture)
 
@@ -1521,7 +1526,7 @@ def test_the_cast_runs_on_the_casters_bars_and_quick_elsewhere(tmp_path):
                     watches=[_watch(), _watch(), _watch((35,), left=2),
                              _watch((35, 137), left=2)],
                     aims=[(HOLLAND_AT, 6), (BRUTUS_AT, 6)])
-    screens = _screens(tmp_path, game, clock)
+    screens = _cast_screens(tmp_path, game, clock)
     cast = _cast(game)
     found = cursefight.fight(screens, game, [], cast=cast)
     assert game.keys == ["Q", "C", "C", "N", "T", "D", "Q", "RET"]
@@ -1543,7 +1548,7 @@ def test_the_caster_gets_quick_once_his_spell_runs_out(tmp_path):
     game = CastGame(clock, ["combat_bar", "combat_bar", "party_won", "world"],
                     owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
                     watches=[_watch(left=0)])
-    found = cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+    found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=_cast(game))
     assert game.keys == ["Q", "RET"] and found["outcome"] == "won"
 
 
@@ -1553,7 +1558,7 @@ def test_a_spell_list_holding_another_spell_stops_the_run_before_any_key(tmp_pat
                     owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
                     watches=[_watch()], ids=(0x52, 0x0F))
     with pytest.raises(RouteError, match=r"holds \[82, 15\]"):
-        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+        cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=_cast(game))
     assert game.keys == ["C"]
 
 
@@ -1563,7 +1568,7 @@ def test_an_aim_that_cycles_without_the_target_stops_with_no_target_key(tmp_path
                     owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
                     watches=[_watch()], aims=[(HOLLAND_AT, 6), (GALAIN_AT, 6), (HOLLAND_AT, 6)])
     with pytest.raises(RouteError, match="came back"):
-        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+        cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=_cast(game))
     assert game.keys == ["C", "C", "N", "N"] and "T" not in game.keys
 
 
@@ -1571,30 +1576,79 @@ def test_the_aim_menu_with_nothing_begun_stops_the_run(tmp_path):
     clock = Clock()
     game = CastGame(clock, ["aim"])
     with pytest.raises(RouteError, match="no spell chosen"):
-        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+        cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=_cast(game))
     assert game.keys == []
 
 
-def test_a_capture_takes_the_list_from_memory_and_stops_at_the_aim_menu(tmp_path):
+def test_a_capture_with_the_guards_keeps_the_aim_menu_and_presses_nothing_on_it(tmp_path):
     clock = Clock()
-    script = ["combat_bar", "combat_bar", *["~list"] * 8, *["~aim"] * 8]
+    game = CastGame(clock, ["combat_bar", "combat_bar", "spell_list", "aim"],
+                    owners=[{"address": GALAIN_AT, **_member("GALAIN")}], watches=[_watch()])
+    cast = _cast(game, capture=True)
+    found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=cast)
+    assert found["outcome"] == "captured" and game.keys == ["C", "C"]
+    assert [c["screen"] for c in cast.captures] == ["spell_list", "aim"]
+    assert cast.captures[1]["target"] == BRUTUS_AT and cast.captures[1]["pointer"] == GALAIN_AT
+    assert cast.events[-1].get("outcome") is None
+
+
+def test_a_capture_with_the_list_guarded_keeps_an_unguarded_aim_menu_unpressed(tmp_path):
+    clock = Clock()
+    script = ["combat_bar", "combat_bar", "spell_list", *["~aim"] * 8]
+    game = CastGame(clock, script, owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch()], unguarded=("aim",))
+    cast = _cast(game, capture=True)
+    found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=cast)
+    assert found["outcome"] == "captured" and game.keys == ["C", "C"]
+    shots = {c["screen"]: pathlib.Path(c["shot"]).read_bytes() for c in cast.captures}
+    assert shots == {"spell_list": b"spell_list", "aim": b"~aim"}
+
+
+def test_a_capture_sends_no_key_to_an_unguarded_frame_a_stale_list_names(tmp_path):
+    """The list's ids stay in memory after it closes, so an unguarded frame that memory takes
+    for the list is kept and ends the capture, and gets no CAST."""
+    clock = Clock()
+    script = ["combat_bar", "combat_bar", *["~stale"] * 8]
     game = CastGame(clock, script, owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
                     watches=[_watch()], unguarded=("spell_list", "aim"))
     cast = _cast(game, capture=True)
-    found = cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=cast)
-    assert found["outcome"] == "captured" and game.keys == ["C", "C"]
-    shots = {c["screen"]: pathlib.Path(c["shot"]).read_bytes() for c in cast.captures}
-    assert shots == {"spell_list": b"~list", "aim": b"~aim"}
+    found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=cast)
+    assert found["outcome"] == "captured" and game.keys == ["C"]
+    assert [(c["screen"], c["guarded"]) for c in cast.captures] == [("spell_list", False)]
+    assert cast.phase == "chose"
 
 
-def test_a_capture_takes_no_frame_as_the_aim_menu_while_another_is_in_turn(tmp_path):
+def test_a_capture_takes_no_frame_while_another_is_in_turn(tmp_path):
     clock = Clock()
-    script = ["combat_bar", "combat_bar", *["~list"] * 8, *["~monster"] * 200]
+    script = ["combat_bar", "combat_bar", *["~monster"] * 200]
     game = CastGame(clock, script, owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
                     watches=[_watch()], unguarded=("spell_list", "aim"))
     with pytest.raises(RouteError, match="unchanged mid-fight"):
-        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game, True))
-    assert game.keys == ["C", "C"]
+        cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=_cast(game, True))
+    assert game.keys == ["C"]
+
+
+@pytest.mark.parametrize("on, key", [("combat_bar", "C"), ("combat_bar", "D"),
+                                     ("spell_list", "C"), ("aim", "N"), ("aim", "T"),
+                                     ("abort_spell", "N")])
+def test_a_fight_with_no_cast_never_sends_a_cast_key(tmp_path, on, key):
+    clock = Clock()
+    game = Game(clock)
+    with pytest.raises(RouteError, match="not a key"):
+        _screens(tmp_path, game, clock).press(key, on)
+    cast_screens = _cast_screens(tmp_path / "cast", game, clock)
+    cast_screens.press(key, on)
+    assert game.keys == [key]
+
+
+@pytest.mark.parametrize("on, key", [("combat_bar", "E"), ("aim", "E"), ("aim", "M"),
+                                     ("spell_list", "E"), ("abort_spell", "Y")])
+def test_a_cast_run_never_sends_exit_or_an_unlisted_key(tmp_path, on, key):
+    clock = Clock()
+    game = Game(clock)
+    with pytest.raises(RouteError, match="not a key"):
+        _cast_screens(tmp_path, game, clock).press(key, on)
+    assert game.keys == []
 
 
 def _log(reads, events=None):
