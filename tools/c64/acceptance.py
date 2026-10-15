@@ -115,7 +115,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `scribe WHO>SPELL` | camp `MAGIC > SCRIBE` for WHO: the scroll list kept as text, SPELL's row highlighted and picked (Return, then a KERNAL Return while the count stands), the pick prompt's `EXIT` row, the list's `EXIT`, the `CHOSEN SPELLS` page kept, `OKAY` at the confirmation, and back to the camp bar. WHO's roster slice of the scribe queue (`+0x01` first entry, `+0x02` count: Pool `$6C01`, Curse and Silver Blades `$7D01`) is read before, after the pick and at the end, with its queue entries; a rejection (`CAN'T SCRIBE`), a spell not on the list, or a count of zero at the end fails the step. A list of more than one page (`NEXT` or `PREV` on row 24) is taken when SPELL is on the first page shown, and the result's `paged` says so; SPELL not on that page fails the step as `scribe-pages`, since the other pages are not read. Measured on Silver Blades and Pool of Radiance |
 | `memorize WHO>SPELL[,SPELL...]` | Pool only: camp `MAGIC > MEMORIZE` for WHO (a name), the book `<NAME>'S BOOK OF SPELLS` turned with `NEXT`/`PREV` to each SPELL's page, its `MEMORIZE`, SPELL's row highlighted and picked (Return, then a KERNAL Return when nothing moved), the pick prompt's `EXIT` row, the book's `EXIT`, the `CHOSEN SPELLS` page kept and checked, `OKAY` at the confirmation, and back to the camp bar, where the party stays so a `rest` next learns them, since leaving camp drops the choice. Every action is a key and nothing is written. WHO's memorised list is read from the live record before, after each pick and at the end: each pick must add one entry, the spell's id (any id the title's spell table draws SPELL for) with bit 7 set; `<NAME> CAN'T MEMORIZE` (no slot of that level left), a pick that adds nothing, a spell in no page of the book, a choice already pending, or an end list other than the start list plus those entries fails the step. The `rest` after it adds `memorised` (the list, `learned`, `still_pending`) and fails when it ran its full time in that camp and an entry is still pending |
 | `cure PALADIN>TARGET` | Curse only: `ENCAMP > VIEW > CURE` on TARGET (the paladin's cure of disease), the same before and after |
-| `ready WHO>LABEL`, `ready WHO>#N` | Pool and Curse (Curse reads its own record, item and roster blocks, `roster_diff` added, and no effect array): `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
+| `ready WHO>LABEL`, `ready WHO>#N` | All three titles. Curse and Silver Blades: camp `VIEW WHO > ITEMS`, READY on the item bar with one Return, the list cursor moved onto the row (LABEL is one entry's whole text or part of exactly one entry's; `#N` the Nth row), one Return, the toggled row read back with the cursor on it, then the list's `EXIT` row, the bar's `EXIT`, the sheet's and the camp's; each record, item and roster block is compared (`roster_diff`, no effect array) and the result has `outcome`, `row`, `row_was`, `row_now` and `message` (what row 24 showed in place of the bar, such as `TOO MANY OF THAT TYPE`); a screen the step does not expect, or a list that does not come back within 10 s, stops it with that screen captured and no further key. Pool: `ENCAMP > VIEW WHO > ITEMS`, press READY once for LABEL, and read every party record, effect row and item block before and after. `screen_changed` describes the item row; `memory_changed` describes bytes in those three ranges; legacy `flipped` keeps its screen-only meaning. `--capture-ready` saves three bounded in-list checkpoints for BAKSHI and registers the game-written save before teardown. `#N` is the Nth row of WHO's ITEMS list from 1, for an item that draws no name: the step checks the list up is WHO's and has a row N before any READY key, then reports `outcome` (`readied`, `unreadied`, `rejected` or `unchanged`), the row before and after, and the rejection text the game printed (`WRONG CLASS`), and takes no `--capture-ready` checkpoints |
 | `fight-flee [SECONDS]` | `fight`'s route into a fight, then `fleedrive.Flight` as the tactic with no wound patch, for at most SECONDS (120): the members who run stay alive and the game's own drop of a member left behind runs, which `walk-flee`'s menu FLEE never reaches. The result records `got_away` and `left_behind` (each member's slot, name and status before and after, a member left behind being one whose name the drop cleared); a fight that does not end on `THE PARTY RUNS AWAY` (won, lost, or still going at SECONDS) fails the step naming `fight-flee`; under `--fast-flee` the party's movement is raised from the first turn |
 | `fight-cast CASTER:SPELL` | Pool only: snapshots the machine at the world bar as `fight-cast`, then `fight`'s route into a fight, then every member but CASTER runs `fleedrive.Flight` (stepping off only from an edge square no enemy stands beside, unless faster than every enemy in the fight) while CASTER holds on a quiet edge square, and CASTER casts SPELL through `route_pool.Caster` on his first turn on which another member is away and every member still in the fight stands on an edge square he may step off from, every other member is away or down, his hit points are at most half of what they were on the tactic's first turn, or he has held 4 of his own turns, and then on his next turn whose command bar offers CAST, since a hit taken since his last turn takes CAST off the bar and he holds instead (a spell with no target prompt, such as PRAYER; one that asks for a target fails the cast); CASTER's turns after the cast run the flight, for at most 1500 seconds an attempt. An attempt ends as soon as a member is dead, dying, unconscious or stoned, or when an encounter menu (`COMBAT WAIT ...`) comes up; that, a fight that does not end on `THE PARTY RUNS AWAY`, one in which CASTER never cast, one that leaves a member behind, one that ends with a member down, and `no CAST on <name>'s bar after N held turns` (after at most 5 held turns) restore `fight-cast` and try again, at most 2 attempts in all while 600 s of the run are left, the second walking `J` (or `I` when the walk is not `I`), since the game's dice replay exactly from a snapshot and only where the party stands when the encounter comes makes it another fight; the last of them fails the step naming `fight-cast`, as does at once a CASTER whose memorised list did not lose exactly one spell. The result records `attempts`, `setbacks` (each failed attempt's walk and reason), `walk`, `casts` (the caster, spell and roster hit points before and after), `spent` (the spell id CASTER's memorised list lost), `got_away` and `left_behind` as `fight-flee` does, and the cast's screens are in `run.jsonl` as `cast-list` and `cast-done`; under `--fast-flee` every turn, from the first, first raises the party's movement |
 | `site DIGIT>WORD` | Pool only: from the travel grid, presses DIGIT onto a site square (`7` west, onto the city's eastern edge), waits up to `SITE_MENU_SECONDS` for the site text to finish and WORD on the bar, reads that the travel pair moved one square along DIGIT, picks WORD with `select_bar`, answers one `INSERT SIDE # N` prompt whose side is the disk of the area being loaded, and judges the arrival by memory (indoors flag, area byte against the running area, the arrival square) once the move bar is up. An encounter when MOVE is taken, on the way or on arrival, a second prompt or a wrong side fails the step. Every action is a key and nothing is written |
@@ -1228,6 +1228,90 @@ def item_row_highlight(s, at_rows: list[int]) -> int | None:
     so an item with no name still has one. `route_pool.item_highlight` holds
     the colour rule."""
     return None if s is None else route_pool.item_highlight(s, at_rows)
+
+
+#: Curse's and Silver Blades' C64 item list, measured in both (WISH-413): the
+#: item rows start on row 5 with their text in column 2, every row is colour 5
+#: but the one the cursor is on, which is colour 1, and choosing READY on the
+#: bar adds an `EXIT` row under the items and draws READY in colour 7.
+LATER_ITEM_ROWS = range(5, 23)
+LATER_ITEM_COLUMN = 2
+LATER_CURSOR_COLOUR = 1
+
+
+def later_item_bar(bar: str) -> bool:
+    """Row 24 is the item list's own bar, `READY ... EXIT`, not the sheet's
+    `ITEMS ... EXIT`."""
+    words = bar.split()
+    return words[:1] == ["READY"] and "EXIT" in words
+
+
+def later_list_rows(rows: list[str]) -> list[int]:
+    """The rows of the item list, the `EXIT` row too when it is drawn."""
+    out = []
+    for r in LATER_ITEM_ROWS:
+        if r >= len(rows) or not rows[r][1:39].strip():
+            if out:
+                break
+            continue
+        out.append(r)
+    return out
+
+
+def later_exit_row(rows: list[str]) -> int | None:
+    return next((r for r in later_list_rows(rows)
+                 if rows[r][1:39].strip() == "EXIT"), None)
+
+
+def later_item_cursor(screen) -> int | None:
+    """The list row drawn in the cursor's colour, or None unless exactly one is."""
+    if screen is None:
+        return None
+    rows = [screen.row(r) for r in range(25)]
+    hot = [r for r in later_list_rows(rows)
+           if screen.codes[r * 40 + LATER_ITEM_COLUMN] not in (0x20, 0x00)
+           and screen.colours[r * 40 + LATER_ITEM_COLUMN] == LATER_CURSOR_COLOUR]
+    return hot[0] if len(hot) == 1 else None
+
+
+def later_item_mode(screen) -> str | None:
+    """`bar` while the item bar holds the highlight (no `EXIT` row, no
+    cursor), `list` while a cursor is on the list (an `EXIT` row and exactly
+    one row in the cursor's colour), and None for any other screen, a
+    rejection on row 24 and a list half redrawn included."""
+    if screen is None:
+        return None
+    rows = [screen.row(r) for r in range(25)]
+    if not later_item_bar(rows[24]):
+        return None
+    exit_row, cursor = later_exit_row(rows), later_item_cursor(screen)
+    if exit_row is None and cursor is None and S.span_in(screen, 24) is not None:
+        return "bar"
+    if exit_row is not None and cursor is not None:
+        return "list"
+    return None
+
+
+def later_ready_target(rows: list[str], label: str) -> tuple[int | None, str]:
+    """Which entry of the list (0 first) LABEL names, and why not when none:
+    `#N` is the Nth row; a name must be one entry's whole text, or else part
+    of exactly one entry's text."""
+    entries = item_entries(rows)
+    n = ready_row(label)
+    if n is not None:
+        if 1 <= n <= len(entries):
+            return n - 1, ""
+        return None, f"the list has {len(entries)} rows, so #{n} is not one"
+    want = label.strip().upper()
+    exact = [i for i, e in enumerate(entries) if e["text"].strip().upper() == want]
+    part = [i for i, e in enumerate(entries) if want in e["text"].upper()]
+    hits = exact or part
+    if len(hits) == 1:
+        return hits[0], ""
+    if not hits:
+        return None, f"{label} is not on the list: {[e['row'] for e in entries]}"
+    return None, (f"{label} matches {len(hits)} rows "
+                  f"({', '.join(entries[i]['row'] for i in hits)}); ask by #N")
 
 
 def parse_scribe(arg: str) -> tuple[str, str]:
@@ -5337,9 +5421,9 @@ class PoolRun:
         HERE` unless `$6DE4` is set, which only camp sets (#694).
         `tools/c64/route_pool.py`'s `SLOT_BASE`, `SLOT_STRIDE` and `EFFECTS`
         are Pool's own layout, the same one `traitask.stage_items` and
-        `route_pool.toggle_item` already drive; `CurseRun` reads Curse's
-        own record, item and roster blocks instead, and `main` rejects this
-        step for Silver Blades.
+        `route_pool.toggle_item` already drive; `CurseRun.ready` drives
+        Curse's and Silver Blades' own item screen and reads their record,
+        item and roster blocks instead.
         """
         who, label = parse_ready(arg)
         row = ready_row(label)
@@ -9470,6 +9554,186 @@ class CurseRun(PoolRun):
                   for slot in range(PARTY_SLOTS)]
         return records, None, items, roster
 
+    # -- READY on Curse's and Silver Blades' item list ------------------------------
+    #: Seconds a toggled row is given to come back with the cursor on it; the
+    #: measured redraw took 0.4 s in Silver Blades and under 1.2 s in Curse.
+    LATER_TOGGLE_WAIT = 10.0
+    #: Seconds between screen reads while a toggle redraws: Silver Blades'
+    #: rejection stays on row 24 for under 0.5 s.
+    LATER_POLL = 0.05
+
+    def ready(self, arg: str) -> dict:
+        """`ready WHO>LABEL` or `ready WHO>#N` for Curse and Silver Blades:
+        camp `VIEW WHO > ITEMS`, READY on the item bar, the cursor onto the
+        row, one Return, then the list's `EXIT` row and the bar's `EXIT`
+        back to the world; every party record, item block and roster block
+        is read before and after.
+
+        The step reads the screens it expects and nothing else: any other
+        screen, or one that does not come back, stops the step with that
+        screen captured and no further key pressed.
+        """
+        who, label = parse_ready(arg)
+        screen = self.later_open_items(who)
+        rows = [screen.row(r) for r in range(25)]
+        index, why = later_ready_target(rows, label)
+        if index is None:
+            raise self.fail("ready", why)
+        with self.sess.mon(8) as m:
+            before_records, _, before_items, before_roster = self.ready_reading(m)
+            m.resume()
+        said = self.later_toggle(who, index)
+        with self.sess.mon(8) as m:
+            after_records, _, after_items, after_roster = self.ready_reading(m)
+            m.resume()
+        self.later_leave_items()
+        where = self.ready_layout()
+        record_diff = {
+            slot: route_pool.diff_bytes(
+                before_records[slot], after_records[slot],
+                where["record"] + slot * where["record_stride"])
+            for slot in range(PARTY_SLOTS)}
+        item_diff = {
+            slot: route_pool.diff_bytes(
+                before_items[slot], after_items[slot],
+                where["item"] + slot * ITEM_BLOCK_STRIDE)
+            for slot in range(PARTY_SLOTS)}
+        roster_diff = {
+            slot: route_pool.diff_bytes(
+                before_roster[slot], after_roster[slot],
+                where["roster"] + slot * where["roster_stride"])
+            for slot in range(PARTY_SLOTS)}
+        memory_changed = (any(record_diff.values()) or any(item_diff.values())
+                          or any(roster_diff.values()))
+        screen_changed = said.pop("screen_changed")
+        return {"who": who, "label": label,
+                "screen_changed": screen_changed, "flipped": screen_changed,
+                "memory_changed": memory_changed, "record_diff": record_diff,
+                "effects_diff": [], "item_diff": item_diff,
+                "roster_diff": roster_diff, **said}
+
+    def later_screen(self, mode: str, timeout: float, what: str):
+        """The first screen `later_item_mode` reads as MODE within TIMEOUT,
+        or a failure with the screen kept."""
+        limit = self.clock() + self.budget(timeout, what)
+        while self.clock() < limit:
+            screen = self.sess.screen()
+            if later_item_mode(screen) == mode:
+                return screen
+            time.sleep(0.3)
+        raise self.fail("ready", f"{what} never came up")
+
+    def later_open_items(self, who: str):
+        """Camp `VIEW WHO`, then `ITEMS`, ending with the item bar up and
+        WHO's name on row 1."""
+        sheet = self.open_sheet(who)
+        if SHEET_ITEMS not in sheet[24]:
+            raise self.fail("ready", f"{who} carries nothing: the sheet bar is "
+                                     f"{sheet[24].strip()!r}")
+        owner = sheet[1][1:39].strip()
+        if not self.choose_bar("ITEMS", timeout=15):
+            raise self.fail("ready", "ITEMS could not be chosen on the sheet")
+        screen = self.later_screen("bar", 20, "the item list")
+        self.capture(f"items-{who}", [screen.row(r) for r in range(25)])
+        if screen.row(1)[1:39].strip() != owner:
+            raise self.fail("ready", f"the list up is {screen.row(1)[1:39].strip()!r}, "
+                                     f"not {owner!r}'s")
+        return screen
+
+    def later_toggle(self, who: str, index: int) -> dict:
+        """READY on the bar, the cursor onto entry INDEX, one Return, and what
+        the row and row 24 showed until the list came back.
+
+        READY is chosen with one XTEST Return and judged by the cursor the
+        list puts up, never with `press_bar`: Curse's adds a KERNAL Return
+        when row 24's text has not changed, choosing READY changes only its
+        colour, and that second Return toggled the first item in the Curse
+        capture (82 arrows, YES to NO)."""
+        screen = self.sess.screen()
+        for _ in range(8):
+            span = S.span_in(screen, 24) if screen is not None else None
+            col = screen.row(24).find("READY") if screen is not None else -1
+            if span is not None and col >= 0 and span[0] == col:
+                break
+            self.sess.kbd.key("Left" if span is None or span[0] > col else "Right")
+            time.sleep(0.3)
+            screen = self.sess.screen()
+        else:
+            raise self.fail("ready", "the item bar's highlight would not go onto READY")
+        self.sess.kbd.key("Return")
+        screen = self.later_screen("list", 10, "a cursor on the item list")
+        rows = [screen.row(r) for r in range(25)]
+        want = [r for r in later_list_rows(rows) if r != later_exit_row(rows)][index]
+        for _ in range(len(later_list_rows(rows)) + 2):
+            at = later_item_cursor(screen)
+            if at == want:
+                break
+            if at is None:
+                raise self.fail("ready", "the item list's cursor was lost")
+            self.sess.kbd.key("Down" if at < want else "Up")
+            time.sleep(0.3)
+            screen = self.sess.screen()
+        else:
+            raise self.fail("ready", f"the cursor never reached row {index + 1}")
+        before = [screen.row(r) for r in range(25)]
+        self.sess.kbd.key("Return")
+        messages: list[str] = []
+        last, after = None, None
+        limit = self.clock() + self.LATER_TOGGLE_WAIT
+        while self.clock() < limit:
+            time.sleep(self.LATER_POLL)
+            screen = self.sess.screen()
+            if screen is None:
+                continue
+            bar = screen.row(24).strip()
+            if bar and not later_item_bar(bar) and bar not in messages:
+                messages.append(bar)
+            now = [screen.row(r) for r in range(25)]
+            ok = (later_item_mode(screen) == "list"
+                  and later_item_cursor(screen) == want)
+            if ok and now == last:
+                after = now
+                break
+            last = now if ok else None
+        if after is None:
+            raise self.fail("ready", f"the list did not come back with the cursor "
+                                     f"on row {index + 1} after READY")
+        self.capture(f"items-{who}-ready-row-{index + 1}", after)
+        was, now_entry = item_entries(before)[index], item_entries(after)[index]
+        message = " / ".join(messages) or None
+        if was["readied"] != now_entry["readied"]:
+            outcome = "readied" if now_entry["readied"] else "unreadied"
+        else:
+            outcome = "rejected" if message is not None else "unchanged"
+        self.log.emit("ready_row", row=index + 1, was=was["row"],
+                      now=now_entry["row"], outcome=outcome, message=message)
+        return {"screen_changed": after != before, "row": index + 1,
+                "row_was": was["row"], "row_now": now_entry["row"],
+                "outcome": outcome, "message": message}
+
+    def later_leave_items(self) -> None:
+        """The cursor onto the list's `EXIT` row and Return, which gives the
+        bar back; then the bar's `EXIT`, the sheet's and the camp's."""
+        screen = self.sess.screen()
+        rows = [] if screen is None else [screen.row(r) for r in range(25)]
+        exit_row = later_exit_row(rows) if rows else None
+        if exit_row is None or later_item_mode(screen) != "list":
+            raise self.fail("ready", "the item list with its cursor is not up")
+        for _ in range(len(later_list_rows(rows)) + 2):
+            at = later_item_cursor(screen)
+            if at == exit_row:
+                break
+            if at is None:
+                raise self.fail("ready", "the item list's cursor was lost")
+            self.sess.kbd.key("Down")
+            time.sleep(0.3)
+            screen = self.sess.screen()
+        else:
+            raise self.fail("ready", "the cursor never reached the list's EXIT")
+        self.sess.kbd.key("Return")
+        self.later_screen("bar", 10, "the item bar after the list's EXIT")
+        self.leave_item_list()
+
     def warp(self, arg: str) -> dict:
         if self.game.key != "curse-of-the-azure-bonds":
             raise self.fail("warp", "Pool of Radiance and Curse of the "
@@ -11840,9 +12104,6 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("Curse cast requires CASTER:CURE BLINDNESS>TARGET")
         if args.title == "ssb":
             ap.error("the cast step requires --title pool or curse")
-    if any(x.verb == "ready" for x in steps) and args.title not in ("pool",
-                                                                    "curse"):
-        ap.error("the ready step requires --title pool or curse")
     if args.quit_nonattacking and not args.attack_by:
         ap.error("--quit-nonattacking requires --attack-by")
     if args.probe_step and not args.attack_by:

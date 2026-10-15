@@ -164,10 +164,14 @@ def _curse_ready(tmp_path, monkeypatch):
     run.capture_ready = False
     run.log = type("L", (), {"say": staticmethod(lambda text: None)})()
     run.to_world = lambda tries=10: True
-    monkeypatch.setattr(A.route_pool, "open_items", lambda *a: True)
-    monkeypatch.setattr(A.route_pool, "toggle_item", lambda *a, **k: True)
-    monkeypatch.setattr(A.route_pool, "leave_items", lambda *a: None)
-    sess.settle = lambda seconds=0: None
+    listed = [""] * 25
+    listed[5] = "% NO  PLATE MAIL"
+    run.later_open_items = lambda who: type(
+        "Shown", (), {"row": staticmethod(lambda r: listed[r])})()
+    run.later_toggle = lambda who, index: {
+        "screen_changed": True, "row": index + 1, "row_was": "NO  PLATE MAIL",
+        "row_now": "YES PLATE MAIL", "outcome": "readied", "message": None}
+    run.later_leave_items = lambda: None
     got = run.ready("ARIEL>PLATE MAIL")
     return got, monitor, box
 
@@ -185,10 +189,3 @@ def test_curse_ready_reads_curses_own_record_item_and_roster_blocks(
     pool = (A.route_pool.SLOT_BASE, ITEM_AREA_BASE, A.route_pool.EFFECTS[0])
     assert not [a for a, _ in monitor.asked if a in pool]
     assert len(monitor.asked) == 2 * 3 * 8      # before and after, nothing else
-
-
-def test_ready_is_still_rejected_for_silver_blades(tmp_path, capsys):
-    with pytest.raises(SystemExit) as info:
-        A.main(["--title", "ssb", "--save", str(tmp_path / "x.d64"),
-                "--steps", "load", "ready A>B", "--out", str(tmp_path / "o")])
-    assert info.value.code == 2
