@@ -1923,3 +1923,180 @@ def test_a_pool_c64_zombie_byte_on_a_player_character_converts_living():
             living.get("hp_current")) == ("okay", True, 1)
     dos = dos_codec.write(living)[0]
     assert (dos[0x10C], dos[0x10D]) == (0, 1)
+
+
+# -- a zombie that got away from a fight and was saved at status okay -----------
+#
+# Specimen wish303-i6-curse-brutus-got-away-slot-f: Amiga Curse, driven by
+# tools/amiga/cursefight.py, in which the zombie BRUTUS was confused, ran off
+# the map and was saved at status okay, active, control 0, with the cast's
+# creature type 4, movement 6 and turning class 2.
+
+_GOT_AWAY = "wish303-i6-curse-brutus-got-away-slot-f"
+
+
+def _got_away_disk():
+    from editor.convert import Source
+
+    adf = gamedata.specimen(_GOT_AWAY, "amiga") / "fetched-save.adf"
+    return Source.detect(adf).amiga_disk(), adf
+
+
+def _got_away_party():
+    from goldbox import amiga_savegame
+
+    disk, _adf = _got_away_disk()
+    save = amiga_savegame.read_slot(disk, "F", _LATER_CURSE)
+    return [amiga_later.to_neutral_later(c) for c in save.characters]
+
+
+def _got_away_brutus(party):
+    (brutus,) = [c for c in party if c.get("name") == "BRUTUS"]
+    return brutus
+
+
+def test_a_curse_zombie_that_got_away_reads_as_a_zombie_player():
+    party = _got_away_party()
+    brutus = _got_away_brutus(party)
+    assert (brutus.get("status"), brutus.get("creature_type")) == ("okay", 4)
+    assert (brutus.get("npc"), brutus.get("movement"),
+            brutus.get("turn_class")) == (False, 6, 2)
+    assert c64_codec.zombie_player(brutus)
+    living = c64_codec.living_player(brutus)
+    assert (living.get("creature_type"), living.get("movement"),
+            living.get("turn_class"), living.get("npc")) == (0, 12, 0, False)
+    others = [c for c in party if c is not brutus]
+    assert len(others) == 4
+    for other in others:
+        assert not c64_codec.zombie_player(other)
+        assert c64_codec.living_player(other) is other
+
+
+def _got_away_save_as(tmp_path, port):
+    from editor import convert, roster, saveplan
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    _disk, adf = _got_away_disk()
+    party = roster.Party(convert.Source.detect(adf, slot="F"))
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        if port == "c64":
+            assets = saveplan.resolve_assets(
+                source, "c64", game_files=convertdrops.game_files)
+            where = tmp_path / "out.d64"
+        else:
+            assets = saveplan.resolve_assets(
+                source, "dos", game_files=convertdrops.game_files,
+                dos_folder=dosbox.find_game("CURSE"))
+            where = tmp_path / "dos-out"
+    except (FileNotFoundError, saveplan.MissingAssets):
+        pytest.skip("needs Curse's own game files")
+    plan = saveplan.prepare_save_as(party, port, where, assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    return plan
+
+
+def test_save_as_converts_a_curse_zombie_that_got_away_living_to_dos(tmp_path):
+    plan = _got_away_save_as(tmp_path, "dos")
+    o = _LATER_OFFSETS[_LATER_CURSE]
+    seen = {}
+    for name, data in plan.files.items():
+        if name.endswith(".SAV") and len(data) > o["hp"]:
+            seen[bytes(data[1:1 + data[0]])] = data
+    assert len(seen) == 5
+    brutus = seen[b"BRUTUS"]
+    assert [brutus[o[n]] for n in ("mtype", "move", "turn", "ctl")] \
+        == [0, 12, 0, 0]
+    party = _got_away_party()
+    for other in (c for c in party if c.get("name") != "BRUTUS"):
+        written = dos_codec.write(other, deltas=dos_port.CURSE_OF_THE_AZURE_BONDS)[0]
+        assert seen[str(other.get("name")).encode()] == written
+
+
+def test_save_as_converts_a_curse_zombie_that_got_away_living_to_the_c64(
+        tmp_path):
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    plan = _got_away_save_as(tmp_path, "c64")
+    (image,) = plan.files
+    out = tmp_path / "read-back.d64"
+    out.write_bytes(plan.files[image])
+    game, sg0, sg1 = load_save(D64.open(str(out)))
+    read = {}
+    for slot in sg0.characters:
+        char = c64_codec.read(slot.record, roster=sg1.roster(slot.index),
+                              game=game, payload=sg0.to_bytes(),
+                              party_slot=slot.index)
+        read[char.get("name")] = (slot, char)
+    slot, brutus = read["BRUTUS"]
+    assert (sg1.roster(slot.index).roster_in_use,
+            slot.record.get("flags_0b8")) == (0x01, 0)
+    assert (brutus.get("creature_type"), brutus.get("movement"),
+            brutus.get("turn_class")) == (0, 12, 0)
+    assert len(read) == 5
+
+
+def _got_away_neutral(key, control, creature_type=4, status="okay", npc=False,
+                      turn_class=2):
+    char = neutral.NeutralCharacter("DOS", source="built here", game=key)
+    char.set("status", status, "built here")
+    char.set("npc", npc, "built here")
+    char.set("npc_control_byte", control, "built here")
+    char.set("creature_type", creature_type, "built here")
+    char.set("turn_class", turn_class, "built here")
+    return char
+
+
+@pytest.mark.parametrize("control", [0, 0xB3])
+@pytest.mark.parametrize("game", [c64_port.POOL_OF_RADIANCE,
+                                  c64_port.CURSE_OF_THE_AZURE_BONDS])
+def test_a_pool_or_curse_zombie_saved_at_okay_is_a_zombie_player(game, control):
+    char = _got_away_neutral(game, control)
+    assert c64_codec.zombie_player(char)
+    living = c64_codec.living_player(char)
+    assert (living.get("status"), living.get("creature_type"),
+            living.get("turn_class")) == ("okay", 0, 0)
+
+
+@pytest.mark.parametrize("control", [0, 0xB3])
+def test_a_got_away_zombie_converts_living_through_the_dos_writer(control):
+    key = _LATER_CURSE
+    first = _later_party(key)[0]
+    raw = bytearray(first.to_bytes())
+    o = _LATER_OFFSETS[key]
+    for name, value in _CAST.items():
+        if name in o:
+            raw[o[name]] = value
+    raw[o["status"]], raw[o["active"]], raw[o["quick"]] = 0, 1, 0
+    raw[o["ctl"]] = control
+    char = dos_codec.to_neutral(dos_codec.DosCharacter(
+        bytes(raw), first.items, tuple(first.effects), source="staged",
+        deltas=first.deltas))
+    assert c64_codec.zombie_player(char)
+    record = dos_codec.write(c64_codec.living_player(char),
+                             deltas=first.deltas)[0]
+    assert [record[o[n]] for n in ("status", "active", "ctl", "move", "mtype",
+                                   "turn")] == [0, 1, 0, 12, 0, 0]
+
+
+def test_a_companion_that_got_away_stays_a_zombie_npc():
+    char = _got_away_neutral(c64_port.CURSE_OF_THE_AZURE_BONDS, 0xB2, npc=True)
+    assert not c64_codec.zombie_player(char)
+    assert c64_codec.living_player(char) is char
+
+
+@pytest.mark.parametrize("game", [c64_port.SECRET_OF_THE_SILVER_BLADES,
+                                  dos_port.POOLS_OF_DARKNESS])
+def test_a_later_title_record_at_okay_with_type_four_is_not_a_zombie(game):
+    char = _got_away_neutral(game, 0)
+    assert not c64_codec.zombie_player(char)
+    assert c64_codec.living_player(char) is char
+
+
+def test_a_living_record_with_turn_class_two_alone_is_not_a_zombie():
+    char = _got_away_neutral(c64_port.CURSE_OF_THE_AZURE_BONDS, 0,
+                             creature_type=0)
+    assert not c64_codec.zombie_player(char)
+    assert c64_codec.living_player(char) is char

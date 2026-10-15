@@ -702,6 +702,10 @@ DOS_PC_TAKEN_OVER = 0xB3
 #: Animate Dead's effect id, the id its trait slot and its row both hold.
 ANIMATE_DEAD_ID = 32
 
+#: The creature type Pool of Radiance's and Curse's Animate Dead write; the
+#: spell's undo clears it, and no other event sets it.
+ANIMATED_CREATURE_TYPE = 4
+
 #: The titles whose engine knows effect id 32 as Animate Dead.
 ANIMATE_DEAD_TITLES = frozenset({dos_port.POOL_OF_RADIANCE.key,
                                  dos_port.CURSE_OF_THE_AZURE_BONDS.key})
@@ -791,11 +795,17 @@ def zombie_player(char: NeutralCharacter) -> bool:
     the Pool C64 `$03` with `0x0B8` bit 7 clear, which C64 Pool keeps in
     play where a dead member is `$83`. Only Animate Dead writes the status,
     and a zombie companion keeps `$B2`, so it is not one. A record whose
-    `npc` was never read is not one either."""
-    if char.get("status") != "animated":
-        return False
-    return (char.get("npc_control_byte") == DOS_PC_TAKEN_OVER
-            or char.get("npc") is False)
+    `npc` was never read is not one either.
+
+    A zombie the game returned to status okay after he got away from a fight
+    keeps the cast's creature type, and only Animate Dead writes that type."""
+    player = (char.get("npc_control_byte") == DOS_PC_TAKEN_OVER
+              or char.get("npc") is False)
+    if char.get("status") == "okay":
+        key = getattr(char.game, "key", char.game)
+        return (key in ANIMATE_DEAD_TITLES and player
+                and char.get("creature_type") == ANIMATED_CREATURE_TYPE)
+    return char.get("status") == "animated" and player
 
 
 def picture_companion(char: NeutralCharacter) -> bool:
