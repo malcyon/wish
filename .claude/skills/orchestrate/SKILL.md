@@ -88,9 +88,12 @@ manual edits, plans, decisions and experiment evidence; before substantial
 restructuring preserve a dated copy. Rebuild a missing cache from
 `planeread --list` and `--metadata`, filtering unfinished states by UUID.
 
-The "Do not schedule" list is derived from Backlog plus an explicit blocked
-explanation for Donald-specific waits. Do not treat all Backlog as blocked or
-all `blocked` labels as completed. Scheduling requires the live Queue update;
+The "Do not schedule" list holds Backlog tickets that cannot be worked on
+right now, each with what it waits for, such as a firmware release. It is not a
+list of questions for Donald, and its tickets are never reported as waiting on
+him. Questions for Donald lists only a choice of his that is open on a ticket,
+stated as the question itself; a ticket with no such choice is left out. Do not
+treat all Backlog as blocked or all `blocked` labels as completed. Scheduling requires the live Queue update;
 when that update is disabled, report it and retain the actual Backlog state.
 
 

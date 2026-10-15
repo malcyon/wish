@@ -29,7 +29,7 @@ require Donald's explicit GitHub request. This audit changes no tracker state.
 |---|---|
 | Native priority | Live ranking; priority labels are not a second priority system. |
 | State UUID | Resolve through live project metadata: Backlog, Queue, In Progress, Completed. |
-| Labels | Type and Donald-specific `blocked` semantics. |
+| Labels | Type, and `blocked` meaning the ticket cannot be worked on right now. |
 | Dependencies and references | Confirm endpoints through project-scoped reads; do not infer GitHub/Plane ID equivalence. |
 
 ## Query before reading
@@ -53,7 +53,7 @@ wait must not appear Completed.
 
 **2. Stale blockers.** Any open ticket blocked by one that is closed. Report the blocker's resolution **and whether it actually unblocks the dependent** — a blocker closed as "won't do" may still block.
 
-Here, blocking is the `blocked` label plus prose. `.claude/rules/issues.md` defines the label narrowly: waiting on Donald *specifically* — a choice only he can make, a machine only he has, a save only he can play to. **Work blocked on a measurement we could take ourselves is not blocked**, and a `blocked` label that no longer meets that test is a finding.
+Here, blocking is the `blocked` label plus prose. `.claude/rules/issues.md` defines the label: the ticket cannot be worked on right now, whatever the reason, with a comment saying what it waits for. **A `blocked` label is not a question for Donald.** A finding is a `blocked` ticket whose comment names nothing it waits for, one whose wait has ended, or one waiting on something agents could do themselves.
 
 **3. Resolved-in-passing.** Open bug tickets whose symptom may have been fixed incidentally. Cross-reference the described component or error text against recent commits and closed tickets in the same area — `git log --oneline`, and `git log -S'<identifier>'` for the specific string.
 

@@ -91,8 +91,10 @@ to add legacy priority labels, report that write as unavailable until its
 owner repairs the conflict; do not restore those labels to make a write pass.
 
 Use `bug` for a reachable defect, `enhancement` for requested capability and
-`question` for research. `blocked` means waiting on Donald specifically, not a
-measurement the agent can perform. Do not change labels without an explanation
+`question` for research. `blocked` means the ticket cannot be worked on right
+now, whatever the reason; a comment on the ticket says what it waits for. It is
+not a question for Donald: list a ticket under Questions for Donald only when a
+choice of his is open on it, and say what the choice is. Do not change labels without an explanation
 of what changed and why, and preserve labels a person chose. AI/Human are not
 visible origin labels to recreate. Private Plane reads and writes do not depend
 on historical author or human-thread classification.
@@ -104,8 +106,8 @@ on historical author or human-thread classification.
 | Work starts | In Progress |
 | Acceptance complete, reviewed change pushed and exact-SHA CI passed | Completed |
 
-Backlog means unscheduled. Waiting on a decision stays unfinished, with its
-blocked explanation; it must not appear Completed. Research and nonimplementation
+Backlog means unscheduled. Waiting on a decision stays unfinished, with a
+comment naming the decision; it must not appear Completed. Research and nonimplementation
 dispositions reach Completed only when their required evidence is recorded.
 Create has no explicit state argument: verify the returned state, then use a
 project-scoped explained update if the server default does not match the intended
@@ -275,9 +277,9 @@ What moves an issue up:
 
 What moves it down:
 
-* **`blocked` on Donald specifically** -- a choice only he can make, a machine
-  only he has. Work blocked on a measurement we could take ourselves is not
-  blocked and the label should come off.
+* **`blocked`** -- it cannot be worked on until what its comment names
+  happens, such as a firmware release or another ticket. If agents could do
+  that themselves, it is work to schedule, not a reason to wait.
 * **Anything needing a design decision he has not made.** Do not schedule the
   building of something he has not yet decided the look of; schedule the
   question instead.
