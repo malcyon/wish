@@ -1549,6 +1549,23 @@ def test_key_presses_find_the_window_under_either_of_its_names(monkeypatch):
     assert ["xdotool", "windowfocus", "42"] in seen
 
 
+def test_key_presses_focus_the_largest_window_not_the_first(monkeypatch):
+    """The emulator keeps a 10x10 helper window; focus on it reaches SDL as nothing."""
+    from tools.amiga import fsuaepor
+
+    focused = []
+    sizes = {"11": (10, 10), "22": (1280, 760)}
+    monkeypatch.setattr(fsuaepor, "find_windows",
+                        lambda display, timeout=None: list(sizes))
+    monkeypatch.setattr(fsuaepor, "focus",
+                        lambda display, window: focused.append(window))
+    monkeypatch.setattr(fsuaegdb, "window_size", lambda d, w: sizes[w])
+    monkeypatch.setattr(fsuaegdb.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(fsuaegdb.time, "sleep", lambda s: None)
+    fsuaegdb.press(":77", "Return", 0)
+    assert focused == ["22"]
+
+
 def test_keys_with_no_emulator_window_say_which_names_were_tried(monkeypatch):
     from tools.amiga import fsuaepor
 
