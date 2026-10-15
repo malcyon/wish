@@ -8,8 +8,7 @@ pipe when the window detaches or when no tab is reading, and a failed connect
 releases it too. The target, the cached title and the sweep time survive that,
 because the next read opens the pipe again.
 
-`AMIGA_WINUAE` is the row `wish.backends` offers behind
-`WISH_EXPERIMENTAL_AMIGA_WINUAE`.
+`AMIGA_WINUAE` is the row `wish.backends` always offers.
 """
 
 from __future__ import annotations
@@ -97,14 +96,12 @@ def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
         raise
 
 
-#: The row `wish.backends._amiga_winuae()` offers behind its flag. The probe
+#: The row `wish.backends._amiga_winuae()` always offers. The probe
 #: lists the pipe directory and never opens the pipe, and a read is one debugger
 #: command run between two emulated instructions (`WinuaeLocalPipe.halts_machine`
 #: is False), hence `disturbs` False and the same 200 ms as VICE and FS-UAE.
 #: `verified` is True because WinUAE's reads were confirmed on a live emulator
-#: (`#37 (Automap the Amiga version, not just the C64)`); the Python pipe client
-#: itself has still to be run against a real WinUAE, which is what the
-#: experimental flag is for.
+#: (`#37 (Automap the Amiga version, not just the C64)`).
 AMIGA_WINUAE = Backend(
     name="WinUAE (Amiga)",
     probe=present,

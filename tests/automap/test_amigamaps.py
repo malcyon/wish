@@ -9,6 +9,7 @@ player's own disks skip without them.
 from __future__ import annotations
 
 import struct
+import types
 import zipfile
 
 import pytest
@@ -221,7 +222,15 @@ def pod_folder(tmp_path):
     return tmp_path
 
 
-def test_the_wish_loader_names_nothing_without_the_flag(pod_folder, monkeypatch):
+@pytest.fixture
+def not_windows(monkeypatch):
+    """Off Windows only the FS-UAE flag names Pools of Darkness from Amiga disks."""
+    from wish import backends
+    monkeypatch.setattr(backends, "sys", types.SimpleNamespace(platform="linux"))
+
+
+def test_the_wish_loader_names_nothing_without_the_flag(
+        pod_folder, monkeypatch, not_windows):
     from wish.window import load_maps_titled as wish_load
     monkeypatch.delenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", raising=False)
     assert wish_load(str(pod_folder)) == ({}, None)
@@ -229,7 +238,7 @@ def test_the_wish_loader_names_nothing_without_the_flag(pod_folder, monkeypatch)
 
 @pytest.mark.parametrize("value", ["0", "off", ""])
 def test_a_forgotten_flag_value_does_not_name_pools_of_darkness(
-        pod_folder, monkeypatch, value):
+        pod_folder, monkeypatch, not_windows, value):
     from wish.window import load_maps_titled as wish_load
     monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", value)
     assert wish_load(str(pod_folder)) == ({}, None)
@@ -244,7 +253,7 @@ def test_the_flag_names_pools_of_darkness(pod_folder, monkeypatch, value):
 
 
 def test_the_command_line_draws_a_pods_map_only_with_the_flag(
-        pod_folder, tmp_path_factory, monkeypatch, capsys):
+        pod_folder, tmp_path_factory, monkeypatch, not_windows, capsys):
     from wish.__main__ import main
     out = tmp_path_factory.mktemp("svg") / "out.svg"
     name = sorted(load_maps_titled(str(pod_folder), amiga_only=True)[0])[0]

@@ -1188,7 +1188,7 @@ class Controller:
         lap = self._lap(timings)
         engine, party_reads = self._read_engine(lap, reads=reads) if reads else self._read_engine(lap)
         if self.wish_closed:
-            winwish.start_wish(self.guest, self.args.holder, flag=True, reseed=False)
+            winwish.start_wish(self.guest, self.args.holder, reseed=False)
             self.wish_closed = False
         self._map_section()
         lap("map_tab")
@@ -1416,12 +1416,11 @@ class Controller:
         controls_wanted = (*flagged_actions, "Fast Travel")
         flags_on_travel = None
         self._map_section()
-        for name, flag, features, delay in (("on", True, True, 10),
-                                             ("map_only", True, False, 10),
-                                             ("off", False, False, 20),
-                                             ("restored", True, True, 10)):
+        for name, features, delay in (("on", True, 10),
+                                      ("map_only", False, 10),
+                                      ("restored", True, 10)):
             if name != "on":
-                winwish.restart_wish(self.guest, self.args.holder, flag=flag,
+                winwish.restart_wish(self.guest, self.args.holder,
                                      features=features, reseed=False)
             self.sleep(self.left(delay))
             listing = winwish.ui(self.guest, self.args.holder, "controls")
@@ -2393,7 +2392,7 @@ class Controller:
                   "game": self.route.game_key, "zip": str(self.zipped),
                   "zip_sha256": self.info.get("release_artifact", {}).get("sha256"),
                   "uae_option": list(self.route.amiga_title.options),
-                  "travel_targets": [], "no_flag": False, "map_only": self.discovery,
+                  "travel_targets": [], "map_only": self.discovery,
                   "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": False}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]

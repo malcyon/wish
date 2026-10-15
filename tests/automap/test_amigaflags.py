@@ -1,6 +1,6 @@
 """Amiga action buttons, Level up and Fast Travel each need their own flag.
 
-The backend flags decide whether mapping is offered at all; these two decide
+The backend decides whether mapping is offered at all; these two decide
 whether the writes are, so a title can be mapped while its actions and trips
 stay off.
 """
@@ -71,14 +71,5 @@ def test_actions_and_level_up_show_with_their_flag(monkeypatch):
 def test_a_confirmed_trip_shows_with_no_flag_set(lengths):  # noqa: F811
     window, _ = attached_trip(CURSE, GUILD, ticked=TICKED)
     assert trips.ROWS[CURSE].confirmed
-    assert window.fasttravel_bar.combo.isEnabled()
-    assert enabled(window) == set()
-
-
-def test_a_confirmed_trip_shows_with_the_backend_flag_and_no_actions_flag(
-        monkeypatch, lengths):  # noqa: F811
-    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_WINUAE", "1")
-    monkeypatch.delenv(amigaactions.ACTIONS_ENV, raising=False)
-    window, _ = attached_trip(CURSE, GUILD, ticked=TICKED)
     assert window.fasttravel_bar.combo.isEnabled()
     assert enabled(window) == set()

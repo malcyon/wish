@@ -265,8 +265,8 @@ specimen tree, so the run does not depend on anything in scratch:
 
 ## 7. The same tab on the Amiga
 
-The four Amiga titles behind `WISH_EXPERIMENTAL_AMIGA_FSUAE` (FS-UAE, Linux) and
-`WISH_EXPERIMENTAL_AMIGA_WINUAE` (WinUAE, Windows); FS-UAE on Windows or macOS is
+The four Amiga titles under WinUAE (Windows) and, behind
+`WISH_EXPERIMENTAL_AMIGA_FSUAE`, FS-UAE (Linux); FS-UAE on Windows or macOS is
 not supported. The mechanism is [`96`](96-live-memory-automapper.md) and the
 buttons' gate is [`102`](102-live-actions.md#on-the-amiga). Each cell below is
 what the code does at this commit; a cell with a result is graded by how it was

@@ -1,9 +1,11 @@
-"""Checks the WinUAE backend's flag gate and its connection, which holds the pipe
+"""Checks the WinUAE backend's row and its connection, which holds the pipe
 only while a target is attached. No emulator and no Windows are involved."""
 
 from __future__ import annotations
 
+import os
 import re
+import types
 
 import pytest
 
@@ -24,27 +26,13 @@ def fresh():
     winuae.reset()
 
 
-# -- the flag ------------------------------------------------------------------
+# -- the row -------------------------------------------------------------------
 
-def test_the_winuae_row_is_absent_by_default(monkeypatch):
-    monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
-    assert bk.amiga_winuae_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
-
-
-@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
-def test_a_forgotten_setting_does_not_turn_the_winuae_row_on(
-        monkeypatch, value):
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, value)
-    assert bk.amiga_winuae_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_the_winuae_row_appears_when_the_flag_is_set(
-        monkeypatch, value):
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, value)
-    assert winuae.AMIGA_WINUAE in bk.backends()
+def test_the_winuae_row_is_offered_with_no_variable_set(monkeypatch):
+    for name in os.environ:
+        if name.startswith("WISH_EXPERIMENTAL_"):
+            monkeypatch.delenv(name)
+    assert [b.name for b in bk.backends()] == ["VICE (C64)", "WinUAE (Amiga)"]
 
 
 def test_the_winuae_row_is_the_approved_one():
@@ -57,30 +45,31 @@ def test_the_winuae_row_is_the_approved_one():
     assert row.disturbs is False
 
 
-def test_the_two_amiga_flags_are_independent(monkeypatch):
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
-    monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
-    assert winuae.AMIGA_WINUAE not in bk.backends()
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
-    assert [b.name for b in bk.backends()] == ["VICE (C64)", "WinUAE (Amiga)",
-                                               "FS-UAE (Amiga)"]
-
-
 def test_each_platforms_rows_are_grouped_with_the_c64_ones_first(
         monkeypatch):
-    for env in (bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV, bk.ULTIMATE_ENV):
+    for env in (bk.AMIGA_FSUAE_ENV, bk.ULTIMATE_ENV):
         monkeypatch.setenv(env, "1")
     assert [b.name for b in bk.backends()] == [
         "VICE (C64)", "C64 Ultimate", "WinUAE (Amiga)", "FS-UAE (Amiga)"]
 
 
-def test_the_pools_of_darkness_folder_is_offered_with_only_the_winuae_flag(
+def test_the_pools_of_darkness_folder_is_offered_on_windows_without_a_variable(
         monkeypatch):
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
-    monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
-    assert bk.amiga_only_titles() == ()
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="win32"))
+    assert bk.amiga_enabled() is True
     assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
+
+
+def test_the_pools_of_darkness_folder_is_absent_elsewhere_without_the_fsuae_flag(
+        monkeypatch):
+    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    for platform in ("linux", "darwin"):
+        monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform=platform))
+        assert bk.amiga_enabled() is False
+        assert bk.amiga_only_titles() == ()
+    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    assert bk.amiga_enabled() is True
 
 
 # -- the probe -----------------------------------------------------------------

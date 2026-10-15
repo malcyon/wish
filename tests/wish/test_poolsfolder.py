@@ -11,6 +11,7 @@ no game data.
 
 import pathlib
 import struct
+import types
 
 import pytest
 from gamedata import synthetic_geo
@@ -52,8 +53,16 @@ NO_DISKS_TITLES = "No game disks found here."
 def _clean_environment(monkeypatch):
     monkeypatch.delenv("POR_DISKS", raising=False)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
-    monkeypatch.delenv(bk.AMIGA_WINUAE_ENV, raising=False)
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
     preferences._scan.cache_clear()
+
+
+def turn_on(monkeypatch, backend):
+    """Switch on the FS-UAE flag, or pretend to be on Windows, where WinUAE is offered."""
+    if backend == "fsuae":
+        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    else:
+        monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="win32"))
 
 
 @pytest.fixture
@@ -193,11 +202,11 @@ def test_the_travel_page_is_absent_by_default(app, tmp_path, monkeypatch):
         win.close()
 
 
-@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
+@pytest.mark.parametrize("env", ["fsuae", "winuae"])
 def test_a_backend_flag_adds_the_travel_page_after_silver_blades(
         app, tmp_path, monkeypatch, env):
     nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(env, "1")
+    turn_on(monkeypatch, env)
     win = window(app)
     try:
         dialog = PreferencesDialog(win)
@@ -468,7 +477,7 @@ def test_a_winuae_only_player_gets_the_pod_folder_and_its_maps(
         app, tmp_path, monkeypatch):
     settings, pod = _only_pod(tmp_path, monkeypatch)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    turn_on(monkeypatch, "winuae")
     assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
     win = window(app, maps=None, settings=settings)
     try:
@@ -482,7 +491,7 @@ def test_a_winuae_only_player_gets_the_pod_folder_row(
         app, tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
-    monkeypatch.setenv(bk.AMIGA_WINUAE_ENV, "1")
+    turn_on(monkeypatch, "winuae")
     assert preferences.game_folder_titles() == (
         preferences.GAME_FOLDER_TITLES + AMIGA_ONLY_TITLES)
     win = window(app)
@@ -753,12 +762,12 @@ def test_a_pools_of_darkness_dos_install_is_still_named_alone(tmp_path,
     assert title_folder_report(str(folder), POD) == preferences.DOS_INSTALL_NOTE
 
 
-@pytest.mark.parametrize("env", [bk.AMIGA_FSUAE_ENV, bk.AMIGA_WINUAE_ENV])
+@pytest.mark.parametrize("env", ["fsuae", "winuae"])
 @pytest.mark.parametrize("game", [None, POOL])
 def test_with_either_backend_on_a_pools_dos_install_is_named(tmp_path, monkeypatch,
                                                           env, game):
     nowhere(tmp_path, monkeypatch)
-    monkeypatch.setenv(env, "1")
+    turn_on(monkeypatch, env)
     folder = dos_install(tmp_path / "dos")
     rows = dict(preferences.report(Settings(), flag=str(folder), game=game))
     assert rows["Titles"] == POD.title

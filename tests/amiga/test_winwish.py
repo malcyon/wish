@@ -131,11 +131,10 @@ def test_a_holder_cannot_climb_out_of_its_folder():
     assert winwish.run_dir("pod-1") == r"C:\Amiga\wish\run-pod-1"
 
 
-def test_the_environment_carries_the_flag_only_when_asked():
-    on = winwish.environment(True, "h")
-    off = winwish.environment(False, "h")
-    assert on[winwish.FLAG] == "1" and on["WISH_DEBUG"] == "1"
-    assert winwish.FLAG not in off and off["WISH_DEBUG"] == "1"
+def test_the_environment_sets_no_backend_variable():
+    on = winwish.environment("h")
+    assert on["WISH_DEBUG"] == "1"
+    assert not [k for k in on if k.endswith("AMIGA_WINUAE")]
     assert on["APPDATA"] == r"C:\Amiga\wish\run-h\appdata"
     assert on["LOCALAPPDATA"] == r"C:\Amiga\wish\run-h\local"
 
@@ -160,26 +159,25 @@ def _task_text(script):
 
 
 def test_start_script_writes_settings_without_a_bom_and_blocks_session_zero():
-    script = winwish.start_script("h", winwish.environment(True, "h"))
+    script = winwish.start_script("h", winwish.environment("h"))
     assert "UTF8Encoding $false" in script
     assert "automap.json" in script
     assert "session 0" in script
     assert "Register-ScheduledTask" in script and "-LogonType Interactive" in script
     body = _task_text(script)
-    assert "$env:WISH_EXPERIMENTAL_AMIGA_WINUAE = '1'" in body
+    assert "AMIGA_WINUAE" not in body
     assert "$env:WISH_DEBUG = '1'" in body
     assert "Start-Process -Wait" in body
     assert "'wish-run-h'" in script
     for name in winwish.CLEARED:
         assert f"Remove-Item Env:{name}" in body
-    assert f"Remove-Item Env:{winwish.FLAG}" not in body
 
 
-def test_the_amiga_actions_flag_follows_the_backend_flag():
+def test_the_amiga_actions_flag_is_set_unless_map_only():
     from automap import amigaactions
     assert winwish.ACTIONS_FLAG == amigaactions.ACTIONS_ENV
-    on = winwish.environment(True, "h")
-    off = winwish.environment(False, "h")
+    on = winwish.environment("h")
+    off = winwish.environment("h", features=False)
     assert on[winwish.ACTIONS_FLAG] == "1"
     assert winwish.ACTIONS_FLAG not in off
     assert winwish.ACTIONS_FLAG in winwish.CLEARED
@@ -188,25 +186,16 @@ def test_the_amiga_actions_flag_follows_the_backend_flag():
     assert f"$env:{winwish.ACTIONS_FLAG}" not in control
 
 
-def test_map_only_sets_the_backend_flag_and_not_the_actions_flag():
-    env = winwish.environment(True, "h", features=False)
-    assert env[winwish.FLAG] == "1"
+def test_map_only_leaves_the_actions_flag_unset():
+    env = winwish.environment("h", features=False)
     assert winwish.ACTIONS_FLAG not in env
     body = _task_text(winwish.start_script("h", env))
-    assert f"$env:{winwish.FLAG} = '1'" in body
     assert f"Remove-Item Env:{winwish.ACTIONS_FLAG}" in body
     assert f"$env:{winwish.ACTIONS_FLAG}" not in body
 
 
-def test_the_control_start_script_has_no_flag():
-    script = winwish.start_script("h", winwish.environment(False, "h"))
-    body = _task_text(script)
-    assert f"Remove-Item Env:{winwish.FLAG}" in body
-    assert f"$env:{winwish.FLAG}" not in body
-
-
 def test_an_unreadable_process_path_fails_start_and_stop_instead_of_passing():
-    for script in (winwish.start_script("h", winwish.environment(True, "h")),
+    for script in (winwish.start_script("h", winwish.environment("h")),
                    winwish.stop_script("h")):
         assert "-not $_.Path" in script
         assert "cannot tell" in script
@@ -701,14 +690,6 @@ def test_start_without_a_pipe_but_with_every_lane_sets_no_variable():
     assert "WISH_WINUAE_PIPE = " not in _task_text(start)
 
 
-def test_start_without_the_flag_looks_up_no_pipe():
-    run = FakeRun()
-    winwish.start_wish(winwish.Guest(run), "h", flag=False)
-    assert "ssh" not in run.verbs()
-    start = next(c[2] for c in run.calls if c[1] == "ps")
-    assert "WISH_WINUAE_PIPE = " not in _task_text(start)
-
-
 def test_the_pipe_variable_name_matches_wishs_and_is_cleared():
     from wish import winuae as wish_winuae
     assert winwish.PIPE_ENV == wish_winuae.PIPE_ENV
@@ -908,33 +889,12 @@ def test_main_prints_one_line_and_exits_1_on_a_guest_failure(capsys):
     assert capsys.readouterr().err.startswith("winwish: h does not hold")
 
 
-def test_main_start_passes_no_flag_through(capsys):
-    run = FakeRun()
-    assert winwish.main(["start", "--holder", "h", "--no-flag"],
-                        guest=winwish.Guest(run)) == 0
-    script = run.calls[-1][2]
-    body = _task_text(script)
-    assert f"$env:{winwish.FLAG}" not in body
-
-
 def test_main_restart_passes_map_only_through():
     run = FakeRun()
     assert winwish.main(["restart", "--holder", "h", "--map-only"],
                         guest=winwish.Guest(run)) == 0
     body = _task_text(run.calls[-1][2])
-    assert f"$env:{winwish.FLAG} = '1'" in body
     assert f"$env:{winwish.ACTIONS_FLAG}" not in body
-
-
-@pytest.mark.parametrize("argv", [
-    ["start", "--holder", "h"],
-    ["restart", "--holder", "h"],
-    ["up", "--sha", SHA, "--holder", "h", "--zip", "x.zip"],
-])
-def test_map_only_and_no_flag_exclude_each_other(argv, capsys):
-    with pytest.raises(SystemExit):
-        winwish.main([*argv, "--map-only", "--no-flag"], guest=winwish.Guest(FakeRun()))
-    assert "not allowed with" in capsys.readouterr().err
 
 
 def test_main_start_passes_map_only_through():
@@ -942,7 +902,6 @@ def test_main_start_passes_map_only_through():
     assert winwish.main(["start", "--holder", "h", "--map-only"],
                         guest=winwish.Guest(run)) == 0
     body = _task_text(run.calls[-1][2])
-    assert f"$env:{winwish.FLAG} = '1'" in body
     assert f"$env:{winwish.ACTIONS_FLAG}" not in body
 
 
@@ -1150,20 +1109,19 @@ OPEN_PATH = "C:\\Amiga\\wish\\run-h\\saves\\" + "a folder with spaces\\" * 8 + "
 
 
 def _every_script():
-    env = winwish.environment(True, "h")
+    env = winwish.environment("h")
     return {
         "stage": winwish.stage_script("h", r"C:\z.zip", "a" * 64),
         "mkdir": winwish.mkdir_script(r"C:\x"),
         "start": winwish.start_script("h", env),
-        "start-control": winwish.start_script("h", winwish.environment(False, "h")),
-        "task": winwish._task_body(env, winwish.build_root("h"), True),
+        "task": winwish._task_body(env, winwish.build_root("h")),
         "ui-controls": winwish.ui_inner(r"C:\\b", "controls", (), "RadioButton", r"C:\\o.txt"),
         "ui-click": winwish.ui_inner(r"C:\\b", "click", ("File", "Preferences..."), None, r"C:\\o.txt"),
         "ui-ssh": winwish.ui_script("abc", 30),
         "probe": winwish.window_probe(r"C:\\o.txt", r"C:\\b"),
         "stop": winwish.stop_script("h"),
         "capture": winwish.window_capture(r"C:\o.png", "h"),
-        "task-open": winwish._task_body(env, winwish.build_root("h"), True, OPEN_PATH),
+        "task-open": winwish._task_body(env, winwish.build_root("h"), OPEN_PATH),
         "start-open": winwish.start_script("h", env, open_path=OPEN_PATH, reseed=True),
         "hash": winwish.hash_script(r"C:\s\a b.d64", "a" * 64),
         "ui-expand": winwish.ui_inner(r"C:\b", "click", ("Save",), None, r"C:\o.txt", expand=True),
@@ -1205,7 +1163,7 @@ def test_the_scanner_reads_a_string_nested_in_a_subexpression():
 # -- the window check ----------------------------------------------------------
 
 def _start() -> str:
-    return winwish.start_script("h", winwish.environment(True, "h"))
+    return winwish.start_script("h", winwish.environment("h"))
 
 
 def test_the_window_is_looked_for_by_a_task_in_session_one_not_over_ssh():
@@ -1293,11 +1251,11 @@ def test_the_start_call_outlasts_the_wait_and_its_failure_report():
     def run(argv, timeout):
         if argv[:2] == ["winvm", "ps"] and "Get-WishWindows" in argv[2]:
             timeouts.append((timeout, argv[2]))
-        if argv[:2] == ["winvm", "lane"]:
-            return 0, "1: held by h"
+        if argv[:2] == ["winvm", "ssh"]:
+            return 0, "ok lane=1 pid=1 started=t pipe=WinUAE_1"
         return 0, "ok"
 
-    winwish.start_wish(winwish.Guest(run), "h", flag=False)
+    winwish.start_wish(winwish.Guest(run), "h")
     [(timeout, script)] = timeouts
     assert f"$deadline = (Get-Date).AddSeconds({winwish.START_SECONDS})" in script
     assert f"Get-WishWindows {winwish.PROBE_REPORT_SECONDS} |" in script
@@ -1376,7 +1334,7 @@ def test_without_a_game_the_settings_are_as_they_were():
 
 def test_start_copies_the_adfs_per_drive_and_writes_the_folder_when_asked():
     disks = (r"C:\Amiga\Disks\disk.adf", r"C:\Amiga\Other\disk.adf")
-    script = winwish.start_script("h", winwish.environment(True, "h"), disks=disks,
+    script = winwish.start_script("h", winwish.environment("h"), disks=disks,
                                   game="pool-of-radiance")
     folder = winwish.disks_dir("h")
     assert f"Remove-Item -Path '{folder}\\*' -Recurse -Force" in script
@@ -1399,7 +1357,7 @@ def test_only_the_game_disks_are_copied_not_the_save_disk(tmp_path, monkeypatch)
 
 
 def test_a_plain_start_keeps_the_settings_an_earlier_up_wrote():
-    script = winwish.start_script("h", winwish.environment(True, "h"), reseed=False)
+    script = winwish.start_script("h", winwish.environment("h"), reseed=False)
     assert "if (-not (Test-Path -LiteralPath $settings)) { [IO.File]::WriteAllText($settings" in script
     assert "Copy-Item" not in script
 
@@ -1619,7 +1577,7 @@ LIMIT = 32767  # CreateProcess's command line limit; past it ssh says "exec requ
 def test_no_script_is_too_long_for_a_windows_command_line():
     disks = (r"C:\Amiga\Disks\wish37-j37wfix-with-a-long-name-disk1.adf",) * 4
     worst = "j37wfix-with-a-long-holder"[:32]
-    start = winwish.start_script(worst, winwish.environment(True, worst), disks=disks,
+    start = winwish.start_script(worst, winwish.environment(worst), disks=disks,
                                  game="secret-of-the-silver-blades")
     ui = winwish.ui_script("abcdef123456", 99)
     for script in (start, ui):
@@ -1786,7 +1744,7 @@ def test_the_put_script_is_removed_when_the_call_fails():
 
 
 def test_the_seeded_disk_folder_is_cleared_recursively():
-    script = winwish.start_script("h", winwish.environment(True, "h"), disks=("a.adf",),
+    script = winwish.start_script("h", winwish.environment("h"), disks=("a.adf",),
                                   game="pool-of-radiance")
     assert "-Recurse -Force -ErrorAction SilentlyContinue" in script.split("Copy-Item")[0].split("Remove-Item -Path")[1]
 
@@ -1896,19 +1854,19 @@ def test_a_wish_only_up_that_fails_releases_without_stopping_winuae(tmp_path, mo
 
 def test_the_task_body_keeps_a_long_path_with_spaces_as_one_argument():
     assert len(OPEN_PATH) > 200 and " " in OPEN_PATH
-    body = winwish._task_body(winwish.environment(True, "h"), winwish.build_root("h"), True, OPEN_PATH)
+    body = winwish._task_body(winwish.environment("h"), winwish.build_root("h"), OPEN_PATH)
     assert f"-ArgumentList '\"{OPEN_PATH}\"', '--tab', 'editor'" in body
-    plain = winwish._task_body(winwish.environment(True, "h"), winwish.build_root("h"), True)
+    plain = winwish._task_body(winwish.environment("h"), winwish.build_root("h"))
     assert "-ArgumentList" not in plain
 
 
 def test_a_path_with_a_double_quote_cannot_be_opened():
     with pytest.raises(winwish.WinwishError, match="not a path"):
-        winwish._task_body(winwish.environment(True, "h"), winwish.build_root("h"), True, 'C:\\a"b.D64')
+        winwish._task_body(winwish.environment("h"), winwish.build_root("h"), 'C:\\a"b.D64')
 
 
 def test_the_open_path_reaches_the_task_through_start_script():
-    script = winwish.start_script("h", winwish.environment(True, "h"), open_path=OPEN_PATH)
+    script = winwish.start_script("h", winwish.environment("h"), open_path=OPEN_PATH)
     body = _task_text(script)
     assert OPEN_PATH in body and "'--tab', 'editor'" in body
 

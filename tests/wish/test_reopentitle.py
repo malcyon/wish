@@ -17,6 +17,7 @@ game data.
 """
 
 import struct
+import types
 
 import pytest
 from gamedata import _disk_with, synthetic_geo
@@ -53,6 +54,7 @@ AREA = "GEO10"
 def _clean_environment(monkeypatch):
     monkeypatch.delenv("POR_DISKS", raising=False)
     monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
 
 
 @pytest.fixture

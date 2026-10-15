@@ -27,6 +27,7 @@ Two rules this file obeys, both learned the hard way:
 import json
 import os
 import pathlib
+import types
 from dataclasses import asdict, fields
 
 import pytest
@@ -55,9 +56,9 @@ def app():
 def _no_disks_env(monkeypatch):
     """$POR_DISKS and $POR_ULTIMATE are the player's, not this file's."""
     for name in ("POR_DISKS", "POR_GAME_DISK", "POR_ULTIMATE",
-                 "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE", bk.AMIGA_FSUAE_ENV,
-                 bk.AMIGA_WINUAE_ENV):
+                 "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE", bk.AMIGA_FSUAE_ENV):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
     preferences._scan.cache_clear()
 
 

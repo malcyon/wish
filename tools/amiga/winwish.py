@@ -27,8 +27,7 @@ run uses.
     winwish.py log    --holder H --out DIR
     winwish.py down   --holder H
 
-Wish runs with `WISH_EXPERIMENTAL_AMIGA_WINUAE=1` (`--no-flag` leaves it unset, for
-the control; `--map-only` sets it but leaves the action flag unset)
+Wish runs with `WISH_EXPERIMENTAL_AMIGA_ACTIONS=1` (`--map-only` leaves it unset)
 and `WISH_DEBUG=1`.  `up --travel-targets KEY=ID[,ID]` seeds
 `fast_travel_targets`, because the tab cannot pick a destination from the drop-down.
 Its `APPDATA` and `LOCALAPPDATA` point at a private folder per holder, seeded with `diagnostics: true` because `WISH_DEBUG`
@@ -73,7 +72,6 @@ from tools.registry import scratch  # noqa: E402
 ROOT = r"C:\Amiga\wish"
 ARTIFACT = "frozen-windows"
 WORKFLOW = "release.yml"
-FLAG = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
 #: The spelling of `automap.amigaactions.ACTIONS_ENV`; a test pins them equal.
 ACTIONS_FLAG = "WISH_EXPERIMENTAL_AMIGA_ACTIONS"
 #: Pinned equal to `wish.winuae.PIPE_ENV` by a test; `wish` is not imported here.
@@ -176,28 +174,26 @@ def settings_json(game: str | None = None, folder: str | None = None,
     return json.dumps(values, indent=1) + "\n"
 
 
-def environment(flag: bool, holder: str, features: bool = True,
+def environment(holder: str, features: bool = True,
                 pipe: str | None = None) -> dict[str, str]:
-    """What `wish.exe` is started with; the flag is left unset for the control.
+    """What `wish.exe` is started with.
 
-    With `features` false the backend flag is set but the action flag is not, so
-    the map attaches with the action controls greyed. `pipe` names the
+    With `features` false the action flag is not set, so the map attaches with
+    the action controls greyed. `pipe` names the
     WinUAE pipe Wish opens, so it cannot attach to another lane's emulator.
     """
     env = {"APPDATA": rf"{run_dir(holder)}\appdata",
            "LOCALAPPDATA": rf"{run_dir(holder)}\local",
            "WISH_DEBUG": "1"}
-    if flag:
-        env[FLAG] = "1"
-    if flag and features:
+    if features:
         env[ACTIONS_FLAG] = "1"
-    if flag and pipe:
+    if pipe:
         env[PIPE_ENV] = pipe
     return env
 
 
 #: Cleared in the task whatever the holder's own session has, so the window can
-#: reach no other backend and the flag-off control really has no Amiga row.
+#: reach no other backend.
 CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, PIPE_ENV, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
            "POR_ULTIMATE", "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
 
@@ -260,7 +256,7 @@ def open_argument(path: str) -> str:
     return f'"{path}"'
 
 
-def _task_body(env: dict[str, str], build: str, flag: bool, open_path: str | None = None) -> str:
+def _task_body(env: dict[str, str], build: str, open_path: str | None = None) -> str:
     """What the task runs in session 1: set the environment, start Wish, wait for it.
 
     `Start-Process -Wait` because `&` returns at once for a GUI program, which would
@@ -268,8 +264,6 @@ def _task_body(env: dict[str, str], build: str, flag: bool, open_path: str | Non
     its positional argument and opens on the editor tab.
     """
     lines = [f"Remove-Item Env:{k} -ErrorAction SilentlyContinue" for k in CLEARED]
-    if not flag:
-        lines.append(f"Remove-Item Env:{FLAG} -ErrorAction SilentlyContinue")
     lines += [f"$env:{k} = {q(v)}" for k, v in env.items()]
     lines += [f"$exe = Get-ChildItem -LiteralPath {q(build)} -Recurse -Filter wish.exe | Select-Object -First 1",
               "Start-Process -Wait -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName"
@@ -384,7 +378,7 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder), travel_targets))}, (New-Object Text.UTF8Encoding $false)){tail}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
-        write_file(task_file, _task_body(env, build, FLAG in env, open_path)),
+        write_file(task_file, _task_body(env, build, open_path)),
         f"$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument {q(args)}",
         "Register-ScheduledTask -TaskName $task -Action $a -Principal $p -Settings $s -Force | Out-Null",
         write_file(probe_file, window_probe(probe_out, build)),
@@ -1858,18 +1852,18 @@ def probe_close_script(holder: str) -> str:
     ])
 
 
-def start_wish(guest: Guest, holder: str, flag: bool = True, disks: tuple[str, ...] = (),
+def start_wish(guest: Guest, holder: str, disks: tuple[str, ...] = (),
                game: str | None = None, reseed: bool = False,
                open_path: str | None = None,
                travel_targets: dict[str, list[int]] | None = None,
                features: bool = True) -> str:
     held = guest.holds_lane(holder)
-    pipe = guest.lane_pipe(holder) if flag else None
-    if flag and pipe is None and not _holds_every_lane(held, holder):
+    pipe = guest.lane_pipe(holder)
+    if pipe is None and not _holds_every_lane(held, holder):
         raise WinwishError(f"{holder} runs no WinUAE and does not hold every lane, "
                            "so Wish could attach to another holder's emulator")
     try:
-        return guest.ps(start_script(holder, environment(flag, holder, features, pipe), disks=disks,
+        return guest.ps(start_script(holder, environment(holder, features, pipe), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
                         timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30, step="start_wish")
@@ -1904,12 +1898,12 @@ def stop_wish(guest: Guest, holder: str) -> str:
     return "ok closed" if closed else "ok stopped (forced)"
 
 
-def restart_wish(guest: Guest, holder: str, flag: bool = True, open_path: str | None = None,
+def restart_wish(guest: Guest, holder: str, open_path: str | None = None,
                  reseed: bool = False,
                  travel_targets: dict[str, list[int]] | None = None,
                  features: bool = True) -> str:
     stop_wish(guest, holder)
-    return start_wish(guest, holder, flag, reseed=reseed, open_path=open_path,
+    return start_wish(guest, holder, reseed=reseed, open_path=open_path,
                       travel_targets=travel_targets, features=features)
 
 
@@ -2026,7 +2020,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
                                               options=options)
                 started = True
             wish_tried = True
-            result["wish"] = start_wish(guest, args.holder, not args.no_flag,
+            result["wish"] = start_wish(guest, args.holder,
                                         tuple(drives[:GAME_DISKS]), args.game, reseed=True,
                                         travel_targets=targets, features=not args.map_only)
             done = True
@@ -2123,11 +2117,8 @@ def _parser() -> argparse.ArgumentParser:
                    help="the Fast Travel destinations Wish's settings offer for a title, such as "
                    "pool-of-radiance=20; repeatable. The tab cannot pick from the drop-down")
     p.add_argument("--zip", help="use this zip rather than fetching")
-    g = p.add_mutually_exclusive_group()
-    g.add_argument("--no-flag", action="store_true",
-                   help=f"leave {FLAG} unset (the control)")
-    g.add_argument("--map-only", action="store_true",
-                   help="set the backend flag but not the action flag, "
+    p.add_argument("--map-only", action="store_true",
+                   help="leave the action flag unset, "
                    "so the map attaches with the action controls greyed")
     p.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
                    help="wait up to this long for the claim, one lane or, with --keep-lanes, "
@@ -2149,11 +2140,8 @@ def _parser() -> argparse.ArgumentParser:
                        help="a save on the guest (from stage-save) to open on the editor tab")
         p.add_argument("--reseed", action="store_true",
                        help="write fresh settings, so a window size saved at another scale is not kept")
-        g = p.add_mutually_exclusive_group()
-        g.add_argument("--no-flag", action="store_true",
-                       help=f"leave {FLAG} unset (the control)")
-        g.add_argument("--map-only", action="store_true",
-                       help="set the backend flag but not the action flag, "
+        p.add_argument("--map-only", action="store_true",
+                       help="leave the action flag unset, "
                        "so the map attaches with the action controls greyed")
         p.add_argument("--travel-targets", action="append", default=[], metavar="KEY=ID[,ID]",
                        help="with --reseed, the Fast Travel destinations the fresh settings hold, "
@@ -2240,12 +2228,12 @@ def main(argv: list[str] | None = None,
             for key, value in up(guest, lane or WinGuest(), args).items():
                 print(f"{key}: {value}")
         elif args.cmd == "start":
-            print(start_wish(guest, args.holder, not args.no_flag, reseed=args.reseed,
+            print(start_wish(guest, args.holder, reseed=args.reseed,
                              open_path=args.open,
                              travel_targets=parse_travel_targets(args.travel_targets),
                              features=not args.map_only))
         elif args.cmd == "restart":
-            print(restart_wish(guest, args.holder, not args.no_flag, args.open, args.reseed,
+            print(restart_wish(guest, args.holder, args.open, args.reseed,
                                parse_travel_targets(args.travel_targets),
                                features=not args.map_only))
         elif args.cmd == "stage-save":
