@@ -59,7 +59,7 @@ sys.path.insert(0, str(ROOT))
 from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
 from goldbox import c64_port, world_state  # noqa: E402
-from goldbox.d64 import D64, split_load_address  # noqa: E402
+from goldbox.d64 import D64, D64Error, split_load_address  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -209,13 +209,20 @@ def wait_write_end(sess, timeout: float, *, clock=time.time,
 
 
 def saved_place(path: pathlib.Path) -> dict:
-    """The area, square and facing the save file on a disk image holds."""
-    image = D64.open(path)
-    game = c64_port.detect(image)
-    if game is None:
-        raise RuntimeError(f"{path} holds no save file")
-    _, payload = split_load_address(image.read_file(game.save_file))
-    state = world_state.from_c64(bytes(payload), game)
+    """The area, square and facing the save file on a disk image holds.
+
+    A disk that cannot be read that far raises `RuntimeError`, the one error
+    `run` turns into its resave failure.
+    """
+    try:
+        image = D64.open(path)
+        game = c64_port.detect(image)
+        if game is None:
+            raise RuntimeError(f"{path} holds no save file")
+        _, payload = split_load_address(image.read_file(game.save_file))
+        state = world_state.from_c64(bytes(payload), game)
+    except (D64Error, ValueError, IndexError) as exc:
+        raise RuntimeError(f"could not read the save on {path}: {exc}") from exc
     return {"area": state.area, "x": state.x, "y": state.y,
             "facing": state.facing,
             "payload_sha1": hashlib.sha1(bytes(payload)).hexdigest()}
@@ -231,7 +238,10 @@ def keep_resave(sess, save_disk: pathlib.Path, dest: pathlib.Path,
     attached again, so a copy that finds the file still open is retried once
     after attaching the same image.  A disk still open after that raises,
     and `dest` is not written.  `verified` is whether the saved square and
-    facing are where the party stood, `live`, when the save was made.
+    facing are where the party stood, `live`, when the save was made, and
+    the payload differs from `before`, the one on the disk before the save:
+    a party that did not move saves the same square, so the square alone
+    cannot tell the game's write from the file it replaced.
     """
     try:
         por.copy_closed_disk(save_disk, dest, attempts=attempts, backoff=backoff)
@@ -243,11 +253,13 @@ def keep_resave(sess, save_disk: pathlib.Path, dest: pathlib.Path,
         reattached = True
     place = saved_place(dest)
     square = [place["x"], place["y"], place["facing"]]
+    changed = (None if before is None
+               else before["payload_sha1"] != place["payload_sha1"])
     out = {"kept": str(dest), "reattached": reattached, "place": place,
-           "live": list(live), "verified": bool(live) and square == list(live)}
+           "live": list(live), "payload_changed": changed,
+           "verified": bool(live) and square == list(live) and changed is True}
     if before is not None:
         out["before"] = before
-        out["payload_changed"] = before["payload_sha1"] != place["payload_sha1"]
     return out
 
 
@@ -279,11 +291,18 @@ def run(args) -> int:
     # The specimen tree is read-only and `stage` copied it; the copy is ours
     # to be written by the game's own save.
     os.chmod(save_disk, 0o644)
-    before = saved_place(pathlib.Path(save_disk)) if args.resave else None
     sess = curserun.CurseSession(first, slot=slot)
     sess.save_disk = save_disk
     report: dict = {"disk": args.disk, "slot": slot.n}
     try:
+        before = None
+        if args.resave:
+            try:
+                before = saved_place(pathlib.Path(save_disk))
+            except RuntimeError as exc:
+                report["resave"] = {"kept": None, "error": str(exc)}
+                log(event="resave", ok=False, error=str(exc))
+                return 1
         if not sess.boot():
             log(event="boot-failed")
             return 1

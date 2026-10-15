@@ -123,11 +123,13 @@ def no_wait(monkeypatch):
 def test_an_open_saveazure_is_copied_once_the_reattach_closes_it(tmp_path, no_wait):
     """The drive's held track reaches the image on an attach of the same disk."""
     disk, kept = tmp_path / "SIDE0.D64", tmp_path / "RESAVE.d64"
+    _save(disk, (4, 12, 1), open_entry=False)
+    before = cursecheck.saved_place(disk)
     _save(disk, (6, 12, 1), open_entry=True)
     sess = _Session([CAMP], on_attach=_close)
     logged = []
     got = cursecheck.keep_resave(sess, disk, kept, [6, 12, 1],
-                                 lambda **kw: logged.append(kw),
+                                 lambda **kw: logged.append(kw), before=before,
                                  attempts=2, backoff=0)
     assert sess.attached == [str(disk)]
     assert got["reattached"] is True
@@ -180,3 +182,55 @@ def test_an_unread_live_square_does_not_verify(tmp_path, no_wait):
     got = cursecheck.keep_resave(_Session([CAMP]), disk, kept, [],
                                  lambda **kw: None, attempts=2, backoff=0)
     assert got["verified"] is False
+
+
+def test_an_unwalked_resave_whose_payload_did_not_change_is_not_verified(
+        tmp_path, no_wait):
+    """With no walk the old save already holds the live square, so the square
+    alone would pass the file the game was meant to replace."""
+    disk, kept = tmp_path / "SIDE0.D64", tmp_path / "RESAVE.d64"
+    _save(disk, (4, 12, 1), open_entry=False)
+    before = cursecheck.saved_place(disk)
+    got = cursecheck.keep_resave(_Session([CAMP]), disk, kept, [4, 12, 1],
+                                 lambda **kw: None, before=before,
+                                 attempts=2, backoff=0)
+    assert got["payload_changed"] is False
+    assert got["verified"] is False
+
+
+def test_a_resave_with_no_earlier_payload_to_compare_is_not_verified(
+        tmp_path, no_wait):
+    disk, kept = tmp_path / "SIDE0.D64", tmp_path / "RESAVE.d64"
+    _save(disk, (6, 12, 1), open_entry=False)
+    got = cursecheck.keep_resave(_Session([CAMP]), disk, kept, [6, 12, 1],
+                                 lambda **kw: None, attempts=2, backoff=0)
+    assert got["payload_changed"] is None
+    assert got["verified"] is False
+
+
+def test_a_file_that_is_no_disk_image_raises_the_resave_error(tmp_path):
+    bad = tmp_path / "SIDE0.D64"
+    bad.write_bytes(b"not a disk")
+    with pytest.raises(RuntimeError, match="could not read the save"):
+        cursecheck.saved_place(bad)
+
+
+def test_a_save_too_short_to_hold_a_place_raises_the_resave_error(tmp_path):
+    short = tmp_path / "SIDE0.D64"
+    disk = D64.blank(b"SAVE")
+    disk.write_file(CURSE.save_file, bytes((0x00, 0x40)) + bytes(16))
+    disk.save(short)
+    with pytest.raises(RuntimeError, match="could not read the save"):
+        cursecheck.saved_place(short)
+
+
+def test_a_kept_disk_that_cannot_be_read_raises_the_resave_error(
+        tmp_path, no_wait):
+    """`run` logs a RuntimeError from `keep_resave` as the resave failure."""
+    disk, kept = tmp_path / "SIDE0.D64", tmp_path / "RESAVE.d64"
+    image = D64.blank(b"SAVE")
+    image.write_file(CURSE.save_file, bytes((0x00, 0x40)) + bytes(16))
+    image.save(disk)
+    with pytest.raises(RuntimeError, match="could not read the save"):
+        cursecheck.keep_resave(_Session([CAMP]), disk, kept, [6, 12, 1],
+                               lambda **kw: None, attempts=2, backoff=0)
