@@ -189,8 +189,9 @@ type-`$49` (bit 0) item. `0x0EC` is `COM.PREP $1682[dexterity]`, and the
 converter writes `0x0EC` whenever it has the item-type table, and
 `thac0_current` too when the source has one, so a READY before the first fight
 leaves the number unchanged. The rule reproduces the byte in all 124 engine-written
-slots checked; Curse and Silver Blades' weapon block (`$387E`) is unread, so
-their converted byte stays base plus strength.
+slots checked. Curse's weapon block (`$387E`) is the same rule, with its
+`0x0EC` cache from `COM.PREP $1740`, and is applied the same way; Silver
+Blades' is unchecked, so its converted byte stays base plus strength.
 
 ## Where the numbers came from
 

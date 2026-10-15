@@ -237,9 +237,10 @@ def test_without_a_table_the_pool_byte_is_the_strength_only_one():
     assert rec.get("missile_attack_adjustment") == 0
 
 
-def test_curse_and_silver_blades_keep_the_strength_only_byte():
-    """Their weapon block (`$387E`) is unread, so the rule is not applied."""
-    for game in ("curse-of-the-azure-bonds", "secret-of-the-silver-blades"):
+def test_silver_blades_keeps_the_strength_only_byte():
+    """Its weapon block is unchecked, so the rule is not applied; Curse's is
+    covered by `tests/convert/test_c64curse_thac0.py`."""
+    for game in ("secret-of-the-silver-blades",):
         char = NeutralCharacter("test", source="a made-up character",
                                 game=game)
         for name, value in (("levels", {"fighter": 3}), ("strength", 18),

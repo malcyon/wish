@@ -1331,6 +1331,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                      Confidence.CONFIRMED, Provenance.COMPUTED)
     pool_item_table = (deltas.key == "pool-of-radiance"
                        and item_types is not None)
+    # Curse's `LIBRARY $387E` is the same weapon block as Pool's `$368F`,
+    # its dexterity cache `COM.PREP $1740` holds Pool's table for 3-21, and
+    # its ITEMS rows for the weapons and ammunition are Pool's; Silver
+    # Blades' are unchecked, so it keeps base plus strength.
+    weapon_table = (deltas.key in ("pool-of-radiance",
+                                   "curse-of-the-azure-bonds")
+                    and item_types is not None)
     w = neutral.Writer(
         char, rep, into="C64",
         dropped=DROPPED + undead_unmeasured(deltas.key),
@@ -2476,7 +2483,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # Pool of Radiance) rebuilds it -- CONFIRMED in the running game,
     # `docs/205-the-c64-thac0-rebuild.md` (#368).
     current = use("thac0_current")
-    if current is not None and not pool_item_table:
+    if current is not None and not weapon_table:
         dst = _field("thac0")
         hit = c64_strength_hit_step(w.get("strength", 0),
                                     w.get("exceptional_strength", 0))
@@ -2789,13 +2796,13 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                          "base movement, readied body armour, carried weight "
                          "and strength allowance, not copied")
 
-    # -- thac0_current and 0x0EC in Pool of Radiance: the whole rule --------
+    # -- thac0_current and 0x0EC in Pool of Radiance and Curse: the whole rule --------
     # Placed after the inventory, which the readied weapon's terms read.  A
     # READY before the first fight rebuilds the byte from the stored `0x0EC`,
     # so that is written too, from the same dexterity table `COM.PREP $1633`
     # uses; otherwise a dart thrower would drop back to the strength-only
     # number.  `docs/205-the-c64-thac0-rebuild.md`.
-    if pool_item_table:
+    if weapon_table:
         dst = _field("thac0")
         dex_dst = _field("missile_attack_adjustment")
         missile = pool_missile_adjustment(rec.get("dexterity"))
@@ -2804,7 +2811,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
                  "missile_attack_adjustment: what dexterity gives at "
                  "range, from the table COM.PREP writes at the start of "
                  "every fight")
-    if pool_item_table and current is not None:
+    if weapon_table and current is not None:
         raw_inv = rec.get_raw("inventory")
         hit = c64_strength_hit_step(w.get("strength", 0),
                                     w.get("exceptional_strength", 0))
@@ -2815,7 +2822,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
              for n in range(ITEM_SLOTS)], item_types))
         rep.note(dst.offset, dst.size,
                  "thac0: computed by the C64 roster rebuild's rule "
-                 "(LIBRARY $3729) from this record's thac0_base, strength, "
+                 "(LIBRARY $3729, $3918 in Curse) from this record's thac0_base, strength, "
                  "readied weapon and missile adjustment, not copied")
 
     # -- the combat icon: only the C64 has one -------------------------------
@@ -3325,7 +3332,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "the way `LIBRARY $3918` rebuilds it at the party's "
                       "first fight -- a copied byte can show a number "
                       "neither port's tables would produce until then. "
-                      "In Pool of Radiance with the item-type table it "
+                      "In Pool of Radiance and Curse with the item-type table it "
                       "also takes the readied weapon's terms and the "
                       "missile adjustment written at 0x0EC "
                       "(`LIBRARY $3729`)"),
