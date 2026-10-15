@@ -153,6 +153,17 @@
       "example": "679/619-l3-pool-jrsmith/measure1/shots/05-world.png",
       "sha256": "c4c5d70e18210d1267c28b11d9d972626a6c63cb39c49e26a23fe72e10230132"
     },
+    "continue_battle": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        412,
+        432
+      ],
+      "example": "WISH-359/fight-guards/pool/f1-h4.png",
+      "sha256": "6797ff21fd08384001344d7dad61d89ff483504332222e4276f093d41b1dc168"
+    },
     "encounter": {
       "also": [],
       "box": [
@@ -196,6 +207,28 @@
       ],
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/01-party_menu.png",
       "sha256": "cde261c490a8142d50af97ce69eae958523cf86d70af2916a742248b02ef3adc"
+    },
+    "party_won": {
+      "also": [],
+      "and": [
+        {
+          "box": [
+            54,
+            418,
+            604,
+            432
+          ],
+          "sha256": "2e660a84e8c958f191a3f7c7633c531487138e7e845f5d7b503755b8cf76af85"
+        }
+      ],
+      "box": [
+        72,
+        80,
+        360,
+        98
+      ],
+      "example": "WISH-359/fight-guards/pool/f1-end.png",
+      "sha256": "60d7aa2fd27d70aa8f9307a922cf172c0edd25a2bba139438c80d271054ada11"
     },
     "quit_prompt": {
       "also": [],
@@ -343,6 +376,39 @@
       ],
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/title.png",
       "sha256": "b7b1eb651960ac173796340c5f4acf1c5732f1e82090ae84f90fd850ed29fc9d"
+    },
+    "treasure": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        460,
+        432
+      ],
+      "example": "WISH-359/fight-guards/pool/f1-grid.png",
+      "sha256": "62e42c925fadaedcefa632123d641100492720c3632e0c906ff3b47256b57bc3"
+    },
+    "treasure_left": {
+      "also": [],
+      "and": [
+        {
+          "box": [
+            54,
+            418,
+            156,
+            432
+          ],
+          "sha256": "55c983bc46af45e3c5fab0941803d29998027f6258db67d8ee183a8d1a467206"
+        }
+      ],
+      "box": [
+        72,
+        306,
+        536,
+        320
+      ],
+      "example": "WISH-359/fight-guards/pool/f1-x.png",
+      "sha256": "1172acefcbc9632c599396c8552eb391d01483a592b7471ce518477ddd303921"
     },
     "wheel": {
       "also": [],
