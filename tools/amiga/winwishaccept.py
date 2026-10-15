@@ -107,11 +107,14 @@ ORDINARY_MAPPING_COMMANDS = {"ssb": 44, "darkness": 53, "pool": 55}
 CAMP_LOAD_MAPPING_COMMANDS = 43
 #: Seconds to wait for each guarded camp LOAD screen, and for the disk load after the slot.
 CAMP_LOAD_WAIT = 30
-#: Seconds Wish may still show its "Waiting to connect..." line at the first checkpoint, and the
-#: pause between looks; a Wish that never attached would otherwise be driven on to the button check.
-CONNECT_WAIT = 60
+#: Seconds Wish may still show its Party heading as waiting for a game at the first checkpoint, and
+#: the pause between looks; a Wish that never attached would otherwise be driven on to the button check.
+#: Wish connected 184 s and 183 s after launch in the two Amiga heal runs measured, so this covers that with margin.
+CONNECT_WAIT = 240
 CONNECT_POLL = 5
-WAITING_LINE = "Waiting to connect..."
+#: The Party heading until Wish has a target. The Messages panel's "Waiting to connect..." row is not
+#: used: a build older than the one that withdraws it on connect keeps it after connecting.
+WAITING_HEADING = "Party - waiting for a game"
 CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
 #: Seconds the Automapper waits between roster reads; the grab after a game restart waits one.
@@ -1663,13 +1666,13 @@ class Controller:
         return records
 
     def _await_connection(self, controls: list[str]) -> list[str]:
-        """The controls once Wish no longer waits to connect; stops the run if it still does after `CONNECT_WAIT`."""
+        """The controls once Wish's Party heading no longer waits for a game; stops the run if it still does after `CONNECT_WAIT`."""
         # Whether the dump exposes the Messages panel's rows at all decides if this check can see anything.
         self.summary["messages_panel_rows"] = sum(line.startswith("ListItem|") for line in controls)
         deadline = self.clock() + CONNECT_WAIT
-        while any(WAITING_LINE in line for line in controls):
+        while any(WAITING_HEADING in line for line in controls):
             if self.clock() >= deadline:
-                raise AcceptanceStop(f"Wish still shows '{WAITING_LINE}' {CONNECT_WAIT} s after the first checkpoint")
+                raise AcceptanceStop(f"Wish still shows '{WAITING_HEADING}' {CONNECT_WAIT} s after the first checkpoint")
             self.sleep(CONNECT_POLL)
             controls = winwish.ui(self.guest, self.args.holder, "controls")
         return controls

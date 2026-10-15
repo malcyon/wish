@@ -2980,8 +2980,9 @@ def test_the_first_checkpoint_stops_a_wish_that_never_connected(tmp_path, monkey
     controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
     looks = []
     monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: looks.append(1) or [
-        "ListItem|14:21:03 Waiting to connect...|||", "Button|Heal|||enabled=False"])
-    with pytest.raises(winwishaccept.AcceptanceStop, match="Waiting to connect"):
+        "ListItem|14:21:03 Waiting to connect...|||", "Text|Party - waiting for a game|||",
+        "Button|Heal|||enabled=False"])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="waiting for a game"):
         controller._checkpoint("loaded", None, {"raw": "game"})
     assert len(looks) > 1
     assert "loaded" not in controller.checkpoints
@@ -2997,9 +2998,22 @@ def test_the_first_checkpoint_records_whether_the_dump_held_messages_rows(tmp_pa
     assert controller.summary["messages_panel_rows"] == rows
 
 
+def test_a_stale_waiting_row_does_not_stop_a_wish_that_connected(tmp_path, monkeypatch):
+    """A build that never withdraws the Messages row keeps it after connecting; the Party heading shows the connection."""
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: [
+        "ListItem|13:47:18  Waiting to connect...|||", "Text|Party|||", "Button|Heal|||enabled=True"])
+    controller._checkpoint("loaded", None, {"raw": "game"})
+    assert "loaded" in controller.checkpoints
+
+
+def test_the_wait_for_a_connection_outlasts_the_measured_connect_time():
+    assert winwishaccept.CONNECT_WAIT >= 184 * 1.25
+
+
 def test_the_first_checkpoint_goes_on_once_wish_connects(tmp_path, monkeypatch):
     controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
-    replies = iter([["ListItem|Waiting to connect...|||"], ["Button|Heal|||enabled=True"]])
+    replies = iter([["Text|Party - waiting for a game|||"], ["Text|Party|||", "Button|Heal|||enabled=True"]])
     monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: next(replies))
     controller._checkpoint("loaded", None, {"raw": "game"})
     assert "loaded" in controller.checkpoints
