@@ -496,3 +496,92 @@ def test_only_a_title_whose_reload_restarts_the_game_waits_the_boots_title_limit
         assert route.wait_limits["title"] == route.title_limit
     curse = maproute.route_for("curse", _yulash_manifest(tmp_path)).amiga_title
     assert curse.wait_limits["title"] == curse.title_limit
+
+
+def _media_with(tmp_path: Path, key: str, slots: tuple[tuple[str, str], ...] = ()):
+    """A blank AmigaDOS disk holding the named (directory, file) pairs, as the save disk `key`."""
+    from goldbox.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank()
+    for directory in sorted({d for d, _ in slots if d}):
+        disk.make_dir(directory)
+    for directory, name in slots:
+        disk.write_file(f"{directory}/{name}", b"x")
+    path = tmp_path / f"{key}.adf"
+    disk.save(path)
+    return (maproute.Media(key, path, "a" * 64),)
+
+
+@pytest.mark.parametrize("title,key,files,expected", [
+    # Pool: D first; A is loaded and C is the reload phase's own save letter.
+    ("pool", "save", (), "D"),
+    ("pool", "save", (("", "savgamD.dat"),), "E"),
+    ("pool", "save", tuple(("", f"savgam{c}.dat") for c in "DEFGHIJ"), None),
+    ("curse", "save", (), "G"),
+    ("curse", "save", (("/SAVE", "savgamG.dat"),), "H"),
+    ("curse", "save", tuple(("/SAVE", f"savgam{c}.dat") for c in "GHIJ"), None),
+    # Silver Blades: E first, because its camp save letter D is the loaded slot.
+    ("ssb", "df0", (), "E"),
+    ("darkness", "disk3", (("/SAVE", "savgamG.pty"),), "H"),
+    ("darkness", "disk3", (("/SAVE", "savgamG.pty"), ("/SAVE", "savgamH.pty")), None),
+])
+def test_persist_letter_skips_the_loaded_reload_and_present_letters(
+        title: str, key: str, files, expected, tmp_path: Path):
+    if title in ("curse", "darkness"):
+        # The save drawer exists on these disks even when no slot is in it.
+        files = (("/SAVE", "other"), *files)
+    media = _media_with(tmp_path, key, files)
+
+    assert maproute.persist_letter(title, _manifest(title, tmp_path), media) == expected
+
+
+def _keys(phase: maproute.Phase) -> list[tuple[str, str | None]]:
+    return [(step.state, step.key) for step in phase.steps if step.kind in ("key", "type")]
+
+
+def test_persist_phases_reuse_the_measured_reload_keys_with_the_persist_letter(tmp_path: Path):
+    pool = maproute.route_for("pool", _manifest("pool", tmp_path))
+    saved, rest = maproute.persist_phases(pool, "E")
+    reload = next(p for p in pool.phases if p.name == "reload")
+
+    assert saved.steps[0].kind == "observe" and saved.steps[0].checkpoint == "persist_saved"
+    assert _keys(saved) == [("camp", "E")]
+    # Only the save letter and the load letter change; the relaunch and the pages stay.
+    assert _keys(rest) == [
+        ("camp_save_picker", "S"), ("quit_prompt", "E"), ("cli", "Y"), ("title", None),
+        ("party_menu", "RET"), ("save_path", "L"), ("load_picker", "RET"), ("world", "E")]
+    assert _keys(reload)[1:] == [
+        ("camp_save_picker", "S"), ("quit_prompt", "C"), ("cli", "Y"), ("title", None),
+        ("party_menu", "RET"), ("save_path", "L"), ("load_picker", "RET"), ("grid", "A")]
+    assert rest.pages == reload.pages
+    assert [s.relaunch for s in rest.steps] == [s.relaunch for s in reload.steps[1:]]
+    final = rest.steps[-1]
+    assert final.checkpoint == "persist_reloaded" and final.state == "world"
+    assert final.expected == maproute.Expected(compare_to="persist_saved", relation="equal")
+
+    curse = maproute.route_for("curse", _yulash_manifest(tmp_path))
+    saved, rest = maproute.persist_phases(curse, "H")
+    reload = next(p for p in curse.phases if p.name == "reload")
+    assert _keys(rest) == [("camp_save_picker", "S"), ("exit_game", "H"), ("reboot", "Y"),
+                           ("load_picker", "L"), ("loaded_menu", "H"), ("world", "B")]
+    assert [s.kind for s in rest.steps] == [s.kind for s in reload.steps[1:]]
+    assert rest.steps[-1].checkpoint == "persist_reloaded"
+
+
+@pytest.mark.parametrize("title,letter", [("ssb", "E"), ("darkness", "G")])
+def test_persist_phases_save_only_for_the_titles_the_controller_reloads(
+        title: str, letter: str, tmp_path: Path):
+    route = maproute.route_for(title, _manifest(title, tmp_path))
+    saved, rest = maproute.persist_phases(route, letter)
+
+    assert _keys(saved) == [("camp", "E")]
+    assert _keys(rest) == [("camp_save_picker", "S"), ("exit_game", letter), ("camp", "N")]
+    assert all(step.checkpoint is None for step in rest.steps)
+
+
+def test_the_persist_leg_prefix_is_the_load_and_pool_boat_only(tmp_path: Path):
+    assert maproute.LEG_PREFIX == {"pool": ("load", "outdoor", "transition"),
+                                   "curse": ("load",), "ssb": ("load",), "darkness": ("load",)}
+    pool = maproute.route_for("pool", _manifest("pool", tmp_path))
+    names = [p.name for p in pool.phases]
+    assert all(name in names for name in maproute.LEG_PREFIX["pool"])

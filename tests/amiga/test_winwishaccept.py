@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import dataclasses
 import io
 import json
 import pathlib
@@ -17,6 +18,7 @@ from PIL import Image
 from goldbox import amiga_dax
 from goldbox.amiga_adf import AmigaDisk
 from goldbox.geo import GEO_SIZE
+from tests.amiga import test_maproute
 from tools.amiga import winuaesession, winwishaccept
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -4434,3 +4436,453 @@ def test_the_reload_starts_with_no_pipe_from_the_game_before_the_restart(tmp_pat
     controller.run_title()
 
     assert seen == [None]
+
+
+# ---- the persist leg: a save to a free slot, reloaded by the game's own Load ----
+
+#: What each key does on the Silver Blades screens the persist leg meets: (screen, key) -> screen.
+_SSB_SCREENS = {
+    ("title", "L"): "world",
+    ("world", "E"): "camp", ("camp", "S"): "camp_save_picker",
+    ("camp_save_picker", "F"): "exit_game", ("exit_game", "N"): "camp",
+    ("camp", "L"): "load_anyway", ("load_anyway", "Y"): "load_picker",
+    ("load_picker", "F"): "loaded_menu", ("loaded_menu", "B"): "journal",
+    ("treasure_bar", "E"): "treasure", ("treasure", "N"): "world",
+}
+
+
+class _ScreenGame(FakeGame):
+    """A game that shows one named screen and changes it only on the keys in `table`."""
+
+    def __init__(self, table, screen="title"):
+        super().__init__()
+        self.table, self.screen = dict(table), screen
+
+    def grab(self, state, raw, crop, timeout):
+        pathlib.Path(raw).write_bytes(b"raw")
+        pathlib.Path(crop).write_bytes(self.screen.encode())
+        return True
+
+    def press(self, holder, key, timeout):
+        super().press(holder, key, timeout)
+        self.screen = self.table.get((self.screen, key), self.screen)
+
+
+def _persist_args(tmp_path, **extra):
+    args = _args(tmp_path)
+    args.leg, args.action, args.wait_lanes = "persist", None, 0
+    for name, value in extra.items():
+        setattr(args, name, value)
+    return args
+
+
+def _persist_rig(tmp_path, monkeypatch, table, *, route=None, letter="F", actions=("heal",)):
+    """A persist-leg controller on a scripted game, with everything outside the leg stubbed."""
+    clock, game = FakeClock(), _ScreenGame(table)
+    controller = winwishaccept.Controller(
+        _persist_args(tmp_path), guest=object(), lane=object(), game=game,
+        guards=lambda state, path: path.read_bytes().decode() == state,
+        route=route or _route(), zipped=tmp_path / "build.zip",
+        info={"media": {}, "persist": {"letter": letter, "actions": list(actions)}},
+        clock=clock, sleep=clock.sleep)
+    events = []
+
+    def checkpoint(name, expected, frame, **kwargs):
+        controller.checkpoints[name] = {"expected": expected}
+        events.append((name, len(game.keys)))
+
+    def answer():
+        game.keys.append("JOURNAL")
+        game.screen = "treasure_bar"
+
+    monkeypatch.setattr(controller, "_up", lambda: setattr(controller, "booted", True))
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_await_title", lambda: {})
+    monkeypatch.setattr(controller, "_checkpoint", checkpoint)
+    monkeypatch.setattr(controller, "_answer_journal", answer)
+    monkeypatch.setattr(controller, "run_actions", lambda: game.keys.append("ACTIONS"))
+    monkeypatch.setattr(controller, "_action_readback",
+                        lambda: events.append(("readback", len(game.keys))) or [])
+    monkeypatch.setattr(controller, "_verify_persist", lambda: events.append(("verify", len(game.keys))))
+    monkeypatch.setattr(controller, "_final_reload", lambda: game.keys.append("FINAL"))
+    monkeypatch.setattr(controller, "_cleanup", lambda: None)
+    monkeypatch.setattr(controller, "_verify_disk_slot", lambda: None)
+    controller.summary["persistence"]["status"] = "awaiting image review"
+    return controller, game, events
+
+
+def test_persist_saves_after_the_last_action_then_loads_that_letter(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, game, events = _persist_rig(tmp_path, monkeypatch, _SSB_SCREENS)
+
+    result = controller.run_persist()
+
+    assert result["failure"] is None
+    assert game.keys == ["L", "ACTIONS", "E", "S", "F", "N", "L", "Y", "F", "B", "JOURNAL",
+                         "E", "N", "FINAL"]
+    # The state is taken before camp opens, the party read once camp's bar is up, and the
+    # reload is compared with the first.
+    assert events[0] == ("persist_saved", 2)
+    assert events[1] == ("readback", 3)
+    assert events[-2][0] == "persist_reloaded"
+    assert controller.checkpoints["persist_reloaded"]["expected"] == maproute.Expected(
+        compare_to="persist_saved", relation="equal")
+    assert controller.action_commands == 10 <= controller.action_limit
+    assert controller.mapping_commands == 1
+
+
+def test_persist_branches_only_on_guarded_screens(tmp_path, monkeypatch):
+    # A load picker straight after L has no LOAD ANYWAY question to answer.
+    table = {**_SSB_SCREENS, ("camp", "L"): "load_picker"}
+    controller, game, _ = _persist_rig(tmp_path, monkeypatch, table)
+    assert controller.run_persist()["failure"] is None
+    assert game.keys[6:] == ["L", "F", "B", "JOURNAL", "E", "N", "FINAL"]
+
+    # No treasure offer after the journal: the world bar is already up.
+    controller, game, _ = _persist_rig(tmp_path / "b", monkeypatch, _SSB_SCREENS)
+    monkeypatch.setattr(controller, "_answer_journal", lambda: setattr(game, "screen", "world"))
+    assert controller.run_persist()["failure"] is None
+    assert game.keys[6:] == ["L", "Y", "F", "B", "FINAL"]
+
+
+def test_an_unknown_screen_after_load_gets_no_further_key_and_keeps_its_frame(tmp_path, monkeypatch):
+    table = {**_SSB_SCREENS, ("camp", "L"): "mystery"}
+    controller, game, _ = _persist_rig(tmp_path, monkeypatch, table)
+    controller.summary["persistence"]["status"] = "unproven"
+
+    result = controller.run_persist()
+
+    assert game.keys == ["L", "ACTIONS", "E", "S", "F", "N", "L"]
+    assert "persist reload: the screen after L" in result["failure"]
+    assert list(tmp_path.glob("game-*.raw.png"))
+    assert result["persistence"]["reason"] == result["failure"]
+
+
+def test_persist_leg_runs_only_the_title_prefix(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    seen = {}
+    for title, manifest in (("pool", test_maproute._manifest("pool", tmp_path)),
+                            ("curse", test_maproute._yulash_manifest(tmp_path))):
+        route = maproute.route_for(title, manifest)
+        controller, _, _ = _persist_rig(tmp_path / title, monkeypatch, {}, route=route, letter="E")
+        names = []
+        monkeypatch.setattr(controller, "run_phase", lambda phase, *a, names=names, **k: names.append(phase.name))
+        monkeypatch.setattr(controller, "_persist_save", lambda: None)
+        monkeypatch.setattr(controller, "_persist_reload", lambda: None)
+        monkeypatch.setattr(controller, "_await", lambda *a, **k: {})
+        controller.run_persist()
+        seen[title] = names
+
+    assert seen == {"pool": ["load", "outdoor", "transition"], "curse": ["load"]}
+
+
+def test_wait_lanes_is_passed_to_up_and_not_charged_to_the_route_deadline(tmp_path, monkeypatch):
+    route = _route()
+    route.mounted = ()
+    route.amiga_title = SimpleNamespace(wait_limits={}, title_limit=30, interstitials=(), options=())
+    clock = FakeClock()
+    controller = winwishaccept.Controller(
+        _persist_args(tmp_path, wait_lanes=600), guest=object(), lane=object(), game=FakeGame(),
+        guards=object(), route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    seen = []
+
+    def up(guest, lane, values):
+        seen.append(values.wait_lanes)
+        clock.now += 500
+        return {}
+
+    monkeypatch.setattr(winwishaccept.winwish, "up", up)
+    monkeypatch.setattr(winwishaccept.winwish, "floppy_paths", lambda values: [])
+    monkeypatch.setattr(controller, "_stage_media", lambda: None)
+    before = controller.route_end
+
+    controller._up()
+
+    assert seen == [600]
+    assert controller.route_end - before > 499
+    assert controller.total_end - clock.now == pytest.approx(3300, abs=1)
+    controller.args.wait_lanes = 0
+    after = controller.route_end
+    controller._up()
+    assert controller.route_end == after
+
+
+@pytest.mark.parametrize("seconds", (-1, 1801))
+def test_wait_lanes_outside_zero_to_1800_stops_preflight_before_the_guest(tmp_path, seconds):
+    args = _persist_args(tmp_path, wait_lanes=seconds)
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="--wait-lanes"):
+        winwishaccept.preflight(args, guest=object(), route_for=None)
+
+
+def test_the_parser_takes_the_leg_repeatable_actions_and_wait_lanes():
+    args = winwishaccept._parser().parse_args([
+        "--title", "pool", "--manifest", "m", "--sha", SHA, "--holder", "h", "--mute-proof", "p",
+        "--out", "o", "--leg", "persist", "--action", "heal", "--action", "spells",
+        "--wait-lanes", "1800"])
+    assert (args.leg, args.action, args.wait_lanes) == ("persist", ["heal", "spells"], 1800)
+    default = winwishaccept._parser().parse_args([
+        "--title", "pool", "--manifest", "m", "--sha", SHA, "--holder", "h", "--mute-proof", "p",
+        "--out", "o"])
+    assert (default.leg, default.action, default.wait_lanes) == ("mapping", None, 0)
+
+
+def _persist_record(row, slot=0, *, name="A", hp=None, flip=None, items=None):
+    raw = bytearray(row.record_size)
+    if hp is not None:
+        raw[row.hp.offset] = hp
+    for at in flip or ():
+        raw[at] ^= 0xFF
+    return {"slot": slot, "name": name, "address": 1000 + slot, "raw": raw.hex(),
+            "items": [[2000, node.hex()] for node in items or ()]}
+
+
+def _verify_rig(tmp_path, monkeypatch, before, after, ran):
+    from automap import amigaparty
+
+    controller, _, _ = _persist_rig(tmp_path, monkeypatch, {})
+    monkeypatch.undo()
+    controller.summary["persistence"].update(persist_before=before, evidence=[])
+    controller.summary["actions"] = {
+        kind: {"status": "awaiting image review", "observed": context}
+        for kind, context in ran.items()}
+    controller.persist = {"letter": "F", "actions": list(ran)}
+    controller._game_section = lambda: None
+    controller._action_readback = lambda: after
+    return controller, amigaparty.ROWS[controller.route.game_key]
+
+
+def _heal_context(row, staged=15):
+    return {"slot": 0, "member": "A", "staged": {"hp": staged},
+            "baseline": [_persist_record(row, hp=staged)]}
+
+
+def test_persist_reports_an_action_field_lost_over_the_reload_as_failed(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    row = amigaparty.ROWS["secret-of-the-silver-blades"]
+    # Heal wrote 20 and the reload brought back the staged 15.
+    controller, _ = _verify_rig(tmp_path, monkeypatch, [_persist_record(row, hp=20)],
+                                [_persist_record(row, hp=15)], {"heal": _heal_context(row)})
+
+    controller._verify_persist()
+
+    result = controller.summary["persistence"]
+    assert result["status"] == "failed"
+    assert "hit points still hold the staged 15" in result["reason"]
+    assert result["differing"]["in_action_spots"] == [f"A+0x{row.hp.offset:03X}"]
+
+
+def test_persist_reports_another_changed_byte_as_unproven_with_its_offsets(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    row = amigaparty.ROWS["secret-of-the-silver-blades"]
+    spots = {row.hp.offset, row.hp_max.offset, row.memorised.offset, row.hidden.offset,
+             *(i for offset in row.pointers for i in range(offset, offset + 4))}
+    if row.quickfight is not None:
+        spots.add(row.quickfight.offset)
+    other = next(i for i in range(1, row.record_size) if i not in spots)
+    controller, _ = _verify_rig(
+        tmp_path, monkeypatch, [_persist_record(row, hp=20)],
+        [_persist_record(row, hp=20, flip=[other])], {"heal": _heal_context(row)})
+
+    controller._verify_persist()
+
+    result = controller.summary["persistence"]
+    assert result["status"] == "unproven"
+    assert f"A+0x{other:03X}" in result["reason"]
+    assert result["differing"]["in_action_spots"] == []
+
+
+def test_persist_accepts_a_reload_that_keeps_wish_s_value_and_changes_nothing_else(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    row = amigaparty.ROWS["secret-of-the-silver-blades"]
+    pointer = row.pointers[0]
+    after = _persist_record(row, hp=20)
+    # A heap address is placed again by the reload and is not a difference.
+    raw = bytearray.fromhex(after["raw"])
+    raw[pointer:pointer + 4] = b"\x12\x34\x56\x78"
+    after["raw"] = raw.hex()
+    controller, _ = _verify_rig(tmp_path, monkeypatch, [_persist_record(row, hp=20)], [after],
+                                {"heal": _heal_context(row)})
+
+    controller._verify_persist()
+
+    result = controller.summary["persistence"]
+    assert result["status"] == "awaiting image review" and result["reason"] is None
+    assert result["persist_after"] == [after]
+
+
+def test_persist_checks_the_identify_byte_on_the_item_node(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    row = amigaparty.ROWS["secret-of-the-silver-blades"]
+
+    def node(hidden):
+        data = bytearray(row.items.size)
+        data[row.hidden.offset] = hidden
+        return data
+
+    context = {"slot": 0, "member": "A", "staged": {"item_address": 2000, "hidden_staged": 7},
+               "baseline": [_persist_record(row, items=[node(7)])]}
+    # Wish cleared the hidden bits; the reload brings the staged byte back.
+    controller, _ = _verify_rig(tmp_path, monkeypatch, [_persist_record(row, items=[node(0)])],
+                                [_persist_record(row, items=[node(7)])], {"identify": context})
+
+    controller._verify_persist()
+
+    result = controller.summary["persistence"]
+    assert result["status"] == "failed"
+    assert result["differing"]["in_action_spots"] == [f"A item 0+0x{row.hidden.offset:02X}"]
+    assert "identify: the item still holds the staged hidden byte" in result["reason"]
+
+
+def _disk_rig(tmp_path, monkeypatch, reading, copied="working.adf"):
+    controller, _, _ = _persist_rig(tmp_path, monkeypatch, {})
+    monkeypatch.undo()
+    controller.summary["persistence"].update(persist_after=[{"name": "Ann "}, {"name": "Bob"}])
+    controller.route.amiga_title = SimpleNamespace(save_disk="df0", read_slot=lambda disk, letter: reading)
+    controller.info["media"] = {"df0": {"guest_working_copy": copied}}
+    monkeypatch.setattr("goldbox.amiga_adf.AmigaDisk.open", classmethod(lambda cls, path: object()))
+    return controller
+
+
+@pytest.mark.parametrize("reading,status", [
+    ({"names": ["ANN", "bob"]}, "awaiting image review"),
+    ({"names": ["ANN"]}, "failed"),
+    ({"missing": True, "sha256": None}, "failed"),
+    ({"decode_error": "ValueError: x"}, "failed"),
+])
+def test_the_persist_slot_must_be_on_the_fetched_disk_and_list_the_same_names(
+        tmp_path, monkeypatch, reading, status):
+    controller = _disk_rig(tmp_path, monkeypatch, reading)
+    controller.summary["persistence"]["status"] = "awaiting image review"
+
+    controller._verify_disk_slot()
+
+    result = controller.summary["persistence"]
+    assert result["status"] == status
+    assert result["disk_slot"] == reading
+    assert (controller.summary["failure"] is None) == (status == "awaiting image review")
+
+
+def test_a_working_disk_that_was_not_fetched_leaves_the_slot_unproven(tmp_path, monkeypatch):
+    controller = _disk_rig(tmp_path, monkeypatch, {"names": []}, copied=None)
+    controller.summary["persistence"]["status"] = "awaiting image review"
+
+    controller._verify_disk_slot()
+
+    assert controller.summary["persistence"]["status"] == "unproven"
+
+
+def test_the_persist_leg_reload_compares_with_loaded_not_with_phases_it_skipped(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    controller, _ = _final_reload_rig(tmp_path, monkeypatch, "persist")
+    phases = []
+    monkeypatch.setattr(controller, "run_phase", lambda phase, namespace=None: (
+        phases.append(phase), controller.checkpoints.update({"original_slot_reload.x": {"observed": {
+            "fix": {"x": 1}, "geo_sha256": "g", "party": []}}}))[0])
+
+    controller._final_reload()
+
+    assert phases[0].steps[-1].expected == maproute.Expected(engine={"area": 16})
+
+    controller, _ = _final_reload_rig(tmp_path / "m", monkeypatch, "mapping")
+    monkeypatch.setattr(controller, "run_phase", lambda phase, namespace=None: (
+        phases.append(phase), controller.checkpoints.update({"original_slot_reload.x": {"observed": {
+            "fix": {"x": 1}, "geo_sha256": "g", "party": []}}}))[0])
+    controller._final_reload()
+    assert phases[1].steps[-1].expected.compare_to == "ssb_ruins_arrival"
+
+
+def _final_reload_rig(tmp_path, monkeypatch, leg):
+    from tools.amiga import maproute
+
+    route = _route()
+    expected = maproute.Expected(engine={"area": 16}, compare_to="ssb_ruins_arrival",
+                                 relation="area_changed")
+    reload = maproute.Phase("reload", "world", (maproute.Step(
+        "key", "world", key="L", checkpoint="back", expected=expected),))
+    route.phases = tuple(reload if phase.name == "reload" else phase for phase in route.phases)
+    args = _persist_args(tmp_path, leg=leg)
+    controller = winwishaccept.Controller(
+        args, guest=object(), lane=object(), game=FakeGame(), guards=object(), route=route,
+        zipped=tmp_path / "build.zip", info={"media": {}, "persist": {"letter": "F", "actions": []}},
+        clock=FakeClock())
+    controller.checkpoints["loaded"] = {"observed": {"fix": {"x": 1}, "geo_sha256": "g", "party": []}}
+    return controller, route
+
+
+def test_an_action_the_run_does_not_select_is_not_staged(tmp_path, monkeypatch):
+    controller, game = _action_controller(tmp_path, monkeypatch)
+    heal = controller.route.actions[0]
+    identify = SimpleNamespace(kind="identify", enabled=True, selector="item", show=heal.show,
+                               back=heal.back)
+    controller.route.actions = (heal, identify)
+    controller.summary["actions"]["identify"] = winwishaccept.row()
+    controller.args.action = ["identify"]
+    staged = []
+
+    def stage(action):
+        staged.append(action.kind)
+        raise winwishaccept.AcceptanceStop("stop after staging")
+
+    monkeypatch.setattr(controller, "_action_input", stage)
+
+    with pytest.raises(winwishaccept.AcceptanceStop):
+        controller.run_actions()
+
+    assert staged == ["identify"]
+    assert controller.summary["actions"]["heal"]["reason"] == "not selected by --action"
+
+
+@pytest.mark.parametrize("wanted,message", [(["levelup"], "is not an action"),
+                                            (["quickfight"], "is not enabled")])
+def test_an_unknown_or_disabled_action_stops_the_persist_leg_before_a_lane(
+        tmp_path, wanted, message):
+    from tools.amiga import maproute
+
+    route = maproute.route_for("pool", test_maproute._manifest("pool", tmp_path))
+    heal = dataclasses.replace(route.actions[0], enabled=True)
+    route = dataclasses.replace(route, actions=(
+        heal, *(a for a in route.actions[1:] if a.kind != "levelup")), unresolved=())
+    args = _persist_args(tmp_path, action=wanted)
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match=message):
+        winwishaccept._check_persist(args, route)
+
+
+def test_persist_letter_on_the_prepared_disk_stops_preflight_before_the_guest(tmp_path, monkeypatch):
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import maproute
+
+    manifest = test_maproute._manifest("pool", tmp_path)
+    for key, entry in manifest["disks"].items():
+        disk = AmigaDisk.blank()
+        if key == "save":
+            for letter in "DEFGHIJ":
+                disk.write_file(f"/savgam{letter}.dat", b"x")
+        path = tmp_path / f"{key}.adf"
+        disk.save(path)
+        entry["path"], entry["sha256"] = str(path), winwishaccept.digest(path)
+    args = _persist_args(tmp_path, title="pool", manifest=tmp_path / "prepare.json",
+                         out=tmp_path / "out")
+    args.manifest.write_text(json.dumps(manifest))
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: True)
+
+    def route_for(title, manifest):
+        route = maproute.route_for(title, manifest)
+        heal = dataclasses.replace(route.actions[0], enabled=True,
+                                   show=maproute.Phase("show", "world", ()),
+                                   back=maproute.Phase("back", "world", ()))
+        return dataclasses.replace(route, actions=(heal, *route.actions[1:]), unresolved=())
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="every persist save letter"):
+        winwishaccept.preflight(args, guest=object(), route_for=route_for)
+    assert not (tmp_path / "out").exists()

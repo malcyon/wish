@@ -8,6 +8,7 @@ before the corresponding mapping row can be accepted.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import math
@@ -36,6 +37,19 @@ REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
 MAPPING_ROWS = ("title", "load", "stationary", "walk", "transition", "reload",
                 "reopen", "disconnect", "reconnect")
 STATUSES = ("passed", "failed", "unproven", "awaiting image review")
+LEGS = ("mapping", "persist")
+ACTION_KINDS = ("heal", "spells", "identify", "quickfight", "levelup")
+#: The longest `--wait-lanes`, in seconds: the lane pool's own claim wait.
+MAX_WAIT_LANES = 1800
+#: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
+#: L, Y, slot, B, E and N; Pools of Darkness' L, Y, P, slot and B.
+PERSIST_RELOAD_KEYS = 6
+#: Screens a persist reload answers beyond its phases' own, which need a guard like any other.
+PERSIST_BRANCH_STATES = {
+    "ssb": frozenset({"load_anyway", "load_picker", "loaded_menu", "journal", "world",
+                      "treasure_bar", "treasure"}),
+    "darkness": frozenset({"load_anyway", "load_from", "load_picker", "loaded_menu", "world"}),
+}
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
@@ -236,6 +250,15 @@ def _action_budget(route: Any) -> int:
     return total
 
 
+def _persist_budget(route: Any, letter: str) -> int:
+    """Action keys the persist leg adds: its save and reload, which the default leg never presses."""
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    saved, rest = maproute.persist_phases(route, letter)
+    return _phase_keys(saved) + _phase_keys(rest) + (
+        PERSIST_RELOAD_KEYS if route.title in maproute.BRANCHED_RELOAD else 0)
+
+
 def _latest_landing(queued: float, speed: float) -> float:
     """When a key queued at `queued` has landed and been released at `speed` of full speed."""
     return queued + (WALK_LEAD_FRAMES + KEY_HOLD_FRAMES) / AMIGA_FRAMES_PER_SECOND / speed
@@ -408,6 +431,68 @@ def _states(route: Any) -> set[str]:
     return states | _page_states(route) | _declared_pages(route, phases)
 
 
+def _selected_actions(args: argparse.Namespace, route: Any) -> list[Any]:
+    """The enabled actions `--action` leaves to run (all of them without it)."""
+    wanted = list(getattr(args, "action", None) or [])
+    by_kind = {action.kind: action for action in route.actions}
+    for kind in wanted:
+        if kind not in by_kind:
+            raise AcceptanceStop(f"--action {kind} is not an action of this route")
+        if not by_kind[kind].enabled:
+            raise AcceptanceStop(f"--action {kind} is not enabled on this route")
+    return [action for action in route.actions
+            if action.enabled and (not wanted or action.kind in wanted)]
+
+
+def _check_persist(args: argparse.Namespace, route: Any) -> list[Any]:
+    """The persist leg's static dependencies: the title's prefix phases, the reload and one action."""
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    phases = {phase.name: phase for phase in route.phases}
+    needed = (*maproute.LEG_PREFIX[route.title], "reload")
+    absent = [name for name in needed if name not in phases]
+    if absent:
+        raise AcceptanceStop(f"required phases missing: {', '.join(absent)}")
+    unready = [f"{name}: {phases[name].reason or 'no reason supplied'}"
+               for name in needed if not phases[name].ready]
+    # Another phase's reason does not stop a leg that never runs that phase.
+    skipped = {phase.reason for phase in route.phases if not phase.ready
+               and phase.name not in needed}
+    unready.extend(reason for reason in route.unresolved if reason not in skipped)
+    if unready:
+        raise AcceptanceStop("route incomplete: " + "; ".join(unready))
+    if route.phases[0].name != "load":
+        raise AcceptanceStop("load must be the first phase")
+    actions = _selected_actions(args, route)
+    if not actions:
+        raise AcceptanceStop("the persist leg needs at least one enabled action")
+    for action in actions:
+        if action.show is None or action.back is None:
+            raise AcceptanceStop(f"{action.kind} has no game-display route")
+        if not action.show.ready or not action.back.ready:
+            raise AcceptanceStop(f"{action.kind} has an unready game-display route")
+    return actions
+
+
+def _persist_phases(route: Any, letter: str) -> list[Any]:
+    """Every phase the persist leg runs, for the static checks."""
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    names = (*maproute.LEG_PREFIX[route.title], "reload")
+    return [*(phase for phase in route.phases if phase.name in names),
+            *maproute.persist_phases(route, letter)]
+
+
+def _persist_states(route: Any, actions: list[Any], letter: str) -> set[str]:
+    phases = _persist_phases(route, letter)
+    for action in actions:
+        phases.extend((action.show, action.back))
+    states = {state for phase in phases for state in
+              (phase.initial_state, *(step.state for step in phase.steps))}
+    return (states | PERSIST_BRANCH_STATES.get(route.title, frozenset()) | _page_states(route)
+            | _declared_pages(route, phases) | {"title"})
+
+
 def _deadline_limit(mode: str | None, walk_tab: str = "editor") -> int:
     """The largest total deadline, cleanup included, that a mode may run with."""
     if mode == "ssb-opening-after-third":
@@ -423,6 +508,12 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     if not BUILD_SHA.fullmatch(args.sha):
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
     mode = getattr(args, "discover", None)
+    leg = getattr(args, "leg", "mapping")
+    if leg == "persist" and mode:
+        raise AcceptanceStop("--leg persist is not a discovery mode")
+    wait_lanes = getattr(args, "wait_lanes", 0)
+    if not 0 <= wait_lanes <= MAX_WAIT_LANES:
+        raise AcceptanceStop(f"--wait-lanes must be from 0 to {MAX_WAIT_LANES} seconds")
     walk_tab = getattr(args, "walk_tab", "editor")
     if walk_tab == "map" and mode not in LEAVE_MODES:
         raise AcceptanceStop("--walk-tab map needs a leave-town discovery mode")
@@ -453,7 +544,10 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
 
         route_silver_blades.journal_preflight(sys.executable)
     else:
-        _phase_map(route)
+        persist_actions = _check_persist(args, route) if leg == "persist" else None
+        if persist_actions is None:
+            _phase_map(route)
+            _selected_actions(args, route)
         if args.title == "ssb":
             from tools.amiga import route_silver_blades  # noqa: PLC0415
 
@@ -476,6 +570,17 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     for item in route.media:
         if not item.path.is_file() or digest(item.path) != item.sha256:
             raise AcceptanceStop(f"prepared medium {item.key} is missing or changed")
+    persist = None
+    if leg == "persist":
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        letter = maproute.persist_letter(args.title, manifest, route.media)
+        if letter is None:
+            raise AcceptanceStop("every persist save letter is on the prepared save disk")
+        _check_steps(SimpleNamespace(phases=_persist_phases(route, letter)))
+        persist = {"letter": letter, "actions": [action.kind for action in persist_actions]}
     expected_source = f"guards_{guardmaps.FILES[route.title]}.json"
     if route.guard_path.name != expected_source or not route.guard_path.is_file():
         raise AcceptanceStop(f"the measured guard source must be {expected_source}")
@@ -510,6 +615,8 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         states = {"title"} | _page_states(route) | {
             state for phase in prefix
             for state in (phase.initial_state, *(s.state for s in phase.steps))}
+    elif persist:
+        states = _persist_states(route, persist_actions, persist["letter"])
     else:
         states = _states(route)
     missing = states - guards.rules.keys()
@@ -546,6 +653,9 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
                        for key, item in media.items()}}
     if discovery:
         info["provenance"]["approved_media_sha256"] = pins
+    if persist:
+        info["leg"] = "persist"
+        info["persist"] = persist
     return route, guards, zipped, info
 
 
@@ -645,19 +755,18 @@ class Controller:
         self.out = pathlib.Path(args.out)
         self.out.mkdir(parents=True, exist_ok=True)
         self.events = self.out / "events.jsonl"
-        self.started = self.clock()
-        self.reconnect_end = self.started + args.deadline - CLEANUP_SECONDS
-        #: The route stops early by what the restart and reload will need; `run_title` lifts this at the disconnect step.
-        self.route_end = self.reconnect_end
-        if getattr(args, "discover", None) is None:
-            self.route_end -= _reconnect_seconds(route)
-        self.total_end = self.started + args.deadline
+        self.leg = getattr(args, "leg", "mapping")
+        self.persist: dict[str, Any] | None = info.get("persist") if self.leg == "persist" else None
+        self._set_deadlines()
         self.mapping_commands = self.action_commands = 0
         #: The reload after the game restarts has its own key budget, so it neither
         #: spends the mapping cap nor is stopped by it.
         self.reconnect_commands = 0
         self.reconnect_limit: int | None = None
-        self.action_limit = _action_budget(route)
+        self.action_limit = _action_budget(route) + (
+            _persist_budget(route, self.persist["letter"]) if self.persist else 0)
+        #: Set while the persist leg's own keys are pressed, so they count against the action budget.
+        self.persist_keys = False
         self.discovery = getattr(args, "discover", None) in (*LEAVE_MODES, *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
@@ -680,12 +789,29 @@ class Controller:
         self.checkpoints: dict[str, dict[str, Any]] = {}
         self.area_by_geo: dict[str, set[int]] | None = None
         self.party_nodes: list[tuple[int, int]] = []
+        rows = MAPPING_ROWS
+        if self.persist:
+            from tools.amiga import maproute  # noqa: PLC0415
+
+            rows = ("title", *maproute.LEG_PREFIX[route.title])
         self.summary: dict[str, Any] = {**info,
-            "mapping": {name: row() for name in MAPPING_ROWS},
+            "mapping": {name: row() for name in rows},
             "actions": {action.kind: row() for action in route.actions},
             "original_slot_reload": row(),
             "checkpoints": self.checkpoints, "completed_sequence": [],
             "failure": None, "cleanup": {}}
+        if self.persist:
+            self.summary["persistence"] = row()
+
+    def _set_deadlines(self) -> None:
+        """Start the route clock now; `_up` starts it again once a lane wait has ended."""
+        self.started = self.clock()
+        self.reconnect_end = self.started + self.args.deadline - CLEANUP_SECONDS
+        #: The route stops early by what the restart and reload will need; `run_title` lifts this at the disconnect step.
+        self.route_end = self.reconnect_end
+        if getattr(self.args, "discover", None) is None and self.leg != "persist":
+            self.route_end -= _reconnect_seconds(self.route)
+        self.total_end = self.started + self.args.deadline
 
     def log(self, event: str, **data: Any) -> None:
         record = {"elapsed": round(self.clock() - self.started, 3),
@@ -1282,6 +1408,9 @@ class Controller:
         if code:
             raise AcceptanceStop(f"journal was not answered: {answer}")
 
+    def _counts_as_action(self, action_context: Any, namespace: str | None) -> bool:
+        return action_context is not None or namespace == "original_slot_reload" or self.persist_keys
+
     def run_phase(self, phase: Any, action_context: Any = None,
                   namespace: str | None = None) -> None:
         if not phase.ready:
@@ -1306,14 +1435,14 @@ class Controller:
             if relaunch:
                 self._relaunch_ready(step)
             if kind == "type":
-                self._type(step, action=action_context is not None or namespace == "original_slot_reload")
+                self._type(step, action=self._counts_as_action(action_context, namespace))
             elif kind in ("key", "turn", "move"):
-                self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
+                self._press(step.key, action=self._counts_as_action(action_context, namespace))
             elif kind == "insert":
                 medium = next(m for m in self.route.media if m.key == step.media)
                 self.game.insert(self.args.holder, step.drive, self.remotes[step.media],
                                  self.left(60), medium.sha256)
-                self._press(step.key, action=action_context is not None or namespace == "original_slot_reload")
+                self._press(step.key, action=self._counts_as_action(action_context, namespace))
             elif kind == "reset":
                 self.game.reset(self.args.holder, self.left(60))
                 self.log("reset")
@@ -1762,9 +1891,13 @@ class Controller:
     def run_actions(self) -> None:
         labels = {"heal": "Heal party", "identify": "Identify",
                   "quickfight": "Quickfight off"}
+        selected = {action.kind for action in _selected_actions(self.args, self.route)}
         for action in self.route.actions:
             if not action.enabled:
                 self.summary["actions"][action.kind]["reason"] = "observation only on this route"
+                continue
+            if action.kind not in selected:
+                self.summary["actions"][action.kind]["reason"] = "not selected by --action"
                 continue
             context = {"kind": action.kind, "evidence": [], "clicks": []}
             result = self.summary["actions"][action.kind]
@@ -1835,6 +1968,14 @@ class Controller:
         if not initial or initial.get("fix") is None or initial.get("party") is None:
             raise AcceptanceStop("the original loaded party and location were not recorded")
         reload_phase = next(phase for phase in self.route.phases if phase.name == "reload")
+        if self.leg == "persist":
+            # The persist leg skips the phases whose checkpoints the reload compares with;
+            # this method compares with `loaded` itself.
+            reload_phase = dataclasses.replace(reload_phase, steps=tuple(
+                dataclasses.replace(step, expected=dataclasses.replace(
+                    step.expected, compare_to=None, relation=None))
+                if step.expected is not None and step.expected.compare_to else step
+                for step in reload_phase.steps))
         self.run_phase(reload_phase, namespace="original_slot_reload")
         last = [name for name in self.checkpoints if name.startswith("original_slot_reload.")]
         if not last:
@@ -1853,6 +1994,251 @@ class Controller:
             result["reason"] = "original-slot reload changed location or party bytes"
             raise AcceptanceStop(result["reason"])
         result["status"] = "awaiting image review"
+
+    def _press_to(self, key: str, states: tuple[str, ...], limit: float) -> tuple[str, dict[str, Any]]:
+        """Press `key`, then give the first of `states` a fresh frame matches.
+
+        Any other screen ends the run with its frame kept and no further key."""
+        self._press(key, action=True)
+        state, frame = self._await_first(states, limit=limit)
+        if state is None:
+            kept = frame["raw"] if frame else "no exact crop"
+            raise AcceptanceStop(f"persist reload: the screen after {key} is none of "
+                                 f"{', '.join(states)}; kept {kept}")
+        return state, frame
+
+    def _persist_save(self) -> None:
+        """Camp, a readback on the guarded camp bar, then a save to the persist letter."""
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        if self.encounters_on:
+            raise AcceptanceStop("the persist save needs encounter suppression off")
+        result = self.summary["persistence"]
+        saved, rest = maproute.persist_phases(self.route, self.persist["letter"])
+        frames = set(self.out.glob("game-*.raw.png"))
+        self.persist_keys = True
+        try:
+            self._game_section()
+            self.run_phase(saved)
+            # Camp rewrites some bytes as it opens, so the readback follows its guarded bar.
+            self._game_section()
+            result["persist_before"] = self._action_readback()
+            self.run_phase(rest)
+        finally:
+            self.persist_keys = False
+            result["evidence"].extend(str(path) for path in sorted(
+                set(self.out.glob("game-*.raw.png")) - frames))
+
+    def _persist_reload(self) -> None:
+        """Camp LOAD of the persist letter, answering only the screens measured for the title."""
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        if self.route.title not in maproute.BRANCHED_RELOAD:
+            return
+        letter = self.persist["letter"]
+        frames = set(self.out.glob("game-*.raw.png"))
+        self.persist_keys = True
+        try:
+            self._game_section()
+            if self.route.title == "ssb":
+                state, _ = self._press_to("L", ("load_anyway", "load_picker"), CAMP_LOAD_WAIT)
+                if state == "load_anyway":
+                    self._press_to("Y", ("load_picker",), CAMP_LOAD_WAIT)
+                self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
+                self._press_to("B", ("journal",), CAMP_LOAD_WAIT)
+                self._answer_journal()
+                state, frame = self._await_first(("world", "treasure_bar"), limit=CAMP_SLOT_WAIT)
+                if state is None:
+                    kept = frame["raw"] if frame else "no exact crop"
+                    raise AcceptanceStop(f"persist reload: the screen after the journal answer "
+                                         f"is neither world nor treasure_bar; kept {kept}")
+                if state == "treasure_bar":
+                    self._press_to("E", ("treasure",), CAMP_LOAD_WAIT)
+                    state, frame = self._press_to("N", ("world",), CAMP_SLOT_WAIT)
+            else:
+                state, _ = self._press_to("L", ("load_anyway", "load_from"), CAMP_LOAD_WAIT)
+                if state == "load_anyway":
+                    self._press_to("Y", ("load_from",), CAMP_LOAD_WAIT)
+                self._press_to("P", ("load_picker",), CAMP_LOAD_WAIT)
+                self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
+                state, frame = self._press_to("B", ("world",), CAMP_SLOT_WAIT)
+            self._checkpoint("persist_reloaded", maproute.Expected(
+                compare_to="persist_saved", relation="equal"), frame)
+            self.summary["completed_sequence"].append("persist_reload")
+        finally:
+            self.persist_keys = False
+            self.summary["persistence"]["evidence"].extend(str(path) for path in sorted(
+                set(self.out.glob("game-*.raw.png")) - frames))
+
+    def _persist_differences(self, before: list[dict[str, Any]], after: list[dict[str, Any]],
+                             ran: dict[str, dict[str, Any]]) -> tuple[list[str], list[str]]:
+        """Bytes that differ across the save and reload: `(in this run's action spots, elsewhere)`.
+
+        Heap addresses are zeroed first, as the original-slot reload does, since a reload
+        places the records again."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        row_ = amigaparty.ROWS[self.route.game_key]
+        old = {r["slot"]: r for r in self._without_addresses(before, row_)}
+        new = {r["slot"]: r for r in self._without_addresses(after, row_)}
+        if old.keys() != new.keys() or any(old[k]["name"] != new[k]["name"] for k in old):
+            return [], ["the party's members or names differ"]
+        spans: set[int] = set()
+        if "heal" in ran:
+            spans.update(range(row_.hp.offset, row_.hp.offset + row_.hp.length))
+        if "spells" in ran:
+            spans.update(range(row_.memorised.offset, row_.memorised.offset + row_.memorised.length))
+        if "quickfight" in ran and row_.quickfight is not None:
+            spans.update(range(row_.quickfight.offset, row_.quickfight.offset + row_.quickfight.length))
+        hidden = set(range(row_.hidden.offset, row_.hidden.offset + row_.hidden.length)) \
+            if "identify" in ran else set()
+        levelled = ran["levelup"]["slot"] if "levelup" in ran else None
+        inside: list[str] = []
+        outside: list[str] = []
+        for slot in sorted(old):
+            name = old[slot]["name"]
+            was, now = bytes.fromhex(old[slot]["raw"]), bytes.fromhex(new[slot]["raw"])
+            if len(was) != len(now):
+                outside.append(f"{name} record length")
+                continue
+            for at in (i for i in range(len(was)) if was[i] != now[i]):
+                (inside if slot == levelled or at in spans else outside).append(
+                    f"{name}+0x{at:03X}")
+            if len(old[slot]["items"]) != len(new[slot]["items"]):
+                outside.append(f"{name} item count")
+                continue
+            for number, (a, b) in enumerate(zip(old[slot]["items"], new[slot]["items"], strict=True)):
+                was, now = bytes.fromhex(a), bytes.fromhex(b)
+                for at in (i for i in range(min(len(was), len(now))) if was[i] != now[i]):
+                    (inside if at in hidden else outside).append(f"{name} item {number}+0x{at:02X}")
+        return inside, outside
+
+    def _persist_lost(self, after: list[dict[str, Any]], ran: dict[str, dict[str, Any]]) -> list[str]:
+        """Actions whose field still holds the value the run staged, not the one Wish wrote."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        row_ = amigaparty.ROWS[self.route.game_key]
+        now = self._party_by_slot(after)
+        lost = []
+        for kind, context in ran.items():
+            slot = context["slot"]
+            if slot not in now:
+                lost.append(f"{kind}: member {context['member']} is not in the reloaded party")
+                continue
+            raw = bytes.fromhex(now[slot]["raw"])
+            staged = self._party_by_slot(context["baseline"])[slot]
+            if kind == "heal" and row_.hp.value(raw) == context["staged"]["hp"]:
+                lost.append(f"heal: hit points still hold the staged {context['staged']['hp']}")
+            elif kind == "quickfight" and raw[row_.quickfight.offset] == context["staged"]["quickfight"]:
+                lost.append("quickfight: the byte still holds the staged value")
+            elif kind == "spells":
+                cleared = bytes.fromhex(self._party_by_slot(context["cleared"])[slot]["raw"])
+                at = row_.memorised.offset + context["spell_index"]
+                if raw[at] == cleared[at]:
+                    lost.append("spells: the spell still holds the cleared value")
+            elif kind == "identify":
+                index = next(i for i, (address, _) in enumerate(staged["items"])
+                             if address == context["staged"]["item_address"])
+                node = bytes.fromhex(now[slot]["items"][index][1])
+                if node[row_.hidden.offset] == context["staged"]["hidden_staged"]:
+                    lost.append("identify: the item still holds the staged hidden byte")
+            elif kind == "levelup" and raw == bytes.fromhex(staged["raw"]):
+                lost.append("levelup: the record still holds the staged experience")
+        return lost
+
+    def _verify_persist(self) -> None:
+        """Compare the party read after the save and reload with the one read at camp."""
+        result = self.summary["persistence"]
+        self._game_section()
+        after = self._action_readback()
+        before = result["persist_before"]
+        ran = {kind: entry["observed"] for kind, entry in self.summary["actions"].items()
+               if entry["status"] == "awaiting image review"}
+        inside, outside = self._persist_differences(before, after, ran)
+        lost = self._persist_lost(after, ran)
+        result.update(persist_after=after, differing={"in_action_spots": inside, "elsewhere": outside},
+                      lost=lost, expected={"letter": self.persist["letter"]})
+        result["evidence"].extend(name for name in ("persist_saved", "persist_reloaded")
+                                  if name in self.checkpoints)
+        if inside or lost:
+            reasons = ([f"changed in an action's spot: {', '.join(inside)}"] if inside else []) + lost
+            result.update(status="failed", reason="; ".join(reasons))
+        elif outside:
+            result.update(status="unproven",
+                          reason="bytes outside this run's action spots differ: " + ", ".join(outside))
+        else:
+            result["status"] = "awaiting image review"
+
+    def _verify_disk_slot(self) -> None:
+        """The persist slot on the fetched working save disk lists the party that was reloaded."""
+        from goldbox import amiga_adf  # noqa: PLC0415
+
+        result = self.summary["persistence"]
+        after = result.get("persist_after")
+        if after is None:
+            return
+        key = self.route.amiga_title.save_disk
+        copied = self.info["media"].get(key, {}).get("guest_working_copy")
+
+        def fail(status: str, reason: str) -> None:
+            if result["status"] == "awaiting image review":
+                result.update(status=status, reason=reason)
+            self.summary["failure"] = self.summary["failure"] or f"persistence {status}: {reason}"
+
+        if not copied:
+            fail("unproven", "the working save disk was not fetched")
+            return
+        try:
+            reading = self.route.amiga_title.read_slot(
+                amiga_adf.AmigaDisk.open(copied), self.persist["letter"])
+        except Exception as exc:  # noqa: BLE001
+            fail("unproven", f"the working save disk could not be read: {type(exc).__name__}: {exc}")
+            return
+        result["disk_slot"] = reading
+        names = sorted(str(name).strip().upper() for name in reading.get("names") or [])
+        wanted = sorted(record["name"].strip().upper() for record in after)
+        if reading.get("missing") or reading.get("decode_error"):
+            fail("failed", f"slot {self.persist['letter']} is not readable on the fetched disk: "
+                           f"{reading.get('decode_error') or 'missing'}")
+        elif names != wanted:
+            fail("failed", f"slot {self.persist['letter']} on the fetched disk lists {names}, "
+                           f"not {wanted}")
+
+    def run_persist(self) -> dict[str, Any]:
+        """Load, press the selected actions, save to a letter the disk lacks, load it again, compare."""
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        result = self.summary["persistence"]
+        result["letter"] = self.persist["letter"]
+        result["evidence"] = []
+        try:
+            self._up()
+            self._game_section()
+            title = self._await_title()
+            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            phases = {phase.name: phase for phase in self.route.phases}
+            for name in maproute.LEG_PREFIX[self.route.title]:
+                self.run_phase(phases[name])
+                self.summary["mapping"][name] = row("awaiting image review")
+            self.run_actions()
+            self._persist_save()
+            self._persist_reload()
+            self._verify_persist()
+            self._game_section()
+            self._await("world")
+            self._final_reload()
+            if result["status"] != "awaiting image review":
+                raise AcceptanceStop(f"persistence {result['status']}: {result['reason']}")
+        except BaseException as exc:
+            self.summary["failure"] = f"{type(exc).__name__}: {exc}"
+            self.log("failure", error=self.summary["failure"])
+            if result["status"] == "unproven" and not result.get("reason"):
+                result["reason"] = self.summary["failure"]
+        finally:
+            self._cleanup()
+            self._verify_disk_slot()
+            (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
+        return self.summary
 
     def _reload_party(self) -> None:
         """Load the party into the restarted game as the run's start did, then leave Wish on the Automapper."""
@@ -1882,13 +2268,16 @@ class Controller:
                   "game": self.route.game_key, "zip": str(self.zipped),
                   "uae_option": list(self.route.amiga_title.options),
                   "travel_targets": [], "no_flag": False, "map_only": self.discovery,
-                  "wait_lanes": 0, "keep_lanes": False}
+                  "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": False}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]
         drives = winwish.floppy_paths(argparse.Namespace(**values))
         self.launch = (tuple(drives), (*winwish.floppy_options(len(drives)),
                                        *winwish.uae_options(values["uae_option"])))
         receipt = winwish.up(self.guest, self.lane, argparse.Namespace(**values))
+        if values["wait_lanes"]:
+            # Waiting for a free lane is not route time.
+            self._set_deadlines()
         self.booted = True
         self.game.holder = self.args.holder
         self.log("up", receipt=receipt)
@@ -2389,6 +2778,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--deadline", type=int)
     parser.add_argument("--walk-tab", choices=WALK_TABS, default="editor",
                         help="the Wish tab left showing while the party walks")
+    parser.add_argument("--leg", choices=LEGS, default="mapping",
+                        help="mapping is the whole route; persist loads, presses the actions, "
+                             "saves to a free slot and loads it again")
+    parser.add_argument("--action", action="append", choices=ACTION_KINDS,
+                        help="run only this enabled action; repeat for several")
+    parser.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
+                        help=f"wait up to this long (0 to {MAX_WAIT_LANES}) for a free lane; "
+                             "the wait is not route time")
     return parser
 
 
@@ -2405,7 +2802,8 @@ def main(argv: list[str] | None = None) -> int:
                                 route=route, zipped=zipped, info=info)
         result = (controller.run_opening_first() if args.discover == "ssb-opening-first"
                   else controller.run_opening_second() if args.discover in OPENING_MODES[1:]
-                  else controller.run_discovery() if args.discover else controller.run_title())
+                  else controller.run_discovery() if args.discover
+                  else controller.run_persist() if args.leg == "persist" else controller.run_title())
     except (AcceptanceStop, RouteError, winwish.WinwishError, OSError, ValueError) as exc:
         print(f"winwishaccept: {exc}", file=sys.stderr)
         return 2

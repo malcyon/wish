@@ -8,6 +8,7 @@ import re
 from collections.abc import Mapping
 from typing import Literal
 
+from goldbox import amiga_adf
 from tools.amiga import route_curse, route_darkness, route_pool, route_silver_blades
 from tools.amiga.route import AmigaTitle
 from tools.amiga.winuaesession import RouteError
@@ -733,3 +734,85 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
         tuple(key for key in base.mounted if key is not None), slot, phases,
         _actions(title), provenance, unresolved,
     )
+
+
+#: The phases `--leg persist` runs before its save, in the route's own order. Pool loads onto
+#: the travel grid, so it takes the boat into New Phlan first; the other titles save where
+#: the load leaves the party.
+LEG_PREFIX = {
+    "pool": ("load", "outdoor", "transition"),
+    "curse": ("load",),
+    "ssb": ("load",),
+    "darkness": ("load",),
+}
+#: Titles whose reload from camp asks screens that differ by save state, so the controller
+#: answers it screen by screen; Pool and Curse restart the game and reuse their reload phase.
+BRANCHED_RELOAD = frozenset({"ssb", "darkness"})
+#: The letters `persist_letter` may use, in order. A letter outside the game's own save picker
+#: is never offered: Silver Blades' camp save letter D is its loaded slot.
+_PERSIST_LETTERS = {"pool": "DEFGHIJ", "curse": "GHIJ", "ssb": "EFGHIJ", "darkness": "GH"}
+#: The letter a title's reload phase saves to before it quits; the persist save must not use it.
+_RELOAD_SAVE_LETTER = {"pool": "C", "curse": "F"}
+
+
+def persist_letter(title: str, manifest: Mapping[str, object], media: tuple[Media, ...]
+                   ) -> str | None:
+    """The first persist-save letter the prepared save disk does not hold, or None."""
+    if title not in _GAME_KEYS:
+        raise RouteError(f"Unknown Amiga mapping title {title!r}")
+    slot = _slot_from(manifest)
+    base = _base_title(title, slot, manifest.get("opening_scene") is True)
+    held = next((item for item in media if item.key == base.save_disk), None)
+    if held is None:
+        raise RouteError(f"Prepared manifest has no {base.save_disk} save disk")
+    present = set(base.slot_letters(amiga_adf.AmigaDisk.open(held.path)))
+    taken = present | {slot} | ({_RELOAD_SAVE_LETTER[title]} if title in _RELOAD_SAVE_LETTER else set())
+    return next((letter for letter in _PERSIST_LETTERS[title] if letter not in taken), None)
+
+
+def _persist_reload_tail(title: str, steps: tuple[Step, ...], letter: str) -> tuple[Step, ...]:
+    """A reload phase's steps after its camp key, saving to and loading `letter`, ending at `world`."""
+    save_state, save_key = (("quit_prompt", "C") if title == "pool" else ("exit_game", "F"))
+    swapped = [dataclasses.replace(step, key=letter)
+               if step.state == save_state and step.key == save_key else step
+               for step in steps]
+    if swapped == list(steps):
+        raise RouteError(f"{title} reload has no save to {save_key}")
+    # The load letter is the last key of Pool's reload and the one before the last of Curse's.
+    at = len(swapped) - (1 if title == "pool" else 2)
+    load = swapped[at]
+    if load.kind != "key" or load.key != ("A" if title == "pool" else "B"):
+        raise RouteError(f"{title} reload does not end by loading its slot")
+    swapped[at] = dataclasses.replace(load, key=letter)
+    last = swapped[-1]
+    swapped[-1] = dataclasses.replace(
+        last, state="world", checkpoint="persist_reloaded",
+        expected=Expected(compare_to="persist_saved", relation="equal"))
+    return tuple(swapped)
+
+
+def persist_phases(route: MappingRoute, letter: str) -> tuple[Phase, Phase]:
+    """The persist leg's `(saved, rest)` phases, from measured keys only.
+
+    `saved` observes `world` as checkpoint `persist_saved` and presses camp E. `rest` starts
+    at the camp bar: Pool and Curse save to `letter`, quit and load it again, ending at
+    checkpoint `persist_reloaded` compared equal to `persist_saved`; Silver Blades and Pools
+    of Darkness only save to `letter` and answer N, and the controller reloads them.
+    """
+    title = route.title
+    saved = _phase("persist_saved", "world",
+                   Step("observe", "world", checkpoint="persist_saved"),
+                   Step("key", "camp", key="E"))
+    if title in BRANCHED_RELOAD:
+        return saved, _phase("persist_save", "camp",
+                             Step("key", "camp_save_picker", key="S"),
+                             Step("key", "exit_game", key=letter),
+                             Step("key", "camp", key="N"))
+    reload = next((phase for phase in route.phases if phase.name == "reload"), None)
+    if reload is None or not reload.ready:
+        raise RouteError(f"{title} has no ready reload phase to derive the persist save from")
+    if reload.steps[0].state != "camp" or reload.steps[0].key != "E":
+        raise RouteError(f"{title} reload does not open with camp E")
+    return saved, Phase("persist_reload", "camp",
+                        _persist_reload_tail(title, reload.steps[1:], letter),
+                        pages=reload.pages)
