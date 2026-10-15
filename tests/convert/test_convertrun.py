@@ -680,7 +680,7 @@ def test_a_later_dos_title_goes_to_the_dos_acceptance_driver(
     assert argv[1].endswith("tools/dos/acceptance.py")
     assert argv[argv.index("--title") + 1] == short
     assert (tmp_path / "acceptance-dos-source" / "SAVGAMA.DAT").is_file()
-    assert played["moved"] is True
+    assert played["returncode"] == 0
 
 
 def test_a_dos_title_no_driver_plays_stops_naming_it(tmp_path, monkeypatch):
@@ -690,3 +690,46 @@ def test_a_dos_title_no_driver_plays_stops_naming_it(tmp_path, monkeypatch):
                             "pools-of-darkness")
     assert "Pools of Darkness" in str(stopped.value)
     assert argvs == []
+
+
+# ---------------------------------------------------------------------------
+# A walk that never moved the party fails the driver legs
+# ---------------------------------------------------------------------------
+
+def _driver_summary(monkeypatch, summary):
+    """`subprocess.run` stand-in whose driver exits 0 and leaves `summary`
+    as its `summary.json` under the `--out` it was given."""
+    import json
+    import subprocess
+
+    def run(argv, **kw):
+        where = pathlib.Path(argv[argv.index("--out") + 1])
+        where.mkdir(parents=True, exist_ok=True)
+        (where / "summary.json").write_text(json.dumps(summary))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(convertrun.subprocess, "run", run)
+
+
+@pytest.mark.parametrize("squares, moved", [(0, False), (2, True)])
+def test_a_silver_blades_c64_walk_is_judged_by_the_squares_it_gained(
+        tmp_path, monkeypatch, squares, moved):
+    _driver_summary(monkeypatch, {"results": [
+        {"verb": "walk", "squares_moved": squares}, {"verb": "save"}]})
+    monkeypatch.setattr(convertrun, "c64_title",
+                        lambda disk: "secret-of-the-silver-blades")
+    played = convertrun.play_c64(tmp_path / "W.D64", tmp_path, tmp_path,
+                                 "II", True, None)
+    assert played["moved"] is moved
+
+
+@pytest.mark.parametrize("changed, moved", [(False, False), (True, True)])
+def test_a_later_dos_walk_is_judged_by_the_saved_place(
+        tmp_path, monkeypatch, changed, moved):
+    _driver_summary(monkeypatch, {"read": {
+        "saved": ["D"], "slots": {"D": {"place_changed": changed}}}})
+    save = tmp_path / "SAVGAMA.DAT"
+    save.write_bytes(b"")
+    played = convertrun.play_dos([save], "A", tmp_path, 2, "D", None,
+                                 "secret-of-the-silver-blades")
+    assert played["moved"] is moved

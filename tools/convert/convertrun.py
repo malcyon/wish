@@ -249,6 +249,29 @@ def _acceptance_events(log: pathlib.Path) -> list[dict]:
     return events
 
 
+def _acceptance_summary(where: pathlib.Path) -> dict:
+    """The driver's `summary.json`, or `{}` when it wrote none."""
+    try:
+        return json.loads((where / "summary.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def c64_walk_moved(summary: dict) -> bool:
+    """Whether the driver's own `walk` results show a square gained."""
+    return sum(r.get("squares_moved", 0) for r in summary.get("results", [])
+               if r.get("verb") == "walk") > 0
+
+
+def dos_walk_moved(summary: dict) -> bool:
+    """Whether the game-written save the driver read last is at another
+    square than the one it installed."""
+    slots = (summary.get("read") or {}).get("slots") or {}
+    saved = [x for x in (summary.get("read") or {}).get("saved") or []
+             if x in slots]
+    return bool(saved) and bool(slots[saved[-1]].get("place_changed"))
+
+
 def _play_c64_acceptance(disk: pathlib.Path, out: pathlib.Path,
                          disks: pathlib.Path, walk: str,
                          no_encounters: bool) -> dict:
@@ -266,7 +289,9 @@ def _play_c64_acceptance(disk: pathlib.Path, out: pathlib.Path,
     log = where / "run.jsonl"
     return {"returncode": proc.returncode, "log": str(log),
             "tail": proc.stdout[-4000:], "stderr": proc.stderr[-2000:],
-            "events": _acceptance_events(log), "moved": None}
+            "events": _acceptance_events(log),
+            "moved": (c64_walk_moved(_acceptance_summary(where))
+                      if walk else None)}
 
 
 def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
@@ -411,7 +436,8 @@ def _play_dos_acceptance(written: list[pathlib.Path], slot: str,
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
     return {"slot": slot, "steps_asked": steps, "returncode": proc.returncode,
             "tail": proc.stdout[-4000:], "stderr": proc.stderr[-2000:],
-            "evidence": str(where), "moved": proc.returncode == 0}
+            "evidence": str(where), "moved": proc.returncode == 0 and (
+                not steps or dos_walk_moved(_acceptance_summary(where)))}
 
 
 def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
