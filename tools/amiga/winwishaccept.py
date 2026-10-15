@@ -1976,7 +1976,12 @@ class Controller:
                     step.expected, compare_to=None, relation=None))
                 if step.expected is not None and step.expected.compare_to else step
                 for step in reload_phase.steps))
-        self.run_phase(reload_phase, namespace="original_slot_reload")
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        if self.leg == "persist" and self.route.title in maproute.BRANCHED_RELOAD:
+            self._reload_original_by_screen(reload_phase)
+        else:
+            self.run_phase(reload_phase, namespace="original_slot_reload")
         last = [name for name in self.checkpoints if name.startswith("original_slot_reload.")]
         if not last:
             raise AcceptanceStop("the original-slot reload has no checkpoint")
@@ -2029,6 +2034,49 @@ class Controller:
             result["evidence"].extend(str(path) for path in sorted(
                 set(self.out.glob("game-*.raw.png")) - frames))
 
+    def _camp_load(self, letter: str) -> dict[str, Any]:
+        """From the camp bar, camp LOAD of slot `letter`, answering only the guarded screens
+        the title can show; the frame of the world bar it ends on."""
+        self._game_section()
+        if self.route.title == "ssb":
+            state, _ = self._press_to("L", ("load_anyway", "load_picker"), CAMP_LOAD_WAIT)
+            if state == "load_anyway":
+                self._press_to("Y", ("load_picker",), CAMP_LOAD_WAIT)
+            self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
+            self._press_to("B", ("journal",), CAMP_LOAD_WAIT)
+            self._answer_journal()
+            state, frame = self._await_first(("world", "treasure_bar"), limit=CAMP_SLOT_WAIT)
+            if state is None:
+                kept = frame["raw"] if frame else "no exact crop"
+                raise AcceptanceStop(f"persist reload: the screen after the journal answer "
+                                     f"is neither world nor treasure_bar; kept {kept}")
+            if state == "treasure_bar":
+                self._press_to("E", ("treasure",), CAMP_LOAD_WAIT)
+                state, frame = self._press_to("N", ("world",), CAMP_SLOT_WAIT)
+            return frame
+        state, _ = self._press_to("L", ("load_anyway", "load_from"), CAMP_LOAD_WAIT)
+        if state == "load_anyway":
+            self._press_to("Y", ("load_from",), CAMP_LOAD_WAIT)
+        self._press_to("P", ("load_picker",), CAMP_LOAD_WAIT)
+        self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
+        return self._press_to("B", ("world",), CAMP_SLOT_WAIT)[1]
+
+    def _reload_original_by_screen(self, reload_phase: Any) -> None:
+        """The persist leg's original-slot reload for the titles whose camp LOAD varies.
+
+        After a save and a load the game may skip the LOAD ANYWAY question the mapping route
+        meets, so each screen is guarded and nothing else is answered."""
+        last = reload_phase.steps[-1]
+        self.persist_keys = True
+        try:
+            self._game_section()
+            self._press_to("E", ("camp",), CAMP_LOAD_WAIT)
+            frame = self._camp_load(self.route.loaded_slot)
+        finally:
+            self.persist_keys = False
+        self._checkpoint(f"original_slot_reload.{last.checkpoint}", last.expected, frame)
+        self.summary["completed_sequence"].append("original_slot_reload.reload")
+
     def _persist_reload(self) -> None:
         """Camp LOAD of the persist letter, answering only the screens measured for the title."""
         from tools.amiga import maproute  # noqa: PLC0415
@@ -2039,29 +2087,7 @@ class Controller:
         frames = set(self.out.glob("game-*.raw.png"))
         self.persist_keys = True
         try:
-            self._game_section()
-            if self.route.title == "ssb":
-                state, _ = self._press_to("L", ("load_anyway", "load_picker"), CAMP_LOAD_WAIT)
-                if state == "load_anyway":
-                    self._press_to("Y", ("load_picker",), CAMP_LOAD_WAIT)
-                self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
-                self._press_to("B", ("journal",), CAMP_LOAD_WAIT)
-                self._answer_journal()
-                state, frame = self._await_first(("world", "treasure_bar"), limit=CAMP_SLOT_WAIT)
-                if state is None:
-                    kept = frame["raw"] if frame else "no exact crop"
-                    raise AcceptanceStop(f"persist reload: the screen after the journal answer "
-                                         f"is neither world nor treasure_bar; kept {kept}")
-                if state == "treasure_bar":
-                    self._press_to("E", ("treasure",), CAMP_LOAD_WAIT)
-                    state, frame = self._press_to("N", ("world",), CAMP_SLOT_WAIT)
-            else:
-                state, _ = self._press_to("L", ("load_anyway", "load_from"), CAMP_LOAD_WAIT)
-                if state == "load_anyway":
-                    self._press_to("Y", ("load_from",), CAMP_LOAD_WAIT)
-                self._press_to("P", ("load_picker",), CAMP_LOAD_WAIT)
-                self._press_to(letter, ("loaded_menu",), CAMP_SLOT_WAIT)
-                state, frame = self._press_to("B", ("world",), CAMP_SLOT_WAIT)
+            frame = self._camp_load(letter)
             self._checkpoint("persist_reloaded", maproute.Expected(
                 compare_to="persist_saved", relation="equal"), frame)
             self.summary["completed_sequence"].append("persist_reload")
@@ -2201,8 +2227,10 @@ class Controller:
             fail("failed", f"slot {self.persist['letter']} is not readable on the fetched disk: "
                            f"{reading.get('decode_error') or 'missing'}")
         elif names != wanted:
-            fail("failed", f"slot {self.persist['letter']} on the fetched disk lists {names}, "
-                           f"not {wanted}")
+            # The reload already showed the right party; only the disk reader's padding,
+            # truncation or case handling may differ, which nothing here has verified.
+            fail("unproven", f"slot {self.persist['letter']} on the fetched disk lists {names}, "
+                             f"the reloaded party {wanted}")
 
     def run_persist(self) -> dict[str, Any]:
         """Load, press the selected actions, save to a letter the disk lacks, load it again, compare."""

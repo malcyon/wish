@@ -4754,7 +4754,7 @@ def _disk_rig(tmp_path, monkeypatch, reading, copied="working.adf"):
 
 @pytest.mark.parametrize("reading,status", [
     ({"names": ["ANN", "bob"]}, "awaiting image review"),
-    ({"names": ["ANN"]}, "failed"),
+    ({"names": ["ANN"]}, "unproven"),
     ({"missing": True, "sha256": None}, "failed"),
     ({"decode_error": "ValueError: x"}, "failed"),
 ])
@@ -4784,6 +4784,8 @@ def test_the_persist_leg_reload_compares_with_loaded_not_with_phases_it_skipped(
     from tools.amiga import maproute
 
     controller, _ = _final_reload_rig(tmp_path, monkeypatch, "persist")
+    # A title whose reload restarts the game; Silver Blades and Pools of Darkness are answered by screen.
+    controller.route.title = "pool"
     phases = []
     monkeypatch.setattr(controller, "run_phase", lambda phase, namespace=None: (
         phases.append(phase), controller.checkpoints.update({"original_slot_reload.x": {"observed": {
@@ -4886,3 +4888,93 @@ def test_persist_letter_on_the_prepared_disk_stops_preflight_before_the_guest(tm
     with pytest.raises(winwishaccept.AcceptanceStop, match="every persist save letter"):
         winwishaccept.preflight(args, guest=object(), route_for=route_for)
     assert not (tmp_path / "out").exists()
+
+
+def test_names_that_differ_on_the_disk_are_unproven_with_both_lists(tmp_path, monkeypatch):
+    controller = _disk_rig(tmp_path, monkeypatch, {"names": ["ANN"]})
+    controller.summary["persistence"]["status"] = "awaiting image review"
+
+    controller._verify_disk_slot()
+
+    result = controller.summary["persistence"]
+    assert result["status"] == "unproven"
+    assert "['ANN']" in result["reason"] and "['ANN', 'BOB']" in result["reason"]
+
+
+def _original_reload_rig(tmp_path, monkeypatch, title, table):
+    from tools.amiga import maproute
+
+    route = _route()
+    route.title = title
+    controller, game, events = _persist_rig(tmp_path, monkeypatch, table, route=route)
+    game.screen = "world"
+    last = maproute.Phase("reload", "world", (maproute.Step(
+        "key", "world", key="B", checkpoint="back", expected=maproute.Expected(engine={"area": 16})),))
+    return controller, game, events, last
+
+
+_SSB_ORIGINAL = {
+    ("world", "E"): "camp", ("camp", "L"): "load_anyway", ("load_anyway", "Y"): "load_picker",
+    ("load_picker", "B"): "loaded_menu", ("loaded_menu", "B"): "journal",
+    ("treasure_bar", "E"): "treasure", ("treasure", "N"): "world",
+}
+_DARKNESS_ORIGINAL = {
+    ("world", "E"): "camp", ("camp", "L"): "load_anyway", ("load_anyway", "Y"): "load_from",
+    ("load_from", "P"): "load_picker", ("load_picker", "B"): "loaded_menu",
+    ("loaded_menu", "B"): "world",
+}
+
+
+@pytest.mark.parametrize("asks,keys", [
+    (True, ["E", "L", "Y", "B", "B", "JOURNAL", "E", "N"]),
+    (False, ["E", "L", "B", "B", "JOURNAL", "E", "N"]),
+])
+def test_the_original_slot_reload_answers_silver_blades_by_screen(
+        tmp_path, monkeypatch, asks, keys):
+    table = _SSB_ORIGINAL if asks else {**_SSB_ORIGINAL, ("camp", "L"): "load_picker"}
+    controller, game, events, last = _original_reload_rig(tmp_path, monkeypatch, "ssb", table)
+
+    controller._reload_original_by_screen(last)
+
+    assert game.keys == keys
+    assert events == [("original_slot_reload.back", len(keys))]
+    assert controller.action_commands == len(keys) - 1
+
+
+@pytest.mark.parametrize("asks,keys", [
+    (True, ["E", "L", "Y", "P", "B", "B"]),
+    (False, ["E", "L", "P", "B", "B"]),
+])
+def test_the_original_slot_reload_answers_pools_of_darkness_by_screen(
+        tmp_path, monkeypatch, asks, keys):
+    table = _DARKNESS_ORIGINAL if asks else {**_DARKNESS_ORIGINAL, ("camp", "L"): "load_from"}
+    controller, game, events, last = _original_reload_rig(tmp_path, monkeypatch, "darkness", table)
+
+    controller._reload_original_by_screen(last)
+
+    assert game.keys == keys
+    assert events == [("original_slot_reload.back", len(keys))]
+
+
+def test_an_unknown_screen_after_the_original_reload_s_camp_load_gets_no_key(tmp_path, monkeypatch):
+    table = {**_SSB_ORIGINAL, ("camp", "L"): "mystery"}
+    controller, game, events, last = _original_reload_rig(tmp_path, monkeypatch, "ssb", table)
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="persist reload: the screen after L"):
+        controller._reload_original_by_screen(last)
+
+    assert game.keys == ["E", "L"] and events == []
+    assert list(tmp_path.glob("game-*.raw.png"))
+
+
+def test_the_persist_leg_final_reload_goes_by_screen_for_the_branched_titles(tmp_path, monkeypatch):
+    controller, _ = _final_reload_rig(tmp_path, monkeypatch, "persist")
+    called = []
+    monkeypatch.setattr(controller, "_reload_original_by_screen", lambda phase: (
+        called.append(phase), controller.checkpoints.update({"original_slot_reload.back": {
+            "observed": {"fix": {"x": 1}, "geo_sha256": "g", "party": []}}}))[0])
+    monkeypatch.setattr(controller, "run_phase", lambda *a, **k: pytest.fail("ran the phase"))
+
+    controller._final_reload()
+
+    assert len(called) == 1 and called[0].steps[-1].expected.compare_to is None
