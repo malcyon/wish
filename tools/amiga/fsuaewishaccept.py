@@ -7,8 +7,8 @@ instance-pool slot, started without the driver's own debugger connection, and
 the real Wish window runs offscreen in this process, so its connection helper
 is the emulator's one client. Keys go through X, so the Automapper stays up
 while the party walks, and the driver reads memory through a client of that
-helper. Discovery modes, `--leg persist` and `--leg reconnect` stop before a
-slot is claimed.
+helper. Discovery modes, `--leg persist`, `--leg reconnect` and `--leg fight`
+stop before a slot is claimed.
 
 A person must review the paired game and Wish images before a mapping row can
 be accepted.
