@@ -186,6 +186,28 @@
       "example": "amiga-grab-crops/wish1-pcap1__10-after_A.png",
       "sha256": "6ccf7dfe9657e84cba187e057c5e33c5dd74c10cc2149f43c786d6a3873229b1"
     },
+    "harbour_master": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        588,
+        432
+      ],
+      "example": "amiga-grab-crops/wish1-pwalk1__24-harbour_b.png",
+      "sha256": "01b4aedc6ad628d47423ffb6ac05c76bb4d70eb22e78e1a444affef0cdf8a98a"
+    },
+    "harbour_payer": {
+      "also": [],
+      "box": [
+        54,
+        418,
+        588,
+        432
+      ],
+      "example": "amiga-grab-crops/wish1-pwalk1__25-west.png",
+      "sha256": "b5dab5c40c9154f4ce8d7e578694f6d6d25c59580c1036f54c12f279a51db201"
+    },
     "load_picker": {
       "also": [],
       "box": [
@@ -777,6 +799,87 @@
       "title"
     ],
     "amiga-grab-crops/wish1-pcap1__46-reloaded.png": [
+      "grid"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__02-wait.png": [
+      "wheel"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__06-wait4.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__07-wait5.png": [
+      "title"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__08-wait6.png": [
+      "party_menu"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__09-L.png": [
+      "save_path"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__10-save_path.png": [
+      "load_picker"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__12-grid_north.png": [
+      "grid"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__14-boat_b.png": [
+      "boat_question"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__16-w_NP8_1.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__17-w_NP8_2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__18-w_NP8_3.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__19-w_NP8_4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__20-t_NP4.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__21-s_NP8.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__22-about_NP2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__24-harbour_b.png": [
+      "harbour_master"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__25-west.png": [
+      "harbour_payer"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__26-pay.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__27-pay_b.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__28-e_NP6.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__29-e_NP8_1.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__30-e_NP8_2.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__31-e_NP8_3.png": [
+      "world"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__33-board_b.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__35-sail_b.png": [
+      "boat_question"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__36-stay.png": [
+      "grid"
+    ],
+    "amiga-grab-crops/wish1-pwalk1__37-stay_b.png": [
       "grid"
     ],
     "amiga-grab-crops/wish16-a__01-party_menu.png": [

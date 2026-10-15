@@ -420,7 +420,7 @@ def _at(area: int, x: int, y: int, facing: int, compare: str,
 def _pool_phases() -> tuple[Phase, ...]:
     """The outdoor specimen from the New Phlan dock on the travel grid: a step north, the boat
     into New Phlan, turns and a walk there, then a save to C, quit to the AmigaDOS prompt,
-    `program` typed there, and slot A loaded again."""
+    `program` typed there, slot A loaded again, the boat back in, and the walk out by sea."""
     outdoor = _phase(
         "outdoor", "grid",
         Step("snapshot", "grid", snapshot="pool_grid"),
@@ -481,7 +481,47 @@ def _pool_phases() -> tuple[Phase, ...]:
              expected=_at(0, 14, 1, 3, "pool_reloaded", "area_changed")),
         Step("encounters", "world", encounters=False),
     )
-    return outdoor, transition, stationary, walk, reload, reopen
+    return outdoor, transition, stationary, walk, reload, reopen, _pool_walkout()
+
+
+def _pool_walkout() -> Phase:
+    """From the reopen step's 14,1 facing west to the travel grid by the WEST passage.
+
+    The harbour master at 11,1 speaks only to a party stepping north onto him from 11,2
+    (ECL00 `$9C43`); W buys WEST and RETURN at WHO WILL PAY? picks the highlighted member, who
+    pays 1 platinum. The pier end at 15,1 prints YOU BOARD A BOAT. on a continue page, and the
+    boat lands the party on the grid's dock square, where the game asks TAKE BOAT or STAY
+    before it prints the square; STAY leaves it on the grid."""
+    return _phase(
+        "walkout", "world",
+        Step("snapshot", "world", snapshot="pool_harbour"),
+        Step("encounters", "world", encounters=True),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="pool_harbour_door",
+             expected=_at(0, 11, 1, 3, "pool_reopen_step", "moved")),
+        Step("turn", "world", key="NP4"),
+        Step("move", "world", key="NP8", checkpoint="pool_harbour_approach",
+             expected=_at(0, 11, 2, 2, "pool_harbour_door", "moved")),
+        Step("turn", "world", key="NP2"),
+        Step("move", "harbour_master", key="NP8", checkpoint="pool_harbour_master",
+             expected=_at(0, 11, 1, 0, "pool_harbour_approach", "moved")),
+        Step("encounters", "harbour_master", encounters=False),
+        Step("key", "harbour_payer", key="W"),
+        Step("key", "world", key="RET"),
+        Step("encounters", "world", encounters=True),
+        Step("turn", "world", key="NP6"),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8"),
+        Step("move", "world", key="NP8", checkpoint="pool_pier",
+             expected=_at(0, 14, 1, 1, "pool_harbour_master", "moved")),
+        Step("move", "continue", key="NP8"),
+        Step("encounters", "continue", encounters=False),
+        Step("key", "boat_question", key="RET"),
+        Step("key", "grid", key="S", checkpoint="pool_walkout_grid",
+             expected=dataclasses.replace(_POOL_DOCK, compare_to="pool_pier",
+                                          relation="area_changed")),
+    )
 
 
 def _curse_phases() -> tuple[Phase, ...]:

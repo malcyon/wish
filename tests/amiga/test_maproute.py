@@ -79,7 +79,8 @@ def test_every_title_with_a_measured_source_is_ready_and_the_tilverton_curse_sav
     phases = {phase.name: phase for phase in route.phases}
 
     assert set(phases) == {"load", "stationary", "walk", "transition", "reload",
-                           "reopen_step"} | ({"outdoor"} if title in ("pool", "curse") else set())
+                           "reopen_step"} | ({"outdoor"} if title in ("pool", "curse") else set()) | (
+                               {"walkout"} if title == "pool" else set())
     if title == "curse":
         assert not phases["transition"].ready
         assert phases["transition"].reason in route.unresolved
@@ -280,7 +281,27 @@ def test_pools_of_darkness_accepts_the_area_the_prepared_saves_record(tmp_path: 
 #: Each route key in order, as (phase, key, screen awaited after it, capture frame showing that
 #: screen). The frames are the WinUAE capture boots' own, cut to the Amiga screen and kept as
 #: `amiga-grab-crops/<run>__<frame>.png`; None where the boot never pressed that key. A frame
-#: from the first load stands in for the same screen after a restart.
+#: from the first load stands in for the same screen after a restart. A frame naming its own
+#: run (`<run>__<frame>`) comes from a later capture boot of the same title.
+#: The walk-out from 14,1 facing west to the travel grid, as capture boot wish1-pwalk1 pressed it.
+_POOL_WALKOUT_KEYS = (
+    ("walkout", "NP8", "world", "wish1-pwalk1__17-w_NP8_2"),
+    ("walkout", "NP8", "world", "wish1-pwalk1__18-w_NP8_3"),
+    ("walkout", "NP8", "world", "wish1-pwalk1__19-w_NP8_4"),
+    ("walkout", "NP4", "world", "wish1-pwalk1__20-t_NP4"),
+    ("walkout", "NP8", "world", "wish1-pwalk1__21-s_NP8"),
+    ("walkout", "NP2", "world", "wish1-pwalk1__22-about_NP2"),
+    ("walkout", "NP8", "harbour_master", "wish1-pwalk1__24-harbour_b"),
+    ("walkout", "W", "harbour_payer", "wish1-pwalk1__25-west"),
+    ("walkout", "RET", "world", "wish1-pwalk1__27-pay_b"),
+    ("walkout", "NP6", "world", "wish1-pwalk1__28-e_NP6"),
+    ("walkout", "NP8", "world", "wish1-pwalk1__29-e_NP8_1"),
+    ("walkout", "NP8", "world", "wish1-pwalk1__30-e_NP8_2"),
+    ("walkout", "NP8", "world", "wish1-pwalk1__31-e_NP8_3"),
+    ("walkout", "NP8", "continue", "wish1-pwalk1__33-board_b"),
+    ("walkout", "RET", "boat_question", "wish1-pwalk1__35-sail_b"),
+    ("walkout", "S", "grid", "wish1-pwalk1__37-stay_b"),
+)
 _POOL_KEYS = (
     ("load", "RET", "party_menu", "06-wait3"), ("load", "L", "save_path", "07-L"),
     ("load", "RET", "load_picker", "08-save_path"), ("load", "A", "grid", "10-after_A"),
@@ -298,8 +319,11 @@ _POOL_KEYS = (
     ("reload", "PROGRAM", "title", "40-menu2"), ("reload", "RET", "party_menu", "41-menu2b"),
     ("reload", "L", "save_path", "42-L2"), ("reload", "RET", "load_picker", "43-path2"),
     ("reload", "A", "grid", "46-reloaded"),
-    ("reopen_step", "NP8", "grid", None), ("reopen_step", "NP2", "boat_question", None),
-    ("reopen_step", "T", "world", None), ("reopen_step", "NP8", "world", None),
+    ("reopen_step", "NP8", "grid", "wish1-pwalk1__12-grid_north"),
+    ("reopen_step", "NP2", "boat_question", "wish1-pwalk1__14-boat_b"),
+    ("reopen_step", "T", "world", None),
+    ("reopen_step", "NP8", "world", "wish1-pwalk1__16-w_NP8_1"),
+    *_POOL_WALKOUT_KEYS,
 )
 _CURSE_KEYS = (
     ("load", "L", "load_picker", "06-L"), ("load", "B", "loaded_menu", "08-menu"),
@@ -448,7 +472,7 @@ def test_every_screen_a_route_waits_for_matches_the_capture_frame_that_showed_it
         title: str, tmp_path: Path):
     """Reads the capture boots' frames, so it skips on a machine without them."""
     crops, prefix = _kept_crops(_CAPTURES[title][0])
-    frames = [(state, crops / f"{prefix}__{frame}.png")
+    frames = [(state, crops / (f"{frame}.png" if "__" in frame else f"{prefix}__{frame}.png"))
               for _, _, state, frame in _CAPTURES[title][1] if frame]
     if not all(path.is_file() for _, path in frames):
         pytest.skip(f"the {title} capture frames are not on this machine")
@@ -482,6 +506,60 @@ def test_each_new_guard_matches_only_the_capture_frames_that_show_its_screen(
 
     for state, wanted in _NEW_GUARDS[title].items():
         assert {path.stem.split("__", 1)[1] for path in frames if guards(state, path)} == wanted, state
+
+
+#: Capture boot wish1-pwalk1's frames of the screens the Pool walk-out waits on: every frame of
+#: that boot each guard matches, the two harbour guards included.
+_WALKOUT_GUARDS = {
+    "harbour_master": {"24-harbour_b"},
+    "harbour_payer": {"25-west"},
+    "continue": {"33-board_b"},
+    "boat_question": {"14-boat_b", "35-sail_b"},
+    "grid": {"12-grid_north", "36-stay", "37-stay_b"},
+}
+
+
+def test_the_harbour_guards_match_only_the_walkout_frames_that_show_their_screens(tmp_path: Path):
+    """Reads capture boot wish1-pwalk1's frames, so it skips on a machine without them."""
+    crops, prefix = _kept_crops("wish1-pwalk1")
+    frames = sorted(crops.glob(f"{prefix}__*.png"))
+    if len(frames) < 36:
+        pytest.skip("the Pool walk-out capture frames are not on this machine")
+    guards = _exported_guards("pool", tmp_path)
+
+    for state, wanted in _WALKOUT_GUARDS.items():
+        assert {path.stem.split("__", 1)[1] for path in frames if guards(state, path)} == wanted, state
+
+
+def test_the_pool_walkout_buys_west_and_sails_from_the_pier_to_the_grids_dock(tmp_path: Path):
+    route = maproute.route_for("pool", _manifest("pool", tmp_path))
+    names = [phase.name for phase in route.phases]
+    walkout = route.phases[-1]
+    checkpoints = {step.checkpoint: step.expected for step in walkout.steps if step.checkpoint}
+
+    assert names[-2:] == ["reopen_step", "walkout"]
+    assert walkout.initial_state == route.phases[-2].steps[-1].state == "world"
+    assert (walkout.steps[0].kind, walkout.steps[0].snapshot) == ("snapshot", "pool_harbour")
+    # The harbour master answers only a party stepping north onto 11,1 from 11,2.
+    assert dict(checkpoints["pool_harbour_approach"].engine) == {
+        "area": 0, "x": 11, "y": 2, "facing": 2}
+    assert dict(checkpoints["pool_harbour_master"].engine) == {
+        "area": 0, "x": 11, "y": 1, "facing": 0}
+    assert checkpoints["pool_harbour_door"].compare_to == "pool_reopen_step"
+    keyed = [(step.key, step.state) for step in walkout.steps if step.kind == "key"]
+    assert keyed == [("W", "harbour_payer"), ("RET", "world"), ("RET", "boat_question"),
+                     ("S", "grid")]
+    landed = checkpoints["pool_walkout_grid"]
+    assert (dict(landed.engine), dict(landed.window)) == (
+        {"outdoors": True, "facing": 1}, {"x": 7, "y": 29})
+    assert (landed.compare_to, landed.relation) == ("pool_pier", "area_changed")
+    switched = False
+    for step in walkout.steps:
+        if step.kind == "encounters":
+            switched = step.encounters
+        elif step.kind == "key":
+            assert not switched, f"{step.key} is pressed with the encounter switch on"
+    assert not switched
 
 
 def test_only_a_title_whose_reload_restarts_the_game_waits_the_boots_title_limit_for_the_title(
