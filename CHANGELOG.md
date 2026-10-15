@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- On Windows, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in WinUAE, drawing each square as the party walks, with no setting to switch on. Expect bugs.
-- On Windows, Fast Travel and Return now work in the Amiga games for trips that have been confirmed, with no setting to switch on. Expect bugs.
+- On Windows, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in WinUAE, drawing each square as the party walks, with no setting to switch on.
+- On Windows, Fast Travel and Return now work in the Amiga games for trips that have been confirmed, with no setting to switch on.
 - On Windows, Wish names Pools of Darkness from its Amiga disks and offers its game folder in Preferences.
 - The Automapper shows the Amiga Pool of Radiance quest log from the running game.
 - The Automapper shows the Amiga Pool of Radiance travel grid position the way the game prints it.
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Save As turns a Pool of Radiance or Curse of the Azure Bonds zombie player character into a living character even when he ran away from a fight.
+- A zombie player character who ran away from a fight in Pool of Radiance or Curse of the Azure Bonds now becomes a living character when you Save As, as any other zombie player character already did.
 - Save As converts a DOS companion whose combat figure size is 0 to the C64 with the companion's default icon, instead of stopping.
 - The Automapper names the right place when two areas share one map, and leaves the place blank for an unnamed area instead of showing a map file name.
 - The Automapper's Quest Log no longer lists Pool of Radiance commissions on a C64 Curse or Silver Blades game, and no longer shows empty section headings before a game is attached.
