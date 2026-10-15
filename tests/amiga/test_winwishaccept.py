@@ -149,13 +149,13 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
                route.phases[4], route.phases[5])
     route.phases = ordered
     clock = FakeClock()
-    lane = SimpleNamespace(stop=lambda *args: None)
+    lane = SimpleNamespace(stop=lambda *args: None, start=lambda *args, **kwargs: None)
     controller = winwishaccept.Controller(
         _args(tmp_path), guest=object(), lane=lane, game=FakeGame(), guards=object(),
         route=route, zipped=tmp_path / "build.zip", info={"media": {}},
         clock=clock, sleep=clock.sleep)
     events = []
-    monkeypatch.setattr(controller, "_up", lambda: events.append("up"))
+    monkeypatch.setattr(controller, "_up", lambda: (events.append("up"), setattr(controller, "launch", ((), ()))))
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     monkeypatch.setattr(controller, "_map_section", lambda: None)
     monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
@@ -172,6 +172,51 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
     assert result["failure"] is None
     assert events == ["up", "load", "transition", "stationary", "walk", "reload",
                       "stop_wish", "reopen_step"]
+
+
+def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish(
+        tmp_path, monkeypatch):
+    route = _route()
+    clock = FakeClock()
+    events = []
+    lane = SimpleNamespace(
+        stop=lambda *args: events.append("lane-stop"),
+        start=lambda holder, *drives, timeout, options: events.append(
+            ("lane-start", holder, drives, options)))
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=lane, game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=lambda seconds: (events.append(("sleep", seconds)), clock.sleep(seconds)))
+
+    def up():
+        controller.launch = (("C:/a.adf", "C:/b.adf"), ("nr_floppies=3",))
+
+    monkeypatch.setattr(controller, "_up", up)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: events.append("map-tab"))
+    monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
+    monkeypatch.setattr(controller, "run_phase", lambda phase: None)
+    monkeypatch.setattr(controller, "flag_controls", lambda: None)
+    monkeypatch.setattr(controller, "run_actions", lambda: None)
+    monkeypatch.setattr(controller, "_cleanup", lambda: controller.summary["cleanup"].update(errors=[]))
+    monkeypatch.setattr(winwishaccept.winwish, "stop_wish", lambda *args: None)
+    monkeypatch.setattr(winwishaccept.winwish, "shot",
+                        lambda guest, holder, window, path: events.append(("shot", holder, window, path.name)))
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    tail = events[events.index("lane-stop") - 1:]
+    shots = [name for kind, *rest in tail if kind == "shot" for name in rest[-1:]]
+    assert tail[0] == ("shot", "test-acw", "wish", "connected.png")
+    assert shots == ["connected.png", "disconnect-0.png", "disconnect-1.png", "disconnect-2.png",
+                     "reconnected.png"]
+    assert tail[1] == "lane-stop"
+    start = tail.index(("lane-start", "test-acw", ("C:/a.adf", "C:/b.adf"), ("nr_floppies=3",)))
+    assert tail[start + 1] == ("sleep", winwishaccept.ROSTER_SECONDS)
+    assert tail[start + 2] == ("shot", "test-acw", "wish", "reconnected.png")
+    assert tail.index(("shot", "test-acw", "wish", "disconnect-2.png")) < start
+    assert result["mapping"]["reconnect"]["status"] == "awaiting image review"
 
 
 @pytest.mark.parametrize("fault,reason", [

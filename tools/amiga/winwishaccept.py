@@ -34,7 +34,7 @@ from tools.amiga.winuaesession import (  # noqa: E402
 BUILD_SHA = re.compile(r"[0-9a-f]{40}\Z")
 REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
 MAPPING_ROWS = ("title", "load", "stationary", "walk", "transition", "reload",
-                "reopen", "disconnect")
+                "reopen", "disconnect", "reconnect")
 STATUSES = ("passed", "failed", "unproven", "awaiting image review")
 MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
@@ -47,6 +47,8 @@ CAMP_LOAD_MAPPING_COMMANDS = 43
 CAMP_LOAD_WAIT = 30
 CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
+#: Seconds the Automapper waits between roster reads; the grab after a game restart waits one.
+ROSTER_SECONDS = 1
 #: The leave-town route checkpoints 13 times before its terminal key; 1800 s of route.
 LEAVE_DISCOVERY_SECONDS = 2100
 #: Where Wish's tab rests while the party walks: the Character Editor, which frees the pipe
@@ -633,6 +635,8 @@ class Controller:
         self.encounters = None
         self.encounters_on = False
         self.booted = False
+        #: The floppy images and WinUAE settings `_up` started the game with, for a restart.
+        self.launch: tuple[tuple[str, ...], tuple[str, ...]] | None = None
         self.down_done = False
         self.pipe_released = False
         self.wish_closed = False
@@ -1833,6 +1837,9 @@ class Controller:
                   "wait_lanes": 0, "keep_lanes": False}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]
+        drives = winwish.floppy_paths(argparse.Namespace(**values))
+        self.launch = (tuple(drives), (*winwish.floppy_options(len(drives)),
+                                       *winwish.uae_options(values["uae_option"])))
         receipt = winwish.up(self.guest, self.lane, argparse.Namespace(**values))
         self.booted = True
         self.game.holder = self.args.holder
@@ -2273,6 +2280,8 @@ class Controller:
                 self._await("world")
                 self._final_reload()
             self._map_section()
+            connected = self.out / "connected.png"
+            winwish.shot(self.guest, self.args.holder, "wish", connected)
             self.lane.stop(self.args.holder, self.left(60))
             pictures = []
             for index, delay in enumerate((0, 15, 30)):
@@ -2282,7 +2291,18 @@ class Controller:
                 winwish.shot(self.guest, self.args.holder, "wish", path)
                 pictures.append(str(path))
             self.summary["mapping"]["disconnect"] = row(
-                "awaiting image review", evidence=pictures)
+                "awaiting image review", evidence=[str(connected), *pictures])
+            # The same lane and the same Wish window: only the game comes back.
+            if self.launch is None:
+                raise AcceptanceStop("the game's launch settings were not recorded")
+            drives, options = self.launch
+            self.lane.start(self.args.holder, *drives,
+                            timeout=self.left(winwish.START_SECONDS + 30), options=options)
+            self.sleep(self.left(ROSTER_SECONDS))
+            back = self.out / "reconnected.png"
+            winwish.shot(self.guest, self.args.holder, "wish", back)
+            self.summary["mapping"]["reconnect"] = row(
+                "awaiting image review", evidence=[str(back)])
         except BaseException as exc:
             self.summary["failure"] = f"{type(exc).__name__}: {exc}"
             self.log("failure", error=self.summary["failure"])
