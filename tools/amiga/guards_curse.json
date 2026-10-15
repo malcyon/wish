@@ -11,6 +11,17 @@
       "example": "679/400d2381cd-amiga-curse-accept1/accept1/shots/10-camp.png",
       "sha256": "169811582eab25c33345bf896ba31c9a03f5ffd7d726090330a039ec271eb0e5"
     },
+    "camp_cast": {
+      "also": [],
+      "box": [
+        58,
+        402,
+        698,
+        430
+      ],
+      "example": "WISH-359/heal-curse/guards1/shots/03-camp_cast.png",
+      "sha256": "9a7990bb131534667feb6c302e2acf91a16e4d10d6abd4754c2256f3c6c243d8"
+    },
     "camp_display": {
       "also": [],
       "box": [
@@ -21,6 +32,17 @@
       ],
       "example": "666/666-flight-amiga-display/accept1/shots/12-camp_display.png",
       "sha256": "f21a34b919165a3b7be66fc077dd4a23a07f5fda3d4b31142f54737171bf9e08"
+    },
+    "camp_items": {
+      "also": [],
+      "box": [
+        72,
+        76,
+        250,
+        98
+      ],
+      "example": "WISH-359/heal-curse/guards1/shots/01-camp_items.png",
+      "sha256": "c749e7083ff81dc243e51c87666b864ed6349ac98de74027904f3015ac07aa8d"
     },
     "camp_magic": {
       "also": [],
