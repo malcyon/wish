@@ -5262,3 +5262,57 @@ def test_the_continue_guard_recognises_the_page_the_first_live_persist_run_stopp
 
     assert guards("continue", frame)
     assert not guards("world", frame) and not guards("treasure_bar", frame)
+
+
+class _LaggyGame(_ScreenGame):
+    """A game that keeps showing the old screen for `lag` grabs after the keys in `lagged`."""
+
+    def __init__(self, table, lagged, lag, screen="title"):
+        super().__init__(table, screen)
+        self.lagged, self.lag, self.pending = lagged, lag, None
+
+    def grab(self, state, raw, crop, timeout):
+        if self.pending is not None:
+            target, left = self.pending
+            self.pending = (target, left - 1) if left > 1 else None
+            if left <= 1:
+                self.screen = target
+        return super().grab(state, raw, crop, timeout)
+
+    def press(self, holder, key, timeout):
+        before = self.screen
+        super().press(holder, key, timeout)
+        if (before, key) in self.lagged and self.screen != before:
+            self.pending, self.screen = (self.screen, self.lag), before
+
+
+def test_a_stale_continue_frame_after_return_does_not_get_a_second_return(tmp_path, monkeypatch):
+    table = {**_SSB_SCREENS, ("continue", "RET"): "treasure_bar"}
+    controller, game, _ = _persist_rig(tmp_path, monkeypatch, table)
+    laggy = _LaggyGame(table, {("continue", "RET")}, 2)
+    controller.game = laggy
+    monkeypatch.setattr(controller, "_answer_journal", lambda: _continue_after_answer(laggy))
+
+    result = controller.run_persist()
+
+    assert result["failure"] is None
+    # The game redraws two grabs late; the unchanged frame in between is not a second page.
+    assert laggy.keys[5:] == ["L", "Y", "F", "B", "JOURNAL", "RET", "E", "N"]
+
+
+def test_every_key_of_the_worst_persist_reloads_fits_the_action_budget(tmp_path):
+    from tools.amiga import maproute
+
+    route = maproute.route_for("ssb", test_maproute._manifest("ssb", tmp_path))
+    controller = winwishaccept.Controller(
+        _persist_args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip",
+        info={"media": {}, "persist": {"letter": "E", "actions": []}}, clock=FakeClock())
+    pages = winwishaccept.PERSIST_CONTINUE_PAGES
+    saved, rest = maproute.persist_phases(route, "E")
+    # The camp save, then each reload with every continue page answered: L, Y, the slot, B,
+    # E and N after the camp key, which the original-slot reload also presses.
+    worst = (winwishaccept._phase_keys(saved) + winwishaccept._phase_keys(rest)
+             + (6 + pages) + (1 + 6 + pages))
+
+    assert worst <= controller.action_limit

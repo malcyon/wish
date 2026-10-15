@@ -50,6 +50,8 @@ MAX_WAIT_LANES = 1800
 PERSIST_RELOAD_KEYS = 6
 #: The most `continue` pages (PRESS RETURN TO CONTINUE) a camp LOAD answers on its way back to the world bar.
 PERSIST_CONTINUE_PAGES = 3
+#: Seconds after a RETURN during which a frame identical to the page's own is the game not yet redrawn.
+CONTINUE_SETTLE = 5.0
 #: Screens a persist reload answers beyond its phases' own, which need a guard like any other.
 PERSIST_BRANCH_STATES = {
     "ssb": frozenset({"load_anyway", "load_picker", "loaded_menu", "journal", "world",
@@ -2135,7 +2137,22 @@ class Controller:
                 raise AcceptanceStop(f"persist reload: still on a continue page after "
                                      f"{pages} RETURN presses; kept {frame['raw']}")
             pages += 1
-            state, frame = self._press_to("RET", ("world", "continue", *also), CAMP_SLOT_WAIT)
+            shown = digest(pathlib.Path(frame["crop"]))
+            self._press("RET", action=True)
+            pressed = self.clock()
+            states = ("world", "continue", *also)
+            while True:
+                state, frame = self._await_first(states, limit=CAMP_SLOT_WAIT)
+                if state is None:
+                    kept = frame["raw"] if frame else "no exact crop"
+                    raise AcceptanceStop(f"persist reload: the screen after RET is none of "
+                                         f"{', '.join(states)}; kept {kept}")
+                # The same page before the game has redrawn is not a second page.
+                if (state == "continue" and digest(pathlib.Path(frame["crop"])) == shown
+                        and self.clock() - pressed < CONTINUE_SETTLE):
+                    self.sleep(self.left(1))
+                    continue
+                break
         return state, frame
 
     def _reload_original_by_screen(self, reload_phase: Any) -> None:
