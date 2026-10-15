@@ -1,7 +1,9 @@
 """Answer a C64 join site's script screens by their text, one guarded key at a time.
 
 `tools/c64/acceptance.py`'s `join` step walks the party onto a join square and
-hands the screens the square's script puts up to `JoinAnswerer`.  Every key is
+hands the screens the square's script puts up to `JoinAnswerer`; its
+`join-arrival` step travels into an area whose arrival script asks, and hands
+those screens over the same way.  Every key is
 pressed only on a screen whose text is the one the site's script draws next
 (`JOIN_SITES`, read from the area script with `tools/areas/ecllist.py --walk`
 and `tools/areas/ecltext.py`); any other screen stops the step with nothing
@@ -83,12 +85,19 @@ class Listing:
 
 @dataclasses.dataclass(frozen=True)
 class JoinSite:
-    """One join: the title, area and script, who joins, and the screens."""
+    """One join: the title, area and script, who joins, and the screens.
+
+    `arrival` marks a join the area's entry 4 starts when the party arrives
+    from another area, reached by a trip rather than by a step onto a square;
+    `first_visit` is the `(address, mask)` whose bits the script sets as the
+    scene starts, so the scene plays only while they read clear."""
     title: str
     area: int
     script: str
     joins: tuple[str, ...]
     screens: tuple
+    arrival: bool = False
+    first_visit: tuple[int, int] | None = None
 
 
 #: Curse `ECL11`, entry 1, square id 5 (`$89DC`; squares 1,4 11,13 9,15
@@ -109,6 +118,18 @@ JOIN_SITES = (
         Listing("WHAT DO YOU DO?", ("YOUR STORY", "CULTISTS", "AFFAIR")),
         Bar(("NO", "YES"), "YES"),
     )),
+    # Silver Blades `ECL44` (the Compound), entry 4 at `$8014`, the same bytes
+    # in the DOS block `$44`.  It returns at once when the came-from `$4BF2`
+    # is `$44` or when `$4C9E` bit 0 is set, and otherwise sets that bit,
+    # places the party at 7,15 north and prints the scene.  In order: the
+    # menu at `$80CE` (index 0, BE FRIENDLY, to `$80FA`); text and the
+    # one-option continue bar (`$9949`); text and the yes/no at `$9970`
+    # (index 0, YES, to `$8168`); `ADDNPC` 78 at `$8168`, then `$9931` clears
+    # the text and the script ends.  The only `NEWECL 68` is `ECL40 $8187`.
+    JoinSite("secret-of-the-silver-blades", 0x44, "ECL44", ("SIR DERIC",), (
+        Bar(("BE", "FRIENDLY", "ATTACK", "FLEE"), "BE FRIENDLY"),
+        Bar(("YES", "NO"), "YES"),
+    ), arrival=True, first_visit=(0x4C9E, 0x01)),
 )
 
 

@@ -197,10 +197,12 @@ def test_a_save_disk_prompt_stops_the_step_unanswered():
     assert game.keys == [] and answered == []
 
 
-def test_only_the_curse_pit_has_a_site():
-    assert J.site_for(CURSE.key, 0x11) is PIT
+def test_the_sites_are_the_curse_pit_and_the_silver_blades_compound():
+    assert J.site_for(CURSE.key, 0x11) is PIT and not PIT.arrival
     assert J.site_for(CURSE.key, 0x01) is None
     assert J.site_for("secret-of-the-silver-blades", 0x04) is None
+    assert [(s.title, s.area) for s in J.JOIN_SITES] == [
+        (CURSE.key, 0x11), ("secret-of-the-silver-blades", 0x44)]
 
 
 # --- the step in the acceptance driver ------------------------------------------

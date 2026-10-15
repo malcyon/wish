@@ -123,6 +123,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `walk-flee MOVES[/NO]` | Pool only: `walk-fight`, but an encounter menu is answered FLEE; each flee is recorded in `flees` as `escaped` (the world bar or the move prompt `I,J,K,M, RETURN OR BUTTON` came back) or with the `fight` that opened, which is fought out; a move that escaped a flee is judged only for a readable facing, a caught one as `walk-fight` judges; a flee that ends in neither is a failure after `FIGHT_OPENS_SECONDS` |
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
 | `join MOVES` | Curse only: in an area with a row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Pit, area 17: ALIAS and DRAGONBAIT), answers up to `JOIN_ARRIVAL_PRESSES` arrival pages, fails if a joining name is already on the panel, walks every move but the last as `walk` does, steps forward onto the join square with the last (`I`), and answers the square's script screens in the site's order by their text, one KERNAL key each (`$1D`/`$9D` move a bar's highlight, `$0D` chooses), with the script's own continue bar between (its text window logged with each); a list's Return waits for the highlight on its first line; the world bar or the move sub-bar the walk left up gets no key while the square's script prints under it; any other screen, a key that changes nothing, an unreadable screen past the wait, or the world bar or the move sub-bar before the last answer (once a key is pressed, or when the screen has not changed for `FIRST_SCREEN_GRACE`) stops the step with nothing pressed on that screen; either bar after the last answer ends it; a stop puts the encounter gates back; then fails unless the panel lists every joining name; returns the screens, the keys with the row 24 each was pressed on, the square and the panel |
+| `join-arrival AREA` | Silver Blades only: for an area with an `arrival` row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Compound, area 68: SIR DERIC), fails with nothing written if a joining name is already on the panel, the panel has no room, or the row's `first_visit` bit reads set (`$4C9E` bit 0, which the scene sets as it starts); then makes `warp`'s trip with `FastTravel.run` from the area the party is in, so the arriving script's entry 4 sees another area in `$4BF2`, and answers the scene's screens in the site's order by their text as `join` does; fails unless the panel then lists every joining name; returns the trip, the `first_visit` reading, the screens, the keys, the square and the panel |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -831,7 +832,7 @@ VERBS = {"load": "never", "camp-list": "may", "items": "must", "view": "must",
          "walk-fight": "must", "walk-flee": "must", "remove": "must",
          "fight-flee": "may", "snapshot": "must", "restore": "must",
          "fight-cast": "must", "memorize": "must", "site": "must",
-         "add": "must", "join": "must"}
+         "add": "must", "join": "must", "join-arrival": "must"}
 
 #: How long the screen after HEAL must stay unchanged before it is kept, so a
 #: half-drawn frame that lingers for a few reads is not taken for the list.
@@ -1353,6 +1354,9 @@ def parse_steps(texts) -> list[Step]:
             parse_warp(arg)
         elif verb == "join":
             parse_join(arg)
+        elif verb == "join-arrival":
+            # The step is Silver Blades' only (`main`), so its table names AREA.
+            parse_warp(arg, c64_port.SECRET_OF_THE_SILVER_BLADES.title)
         elif verb in ("fight", "fight-flee") and arg and not (
                 arg.isdigit() and int(arg) > 0):
             raise ValueError(f"{verb} {arg!r}: seconds, more than zero")
@@ -9465,6 +9469,11 @@ class CurseRun(PoolRun):
             area = parse_warp(arg, self.game.title)
         except ValueError as e:
             raise self.fail("warp", str(e)) from None
+        return self.trip("warp", area)
+
+    def trip(self, tag: str, area: int) -> dict:
+        """Fast-travel the party into AREA with `FastTravel.run`, wait for
+        the key-wait loop, and fail (as TAG) unless the area byte reads AREA."""
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
         jumps: list[int] = []
@@ -9482,18 +9491,18 @@ class CurseRun(PoolRun):
         here = ft.current_area(target, ft.addresses)
         verdict = ft.legality(target, row)
         if not verdict.ok:
-            raise self.fail("warp", verdict.reason)
+            raise self.fail(tag, verdict.reason)
         outcome = ft.run(target, area=row)
         listing = [f"${a:04X}={bytes(d).hex()}" for a, d in outcome.writes]
         self.log.say("  writes: " + ", ".join(listing))
         if not outcome.ok:
-            raise self.fail("warp", outcome.message)
+            raise self.fail(tag, outcome.message)
         self._wait_idle()
         self.sess.settle(4)
         there = ft.current_area(target, ft.addresses)
         if there != area:
-            raise self.fail("warp", f"the area byte read {there} after the "
-                                    f"trip, not {area}")
+            raise self.fail(tag, f"the area byte read {there} after the "
+                                 f"trip, not {area}")
         self.capture(f"warped-{area}")
         return {"area": area, "outcome": outcome.message, "writes": listing,
                 "notes": list(outcome.notes), "jump": jumps,
@@ -9517,6 +9526,9 @@ class CurseRun(PoolRun):
         site = joinstep.site_for(self.game.key, area)
         if site is None:
             raise self.fail("join", f"no join site in area {area}")
+        if site.arrival:
+            raise self.fail("join", f"area {area}'s join starts on arrival; "
+                                    f"use join-arrival {area}")
         self.leave_arrival(f"join {route}", presses=JOIN_ARRIVAL_PRESSES)
         if not self.to_world():
             raise self.fail("world", "the world bar never came back")
@@ -9574,6 +9586,67 @@ class CurseRun(PoolRun):
                     "panel": panel})
         if gates is not None:
             got["encounter_gates"] = gates
+        return got
+
+    def join_arrival(self, arg: str) -> dict:
+        """Fast-travel into area ARG as `warp` does, from another area, and
+        answer the join its arrival script starts by its text
+        (`joinstep.JoinAnswerer`) until the world bar is back with each
+        joining name on the party panel.  The area must have an `arrival`
+        row in `joinstep.JOIN_SITES`.  Before the trip, a joining name
+        already on the panel, a full panel, or a set `first_visit` bit (the
+        scene would not play) fails the step with nothing written."""
+        try:
+            area = parse_warp(arg, self.game.title)
+        except ValueError as e:
+            raise self.fail("join-arrival", str(e)) from None
+        site = joinstep.site_for(self.game.key, area)
+        if site is None or not site.arrival:
+            raise self.fail("join-arrival", f"no arrival join in area {area}")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        panel = self.panel_names()
+        already = [n for n in site.joins if any(n in row for row in panel)]
+        if already:
+            raise self.fail("join-arrival", f"{', '.join(already)} already in "
+                                            f"the party")
+        if len(panel) + len(site.joins) > PARTY_SLOTS:
+            raise self.fail("join-arrival", f"the panel lists {len(panel)}; "
+                                            f"{len(site.joins)} more do not fit")
+        first_visit = None
+        if site.first_visit is not None:
+            address, mask = site.first_visit
+            with self.sess.mon(10) as m:
+                held = bytes(m.read(address, 1))[0]
+                m.resume()
+            first_visit = {"address": f"${address:04X}", "mask": mask,
+                           "read": held}
+            if held & mask:
+                raise self.fail("join-arrival", f"${address:04X} reads "
+                                                f"${held:02X}: the arrival "
+                                                f"scene has already played")
+        trip = self.trip("join-arrival", area)
+        answerer = joinstep.JoinAnswerer(
+            self.sess.screen, self.sess.press_kernal,
+            prompt=self.sess.handle_prompt, log=self.log.say)
+        try:
+            got = answerer.run(site)
+        except joinstep.JoinStopped as e:
+            self.log.emit("join-stopped", why=str(e),
+                          keys=[f"${k:02X}" for k, _ in answerer.keys],
+                          screens=answerer.seen)
+            raise self.fail("join-arrival", f"join-arrival {area}: {e}") from e
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
+        panel = self.panel_names()
+        missing = [n for n in site.joins if not any(n in row for row in panel)]
+        self.capture("joined")
+        if missing:
+            raise self.fail("join-arrival", f"the panel does not list "
+                                            f"{', '.join(missing)} after the "
+                                            f"join")
+        got.update({"trip": trip, "first_visit": first_visit,
+                    "square": self.position(), "panel": panel})
         return got
 
     def panel_names(self) -> list[str]:
@@ -11220,6 +11293,8 @@ def run(args, steps: list[Step], out: pathlib.Path, source: pathlib.Path,
                 got = pool.warp(step.arg)
             elif step.verb == "join":
                 got = pool.join(step.arg)
+            elif step.verb == "join-arrival":
+                got = pool.join_arrival(step.arg)
             elif step.verb == "site":
                 got = pool.site(step.arg)
             elif step.verb == "walk-fight":
@@ -11634,6 +11709,8 @@ def main(argv: list[str] | None = None) -> int:
                  "Bonds only")
     if any(x.verb == "join" for x in steps) and args.title != "curse":
         ap.error("the join step: Curse of the Azure Bonds only")
+    if any(x.verb == "join-arrival" for x in steps) and args.title != "ssb":
+        ap.error("the join-arrival step: Secret of the Silver Blades only")
     if any(x.verb == "add" for x in steps) and args.title != "pool":
         ap.error("the add step: Pool of Radiance only")
     if any(x.verb == "site" for x in steps) and args.title != "pool":
