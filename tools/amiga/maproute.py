@@ -323,7 +323,23 @@ def _camp_actions(title: str) -> dict[str, tuple[Phase, Phase]]:
     identify_back = _phase(
         "identify_back", "camp_items", Step("key", "camp_sheet", key="E"),
         Step("key", "camp", key="E"), Step("key", "world", key="E"))
-    return {"heal": (heal_show, heal_back), "identify": (identify_show, identify_back)}
+    routes = {"heal": (heal_show, heal_back), "identify": (identify_show, identify_back)}
+    if title in ("ssb", "curse"):
+        # The Quickfight byte is read off the member's sheet, so the visit is Heal's.
+        routes["quickfight"] = (
+            _phase("quickfight_show", "world", Step("key", "camp", key="E"),
+                   Step("select", "camp"),
+                   Step("key", "camp_sheet", key="V", checkpoint="quickfight_sheet")),
+            _phase("quickfight_back", "camp_sheet", Step("key", "camp", key="E"),
+                   Step("key", "world", key="E")))
+    if title == "darkness":
+        routes["spells"] = (
+            _phase("spells_show", "world", Step("key", "camp", key="E"),
+                   Step("select", "camp"), Step("key", "camp_magic", key="M"),
+                   Step("key", "camp_cast_5", key="C", checkpoint="spells_cast")),
+            _phase("spells_back", "camp_cast_5", Step("key", "camp_magic", key="E"),
+                   Step("key", "camp", key="E"), Step("key", "world", key="E")))
+    return routes
 
 
 def _actions(title: str) -> tuple[Action, ...]:

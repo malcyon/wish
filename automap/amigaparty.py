@@ -331,13 +331,17 @@ ROWS: dict[str, PartyRow] = {
                        amiga_pod.SPELLS_MEMORISED_LENGTH),
         hidden=Spot(amiga_pod.ITEM_NODE_BASE + amiga_pod._item_offset(0x035),
                     1, 0x07),
-        # 0x185: QUICK sets it to 1, but the game rewrites it at the start of
-        # each fight (0 for a player, 0x80 for a companion), so a written 0
-        # changes nothing and both branches showed the menu. Not confirmed.
+        # 0x185: QUICK sets it to 1, and the game rewrites it at the start of
+        # each fight (0 for a player, 0x80 for a companion), so a write
+        # between fights changes nothing. In a fight it does: with A's byte
+        # poked to 0 mid-fight A got the manual menu, and from the same
+        # snapshot with no poke the computer played A. So it is confirmed
+        # and legal in a fight.
         quickfight=Spot(amiga_pod.QUICKFIGHT),
         control=Spot(0x093, 1, 0x80),
         confirmed=frozenset({"heal", "store-spells", "restore-spells", "identify",
-                            "level-up"}),
+                            "level-up", "clear-quickfight"}),
+        combat_legal=frozenset({"clear-quickfight"}),
         measured=frozenset({"hp_max", "combat_value"})),
 }
 

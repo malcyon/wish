@@ -3293,7 +3293,7 @@ def test_discovery_and_opening_press_no_action_on_a_route_with_enabled_actions(
         controller, game, _, _, _ = _opening_controller(tmp_path, monkeypatch)
     else:
         controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
-    assert {a.kind for a in controller.route.actions if a.enabled} == {"heal", "identify"}
+    assert {a.kind for a in controller.route.actions if a.enabled} == {"heal", "identify", "quickfight"}
     before = json.loads(json.dumps(controller.summary["actions"]))
     result = (controller.run_opening_first() if mode == "opening"
               else controller.run_discovery())

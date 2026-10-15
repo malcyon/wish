@@ -94,7 +94,10 @@ def test_every_title_with_a_measured_source_is_ready_and_the_tilverton_curse_sav
     assert [action.kind for action in route.actions] == [
         "heal", "spells", "identify", "quickfight", "levelup"]
     assert {action.kind for action in route.actions if action.enabled} == (
-        set() if title == "pool" else {"heal", "identify"})
+        set() if title == "pool" else {"heal", "identify"} | EXTRA_ENABLED[title])
+
+
+EXTRA_ENABLED = {"ssb": {"quickfight"}, "curse": {"quickfight"}, "darkness": {"spells"}}
 
 
 def _enabled(title: str, tmp_path: Path) -> dict[str, maproute.Action]:
@@ -121,6 +124,36 @@ def test_heal_and_identify_carry_the_measured_camp_routes(title: str, tmp_path: 
         ("camp_sheet", "E"), ("camp", "E"), ("world", "E")]
 
 
+@pytest.mark.parametrize("title", ("ssb", "curse"))
+def test_quickfight_off_visits_the_sheet_as_heal_does(title: str, tmp_path: Path):
+    heal, qf = (_enabled(title, tmp_path)[k] for k in ("heal", "quickfight"))
+
+    for mine, theirs in ((qf.show, heal.show), (qf.back, heal.back)):
+        assert mine.initial_state == theirs.initial_state
+        assert [(s.kind, s.state, s.key) for s in mine.steps] == [
+            (s.kind, s.state, s.key) for s in theirs.steps]
+    assert qf.selector == "controlled"
+
+
+def test_pools_of_darkness_quickfight_stays_off_between_fights(tmp_path: Path):
+    by_kind = {a.kind: a for a in maproute.route_for(
+        "darkness", _manifest("darkness", tmp_path)).actions}
+    assert not by_kind["quickfight"].enabled
+
+
+def test_pools_of_darkness_spells_visit_the_cast_list(tmp_path: Path):
+    spells = _enabled("darkness", tmp_path)["spells"]
+
+    assert spells.show.initial_state == "world"
+    assert [(s.kind, s.state, s.key) for s in spells.show.steps] == [
+        ("key", "camp", "E"), ("select", "camp", None), ("key", "camp_magic", "M"),
+        ("key", "camp_cast_5", "C")]
+    assert spells.show.steps[-1].checkpoint == "spells_cast"
+    assert spells.back.initial_state == "camp_cast_5"
+    assert [(s.state, s.key) for s in spells.back.steps] == [
+        ("camp_magic", "E"), ("camp", "E"), ("world", "E")]
+
+
 @pytest.mark.parametrize("title", ("ssb", "darkness", "curse"))
 def test_the_enabled_actions_wait_only_for_screens_the_title_guards(title: str, tmp_path: Path):
     actions = _enabled(title, tmp_path)
@@ -135,13 +168,14 @@ def test_the_enabled_actions_wait_only_for_screens_the_title_guards(title: str, 
 
 
 @pytest.mark.parametrize("title", ("pool", "curse", "ssb", "darkness"))
-def test_spells_quickfight_and_levelup_stay_off_and_pool_has_no_camp_route(
+def test_the_actions_without_a_measured_route_stay_off_and_pool_has_no_camp_route(
         title: str, tmp_path: Path):
     route = maproute.route_for(title, _manifest(title, tmp_path))
     by_kind = {action.kind: action for action in route.actions}
+    off = {"spells", "quickfight", "levelup"} - EXTRA_ENABLED.get(title, set())
 
-    assert not any(by_kind[k].enabled for k in ("spells", "quickfight", "levelup"))
-    assert all(by_kind[k].show is None for k in ("spells", "quickfight", "levelup"))
+    assert not any(by_kind[k].enabled for k in off)
+    assert all(by_kind[k].show is None for k in off)
     if title == "pool":
         assert not any(action.enabled for action in route.actions)
 

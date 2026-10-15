@@ -256,12 +256,12 @@ def test_only_the_writes_seen_on_screen_and_kept_over_a_step_are_confirmed():
     # live press. Level up on Pool and Curse matched the hall's training and
     # survived a game save. Quickfight off: the next fight gave the member's
     # menu on Pool, Curse and Silver Blades; Pools of Darkness rewrites the
-    # byte at fight start, so it is not confirmed there.
+    # byte at fight start, so it is confirmed there by a write inside a fight.
     assert {k: r.confirmed for k, r in ap.ROWS.items()} == {
         "pool-of-radiance": FOUR | {"level-up", "clear-quickfight"},
         "curse-of-the-azure-bonds": FOUR | {"level-up", "clear-quickfight"},
         "secret-of-the-silver-blades": FOUR | {"level-up", "clear-quickfight"},
-        "pools-of-darkness": FOUR | {"level-up"},
+        "pools-of-darkness": FOUR | {"level-up", "clear-quickfight"},
     }
 
 
@@ -278,9 +278,10 @@ def test_the_measured_facts_are_the_ones_read_off_a_running_game():
     }
 
 
-def test_no_action_is_proven_safe_in_a_fight():
-    for row in ap.ROWS.values():
-        assert row.combat_legal == frozenset()
+def test_only_pools_of_darkness_quickfight_off_is_legal_in_a_fight():
+    for key, row in ap.ROWS.items():
+        assert row.combat_legal == (
+            frozenset({"clear-quickfight"}) if key == "pools-of-darkness" else frozenset())
         assert row.combat_value == 5
 
 

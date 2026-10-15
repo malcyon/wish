@@ -195,7 +195,7 @@ def test_a_confirmed_action_is_enabled_when_every_condition_holds(measured):
             assert button(window, action.name).toolTip() == action.description
 
 
-def test_each_failing_condition_greys_the_button_with_its_reason(measured):
+def test_each_failing_condition_greys_the_button_with_its_reason(measured, monkeypatch):
     # Every case starts from the enabled one above and breaks one thing.
     healed = ("heal", "restore-spells")
 
@@ -218,6 +218,9 @@ def test_each_failing_condition_greys_the_button_with_its_reason(measured):
     assert reasons(window)["heal"] == "the machine is not readable right now"
 
     # An action the title's row does not confirm.
+    row = amigaparty.ROWS[POOLS_OF_DARKNESS]
+    monkeypatch.setitem(amigaparty.ROWS, POOLS_OF_DARKNESS, SimpleNamespace(
+        **{**vars(row), "confirmed": row.confirmed - {"clear-quickfight"}}))
     window, _ = attached(POOLS_OF_DARKNESS)
     assert states(window)["clear-quickfight"] == (False, "")
     assert reasons(window)["clear-quickfight"] == sentence(POOLS_OF_DARKNESS)
@@ -229,6 +232,12 @@ def test_an_action_marked_combat_legal_stays_enabled_in_a_fight(measured, monkey
         **{**vars(row), "combat_legal": frozenset({"heal"})}))
     window, _ = attached(POOL, mode=row.combat_value)
     assert enabled(window) == {"heal"}
+
+
+def test_pools_of_darkness_quickfight_off_stays_enabled_in_a_fight(measured):
+    row = amigaparty.ROWS[POOLS_OF_DARKNESS]
+    window, _ = attached(POOLS_OF_DARKNESS, mode=row.combat_value)
+    assert enabled(window) == {"clear-quickfight"}
 
 
 def test_the_gate_follows_the_game_from_one_poll_to_the_next(measured):
@@ -248,13 +257,13 @@ def test_the_gate_follows_the_game_from_one_poll_to_the_next(measured):
 
 def test_with_the_rows_as_committed_heal_needs_a_measured_maximum():
     """Every title has measured its maximum and its fight value, so Heal is
-    on everywhere; Quickfight off is confirmed on all but Pools of Darkness."""
+    on everywhere; Quickfight off is confirmed on all four."""
     four = {"heal", "store-spells", "restore-spells", "identify"}
     expected = {
         POOL: four | {"clear-quickfight"},
         CURSE: four | {"clear-quickfight"},
         SILVER: four | {"clear-quickfight"},
-        POOLS_OF_DARKNESS: four,
+        POOLS_OF_DARKNESS: four | {"clear-quickfight"},
     }
     for key, want in expected.items():
         window, _ = attached(key)
