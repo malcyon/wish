@@ -1726,6 +1726,17 @@
       "example": "672/26293716ee-amiga-accept1b/accept1b/shots/01-party_menu.png",
       "sha256": "e1e6258b84898170189e8f17531705699d8b50cb1beda9fadd706370b034f091"
     },
+    "party_won": {
+      "also": [],
+      "box": [
+        72,
+        76,
+        360,
+        98
+      ],
+      "example": "WISH-391/full5/screens/189-fight.png",
+      "sha256": "396210753572397bade8ca52ada1a7c698a50e0244ff348f536b1a9c0971dc6f"
+    },
     "rest_menu": {
       "also": [],
       "box": [
@@ -1886,6 +1897,17 @@
       ],
       "example": "640/ssb2/accept2/shots/11-world.png",
       "sha256": "605efa442147026c8e87487103e1fd24cfd16f148e522f6cbc0cbe83e8620367"
+    },
+    "treasure_bar_no_share": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "WISH-391/full5/screens/190-fight.png",
+      "sha256": "637505e0e4d972f20766a064ad09f16c6effd085108df5de56ab9bef23cd1819"
     },
     "temple_entry_continue": {
       "also": [

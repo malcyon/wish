@@ -200,7 +200,7 @@ def test_the_continue_battle_rule_reads_the_bar_and_not_the_fight_before_it(tmp_
 def test_fight_answers_each_continue_battle_bar_no_once(tmp_path):
     clock = Clock()
     game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, "continue_battle",
-                        None, "continue_battle", "continue", "world"],
+                        None, "continue_battle", "party_won", "world"],
                 owners=[_owner("PAINE")])
     game.walking = False
     screens = _screens(tmp_path, game, clock)
@@ -383,21 +383,91 @@ def test_wander_stops_after_its_step_limit(tmp_path):
 
 # -- the fight --------------------------------------------------------------------------------
 
-#: The encounter page, a monster turn, two bars each grabbed twice, the won fight's pages, the
-#: treasure bar, the offer to go back for the treasure, and the map.
+#: The encounter page, a monster turn, two bars each grabbed twice, the won page, the treasure
+#: bar, the offer to go back for the treasure, and the map.
 FIGHT = ["continue", None, "combat_bar", "combat_bar", None, "combat_bar", "combat_bar", None,
-         "continue", "continue", "treasure_bar", "treasure", "world"]
+         "party_won", "treasure_bar", "treasure", "world"]
 
 
-def test_fight_answers_every_screen_and_logs_each_bar_owner(tmp_path):
+@pytest.mark.parametrize("bar", ["treasure_bar", "treasure_bar_no_share"])
+def test_fight_answers_every_screen_and_logs_each_bar_owner(tmp_path, bar):
     clock = Clock()
-    game = Game(clock, FIGHT, owners=[_owner("PAINE"), _owner("Guy de Valois")])
+    script = [bar if screen == "treasure_bar" else screen for screen in FIGHT]
+    game = Game(clock, script, owners=[_owner("PAINE"), _owner("Guy de Valois")])
     game.walking = False
     screens = _screens(tmp_path, game, clock)
     found = ssbfight.fight(screens, game, ["GUY DE VALOIS"])
     assert found["outcome"] == "won"
     assert [bar["owner"] for bar in found["bars"]] == ["PAINE", "Guy de Valois"]
-    assert game.keys == ["RET", "Q", "Q", "RET", "RET", "E", "N"]
+    assert game.keys == ["RET", "Q", "Q", "RET", "E", "N"]
+    assert game.pressed_on[-3:] == ["party_won", bar, "treasure"]
+    assert found["won_page"] == found["answered"][-3]["shot"]
+    _keys_allowed(screens, game)
+
+
+def test_fight_does_not_call_a_fight_won_without_the_won_page(tmp_path):
+    clock = Clock()
+    game = Game(clock, ["continue", None, "combat_bar", "combat_bar", None, "continue", "world"],
+                owners=[_owner("PAINE")])
+    game.walking = False
+    found = {}
+    with pytest.raises(RouteError, match="no won page"):
+        ssbfight.fight(_screens(tmp_path, game, clock), game, ["PAINE"], found=found)
+    assert "won_page" not in found
+
+
+def _full5(*numbers):
+    """Frames of the WISH-391 full5 run: the party won, and the run stalled on the treasure bar
+    with no SHARE button from 190 to 313, its picture animating through three frames."""
+    shots = scratch.cache_dir("acceptance") / "WISH-391" / "full5" / "screens"
+    frames = {n: shots / f"{n}-fight.png" for n in numbers}
+    if not all(p.is_file() for p in frames.values()):
+        pytest.skip("the WISH-391 full5 frames are not on this machine")
+    return frames
+
+
+def _committed_guards(tmp_path):
+    path = tmp_path / "guards.json"
+    path.write_text(json.dumps(ssbfight.guard_rules()))
+    return PixelGuards(path)
+
+
+def test_the_won_page_rule_reads_the_won_page_only(tmp_path):
+    # 188 is CONTINUE BATTLE, 189 the won page that got RETURN, 190 the treasure bar after it.
+    frames = _full5("188", "189", "190")
+    guards = _committed_guards(tmp_path)
+    assert {s for s in ssbfight.KNOWN if guards(s, frames["189"])} == {"party_won", "continue"}
+    assert ssbfight.KNOWN.index("party_won") < ssbfight.KNOWN.index("continue")
+    assert not guards("party_won", frames["188"]) and not guards("party_won", frames["190"])
+
+
+def test_the_shareless_treasure_bar_rule_reads_every_frame_of_the_stall(tmp_path):
+    # 190, 191 and 194 are the three animation frames; 313 is the last before the stop.
+    frames = _full5("189", "190", "191", "194", "313")
+    guards = _committed_guards(tmp_path)
+    for n in ("190", "191", "194", "313"):
+        assert [s for s in ssbfight.KNOWN if guards(s, frames[n])] == ["treasure_bar_no_share"], n
+    assert not guards("treasure_bar_no_share", frames["189"])
+
+
+def test_drive_leaves_a_won_fight_by_exit_and_saves(tmp_path, monkeypatch):
+    clock = Clock()
+    loaded = [_member(name) for name in NAMES]
+    after = [_member(name, quickfight=1) for name in NAMES]
+    # The map holds for the fight loop's settle, then the save starts from it.
+    script = [*DRIVE[:11], "continue", "combat_bar", "combat_bar", None, "continue_battle",
+              "party_won", "treasure_bar_no_share", "treasure", "world", "world", "world",
+              *DRIVE[11:]]
+    game = Game(clock, script, owners=[_owner("PAINE")], parties=[loaded, after])
+    game.walking = False
+    monkeypatch.setattr(ssbfight, "wander", lambda *a: {"steps": [], "met": "shot"})
+    screens = _screens(tmp_path, game, clock)
+    found = ssbfight.drive(screens, _manifest(), ["PAINE"], game,
+                           lambda *a: (0, "answered"), save=True)
+    assert found["outcome"] == "won" and found["won_page"]
+    assert game.keys == ["ESC", "P", "L", "D", "B", "RET", "Q", "N", "RET", "E", "N",
+                         "E", "S", "E", "N"]
+    assert game.pressed_on[9:11] == ["treasure_bar_no_share", "treasure"]
     _keys_allowed(screens, game)
 
 

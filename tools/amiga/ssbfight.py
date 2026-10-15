@@ -82,9 +82,12 @@ UNCAPTURED: dict[str, str] = {}
 #: the opening scene's own `COMBAT` statement's treasure, as are both kept crops of the bar.
 TREASURE_SHORT = {"box": [72, 404, 400, 426],
                   "sha256": "6f5859dffc35646e493759a887da3132f4347cd4fc454160a4af4733e153fcbd"}
+#: "party_won" comes before "continue": the won page also shows the continue bar, and the first
+#: known screen a grab matches names it.
 KNOWN = ("credits", "title", "party_menu", "load_picker", "load_anyway", "scrolls_dropped",
-         "loaded_menu", "journal", "world", "continue", "combat_bar", "continue_battle",
-         "treasure_bar", "treasure", "party_destroyed", "camp", "camp_save_picker", "exit_game")
+         "loaded_menu", "journal", "world", "party_won", "continue", "combat_bar",
+         "continue_battle", "treasure_bar", "treasure_bar_no_share", "treasure", "party_destroyed",
+         "camp", "camp_save_picker", "exit_game")
 #: The only keys each screen may receive. The journal is answered by the answerer, which types
 #: through its own channel, so it takes none here. Of a lost fight's screens only the destroyed
 #: message takes a key, RETURN at its PRESS ANY KEY prompt; the menus take none.
@@ -93,13 +96,19 @@ ALLOWED_KEYS = {
     "load_picker": frozenset("ABCDEFGHIJ"), "loaded_menu": frozenset({"B"}),
     "world": frozenset({"NP4", "NP6", "NP8", "E"}), "continue": frozenset({"RET"}),
     "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
-    "treasure_bar": frozenset({"E"}), "treasure": frozenset({"N"}), "camp": frozenset({"S"}),
+    "party_won": frozenset({"RET"}), "treasure_bar": frozenset({"E"}),
+    "treasure_bar_no_share": frozenset({"E"}), "treasure": frozenset({"N"}),
+    "camp": frozenset({"S"}),
     "camp_save_picker": frozenset("ABCDEFGHIJ"), "exit_game": frozenset({"N"}),
     "party_destroyed": frozenset({"RET"}),
 }
-#: Answers to the screens that come between the encounter and the map after a won fight.
-FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure_bar": "E",
-                 "treasure": "N", "continue": "RET", "party_destroyed": "RET"}
+#: Answers to the screens that come between the encounter and the map after a won fight. The
+#: won page gets RETURN; the treasure bar gets EXIT in both its forms, with SHARE when coins are
+#: left and without it when only items are (`/Secret` 0x307CE-0x307FC); EXIT asks whether to go
+#: back for treasure left behind only while some is (0x308A0-0x308B8), and NO leaves.
+FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "party_won": "RET",
+                 "treasure_bar": "E", "treasure_bar_no_share": "E", "treasure": "N",
+                 "continue": "RET", "party_destroyed": "RET"}
 #: Screens that mean the party was destroyed: the message, whose PRESS ANY KEY prompt gets
 #: RETURN, or a menu the game returns to, which gets no key. Either ends the step there, and
 #: the step assumes nothing about the screen that follows.
@@ -390,8 +399,19 @@ SSB_FIGHT = cursefight.FightRules(
 
 
 def fight(screens: Screens, memory: Any, members: list[str], found: dict | None = None) -> dict:
-    """Answer every screen from the encounter to the map; log each bar with its owner."""
-    return cursefight.fight(screens, memory, members, SSB_FIGHT, found=found)
+    """Answer every screen from the encounter to the map; log each bar with its owner.
+
+    A fight that ends on the map counts as won only when the game's won page was answered on
+    the way; `won_page` names its frame."""
+    result = cursefight.fight(screens, memory, members, SSB_FIGHT, found=found)
+    if result["outcome"] != "won":
+        return result
+    won = next((row for row in result["answered"] if row["screen"] == "party_won"), None)
+    require(won is not None, "the map came back after the fight with no won page")
+    result["won_page"] = won["shot"]
+    if found is not None:
+        found["won_page"] = won["shot"]
+    return result
 
 
 def capture(screens: Screens, memory: Any, before: int) -> dict:
