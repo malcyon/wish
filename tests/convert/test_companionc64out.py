@@ -21,15 +21,7 @@ from gamedata import specimen_root
 from PyQt6.QtWidgets import QApplication
 
 from editor import convert, roster, saveplan
-from goldbox import (
-    amiga_adf,
-    amiga_later,
-    amiga_savegame,
-    c64_codec,
-    dos_codec,
-    dos_port,
-    dos_savegame,
-)
+from goldbox import amiga_later, c64_codec, dos_codec, dos_port, dos_savegame
 from goldbox.companions import (
     COMPANION_FILL,
     CURSE_KEY,
@@ -39,7 +31,7 @@ from goldbox.companions import (
     Companions,
     companion_fill,
 )
-from goldbox.d64 import split_load_address
+from goldbox.d64 import D64, split_load_address
 from goldbox.dos_codec import FIELDS_BY_NAME_FOR
 from goldbox.iconparts import IconParts, c64_icon_tables
 from tools.convert import convertdrops
@@ -49,6 +41,7 @@ NATIVE_JOIN = "c64-join-alias-dragonbait-wish388"
 DOS_JOIN = "curse-pit-join-alias-dragonbait-dos"
 DOS_JOIN_FILES = {"ALIAS": "CHRDATD7.SAV", "DRAGONBAIT": "CHRDATD8.SAV"}
 COMPANIONS = ("ALIAS", "DRAGONBAIT")
+MON_OF = {"ALIAS": 0x16, "DRAGONBAIT": 0x17}
 #: The DOS record fields each join sets for a companion, and that a converted
 #: one must match.
 JOIN_FIELDS = ("portrait_head", "portrait_body", "former_level",
@@ -315,35 +308,68 @@ def test_the_amiga_fill_is_what_every_joinable_amiga_record_holds():
     assert found == names
 
 
-#: The combat picture each companion's `MON` file names (ALIAS `MON16`,
-#: DRAGONBAIT `MON17`), which the C64 join copies to `0x0E5` and `0x0E6`.
-STORY_PICTURE = {"ALIAS": 0x16, "DRAGONBAIT": 0x17}
 AMIGA_PIT_SAVE = "curse-c64join-alias-dragonbait-amiga-pit-save"
 C64_JOIN_DOS_RESAVE = "curse-c64join-alias-dragonbait-dos-resave"
 
 
-def _assert_the_c64_figure(neutral_party) -> None:
-    """Each companion in `neutral_party` is written with his own C64 figure.
+def _disk_mon(mon: int) -> bytes:
+    """`MON<mon>`'s payload read straight off the player's Curse side that holds it."""
+    for side in gamedata.curse_disks():
+        entry = side.find(f"MON{mon:02X}".encode())
+        if entry is not None:
+            return split_load_address(side.read_file(entry))[1]
+    pytest.skip(f"needs MON{mon:02X} on a Curse side")
 
-    The story byte at `0x0E5` and the picture at `0x0E6` are his `MON` file's;
-    `0x0E7` holds the converted mark; the size byte is 1, and the icon is the
-    default the C64 join leaves in his slot, the one the C64 game itself draws
-    with before COM.PREP swaps in his picture.
+
+def _disk_default_icon() -> bytes:
+    """The icon the C64's own join leaves in a joined companion's slot, composed
+    from the player's side that carries the icon tables."""
+    return next(IconParts.load(side).default_icon()
+                for side in gamedata.curse_disks()
+                if side.find(b"SPELLE64") and side.find(b"SPELLN64"))
+
+
+def _save_as_c64(app, tmp_path, source_path, slot):
+    """What Save As to the C64 writes for the party in `source_path`."""
+    from goldbox.savegame import load_save
+    source = convert.Source.detect(pathlib.Path(source_path), slot=slot)
+    party = roster.Party(source)
+    try:
+        assets = saveplan.resolve_assets(
+            source, "c64", game_files=convertdrops.game_files)
+    except saveplan.MissingAssets as exc:
+        pytest.skip(f"needs {', '.join(exc.missing)}")
+    plan = saveplan.prepare_save_as(party, "c64", tmp_path / "out.d64", assets)
+    assert isinstance(plan, saveplan.SavePlan)
+    (data,) = plan.files.values()
+    return load_save(D64.from_bytes(data))
+
+
+def _assert_the_c64_figure(app, tmp_path, source_path, slot=None) -> None:
+    """Save As to the C64 gives each companion his own figure.
+
+    The story byte is what his `MON` file holds at `0x0E5`, read here off the
+    disk; the picture at `0x0E6` is the file's own number, since the file holds
+    the join's `$FF` fill there; `0x0E7` holds the converted mark; the size
+    byte is 1; and his icon entry is the default the C64 join leaves, composed
+    here from the disk's own icon tables.
     """
-    table = _table()
+    game, save0, _save1 = _save_as_c64(app, tmp_path, source_path, slot)
+    raw0 = save0.to_bytes()
+    icon = _disk_default_icon()
     seen = set()
-    for neutral in neutral_party:
-        name = str(neutral.get("name"))
+    for member in save0.characters:
+        name = str(member.record.get("name"))
         if name not in COMPANIONS:
             continue
         seen.add(name)
-        rec, _ = c64_codec.write(neutral, icon=table.default_icon,
-                                 companions=table)
-        raw = rec.to_bytes()
-        pic = STORY_PICTURE[name]
-        assert (raw[0x0E5], raw[0x0E6], raw[0x0E7]) == (pic, pic, 0x01), name
-        assert raw[0x099] == 1, name
-        assert raw[0x220:0x220 + len(table.default_icon)] == table.default_icon
+        mon = _disk_mon(MON_OF[name])
+        record = member.record.to_bytes()
+        assert (record[0x0E5], record[0x0E6], record[0x0E7]) == (
+            mon[0x0E5], MON_OF[name], 0x01), name
+        assert record[0x099] == 1, name
+        at = game.icon(member.index)
+        assert raw0[at:at + game.icon_size] == icon, name
     assert seen == set(COMPANIONS)
 
 
@@ -351,43 +377,37 @@ def test_a_c64_joined_companion_through_dos_comes_back_with_his_c64_figure(
         app, tmp_path):
     """Specimen: the native C64 join, to DOS as Wish writes it, to the C64."""
     plan = _prepare(app, tmp_path, "dos")
-    party = [dos_codec.to_neutral(dos_codec.DosCharacter(data))
-             for name, data in plan.files.items()
-             if name.upper().startswith("CHRDAT")
-             and name.upper().endswith(".SAV")]
+    folder = tmp_path / "dos"
+    folder.mkdir()
+    for name, data in plan.files.items():
+        (folder / name).write_bytes(data)
     # Fails without the story write in c64_codec.write: 0x0E5 stays 0.
-    _assert_the_c64_figure(party)
+    _assert_the_c64_figure(app, tmp_path, folder)
 
 
 def test_a_c64_joined_companion_through_the_amiga_comes_back_with_his_c64_figure(
         app, tmp_path):
     """Specimen: the native C64 join, to the Amiga as Wish writes it, to the C64."""
     plan = _prepare(app, tmp_path, "amiga")
-    party = []
-    for name, data in plan.files.items():
-        written = tmp_path / f"written-{name}"
-        written.write_bytes(data)
-        party += [amiga_later.to_neutral_later(member.native)
-                  for member in roster.Party(
-                      convert.Source.detect(written)).members]
-    _assert_the_c64_figure(party)
+    (name, data), = plan.files.items()
+    written = tmp_path / name
+    written.write_bytes(data)
+    _assert_the_c64_figure(app, tmp_path, written)
 
 
-def test_the_amiga_games_own_save_of_a_c64_joined_party_converts_to_the_c64_figure():
+def test_the_amiga_games_own_save_of_a_c64_joined_party_converts_to_the_c64_figure(
+        app, tmp_path):
     """Specimen: Amiga Curse's own save (slot B) of a party that joined on the C64.
 
     Slot A was written by Wish and slot B by the running Amiga game, which
     loaded A and saved; the specimen's provenance records both.
     """
     folder = gamedata.specimen(AMIGA_PIT_SAVE, "amiga")
-    disk = amiga_adf.AmigaDisk.open(folder / "fetched-save.adf")
-    slot = amiga_savegame.read_slot(disk, "B", CURSE_KEY)
-    _assert_the_c64_figure(
-        [amiga_later.to_neutral_later(c) for c in slot.characters])
+    _assert_the_c64_figure(app, tmp_path, folder / "fetched-save.adf", "B")
 
 
-def test_the_dos_games_own_resave_of_a_c64_joined_party_converts_to_the_c64_figure():
+def test_the_dos_games_own_resave_of_a_c64_joined_party_converts_to_the_c64_figure(
+        app, tmp_path):
     """Specimen: DOS Curse's own resave of a party that joined on the C64."""
     folder = gamedata.specimen(C64_JOIN_DOS_RESAVE)
-    _assert_the_c64_figure(
-        [dos_codec.to_neutral(c) for c in dos_codec.read_party(folder, "D")])
+    _assert_the_c64_figure(app, tmp_path, folder, "D")
