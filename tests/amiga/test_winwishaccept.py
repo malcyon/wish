@@ -5137,3 +5137,23 @@ def test_a_guest_failure_event_carries_the_step_exit_code_and_command_length():
     assert winwishaccept.guest_failure_fields(error) == {
         "step": "stage put", "exit_code": 255, "command_length": 7}
     assert winwishaccept.guest_failure_fields(ValueError("x")) == {}
+
+
+def test_the_restart_answers_the_boot_pages_and_the_code_wheel_before_the_load(
+        tmp_path, monkeypatch):
+    # The restarted game shows Curse's code-wheel page again; without the title wait's
+    # interstitials the reload stops with "title screen was not recognized".
+    controller, events = _disconnect_controller(tmp_path, monkeypatch)
+    controller.route.title = "curse"
+    controller.guards = SimpleNamespace(rules={"curse_wheel": True})
+    monkeypatch.setattr(controller, "_await", lambda state, **kwargs: events.append(
+        ("await", state, [page[0] for page in kwargs.get("interstitials", ())])) or {})
+    controller.lane.start = lambda *args, **kwargs: events.append("lane-start")
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    restart = events.index("lane-start")
+    assert ("await", "title", ["curse_wheel"]) in events[restart:]
+    assert events.index(("await", "title", ["curse_wheel"]), restart) < events.index(
+        "reload", restart)

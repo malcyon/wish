@@ -2326,9 +2326,12 @@ class Controller:
     def _reload_party(self) -> None:
         """Load the party into the restarted game as the run's start did, then leave Wish on the Automapper."""
         load = next(phase for phase in self.route.phases if phase.name == "load")
-        self.reconnect_limit = _phase_keys(load)
         # The restarted emulator is a new pipe peer; nothing cached from the first may be reused.
         self.game._pipe = None
+        # The boot shows the same copy-protection page as the first one did, before the title.
+        self._game_section()
+        self._await_title()
+        self.reconnect_limit = _phase_keys(load)
         try:
             self.run_phase(load, namespace="reconnect-load")
         finally:
