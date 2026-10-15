@@ -66,7 +66,7 @@ class FakeGame:
     def __init__(self, tmp_path):
         self.calls = []
         self.slot = SimpleNamespace(port=6531, display=":93")
-        self.work = tmp_path / "work"
+        self.work = tmp_path / "fsuae-test-fwa"
         self.work.mkdir()
         self.last_shot = None
         self.staged = {}
