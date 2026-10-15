@@ -1669,6 +1669,21 @@ def _adopt(folder: pathlib.Path, sha: str) -> pathlib.Path | None:
     return zips[0]
 
 
+#: A sibling folder is only pruned once it is this much older than the run.
+PRUNE_AFTER_SECONDS = 24 * 3600
+
+
+def _fails_hash(folder: pathlib.Path) -> bool:
+    """Whether the folder's zip is absent or hashes to something other than its note.
+
+    A read error propagates, so a folder that merely could not be read is never pruned.
+    """
+    zips = sorted(folder.rglob("*.zip"))
+    if len(zips) != 1:
+        return True
+    return (folder / HASH_FILE).read_text().strip() != file_sha256(zips[0])
+
+
 def _siblings(dest: pathlib.Path) -> list[pathlib.Path]:
     """The download folders `fetch` made beside `dest` when `dest` could not be used."""
     return sorted(p for p in dest.parent.glob(f"{dest.name}.*") if p.is_dir())
@@ -1725,8 +1740,13 @@ def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.P
     finally:
         shutil.rmtree(fresh, ignore_errors=True)
     for sibling in _siblings(dest):
-        if sibling not in result.parents and sibling.stat().st_mtime < started:
-            shutil.rmtree(sibling, ignore_errors=True)
+        if sibling in result.parents:
+            continue
+        try:
+            if started - sibling.stat().st_mtime > PRUNE_AFTER_SECONDS and _fails_hash(sibling):
+                shutil.rmtree(sibling)
+        except OSError:
+            continue
     return result
 
 

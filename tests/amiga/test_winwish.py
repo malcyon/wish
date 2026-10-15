@@ -366,19 +366,61 @@ def test_a_later_run_reuses_the_folder_an_earlier_one_downloaded_beside_a_reject
     assert winwish.fetch(guest, SHA, folder) == beside and len(counter) == 2
 
 
-def test_siblings_nothing_reuses_are_pruned_when_older_than_the_run_and_dest_is_kept(tmp_path):
+def _sibling(tmp_path, name, recorded, age_days):
+    """A sibling build folder holding one zip, with `recorded` as its hash note, `age_days` old."""
+    folder = tmp_path / (SHA[:12] + "." + name)
+    folder.mkdir()
+    (folder / "wish-9.zip").write_bytes(b"junk")
+    (folder / winwish.HASH_FILE).write_text(recorded + "\n")
+    old = folder.stat().st_mtime - age_days * 86400
+    os.utime(folder, (old, old))
+    return folder
+
+
+def test_siblings_failing_their_hash_for_over_a_day_are_pruned_and_dest_is_kept(tmp_path):
     counter: list[int] = []
     guest = _downloading(counter)
     folder = tmp_path / SHA[:12]
     winwish.fetch(guest, SHA, folder).write_bytes(b"torn")
-    stale = tmp_path / (SHA[:12] + ".stale")
-    stale.mkdir()
-    (stale / "wish-9.zip").write_bytes(b"junk")
-    old = stale.stat().st_mtime - 3600
-    os.utime(stale, (old, old))
+    stale = _sibling(tmp_path, "stale", "0" * 64, 2)
     beside = winwish.fetch(guest, SHA, folder)
     assert not stale.exists() and folder.is_dir() and beside.parent.is_dir()
     assert len(counter) == 2
+
+
+def test_a_sibling_whose_hash_checks_or_that_is_under_a_day_old_is_kept(tmp_path):
+    counter: list[int] = []
+    guest = _downloading(counter)
+    folder = tmp_path / SHA[:12]
+    winwish.fetch(guest, SHA, folder).write_bytes(b"torn")
+    young = _sibling(tmp_path, "young", "0" * 64, 0.5)
+    winwish.fetch(guest, SHA, folder)
+    assert young.exists()
+    # A checking sibling never reaches the prune: a run reuses it, and the check says it holds.
+    good = _sibling(tmp_path, "good", winwish.hashlib.sha256(b"junk").hexdigest(), 3)
+    assert not winwish._fails_hash(good)
+    assert winwish.fetch(guest, SHA, folder).parent in {good, *tmp_path.glob(SHA[:12] + ".*")}
+    assert good.exists()
+
+
+def test_a_sibling_that_vanishes_or_cannot_be_read_is_skipped_and_the_download_stands(
+        tmp_path, monkeypatch):
+    counter: list[int] = []
+    guest = _downloading(counter)
+    folder = tmp_path / SHA[:12]
+    winwish.fetch(guest, SHA, folder).write_bytes(b"torn")
+    unreadable = _sibling(tmp_path, "unreadable", "0" * 64, 2)
+    real = winwish._siblings
+    monkeypatch.setattr(winwish, "_siblings", lambda dest: [*real(dest), tmp_path / "gone"])
+    original = winwish._fails_hash
+
+    def flaky(path):
+        if path == unreadable:
+            raise PermissionError("transient")
+        return original(path)
+    monkeypatch.setattr(winwish, "_fails_hash", flaky)
+    beside = winwish.fetch(guest, SHA, folder)
+    assert beside.is_file() and unreadable.exists()
 
 
 def test_a_failed_download_leaves_no_temporary_folder(tmp_path):
