@@ -2,7 +2,7 @@
 
 `LIBRARY $3918` (weapon block `$387E`) adds record `0x0EC` for a weapon whose
 item-type flag has bit 1 and the strength step for bit 2, and `COM.PREP $1740`
-caches `0x0EC` from dexterity. The writer used to store `0x0EC` as 0 and base
+caches `0x0EC` from the dexterity table at `$178B`. The writer used to store `0x0EC` as 0 and base
 plus strength whatever was readied, so a bowman showed one point worse than the
 game computes.
 """
