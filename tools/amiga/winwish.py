@@ -2020,6 +2020,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     sha = full_sha(guest, args.sha)
     zipped = pathlib.Path(args.zip) if args.zip else fetch(guest, sha)
     check_zip_commit(zipped, sha)
+    # The build is about to be replaced; a failed `up` must not leave the old build's record beside the new one.
+    _clear_winuae_flag(args.holder)
     result: dict[str, str] = {"staged": stage(guest, args.holder, zipped, getattr(args, "zip_sha256", None))}
     claimed = started = wish_tried = done = False
     with terminating():
@@ -2060,6 +2062,10 @@ def _build_reads_pipe(guest: Guest, sha: str) -> bool:
 def _flag_file(holder: str) -> pathlib.Path:
     """Where `up` leaves whether the holder's staged build reads `OLD_WINUAE_ENV`, for every later start."""
     return scratch.cache_dir("winwish", f"old-winuae-flag-{holder}")
+
+
+def _clear_winuae_flag(holder: str) -> None:
+    _flag_file(holder).unlink(missing_ok=True)
 
 
 def _write_winuae_flag(holder: str, reads: bool) -> None:

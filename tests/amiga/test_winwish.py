@@ -680,6 +680,24 @@ def test_a_build_without_the_old_winuae_flag_is_started_without_it(tmp_path, mon
     assert f"$env:{winwish.OLD_WINUAE_ENV}" not in body
 
 
+def test_a_stale_flag_record_does_not_survive_an_up_on_a_build_without_the_flag(tmp_path, monkeypatch):
+    winwish._write_winuae_flag("h", True)
+
+    def old_flag(a):
+        return a[:2] == ["git", "grep"] and winwish.OLD_WINUAE_ENV in a
+    _, body = _task_after_up(tmp_path, monkeypatch, [(old_flag, 1, "")])
+    assert f"$env:{winwish.OLD_WINUAE_ENV}" not in body
+    assert winwish._read_winuae_flag("h") is False
+
+
+def test_an_up_that_fails_while_staging_leaves_no_flag_record(tmp_path, monkeypatch):
+    winwish._write_winuae_flag("h", True)
+    run = FakeRun([(lambda a: a[:2] == ["winvm", "put"], 1, "no space")])
+    with pytest.raises(winwish.WinwishError):
+        winwish.up(winwish.Guest(run), FakeLane(), _args(tmp_path, monkeypatch))
+    assert winwish._read_winuae_flag("h") is False
+
+
 def test_a_standalone_start_in_a_new_process_keeps_the_old_winuae_flag(tmp_path, monkeypatch):
     winwish.up(winwish.Guest(FakeRun()), FakeLane(), _args(tmp_path, monkeypatch))
     later = FakeRun()
