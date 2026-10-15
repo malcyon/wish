@@ -157,6 +157,16 @@ Curse run.
   reset. BackSpace pops one menu and closes the top one. The guest records
   the depth and starts every walk with F12, one BackSpace fewer than the
   depth, Up twenty times and one Down, which lands on PAUSE.
+- **A walk that goes wrong is followed by a return to the top list.** When a
+  key fails or a walk's log line does not come, the depth is unknown. Before
+  its next walk the guest reads the log's last `Open on-screen menu` or
+  `Close on-screen menu` line, which the emulator writes on every opening and
+  closing (5 openings and 5 closings in two runs). It opens a closed menu with F12, then sends
+  BackSpace one at a time until the log shows the menu closing, so no
+  BackSpace reaches the game.
+- **Each boot starts with no snapshots.** `start` deletes the slots' state
+  files, the snapshot table and its receipts that an earlier boot of the same
+  holder left.
 - **A save to a used slot asks first.** The menu marks a slot used when the
   emulator starts or after a save to it, and never unmarks it, so a slot whose
   file was deleted still asks "Overwrite savestate N?".

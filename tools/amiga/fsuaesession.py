@@ -60,6 +60,11 @@ REDRAW_WAIT = 10.0
 #: the top border), 54% to 99% for the game's own screens.
 BLACK_LEVEL = 40
 BLACK_SHARE = 0.05
+#: Seconds the emulator may take to log the F12 menu opening or closing.
+MENU_LOG_WAIT = 5.0
+#: More BackSpaces than the menu has levels: the top list, SAVESTATES, a slot and its
+#: "Overwrite savestate N?" question make four.
+MENU_MAX_DEPTH = 5
 #: The route step kinds this guest carries out; `fsuaewishaccept.guest_gaps` reads `supports`.
 SUPPORTED_STEPS = frozenset({"insert", "snapshot", "restore", "reset"})
 
@@ -97,7 +102,8 @@ class FsuaeGuest:
         self._recognised = False
         self._hashes_before: dict[str, str] = {}
         #: How many menus deep the F12 menu reopens: 1 is its top list. A soft reset leaves 1,
-        #: `insert` 2 and a state save or load 3; None after a walk that did not finish.
+        #: `insert` 2 and a state save or load 3; None after a walk that did not finish or whose
+        #: log line did not come, until `_recover_menu` closes the menu on its top list.
         self._menu_depth: int | None = 1
         #: Slots the menu believes hold a state. It reads the files once at start and marks a
         #: slot after a save, never after a file is deleted, so a discarded slot stays here.
@@ -208,6 +214,7 @@ class FsuaeGuest:
             port=self.slot.port, extra=extra, screenshots=str(work / "shots"))
         self._mounted = mounted
         self._hashes_before = self._digests()
+        self._forget_states()
         self._menu_full = {slot for slot in STATE_SLOTS if self._state_file(slot).exists()}
         self.xvfb, self.emulator = fsuaegdb.start_processes(args, True)
         self._started = time.monotonic()
@@ -443,6 +450,7 @@ class FsuaeGuest:
         index = [*self._mounted, *(p for p in self.staged.values() if p not in self._mounted)].index(path)
         if index == self._drive_zero:
             raise RouteError(f"{remote} is already in DF0")
+        recovered = self._recover_menu()
         log = self._log()
         since = log.stat().st_size if log.exists() else 0
         # The swap walk opens the menu on its first key and counts from PAUSE; the return to
@@ -459,10 +467,12 @@ class FsuaeGuest:
             lines = fsuaegdb.swap_log_lines(log, since)
             if any(_changes_drive_zero_to(line, path) for line in lines):
                 self._drive_zero = index
-                return {"index": index, "keys": keys, "log": lines, "staged": str(path), "sha256": digest}
+                return {"index": index, "keys": [*recovered, *keys], "log": lines, "staged": str(path),
+                        "sha256": digest}
             if time.monotonic() >= end:
+                self._menu_depth = None
                 error = RouteError(f"the emulator log shows no change to {path} after the swap keys")
-                error.receipt = {"index": index, "keys": keys, "log": lines}
+                error.receipt = {"index": index, "keys": [*recovered, *keys], "log": lines}
                 raise error
             time.sleep(0.5)
 
@@ -492,6 +502,45 @@ class FsuaeGuest:
     def _table(self) -> dict[str, int]:
         path = self._table_path()
         return json.loads(path.read_text()) if path.exists() else {}
+
+    def _forget_states(self) -> None:
+        """Delete the snapshot table, its receipts and the slots' state files an earlier boot left."""
+        work = self._need_slot("clear the snapshots")
+        self._table_path().unlink(missing_ok=True)
+        for slot in STATE_SLOTS:
+            (work / f"snapshot-{slot}.json").unlink(missing_ok=True)
+            self._state_file(slot).unlink(missing_ok=True)
+
+    def _menu_open_in_log(self) -> bool:
+        """Whether the emulator log's last word on the F12 menu is that it opened."""
+        text = self._log_since(0)
+        return text.rfind(_MENU_OPEN) > text.rfind(_MENU_CLOSE)
+
+    def _recover_menu(self) -> list[str]:
+        """After a walk that went wrong, close the menu on its top list so its depth is 1 again.
+
+        The emulator logs every opening and closing of the menu. A closed menu is opened with
+        F12; then BackSpace pops one level at a time until the log shows the menu closing, which
+        only BackSpace on the top list does, so no BackSpace reaches the game. Returns the keys
+        sent, none when the depth is known.
+        """
+        if self._menu_depth is not None:
+            return []
+        keys: list[str] = []
+        if not self._menu_open_in_log():
+            since = self._log_size()
+            self._send("F12")
+            keys.append("F12")
+            if self._await_log(since, lambda t: _MENU_OPEN in t, MENU_LOG_WAIT) is None:
+                raise RouteError("the emulator log shows the F12 menu did not open to be closed on its top list")
+        for _ in range(MENU_MAX_DEPTH):
+            since = self._log_size()
+            self._send("BackSpace")
+            keys.append("BackSpace")
+            if self._await_log(since, lambda t: _MENU_CLOSE in t, MENU_LOG_WAIT) is not None:
+                self._menu_depth = 1
+                return keys
+        raise RouteError(f"the F12 menu was still open after {MENU_MAX_DEPTH} BackSpaces")
 
     def _top_keys(self) -> list[str]:
         """F12, then back up to the top list and onto PAUSE, from wherever the menu was left.
@@ -547,18 +596,22 @@ class FsuaeGuest:
                 raise RouteError(f"all {len(STATE_SLOTS)} savestate slots hold snapshots; discard one first")
             slot = free[0]
         path = self._state_file(slot)
+        recovered = self._recover_menu()
         frame = self._shoot(30.0)
         since = self._log_size()
         walk = ["Down", "Down", "Return", *["Down"] * (slot - 1), "Return", "Return"]
-        if slot in self._menu_full:
-            walk.append("Return")  # "Overwrite savestate N?" opens on Confirm overwrite
-        keys = self._walk(walk, 3)
+        # A state file there means the menu marked the slot when it saved it, even for a save
+        # whose log line never came; "Overwrite savestate N?" then opens on Confirm overwrite.
+        if slot in self._menu_full or path.exists():
+            walk.append("Return")
+        keys = [*recovered, *self._walk(walk, 3)]
         markers = {f"Save of '{p}' complete" for p in (path, path.resolve())}
         text = self._await_log(since, lambda t: any(m in t for m in markers), STATE_LOG_WAIT)
         receipt: dict[str, Any] = {"name": name, "slot": slot, "keys": keys,
                                    "frame": None if frame is None else frame.name}
         if text is None:
             receipt["log"] = _state_lines(self._log_since(since))
+            self._menu_depth = None
             error = RouteError(f"the emulator log shows no save of {path.name} after the menu keys")
             error.receipt = receipt
             raise error
@@ -588,8 +641,10 @@ class FsuaeGuest:
         path = self._state_file(slot)
         if not path.exists():
             raise RouteError(f"snapshot {name!r} has no state file {path.name}")
+        recovered = self._recover_menu()
         since = self._log_size()
-        keys = self._walk(["Down", "Down", "Return", *["Down"] * (slot - 1), "Return", "Down", "Return"], 3)
+        keys = [*recovered,
+                *self._walk(["Down", "Down", "Return", *["Down"] * (slot - 1), "Return", "Down", "Return"], 3)]
         starts = {f"STATERESTORE: '{p}'" for p in (path, path.resolve())}
 
         def restored(text: str) -> bool:
@@ -599,6 +654,7 @@ class FsuaeGuest:
         receipt: dict[str, Any] = {"name": name, "slot": slot, "keys": keys}
         if text is None:
             receipt["log"] = _state_lines(self._log_since(since))
+            self._menu_depth = None
             error = RouteError(f"the emulator log shows no load of {path.name} after the menu keys")
             error.receipt = receipt
             raise error
@@ -654,13 +710,15 @@ class FsuaeGuest:
         self._require_running("reset")
         port = self.slot.port
         helper_before = fsuaegdb.helper_row(port)["alive"]
+        recovered = self._recover_menu()
         since = self._log_size()
-        keys = self._walk([*["Down"] * MENU_TO_LAST, "Return", "Return"], 1)
+        keys = [*recovered, *self._walk([*["Down"] * MENU_TO_LAST, "Return", "Return"], 1)]
         text = self._await_log(since, lambda t: _SOFT_RESET.search(t) is not None, min(STATE_LOG_WAIT, timeout))
         receipt: dict[str, Any] = {"keys": keys, "helper_before": helper_before}
         lines = _state_lines(self._log_since(since) if text is None else text)
         receipt["log"] = lines
         if text is None or "STATERESTORE" in text or "hardreset, memory cleared" in text:
+            self._menu_depth = None
             error = RouteError("the emulator log shows no soft reset after the menu keys")
             error.receipt = receipt
             raise error
@@ -685,6 +743,8 @@ class FsuaeGuest:
         return capture, press
 
 
+_MENU_OPEN = "[FSE] [OSM] Open on-screen menu"
+_MENU_CLOSE = "[FSE] [OSM] Close on-screen menu"
 _SOFT_RESET = re.compile(r"^Reset at [0-9A-F]{8}\.", re.MULTILINE)
 _STATE_LINE = re.compile(r"^(?:Save of '|STATESAVE |STATERESTORE: |State restored|Reset at |hardreset)")
 

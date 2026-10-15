@@ -743,9 +743,19 @@ def _state(guest, slot):
 
 
 def _save(guest, monkeypatch, lane, name, slot, content=b"state"):
+    """A snapshot whose state file and log lines the emulator writes once the walk's keys start."""
     path = _state(guest, slot)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(content)
+    real_send = guest._send
+    written = []
+
+    def send(key):
+        real_send(key)
+        if not written:
+            written.append(key)
+            path.write_bytes(content)
+
+    guest._send = send
     _on_first_key(guest, f"STATESAVE ({path}):", f"Save of '{path}' complete")
     return guest.snapshot(name, "wish1-test")
 
@@ -780,16 +790,27 @@ def test_a_second_save_under_one_name_confirms_the_overwrite(lane, tmp_path, mon
     assert lane.keys[-4:] == ["Return", "Return", "Return", "Return"]
 
 
-def test_a_state_file_there_at_start_needs_the_overwrite_confirmed(lane, tmp_path, monkeypatch, clock):
+def test_snapshots_an_earlier_boot_left_are_deleted_at_start(lane, tmp_path, monkeypatch, clock):
     guest = fsuaesession.FsuaeGuest(game="amiga-pool")
     guest.claim("wish1-test", 30)
     _state(guest, 1).parent.mkdir(parents=True)
     _state(guest, 1).write_bytes(b"old")
+    _state(guest, 9).write_bytes(b"old")
+    (guest.work / "snapshots.json").write_text(json.dumps({"walk": 1, "fight": 9}))
+    (guest.work / "snapshot-1.json").write_text(json.dumps({"frame_sha256": "0" * 64}))
+    other = _state(guest, 1).parent / "save.sdf"
+    other.write_bytes(b"disk")
     guest.put(_disk(tmp_path, "one.src", b"one"), guest.remote_path("1", "wish1-test", "one"), 30)
     guest.start("wish1-test", guest.remote_path("1", "wish1-test", "one"), timeout=30)
+    assert not _state(guest, 1).exists() and not _state(guest, 9).exists()
+    assert not (guest.work / "snapshots.json").exists() and not (guest.work / "snapshot-1.json").exists()
+    assert other.read_bytes() == b"disk"
+    with pytest.raises(RouteError, match="no snapshot is called 'fight'"):
+        guest.restore("fight", "wish1-test")
     _frames(guest, monkeypatch, lane, [BLUE])
-    _save(guest, monkeypatch, lane, "walk", 1)
-    assert lane.keys == [*TOP, "Down", "Down", "Return", "Return", "Return", "Return"]
+    # The menu found no state file at start, so slot 1 saves with no overwrite question.
+    assert _save(guest, monkeypatch, lane, "walk", 1)["slot"] == 1
+    assert lane.keys == [*TOP, "Down", "Down", "Return", "Return", "Return"]
 
 
 def test_a_tenth_name_finds_no_slot_and_sends_nothing(lane, tmp_path, monkeypatch, clock):
@@ -912,9 +933,84 @@ def test_no_walk_presses_return_straight_after_up(lane, tmp_path):
     fsuaesession._no_return_after_up([*TOP, "Return"])
 
 
-def test_a_walk_that_did_not_finish_blocks_the_next_one(lane, tmp_path, monkeypatch, clock):
+OPEN, CLOSE = "[FSE] [OSM] Open on-screen menu", "[FSE] [OSM] Close on-screen menu"
+
+
+def _menu_log(guest, lines_by_key):
+    """Write `lines_by_key[n]` to the emulator log after the n-th key sent from now; None writes nothing."""
+    real_send = guest._send
+    pending = list(lines_by_key)
+
+    def send(key):
+        real_send(key)
+        if pending:
+            line = pending.pop(0)
+            if line is not None:
+                _log_line(guest, line)
+
+    guest._send = send
+
+
+def _fail_a_save(guest, monkeypatch, lane):
+    """A save whose log line never comes, which leaves the menu's depth unknown."""
+    _frames(guest, monkeypatch, lane, [BLUE])
+    _menu_log(guest, [OPEN])
+    with pytest.raises(RouteError, match="no save of FS-UAE_1.uss"):
+        guest.snapshot("walk", "wish1-test")
+    lane.keys.clear()
+
+
+def test_a_save_whose_log_line_never_comes_is_followed_by_a_return_to_the_closed_top_list(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _fail_a_save(guest, monkeypatch, lane)
+    # The log's last word is that the menu opened, so no F12: BackSpace until it logs closing.
+    _menu_log(guest, [None, None, CLOSE, "Reset at 00C456B2. Chipset mask = 00000000"])
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    receipt = guest.reset("wish1-test", 60)
+    assert lane.keys == ["BackSpace", "BackSpace", "BackSpace", *TOP, *["Down"] * 20, "Return", "Return"]
+    assert receipt["keys"][:3] == ["BackSpace"] * 3
+
+
+def test_a_closed_menu_of_unknown_depth_is_opened_and_backed_out_of_one_level_at_a_time(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _fail_a_save(guest, monkeypatch, lane)
+    _log_line(guest, CLOSE)
+    path = _state(guest, 1)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"state")
+    _menu_log(guest, [OPEN, None, CLOSE, f"Save of '{path}' complete"])
+    guest.snapshot("walk", "wish1-test")
+    # Slot 1 was saved to before, so the menu asks to confirm the overwrite.
+    assert lane.keys == ["F12", "BackSpace", "BackSpace", *TOP, "Down", "Down", "Return", "Return", "Return",
+                         "Return"]
+
+
+def test_a_menu_that_never_opens_or_never_closes_stops_and_is_tried_again_next_time(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _fail_a_save(guest, monkeypatch, lane)
+    _log_line(guest, CLOSE)
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    with pytest.raises(RouteError, match="did not open"):
+        guest.reset("wish1-test", 60)
+    assert lane.keys == ["F12"]
+    lane.keys.clear()
+    _menu_log(guest, [OPEN])
+    with pytest.raises(RouteError, match="still open after 5 BackSpaces"):
+        guest.reset("wish1-test", 60)
+    assert lane.keys == ["F12", *["BackSpace"] * 5]
+    lane.keys.clear()
+    _menu_log(guest, [CLOSE, "Reset at 00C456B2. Chipset mask = 00000000"])
+    guest.reset("wish1-test", 60)
+    assert lane.keys[:2] == ["BackSpace", "F12"]
+
+
+def test_a_key_that_fails_mid_walk_is_followed_by_a_return_to_the_top_list(lane, tmp_path, monkeypatch, clock):
     guest = _started(tmp_path, lane)
     _frames(guest, monkeypatch, lane, [BLUE])
+    real_send = guest._send
 
     def broken(key):
         raise RouteError("xdotool went away")
@@ -922,8 +1018,31 @@ def test_a_walk_that_did_not_finish_blocks_the_next_one(lane, tmp_path, monkeypa
     guest._send = broken
     with pytest.raises(RouteError, match="xdotool"):
         guest.snapshot("walk", "wish1-test")
-    with pytest.raises(RouteError, match="did not finish"):
-        guest.reset("wish1-test", 60)
+    guest._send = real_send
+    _log_line(guest, CLOSE)
+    _menu_log(guest, [OPEN, CLOSE, "Reset at 00C456B2. Chipset mask = 00000000"])
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    guest.reset("wish1-test", 60)
+    assert lane.keys[:3] == ["F12", "BackSpace", "F12"]
+
+
+@pytest.mark.parametrize("step", ["restore", "reset", "insert"])
+def test_every_walk_whose_log_line_never_comes_leaves_the_depth_unknown(lane, tmp_path, monkeypatch, clock, step):
+    guest = _started(tmp_path, lane, disks=("one", "three", "two"), mounted=("one", "three"))
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    _frames(guest, monkeypatch, lane, [BLUE])
+    if step == "restore":
+        _save(guest, monkeypatch, lane, "walk", 1)
+        with pytest.raises(RouteError, match="no load"):
+            guest.restore("walk", "wish1-test")
+    elif step == "reset":
+        with pytest.raises(RouteError, match="no soft reset"):
+            guest.reset("wish1-test", 60)
+    else:
+        two = guest.remote_path("1", "wish1-test", "two")
+        with pytest.raises(RouteError, match="shows no change"):
+            guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
+    assert guest._menu_depth is None
 
 
 def test_the_guest_says_which_route_steps_it_carries_out():

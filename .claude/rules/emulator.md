@@ -124,9 +124,9 @@ and its soft reset, each proven from the emulator's log; its F12 state save
 needs the NULL guard that `tools/amiga/installfsuae.py` applies
 ([the FS-UAE patch notes](../../docs/239-fs-uae-patches.md), "Driving state
 saves and reset"). On the default binary the picture stays black after a
-restore until the game draws, so `FsuaeGuest.can_snapshot` stays False and
-`tools/amiga/acceptance.py` still stops a run that restores before it claims
-a slot. DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
+restore until the game draws, so `FsuaeGuest.can_snapshot` is False and
+`tools/amiga/acceptance.py` stops any run with a snapshot mark or a walk
+retry before it claims a slot. DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
 `tools/dos/dossnapshot.py`'s `SnapshotSession`, which works on DOSBox-X only,
 because DOSBox 0.74 has no save states and the driver stops the run there; a
 restore lists the `SAVE` files changed since the snapshot, since a game save
