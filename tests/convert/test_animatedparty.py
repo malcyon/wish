@@ -2050,7 +2050,7 @@ def _got_away_neutral(key, control, creature_type=4, status="okay", npc=False,
 
 
 @pytest.mark.parametrize("control", [0, 0xB3])
-@pytest.mark.parametrize("game", [c64_port.POOL_OF_RADIANCE,
+@pytest.mark.parametrize("game", [None, c64_port.POOL_OF_RADIANCE,
                                   c64_port.CURSE_OF_THE_AZURE_BONDS])
 def test_a_pool_or_curse_zombie_saved_at_okay_is_a_zombie_player(game, control):
     char = _got_away_neutral(game, control)

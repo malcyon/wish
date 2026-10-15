@@ -802,7 +802,7 @@ def zombie_player(char: NeutralCharacter) -> bool:
     player = (char.get("npc_control_byte") == DOS_PC_TAKEN_OVER
               or char.get("npc") is False)
     if char.get("status") == "okay":
-        key = getattr(char.game, "key", char.game)
+        key = getattr(char.game, "key", char.game) or "pool-of-radiance"
         return (key in ANIMATE_DEAD_TITLES and player
                 and char.get("creature_type") == ANIMATED_CREATURE_TYPE)
     return char.get("status") == "animated" and player
