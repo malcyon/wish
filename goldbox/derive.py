@@ -340,8 +340,9 @@ MOVEMENT_INPUTS = ("movement", "strength_index") + _PURSES
 def expected_movement(record, raws, types) -> int:
     """The movement the game's roster rebuild at `LIBRARY $3729` stores.
 
-    Pool of Radiance, C64 only: the addresses, the table and the rule were
-    read from that engine and are not established for any other title.
+    C64 only, for Pool of Radiance (`LIBRARY $3729`) and Curse of the Azure
+    Bonds (`LIBRARY $3918`), which run the same rule over the same table.
+    Silver Blades is unread.
 
     `raws` is the character's sixteen-byte item records and `types` the ITEMS
     type table by type index. The base is record `0x09F`; a readied body armour
