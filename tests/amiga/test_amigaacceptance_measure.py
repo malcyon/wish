@@ -37,7 +37,7 @@ def test_observe_world_requires_unique_full_geo_and_original_party(tmp_path, mon
     base = 0x1000
     def read(address, length):
         return {
-            (base + 0x5B12, 1): b"\x02", (base + 0x743C, 1): b"\x04",
+            (base + 0x5B12, 1): b"\x04", (base + 0x743C, 1): b"\x04",
             (base + 0x57A4, 4): (0x2340).to_bytes(4, "big"),
             (base + 0x5F2C, 2): b"\x00\x02",
         }[(address, length)]

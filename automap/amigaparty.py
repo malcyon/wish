@@ -310,7 +310,8 @@ ROWS: dict[str, PartyRow] = {
         items=Chain(head=0x08, link=0x2A, size=0x42),
         effects=Chain(head=0x04, link=0x06, size=0x0A),
         pointers=(0x00, 0x04, 0x08, *_longwords(0x0C, 13)),
-        # 0 at the party menu, 2 once loaded, 4 after a fight, 5 in a fight:
+        # 0 at the party menu, 2 in camp after a load, 4 walking in a dungeon,
+        # 4 after a fight, 5 in a fight:
         # CONFIRMED live. After a fight, while `INSERT DISK 1` is up, the
         # head reads NULL with the records still in memory, so `read_party`
         # gives None there and every action stays off, which is safe.

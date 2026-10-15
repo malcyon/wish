@@ -159,6 +159,8 @@ OBSERVE_SLOT_SHA256 = "08671b3190d655f54eec2d98aa7c1d012867a92cf0e749b085b1dd72c
 OBSERVE_ENGINE_SHA256 = "6f8fee2dd8ea035b156cb0eb1c1d16e9172aa450a4f2b9e54e6d0018cf65c4d4"
 OBSERVE_KEYS = ("P", "L", "P", "B", (0, "disk2", "SPACE"),
                 "V", "E", "B", "X", "RET")
+# The party is walking in a dungeon at the world screen; 2 is the camp value.
+OBSERVE_WORLD_MODE = dos_savegame.POD_MODE_DUNGEON
 
 
 def _observe_preclaim(manifest_path: pathlib.Path, guard: Any, identity: Any) -> dict:
@@ -223,7 +225,7 @@ def _observe_world(holder: str, manifest: dict, disk3: pathlib.Path,
         after = amigaparty.mode(target)
         diagnostic["mode_after_party"] = None if after is None else f"{after:02x}"
         diagnostic["checks"] = {
-            "mode": mode == 2,
+            "mode": mode == OBSERVE_WORLD_MODE,
             "party_present": party is not None,
             "count": party is not None and len(party) == 6,
             "slots": party is not None and sorted(m.slot for m in party) == list(range(6)),

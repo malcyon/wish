@@ -696,7 +696,7 @@ observed, but its monster-list traversal is not established here.
 | Pool of Radiance | `h32+0xBA` | 3 on the travel grid | 5 |
 | Curse | `g3d56` | 0 at the party menu, 4 walking, 3 on the world map | 5: confirmed by a live fight; the code also reads 5 |
 | Silver Blades | `g525c` | 0 at the party menu, 2 at the journal prompt, 4 walking | 5 (the demo's fight, and griffons and a hill giant met by walking) |
-| Pools of Darkness | `g5b12` | 0 at the party menu, 2 once loaded, 4 after a fight | 5 |
+| Pools of Darkness | `g5b12` | 0 at the party menu, 2 in camp after a load, 4 walking in a dungeon, 4 after a fight | 5 |
 
 **After a Pools of Darkness fight, while `INSERT DISK 1` is up, the list head
 reads NULL** with the records still in memory, so `read_party` gives None and

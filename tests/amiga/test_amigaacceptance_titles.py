@@ -1088,7 +1088,7 @@ def _observe_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(foundation.amigatarget, "verify", lambda *args: [])
     def initial_read(address, length):
         assert (address, length) == (0x1000 + 0x5B12, 1)
-        return b"\x02"
+        return b"\x00"
     monkeypatch.setattr(foundation.amigatarget, "connect_pipe", lambda *a, **k: SimpleNamespace(
         data_base=0x1000, read=initial_read))
     monkeypatch.setattr(foundation.amigaparty, "mode",
@@ -1208,7 +1208,7 @@ def test_observe_load_wrong_live_identity_stops_without_another_key(
     base = 0x1000
     def read(address, length):
         return {
-            (base + 0x5B12, 1): b"\x02", (base + 0x743C, 1): b"\x04",
+            (base + 0x5B12, 1): b"\x04", (base + 0x743C, 1): b"\x04",
             (base + 0x57A4, 4): (0x2340).to_bytes(4, "big"),
         }[(address, length)]
     monkeypatch.setattr(foundation.amigatarget, "connect_pipe",
@@ -1233,7 +1233,7 @@ def test_observe_load_valid_world_identity_reaches_unique_generated_geo(
                     for i, name in enumerate(names))
     def read(address, length):
         return {
-            (base + 0x5B12, 1): b"\x02", (base + 0x743C, 1): b"\x04",
+            (base + 0x5B12, 1): b"\x04", (base + 0x743C, 1): b"\x04",
             (base + 0x57A4, 4): head.to_bytes(4, "big"),
             (base + 0x5F2C, 2): b"\x00\x02",
         }[(address, length)]
@@ -1278,7 +1278,7 @@ def test_observe_load_retains_each_failed_world_identity_check(
         if (address, length) == (base + 0x57A4, 4):
             return head.to_bytes(4, "big")
         if (address, length) == (base + 0x5B12, 1):
-            value = 4 if damage == "mode" and "RET" in _keys(guest) else 2
+            value = (2 if damage == "mode" else 4) if "RET" in _keys(guest) else 0
             mode_samples.append(value)
             return bytes([value])
         raise AssertionError(f"Unexpected read: {address:#x}, {length}")
@@ -1295,25 +1295,25 @@ def test_observe_load_retains_each_failed_world_identity_check(
     assert [c[0] for c in guest.calls if c[0] in ("stop", "get", "release")] == [
         "stop", "get", "get", "get", "release"]
     assert (base + 0x5B12, 1) in reads
-    assert mode_samples == ([2, 4, 4] if damage == "mode" else [2, 2, 2])
+    assert mode_samples == ([0, 2, 2] if damage == "mode" else [0, 4, 4])
     expected_checks = {"mode": damage != "mode", "party_present": damage != "missing_party",
                        "count": damage not in ("missing_party", "count"),
                        "slots": damage not in ("missing_party", "count", "slot"),
                        "names": damage not in ("missing_party", "count", "name")}
     diagnostic = result["observe_identity"]
     assert diagnostic == {
-        "data_base": base, "mode": "04" if damage == "mode" else "02",
+        "data_base": base, "mode": "02" if damage == "mode" else "04",
         "previous_mode": "04", "head": head,
         "party_count": None if damage == "missing_party" else len(members),
         "members": [] if damage == "missing_party" else [
             {"slot": m.slot, "name": m.name, "hp": m.hp, "hp_max": m.hp_max}
             for m in members],
         "checks": expected_checks,
-        "mode_after_party": "04" if damage == "mode" else "02",
+        "mode_after_party": "02" if damage == "mode" else "04",
     }
-    assert result["loaded_menu_mode"] == "02"
+    assert result["loaded_menu_mode"] == "00"
     saved = json.loads((tmp_path / "recon1" / "summary.json").read_text())
-    assert saved["observe_identity"] == diagnostic and saved["loaded_menu_mode"] == "02"
+    assert saved["observe_identity"] == diagnostic and saved["loaded_menu_mode"] == "00"
     events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
     assert any(row.get("observe_identity") == diagnostic for row in events)
 
@@ -1324,7 +1324,7 @@ def test_observe_load_keeps_known_bytes_when_a_live_reader_raises(
     base = 0x1000
     def read(address, length):
         if (address, length) == (base + 0x5B12, 1):
-            return b"\x02"
+            return b"\x04"
         if (address, length) == (base + 0x743C, 1):
             return b"\x04"
         raise OSError("synthetic head read failed")
@@ -1333,7 +1333,7 @@ def test_observe_load_keeps_known_bytes_when_a_live_reader_raises(
     guest, result = _observe_run(path, title, guard, clock)
     assert result["error"] == "OSError: synthetic head read failed"
     assert result["observe_identity"] == {
-        "data_base": base, "mode": "02", "previous_mode": "04"}
+        "data_base": base, "mode": "04", "previous_mode": "04"}
     saved = json.loads((tmp_path / "recon1" / "summary.json").read_text())
     assert saved["observe_identity"] == result["observe_identity"]
     events = [json.loads(line) for line in (tmp_path / "recon1" / "run.jsonl").read_text().splitlines()]
