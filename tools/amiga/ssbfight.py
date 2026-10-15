@@ -31,7 +31,7 @@ from typing import Any, Callable
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from goldbox import amiga_adf, amiga_savegame, world_state  # noqa: E402
+from goldbox import amiga_adf, amiga_port, amiga_savegame, world_state  # noqa: E402
 from tools.amiga import (  # noqa: E402
     acceptance,
     curseadd,
@@ -39,7 +39,12 @@ from tools.amiga import (  # noqa: E402
     route_silver_blades,
 )
 from tools.amiga.screens import PixelGuards  # noqa: E402
-from tools.amiga.staging import replace_file_in_place, sha256  # noqa: E402
+from tools.amiga.staging import (  # noqa: E402
+    StageError,
+    parse_stage_record,
+    replace_file_in_place,
+    sha256,
+)
 from tools.amiga.winuaesession import RouteError, WinGuest, terminating  # noqa: E402
 
 require = curseadd.require
@@ -148,6 +153,57 @@ RETRY_LIMIT = 3
 #: Calls of the journal answerer that may find no challenge before the run stops.
 JOURNAL_TRIES = 4
 SLOT = curseadd.SLOT
+#: The record fields `stage --stage-record` may write, one byte each; their Amiga offsets come
+#: from the field map, so they are never typed in here.
+STAGE_FIELDS = ("hp_max", "hp_current")
+
+
+def stage_field_offset(name: str) -> int:
+    """Where the Amiga record keeps one of `STAGE_FIELDS`."""
+    deltas = amiga_port.SILVER_BLADES_DELTAS
+    return deltas.offset(deltas.dos_field(name).offset)
+
+
+def plan_records(records: list[str], count: int, names: list[str]) -> list[dict]:
+    """Parse and check every `--stage-record` before anything is written.
+
+    Returns `[{member, name, changes}]`; stops on an unknown field, a value outside 1-255, a
+    member outside the party, or a member named twice.
+    """
+    plans: list[dict] = []
+    try:
+        parsed = [parse_stage_record(text) for text in records]
+    except StageError as exc:
+        raise RouteError(str(exc)) from exc
+    for member, changes in parsed:
+        require(1 <= member <= count, f"the party has members 1 to {count}, not {member}")
+        require(all(m["member"] != member for m in plans), f"member {member} is named twice")
+        unknown = sorted(set(changes) - set(STAGE_FIELDS))
+        require(not unknown, f"a stage record writes only {list(STAGE_FIELDS)}, not {unknown}")
+        for field, value in changes.items():
+            require(1 <= value <= 255, f"{field} {value} is not 1 to 255")
+        plans.append({"member": member, "name": names[member - 1], "changes": changes})
+    return plans
+
+
+def apply_records(data: bytes, blocks: tuple, plans: list[dict]) -> tuple[bytes, list[dict]]:
+    """The saved game's bytes with each planned field written, and what the manifest records.
+
+    Stops, with nothing returned, on a member whose current HP ends above his maximum."""
+    out = bytearray(data)
+    staged: list[dict] = []
+    for plan in plans:
+        start = blocks[plan["member"] - 1][0]
+        fields = {}
+        for field, value in plan["changes"].items():
+            at = start + stage_field_offset(field)
+            fields[field] = {"before": out[at], "after": value}
+            out[at] = value
+        now = {f: out[start + stage_field_offset(f)] for f in STAGE_FIELDS}
+        require(now["hp_current"] <= now["hp_max"],
+                f"{plan['name']}: hp_current {now['hp_current']} is above hp_max {now['hp_max']}")
+        staged.append({"member": plan["member"], "name": plan["name"], "fields": fields})
+    return bytes(out), staged
 
 
 class Screens(curseadd.Screens):
@@ -262,8 +318,12 @@ def wander_plan(geo, start: tuple[int, int]) -> dict:
 
 
 def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
-          diskb: pathlib.Path | None = None, issue: str = "391") -> pathlib.Path:
-    """Copy a Silver Blades disk one in as DF0 with its slot's gate set, and write `out/prepare.json`."""
+          diskb: pathlib.Path | None = None, issue: str = "391",
+          records: list[str] | None = None) -> pathlib.Path:
+    """Copy a Silver Blades disk one in as DF0 with its slot's gate set, and write `out/prepare.json`.
+
+    Each of `records` (`MEMBER:FIELD=VALUE[,FIELD=VALUE]`, fields of `STAGE_FIELDS`) is written
+    in the same in-place write as the gate."""
     require(not out.exists(), f"{out} already exists")
     require(bool(SLOT.fullmatch(load)) and bool(SLOT.fullmatch(save)) and load != save,
             "the load and save letters must be two letters A-J")
@@ -289,7 +349,8 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
     plan = wander_plan(area_map(diskb), (state.x, state.y))
     path = f"/SAVE/savgam{load}.sav"
     before = disk.read_file(path)
-    staged = with_word(before, GATE, GATE_ON)
+    plans = plan_records(records or [], len(saved.characters), [m.name for m in saved.characters])
+    staged, staged_records = apply_records(with_word(before, GATE, GATE_ON), saved.blocks, plans)
     out.mkdir(parents=True)
     df0 = out / "df0.adf"
     shutil.copyfile(source_disk, df0)
@@ -303,7 +364,8 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
     require(word(check.read_file(path), GATE) == GATE_ON, "the staged gate does not read back")
     df1 = out / "df1.adf"
     shutil.copyfile(diskb, df1)
-    names = [m.name for m in saved.characters]
+    now = _slot(check, load)
+    names = [m.name for m in now.characters]
     manifest = {
         "title": "ssb", "issue": issue,
         "disks": {"df0": {"path": str(df0), "sha256": sha256(df0)},
@@ -313,8 +375,9 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
                   "load": load, "save": save, "place": place, **plan,
                   "staged": {f"{GATE:04X}": {"before": word(before, GATE), "after": GATE_ON}},
                   "noted": {f"{a:04X}": word(before, a) for a in NOTED},
+                  "staged_records": staged_records,
                   "names": names,
-                  "members": {m.name: member_fields(m.raw) for m in saved.characters}}}
+                  "members": {m.name: member_fields(m.raw) for m in now.characters}}}
     manifest_path = out / "prepare.json"
     write_json(manifest_path, manifest)
     return manifest_path
@@ -528,6 +591,11 @@ def begin(screens: Screens, manifest: dict, memory: Any, answer: Callable,
     names = [name_key(m["name"]) for m in into["loaded"]]
     require(names == [name_key(n) for n in fight_["names"]],
             f"the loaded party is {names}, not {fight_['names']}")
+    for row in fight_.get("staged_records", ()):
+        want = row["fields"].get("hp_current", {}).get("after")
+        got = into["loaded"][row["member"] - 1]["hit_points"]
+        require(want is None or got == want,
+                f"{row['name']} was staged at {want} hit points; the game holds {got}")
     screens.press("B", "loaded_menu")
     wait_past_journal(screens, ("world",), 120, answer, adf, past=("loaded_menu",))
     into[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
@@ -595,6 +663,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
     wait_past_journal(screens, ("camp_save_picker",), 60, answer, adf, past=("camp",))
     screens.press(fight_["save"], "camp_save_picker")
     wait_past_journal(screens, ("exit_game",), 120, answer, adf, past=("camp_save_picker",))
+    found["saved"] = fight_["save"]
     screens.sleep(POST_WRITE_WAIT)
     screens.press("N", "exit_game")
     screens.wait(("camp",), 60, past=("exit_game",))
@@ -679,8 +748,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     receipt: dict[str, Any] = {"started_utc": datetime.now(timezone.utc).isoformat(),
                                "manifest": str(args.manifest.resolve()), "holder": args.holder,
                                "members": list(args.member), "capture": args.capture,
-                               "save": not (args.no_save or args.capture),
-                               "uncaptured": missing(rules), "out": str(args.out.resolve()),
+                               "save_requested": not (args.no_save or args.capture),
+                               "saved": None, "uncaptured": missing(rules), "out": str(args.out.resolve()),
                                "success": False, "cleanup": []}
     guest = guest if guest is not None else WinGuest()
     memory = memory if memory is not None else Memory(args.holder)
@@ -705,13 +774,14 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         screens = Screens(guest, args.holder, args.out / "screens", guards, clock() + args.budget,
                           clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory, answer,
-                             save=receipt["save"], capture_only=args.capture,
+                             save=receipt["save_requested"], capture_only=args.capture,
                              retries=retries, found=found))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
         for key, value in found.items():
             receipt.setdefault(key, value)
+        receipt["saved"] = found.get("saved")
         if screens is not None:
             receipt["screens"] = screens.events
         if booted:
@@ -780,6 +850,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--save", required=True, help="the free slot the run saves to")
     s.add_argument("--diskb", type=pathlib.Path, help="disk B; the registered one by default")
     s.add_argument("--issue", default="391", help="the ticket number naming the guest's disks")
+    s.add_argument("--stage-record", action="append", default=[], metavar="MEMBER:FIELD=VALUE",
+                   help="set hp_max and/or hp_current (1-255) of a party member, 1 the first; "
+                        "repeat for several members")
     s.add_argument("--out", type=pathlib.Path, required=True)
     g = sub.add_parser("run", help="boot a staged manifest in one muted WinUAE lane, walk until "
                                    "the fight, take it, save once, halt, fetch and read back")
@@ -809,7 +882,8 @@ def main(argv: list[str] | None = None) -> int:
         with terminating():
             if args.command == "stage":
                 print(stage(args.source_disk, args.out, load=args.load, save=args.save,
-                            diskb=args.diskb, issue=args.issue))
+                            diskb=args.diskb, issue=args.issue,
+                            records=args.stage_record))
                 return 0
             if args.command == "run":
                 print(json.dumps(run(args), indent=1, sort_keys=True))

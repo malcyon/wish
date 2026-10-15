@@ -279,6 +279,7 @@ def test_stage_sets_the_gate_in_a_copy_and_plans_the_walk(tmp_path):
     assert fight["noted"]["4BF2"] == 16 and fight["noted"]["4CD9"] == 0
     assert fight["names"][1:] == NAMES[1:]
     assert digest(source) == before == fight["source"]["sha256"]
+    assert fight["staged_records"] == []
     original = amiga_adf.AmigaDisk.open(source).read_file("/SAVE/savgamB.sav")
     copy = amiga_adf.AmigaDisk.open(staged["disks"]["df0"]["path"])
     assert not copy.verify()
@@ -289,6 +290,48 @@ def test_stage_sets_the_gate_in_a_copy_and_plans_the_walk(tmp_path):
     assert ssbfight.word(written, ssbfight.GATE) == 1
     assert copy.read_file("/SAVE/savgamC.sav") == amiga_adf.AmigaDisk.open(source).read_file(
         "/SAVE/savgamC.sav")
+
+
+def test_stage_writes_the_named_members_hit_points_with_the_gate(tmp_path):
+    source, diskb = _specimen()
+    path = ssbfight.stage(source, tmp_path / "out", load="B", save="E", diskb=diskb,
+                          records=["5:hp_max=150,hp_current=150"])
+    fight = json.loads(path.read_text())["fight"]
+    disk = amiga_adf.AmigaDisk.open(source)
+    original = disk.read_file("/SAVE/savgamB.sav")
+    saved = amiga_savegame.read_slot(disk, "B", ssbfight.TITLE)
+    copy = amiga_adf.AmigaDisk.open(json.loads(path.read_text())["disks"]["df0"]["path"])
+    written = copy.read_file("/SAVE/savgamB.sav")
+    start = saved.blocks[4][0]
+    hp = {start + ssbfight.stage_field_offset("hp_max"),
+          start + ssbfight.stage_field_offset("hp_current")}
+    gate = amiga_savegame.SILVER_BLADES.vm_offset(ssbfight.GATE - 0x200)
+    changed = {i for i in range(len(original)) if original[i] != written[i]}
+    assert hp <= changed <= hp | {gate, gate + 1}
+    dominic = fight["staged_records"][0]
+    assert dominic["member"] == 5 and dominic["name"] == NAMES[4]
+    assert dominic["fields"]["hp_current"]["after"] == 150
+    assert dominic["fields"]["hp_current"]["before"] == saved.characters[4].raw[0x152]
+    assert fight["members"][NAMES[4]]["hit_points"] == 150
+    assert fight["members"][fight["names"][0]]["hit_points"] != 150
+
+
+def test_the_staged_fields_sit_where_the_field_map_puts_them_in_a_record():
+    # The offsets the driver reads a live record by are the ones the stage writes.
+    assert ssbfight.stage_field_offset("hp_current") == ssbfight.RECORD["hit_points"]
+    assert ssbfight.stage_field_offset("hp_max") == 0x70
+
+
+@pytest.mark.parametrize("records, match", [
+    (["1:armour=3"], "writes only"), (["1:hp_current=0"], "1 to 255"),
+    (["1:hp_max=256"], "1 to 255"), (["7:hp_max=9"], "members 1 to 6"),
+    (["0:hp_max=9"], "members 1 to 6"), (["2:hp_max=9", "2:hp_current=9"], "twice"),
+    (["nonsense"], "MEMBER:FIELD"), (["1:hp_current=200"], "above hp_max")])
+def test_stage_records_that_cannot_be_written_stop_before_anything_is(tmp_path, records, match):
+    source, diskb = _specimen()
+    with pytest.raises(RouteError, match=match):
+        ssbfight.stage(source, tmp_path / "out", load="B", save="E", diskb=diskb, records=records)
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.parametrize("load, save, match", [("B", "C", "already on"),
@@ -625,7 +668,7 @@ DRIVE = [None, "credits", "title", "party_menu", "load_picker", None, "scrolls_d
 
 
 def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won",
-           parties=None, script=DRIVE, retries=0, fight=None, found=None):
+           parties=None, script=DRIVE, retries=0, fight=None, found=None, manifest=None):
     clock = Clock()
     loaded = [_member(name) for name in NAMES]
     after = [_member(name, quickfight=1) for name in NAMES]
@@ -643,7 +686,7 @@ def _drive(tmp_path, monkeypatch, *, save=True, capture_only=False, outcome="won
         return 0, "answered"
 
     screens = _screens(tmp_path, game, clock)
-    found = ssbfight.drive(screens, _manifest(), ["PAINE"], game, answer, save=save,
+    found = ssbfight.drive(screens, manifest or _manifest(), ["PAINE"], game, answer, save=save,
                            capture_only=capture_only, retries=retries, found=found)
     return found, game, screens, answers
 
@@ -705,7 +748,25 @@ def test_drive_loads_begins_fights_and_saves_once(tmp_path, monkeypatch):
     assert game.keys == ["ESC", "P", "L", "D", "B", "E", "S", "E", "N"]
     assert answers == ["journal", "journal"]
     assert found["members"]["PAINE"]["quickfight"] == 1
+    assert found["saved"] == "E"
     _keys_allowed(screens, game)
+
+
+def _staged_hp(value):
+    manifest = _manifest()
+    manifest["fight"]["staged_records"] = [
+        {"member": 2, "name": "PAINE", "fields": {"hp_current": {"before": 8, "after": value}}}]
+    return manifest
+
+
+def test_begin_goes_on_when_the_loaded_hit_points_are_the_staged_ones(tmp_path, monkeypatch):
+    found, _, _, _ = _drive(tmp_path, monkeypatch, manifest=_staged_hp(8))
+    assert found["outcome"] == "won"
+
+
+def test_begin_stops_when_the_game_did_not_keep_a_staged_hit_point_value(tmp_path, monkeypatch):
+    with pytest.raises(RouteError, match="PAINE was staged at 150 hit points; the game holds 8"):
+        _drive(tmp_path, monkeypatch, manifest=_staged_hp(150))
 
 
 def test_drive_reads_the_gate_and_the_turn_pointer_before_the_walk(tmp_path, monkeypatch):
@@ -893,6 +954,8 @@ def test_run_fails_a_lost_fight_and_reads_nothing_back(tmp_path, monkeypatch):
         _run(tmp_path, monkeypatch, drive=drive)
     written = json.loads((tmp_path / "run" / "receipt.json").read_text())
     assert "read_back" not in written and written["halt"]
+    assert written["saved"] is None and "save" not in written
+    assert written["save_requested"] is True
 
 
 def test_run_with_capture_saves_nothing_and_needs_no_bar_guard(tmp_path, monkeypatch):
