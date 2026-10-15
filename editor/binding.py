@@ -194,6 +194,10 @@ NOT_ON_THE_SHEET = (
     "level_knight",       # Krynn class slots of the per-class level array
     "level_paladin",
     "level_ranger",
+    "level_monk",         # slot 5, which no title instantiates
+    # How many copies a script's LOAD MONSTER loaded: a creature's field, 0
+    # for every player and the monster file's $FF for a joined companion.
+    "monster_count",
     # The permanent ability scores in Curse and Silver Blades: no box of their
     # own, because each ability box writes both copies (`set_sheet_value`).
     "abilities_second",

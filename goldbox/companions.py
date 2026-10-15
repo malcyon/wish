@@ -61,7 +61,7 @@ HEX_DIGITS = b"0123456789ABCDEFabcdef"
 #: rebuild, so every byte here is his file's own: `$FF` at `0x0B7`,
 #: `level_monk`, `0x0D3`, `region_0e4` and `monster_count` in all seven
 #: joinable Curse files, `$FF` at `0x088`-`0x097` in four of them, and
-#: per-monster values at `0x01B`, `0x06C`-`0x06D` and `0x11C`.  The C64
+#: per-monster values in `0x01B`-`0x01F`, `0x06C`-`0x070` and at `0x11C`.  The C64
 #: writer has no source for any of them and writes 0 for every other
 #: character.  No absolute or immediate-indexed reference in any of Curse's
 #: 412 files reads `0x01B`-`0x01F`, `0x06C`-`0x070`, `0x088`-`0x097`,

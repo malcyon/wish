@@ -23,7 +23,7 @@ import pytest
 from gamedata import specimen_root
 from support import silverblades
 
-from goldbox import c64_codec, dos_codec
+from goldbox import c64_codec, dos_codec, dos_port
 from goldbox.companions import (
     CURSE_KEY,
     JOIN_KEPT,
@@ -35,6 +35,7 @@ from goldbox.companions import (
 )
 from goldbox.d64 import D64
 from goldbox.savegame import ROSTER_STRIDE, load_save
+from tests.convert import test_companionpicture as picture_tests
 
 NATIVE_JOIN = "c64-join-alias-dragonbait-wish388"
 DOS_RESAVE = "curse-c64join-alias-dragonbait-dos-resave"
@@ -112,20 +113,15 @@ def test_the_runs_hold_what_the_ticket_measured():
 
 
 def test_a_player_keeps_the_writers_zero_there():
-    """Nothing the writer sources sits in a kept run: a player gets the
-    closing sweep's zero at every byte of every run, or the empty monk
-    slot's."""
+    """The runs are a companion's alone: every player in the same save gets
+    zero at every byte of every run."""
     converted = _converted()
     players = [n for n in converted if n not in COMPANIONS]
     assert players
     for name in players:
-        raw, rep = converted[name]
+        raw, _rep = converted[name]
         for offset, size in _runs():
-            for i in range(offset, offset + size):
-                assert raw[i] == 0, (name, hex(i))
-                why = rep.sources[i]
-                assert ("zero (" in why or why.startswith("level_monk: zero")
-                        ), (name, hex(i), why)
+            assert raw[offset:offset + size] == bytes(size), (name, hex(offset))
 
 
 def test_silver_blades_companions_need_no_kept_run():
@@ -142,13 +138,55 @@ def test_silver_blades_companions_need_no_kept_run():
                 f"MON{mon_id:02X}", hex(offset))
 
 
-# -- the lookup, on synthetic tables -----------------------------------------
+# -- the lookup and the writer, on synthetic tables ----------------------------
 
-def _synthetic(payload: bytes = b"") -> Companions:
+#: A `MON` payload with no zero byte, so every kept byte shows.
+PAYLOAD = bytes(1 + i % 255 for i in range(MON_SIZE))
+DEFAULTS = {CURSE_KEY: dos_port.CURSE_OF_THE_AZURE_BONDS,
+            SILVER_BLADES_KEY: dos_port.SECRET_OF_THE_SILVER_BLADES}
+
+
+def _synthetic(payload: bytes = b"", key: str = CURSE_KEY,
+               mon_id: int = 0x16) -> Companions:
     monsters = {m: Monster(m, f"JOINER {m:02X}", bytes(4),
-                           payload if m == 0x16 else b"")
-                for m in JOINABLE[CURSE_KEY]}
-    return Companions(CURSE_KEY, monsters, bytes(36))
+                           payload if m == mon_id else b"")
+                for m in JOINABLE[key]}
+    return Companions(key, monsters, bytes(36))
+
+
+def _written(key: str, mon_id: int, control: int, table) -> bytes:
+    """A synthetic DOS companion (control `$B2`) or player (control 0) named
+    for `MON<mon_id>` with that file's picture, written to the C64."""
+    record = picture_tests._dos_record(
+        DEFAULTS[key], control, mon_id, f"JOINER {mon_id:02X}".encode())
+    neutral = dos_codec.to_neutral(dos_codec.DosCharacter(record))
+    rec, _rep = c64_codec.write(neutral, icon=bytes(36), companions=table)
+    return rec.to_bytes()
+
+
+def test_the_writer_gives_a_matched_companion_his_files_bytes():
+    raw = _written(CURSE_KEY, 0x16, 0xB2, _synthetic(PAYLOAD))
+    for offset, size in JOIN_KEPT[CURSE_KEY]:
+        # Fails without the writer's kept block: zero at every run.
+        assert raw[offset:offset + size] == PAYLOAD[offset:offset + size], (
+            hex(offset))
+
+
+def test_the_writer_gives_a_player_of_the_same_name_zeros():
+    raw = _written(CURSE_KEY, 0x16, 0x00, _synthetic(PAYLOAD))
+    for offset, size in JOIN_KEPT[CURSE_KEY]:
+        assert raw[offset:offset + size] == bytes(size), hex(offset)
+
+
+def test_the_writer_leaves_a_silver_blades_companion_as_without_a_table():
+    """Silver Blades has no kept run, so its companion's bytes at Curse's
+    runs are what the writer gives him with no companion table at all."""
+    table = _synthetic(PAYLOAD, SILVER_BLADES_KEY, 0x32)
+    with_table = _written(SILVER_BLADES_KEY, 0x32, 0xB2, table)
+    without = _written(SILVER_BLADES_KEY, 0x32, 0xB2, None)
+    for offset, size in JOIN_KEPT[CURSE_KEY]:
+        span = slice(offset, offset + size)
+        assert with_table[span] == without[span], hex(offset)
 
 
 def test_join_kept_slices_the_runs_out_of_the_file():
