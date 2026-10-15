@@ -204,10 +204,11 @@ def test_walk_stops_when_a_step_does_not_move_the_party(tmp_path):
 
 
 #: A brawl: two bars, each grabbed twice (the bar and the check after the owner read),
-#: monster turns no guard knows, then the end screens and the map.
+#: monster turns no guard knows, then the end screens as every won brawl captured shows them
+#: (THE PARTY HAS WON, treasure, the script's "tossed outside" line, one more box) and the map.
 FIGHT = [None, "tavern", None, "combat_bar", "combat_bar", None, None, "combat_bar",
-         "combat_bar", None, "continue_battle", "continue", "treasure", "treasure_left",
-         "continue", "continue", "investigate", "world"]
+         "combat_bar", None, "continue_battle", "party_won", "treasure", "treasure_left",
+         "tossed", "continue", "investigate", "world"]
 
 
 def _owner(name, quick=0):
@@ -266,13 +267,13 @@ def test_fight_stops_on_an_unknown_screen_that_stays_still(tmp_path):
 def test_fight_waits_through_unknown_screens_that_keep_changing(tmp_path, monkeypatch):
     clock = Clock()
     turns = [None] * 200
-    game = Game(clock, [None, "combat_bar", "combat_bar", *turns, "continue_battle", "world"],
-                owners=[_owner("EVOKER")])
+    game = Game(clock, [None, "combat_bar", "combat_bar", *turns, "continue_battle", "party_won",
+                        "world"], owners=[_owner("EVOKER")])
     game.walking = False
     frames = iter(range(10_000))
     monkeypatch.setattr(cursefight, "_digest", lambda shot: str(next(frames)))
     found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
-    assert clock.now > cursefight.FIGHT_STALL and game.keys == ["Q", "N"]
+    assert clock.now > cursefight.FIGHT_STALL and game.keys == ["Q", "N", "RET"]
     assert found["bars"][0]["owner"] == "EVOKER"
 
 
@@ -289,11 +290,11 @@ def test_fight_stops_on_a_known_screen_that_never_changes(tmp_path, screen):
 
 def test_fight_waits_for_the_first_bar_on_the_map_shortly_after_punch(tmp_path):
     clock = Clock()
-    game = Game(clock, ["world", "world", "tavern", "combat_bar", "combat_bar", "world"],
-                owners=[_owner("EVOKER")])
+    game = Game(clock, ["world", "world", "tavern", "combat_bar", "combat_bar", "party_won",
+                        "world"], owners=[_owner("EVOKER")])
     game.walking = False
     found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
-    assert game.keys == ["Q"] and found["bars"][0]["owner"] == "EVOKER"
+    assert game.keys == ["Q", "RET"] and found["bars"][0]["owner"] == "EVOKER"
 
 
 def test_fight_stops_on_a_map_that_stays_after_punch(tmp_path):
@@ -326,29 +327,42 @@ def test_fight_stops_when_the_tavern_bar_stays_after_punch(tmp_path):
 
 def test_fight_does_not_end_on_a_map_that_does_not_hold(tmp_path):
     clock = Clock()
-    script = [None, "combat_bar", "combat_bar", None, "world", "continue", "world"]
+    script = [None, "combat_bar", "combat_bar", None, "party_won", "world", "continue", "world"]
     game = Game(clock, script, owners=[_owner("EVOKER")])
     game.walking = False
     found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
-    assert game.keys == ["Q", "RET"]
+    assert game.keys == ["Q", "RET", "RET"]
     assert found["answered"][-1]["screen"] == "continue"
 
 
-#: Run 2's ending: the brawl's end screens, then the lost brawl's text and the street, with no
-#: command bar having come first.
-LOST = [None, "tavern", None, "continue_battle", "continue", "treasure", "treasure_left",
-        "tossed", "world"]
+#: A brawl's end screens with a box the guards take for a plain `continue` where THE PARTY HAS
+#: WON belongs, then the script's "tossed outside" line and the street.
+UNJUDGED = ["continue_battle", "continue", "treasure", "treasure_left", "tossed", "world"]
 
 
-def test_fight_ends_as_lost_on_the_tossed_outside_text_and_the_map(tmp_path):
+@pytest.mark.parametrize("bars, match", [
+    (True, "without the party_won screen"), (False, "world showed mid-fight")])
+def test_fight_that_reaches_the_map_without_the_won_message_stops_the_run(tmp_path, bars, match):
     clock = Clock()
-    game = Game(clock, LOST)
+    start = [None, "tavern", "combat_bar", "combat_bar", None] if bars else [None, "tavern", None]
+    game = Game(clock, [*start, *UNJUDGED], owners=[_owner("EVOKER")])
+    game.walking = False
+    screens = _screens(tmp_path, game, clock)
+    with pytest.raises(RouteError, match=match):
+        cursefight.fight(screens, game, [])
+    assert game.keys == [*(["Q"] if bars else []), "N", "RET", "E", "N", "RET"]
+    _keys_allowed(screens, game)
+
+
+def test_tavern_fight_ends_lost_on_the_destroyed_message_with_one_return(tmp_path):
+    clock = Clock()
+    script = [None, "tavern", "combat_bar", "combat_bar", None, "party_destroyed", "title"]
+    game = Game(clock, script, owners=[_owner("EVOKER")])
     game.walking = False
     screens = _screens(tmp_path, game, clock)
     found = cursefight.fight(screens, game, ["EVOKER"])
-    assert found["outcome"] == "lost" and found["bars"] == []
-    assert game.keys == ["N", "RET", "E", "N", "RET"]
-    assert game.pressed_on[-1] == "tossed"
+    assert found["outcome"] == "lost" and game.keys == ["Q", "RET"]
+    assert found["answered"][-1]["screen"] == "party_destroyed"
     _keys_allowed(screens, game)
 
 
@@ -378,6 +392,78 @@ def test_tossed_guard_matches_the_captured_text_and_not_the_frames_around_it(tmp
     assert guards("tossed", frames[114])
     assert guards("continue", frames[114])
     assert not guards("tossed", frames[113]) and not guards("tossed", frames[115])
+    assert not guards("party_won", frames[114])
+
+
+#: The won brawls captured, each from its CONTINUE BATTLE frame to the first map frame after
+#: the brawl. In every one the game shows THE PARTY HAS WON one frame after CONTINUE BATTLE and
+#: THE SURVIVORS ARE TOSSED OUTSIDE after the treasure; WISH-390's run had no command bar.
+WON_BRAWLS = {
+    "WISH-303/i4-dos/stage/run2": (177, 184),
+    "WISH-303/i4-dos/stage/run1": (169, 176),
+    "WISH-303/i4-c64/stage/run2": (215, 222),
+    "WISH-390/run2": (110, 115),
+}
+ACCEPTANCE = pathlib.Path.home() / ".cache/wish/acceptance"
+
+
+def _brawl_frames(run):
+    first, last = WON_BRAWLS[run]
+    frames = [ACCEPTANCE / run / "screens" / f"{n}-fight.png" for n in range(first, last + 1)]
+    if not all(f.is_file() for f in frames):
+        pytest.skip(f"the {run} capture is not on this machine")
+    return frames
+
+
+def _real_guards(tmp_path):
+    rules = tmp_path / "guards.json"
+    rules.write_text(json.dumps(cursefight.guard_rules()))
+    return PixelGuards(rules)
+
+
+@pytest.mark.parametrize("run", sorted(WON_BRAWLS))
+def test_party_won_guard_names_the_won_message_and_no_other_end_screen(tmp_path, run):
+    frames = _brawl_frames(run)
+    guards = _real_guards(tmp_path)
+    named = [next((s for s in cursefight.KNOWN if s in guards and guards(s, f)), None)
+             for f in frames]
+    assert named[:5] == ["continue_battle", "party_won", "treasure", "treasure_left", "tossed"]
+    assert named[-1] == "world" and named.count("party_won") == 1
+
+
+class FrameGame:
+    """A guest and memory that show captured frames in order, the last one staying."""
+
+    def __init__(self, clock, frames):
+        self.clock, self.frames = clock, list(frames)
+        self.keys: list[str] = []
+        self.holder = "holder"
+
+    def grab(self, label, raw, crop, timeout):
+        self.clock.now += 1
+        frame = self.frames.pop(0) if len(self.frames) > 1 else self.frames[0]
+        pathlib.Path(crop).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(crop).write_bytes(frame.read_bytes())
+        return True
+
+    def press(self, holder, key, timeout):
+        self.keys.append(key)
+
+    def owner(self):
+        raise AssertionError("the replay holds no command bar")
+
+
+@pytest.mark.parametrize("run", sorted(WON_BRAWLS))
+def test_a_captured_won_brawl_replays_as_won(tmp_path, run):
+    clock = Clock()
+    game = FrameGame(clock, _brawl_frames(run))
+    screens = cursefight.Screens(game, "holder", tmp_path / "shots", _real_guards(tmp_path),
+                                 100_000, clock=clock, sleep=clock.sleep)
+    found = cursefight.fight(screens, game, [])
+    assert found["outcome"] == "won"
+    assert [a["screen"] for a in found["answered"]] == [
+        "continue_battle", "party_won", "treasure", "treasure_left", "tossed",
+        *(["continue", "investigate"] if run != "WISH-390/run2" else [])]
 
 
 @pytest.mark.parametrize("change, match", [
@@ -429,16 +515,37 @@ def test_drive_loads_walks_fights_and_saves_once(tmp_path, monkeypatch):
     _keys_allowed(screens, game)
 
 
-def test_drive_saves_after_a_lost_brawl_naming_who_stands_and_who_fell(tmp_path, monkeypatch):
+def test_drive_stops_before_the_save_when_the_watched_member_died_in_a_won_brawl(
+        tmp_path, monkeypatch):
     loaded = [_member(name) for name in NAMES]
-    after = [_member(name) for name in NAMES]
-    after[0].update(hit_points=0, status=1)
-    found, game, _screens, _walked = _drive(tmp_path, monkeypatch, parties=[loaded, after],
-                                            outcome="lost")
-    assert found["outcome"] == "lost" and found["fallen"] == ["GALAIN"]
-    assert "GALAIN" not in found["standing"] and "HOLLAND" in found["standing"]
-    assert "members" not in found
-    assert game.keys[-4:] == ["E", "S", "F", "N"]
+    after = [_member(name, quickfight=1) for name in NAMES]
+    after[-1].update(hit_points=0, status=6)
+    with pytest.raises(RouteError, match="EVOKER fell"):
+        _drive(tmp_path, monkeypatch, parties=[loaded, after])
+
+
+def test_drive_at_the_tavern_stops_at_a_destroyed_party_saving_nothing(tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, DRIVE, parties=[[_member(name) for name in NAMES]])
+    game.walking = False
+    monkeypatch.setattr(cursefight, "walk", lambda *a: [])
+    monkeypatch.setattr(
+        cursefight, "fight",
+        lambda *a, **k: {"bars": [{"owner": "EVOKER"}],
+                         "answered": [{"screen": "party_destroyed", "key": "RET"}],
+                         "outcome": "lost"})
+    found = cursefight.drive(_screens(tmp_path, game, clock), _manifest(), ["EVOKER"], game,
+                             save=True)
+    assert found["destroyed"] and "after" not in found and "members" not in found
+    assert game.keys[-1] == "P"
+
+
+def test_verdict_of_a_won_fight_reports_a_watched_member_saved_dead():
+    members = [_member(name, quickfight=1) for name in NAMES]
+    members[-1].update(hit_points=0, status=6)
+    problems = cursefight.verdict(_read(members), _manifest(), ["EVOKER"], "won")
+    assert any("loaded as" in p for p in problems)
+    assert "EVOKER was saved at 0 hit points" in problems
 
 
 def test_verdict_of_a_lost_fight_skips_the_quickfight_and_standing_checks():

@@ -15,10 +15,10 @@ fight runs itself as the DOS fight step's does, and at each bar it reads whose b
 memory and logs it. After the fight it checks each `--member` had a bar, now holds
 quickfight 1 and still stands, then camps and saves once to the staged letter, halts,
 fetches the disk and reads the slot back. `--no-save` stops after that check. A party the
-Pit's monsters destroy gets RETURN on the destroyed message, and the run ends there, lost,
-saving nothing. `--no-fight` loads the slot, begins, then camps and saves at once, with no
-walk and no fight, and reads the save back, each member's combat picture included. Memory is
-only read, never written, so the Pit's gate stays at `$80` in a save the run makes; the
+fight destroys gets RETURN on the destroyed message, and the run ends there, lost, saving
+nothing. A brawl counts as won only once the game shows THE PARTY HAS WON. `--no-fight`
+loads the slot, begins, then camps and saves at once, with no walk and no fight, and reads
+the save back, each member's combat picture included. Memory is only read, never written, so the Pit's gate stays at `$80` in a save the run makes; the
 receipt records it.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
@@ -79,10 +79,17 @@ FIGHT_GUARDS = {
                  "sha256": "43f01d090eccc05783eeedda1c69823ad0474432caf91960c4fbb6370f76f71d",
                  "and": [{"box": [74, 302, 690, 318],
                           "sha256": "67c4990b5d5d9b01fabe5b7b710219be9e0bcdacf41f882e9a72ba2ed4d2098b"}]},
-    # The lost brawl's last text line, which sits over the same RETURN bar as every other
-    # `continue` box and so is told apart by its text.
+    # The brawl script's line after every fight it starts, won or lost (`ECL01 $8ACA`, the
+    # same block in disk B's `ECL.GLB`), over the same RETURN bar as every `continue` box.
     "tossed": {"box": [74, 302, 690, 318],
                "sha256": "c0673a24f91bb7991f3c3139ce81fbc68556aee0ae50230a88d853ad4fe9c8f8"},
+    # THE PARTY HAS WON, the first line of the game's end-of-fight message (`/Curse 0x2D620`)
+    # over the RETURN bar, cut from the four won brawls kept (WISH-303 `i4-dos/stage/run2/
+    # screens/178-fight.png`, `run1` 170, `i4-c64/stage/run2` 216, WISH-390 `run2` 111).
+    "party_won": {"box": [74, 78, 640, 96],
+                  "sha256": "64177b35adb9b7300e0e46e77a5de3f0973a5ada6de8336a8937ea04fe12cc4d",
+                  "and": [{"box": [72, 404, 686, 426],
+                           "sha256": "1bf2400681523aa4dc95ae92305564fd26f826fa60277596e7801505cb6dd73c"}]},
     # The destroyed party's message over a PRESS ANY KEY bar, cut from the Pit run that lost
     # to shambling mounds (WISH-388 `c64join-amiga-pit/run1/screens/216-fight.png`); the text
     # box alone would also match the same words over another bar, so the bar is the `and`.
@@ -107,9 +114,10 @@ FIGHT_GUARDS = {
                     "and": [{"box": [74, 302, 690, 318],
                              "sha256": "62e2c5b54a7168bf15231eb25872aa96f17c857a1994d07fcecf3c381750cdd2"}]},
 }
-#: "tossed" comes before "continue": the first known screen a grab matches names it.
+#: "party_won", "party_destroyed" and "tossed" come before "continue": the first known screen
+#: a grab matches names it.
 KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
-         "tossed", "continue", "tavern", "injuries", "combat_bar", "continue_battle", "treasure",
+         "party_won", "party_destroyed", "tossed", "continue", "tavern", "injuries", "combat_bar", "continue_battle", "treasure",
          "treasure_left", "investigate", "camp", "camp_save_picker", "exit_game")
 #: The only keys each screen may receive. The tavern's L(EAVE) is for a bar shown again after
 #: the fight; the investigate question is answered NO, which keeps the party out of a second fight.
@@ -118,6 +126,7 @@ ALLOWED_KEYS = {
     "load_picker": frozenset("ABCDEFGHIJ"), "load_error": frozenset({"RET"}),
     "loaded_menu": frozenset({"B"}), "world": frozenset({"NP4", "NP6", "NP8", "E"}),
     "continue": frozenset({"RET"}), "tossed": frozenset({"RET"}),
+    "party_won": frozenset({"RET"}),
     "tavern": frozenset({"P", "L"}), "injuries": frozenset({"I"}),
     "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
@@ -127,7 +136,8 @@ ALLOWED_KEYS = {
 }
 #: Answers to the screens that come between the first command bar and the map.
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure": "E",
-                 "treasure_left": "N", "investigate": "N", "continue": "RET", "tossed": "RET"}
+                 "treasure_left": "N", "investigate": "N", "continue": "RET", "tossed": "RET",
+                 "party_won": "RET", "party_destroyed": "RET"}
 #: Facing steps (0 N, 1 E, 2 S, 3 W) and the key that turns the party by each.
 TURN_KEYS = {1: ("NP6",), 2: ("NP6", "NP6"), 3: ("NP4",)}
 STEP = {0: (0, -1), 1: (1, 0), 2: (0, 1), 3: (-1, 0)}
@@ -579,8 +589,9 @@ class FightRules:
     starting: tuple[str, ...] = ()
     #: Screens that get a key only once a bar has shown.
     after_bars: dict[str, str] = dataclasses.field(default_factory=dict)
-    #: Screens answered with their key that mean the fight was lost; the map then ends it.
-    lost_answered: tuple[str, ...] = ()
+    #: Screens that mean the fight was won. When any are named, a fight that reaches the map
+    #: without one of them stops the run instead of being taken as won.
+    won: tuple[str, ...] = ()
     #: Screens that end the fight as lost at once: one with a key in `answers` gets that key,
     #: and nothing after it is waited for; the others get none.
     defeat: tuple[str, ...] = ()
@@ -588,12 +599,16 @@ class FightRules:
     name_key: Callable[[str], str] = _same
 
 
-#: The tavern brawl: the PUNCH bar may still show as the brawl starts and gets LEAVE after it,
-#: and the "tossed outside" text marks a lost brawl.
+#: The tavern brawl: the PUNCH bar may still show as the brawl starts and gets LEAVE after it.
+#: The script prints the "tossed outside" line after the fight whatever its result, so the
+#: result is read from the game's own end-of-fight message (`/Curse 0x2D538`): THE PARTY HAS
+#: WON for a win, and for a party all down the destroyed message, which the brawl's script
+#: never stops by setting the spare flag `$7EE6`.
 CURSE_FIGHT = FightRules(
     known=KNOWN, answers=FIGHT_ANSWERS,
     bar_fields=("control", "status", "quickfight", "hit_points"), linger=TAVERN_LINGER,
-    starting=("tavern",), after_bars={"tavern": "L"}, lost_answered=("tossed",))
+    starting=("tavern",), after_bars={"tavern": "L"}, defeat=("party_destroyed",),
+    won=("party_won",))
 
 #: The Pit's wandering fight: the map may still show while its monsters load, and the
 #: encounter's own pages and the slugs' question come before the first bar. A destroyed party's
@@ -617,7 +632,7 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         found.update(bars=bars, answered=answered)
     started = still_since = screens.clock()
     settle_from = None
-    lost = False
+    lost = won = False
     last: object = object()
     while True:
         require(screens.clock() - started < FIGHT_LIMIT,
@@ -628,9 +643,8 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         # A grab with no crop counts as one more of the same, so a stuck one stops the run too.
         if digest != last:
             last, still_since = digest, screens.clock()
-        # A lost brawl goes from the "tossed outside" text straight to the street, with or
-        # without a command bar having come first.
-        if state == "world" and (bars or lost):
+        # A fight the game ran without a command bar ends on the map after its won message.
+        if state == "world" and (bars or won):
             settle_from = settle_from if settle_from is not None else screens.clock()
             if screens.clock() - settle_from >= MAP_SETTLE:
                 break
@@ -680,12 +694,14 @@ def fight(screens: Screens, memory: Memory, members: list[str],
             continue
         elif state not in rules.answers:
             raise RouteError(f"{state} showed mid-fight; shot {shot}")
-        if state in rules.lost_answered:
-            lost = True
+        won = won or state in rules.won
         key = rules.answers[state]
         screens.press(key, state)
         answered.append({"screen": state, "key": key, "shot": str(shot)})
         screens.sleep(AFTER_KEY)
+    require(lost or won or not rules.won,
+            f"the fight reached the map without the {', '.join(rules.won)} screen, so its "
+            f"result is unknown; shot {shot}")
     owners = {rules.name_key(bar["owner"]) for bar in bars}
     missing = [name for name in members if rules.name_key(name) not in owners]
     require(lost or not missing, f"{missing} had no command bar; bars went to {sorted(owners)}")
@@ -708,12 +724,20 @@ def check_members(party: list[dict], manifest: dict, members: list[str]) -> dict
     return found
 
 
+def destroyed(found: dict, rules: FightRules) -> bool:
+    """Record in `found` whether the fight ended on one of `rules`' defeat screens."""
+    found["destroyed"] = bool(found["answered"]) and (
+        found["answered"][-1]["screen"] in rules.defeat)
+    return found["destroyed"]
+
+
 def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, *,
           save: bool, found: dict | None = None, no_fight: bool = False) -> dict:
     """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
     made, so a step that stops still leaves what came before it for the receipt. With
     `no_fight` the party camps and saves as loaded, with no walk and no fight. A destroyed
-    party ends the drive at its message, saving nothing."""
+    party ends the drive at its message, saving nothing; after any other fight each member
+    named must pass `check_members` before the save."""
     fight_ = manifest["fight"]
     pit = fight_.get("kind") == PIT
     found = {} if found is None else found
@@ -748,9 +772,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         found["walk"] = pit_walk(screens, memory, fight_["place"], fight_)
         found.update(fight(screens, memory, members, PIT_FIGHT, found=found))
         found["first_bar"] = found["bars"][0] if found["bars"] else None
-        found["destroyed"] = bool(found["answered"]) and (
-            found["answered"][-1]["screen"] in PIT_FIGHT.defeat)
-        if found["destroyed"]:
+        if destroyed(found, PIT_FIGHT):
             return found
         found[GATE_AFTER] = curseadd.bounded(lambda _h: memory.variable(PIT_GATE),
                                              memory.holder, screens.left(READ_LIMIT))
@@ -761,16 +783,11 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         screens.press("P", "tavern")
         screens.sleep(AFTER_KEY)
         found.update(fight(screens, memory, members))
+        if destroyed(found, CURSE_FIGHT):
+            return found
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
                                       screens.left(READ_LIMIT))
-    if found["outcome"] == "lost":
-        loaded = manifest["fight"]["members"]
-        fallen = [m["name"] for m in found["after"]
-                  if m["hit_points"] == 0 or m["status"] != loaded[m["name"]]["status"]]
-        found["standing"] = [m["name"] for m in found["after"] if m["name"] not in fallen]
-        found["fallen"] = fallen
-    else:
-        found["members"] = check_members(found["after"], manifest, members)
+    found["members"] = check_members(found["after"], manifest, members)
     if not save:
         return found
     camp_save(screens, fight_["save"])
