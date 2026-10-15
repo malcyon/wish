@@ -54,6 +54,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any, Callable
 
 if __package__ in (None, ""):
@@ -1650,19 +1651,48 @@ def _held_zip(folder: pathlib.Path, sha: str) -> pathlib.Path | None:
     return zips[0]
 
 
+def _adopt(folder: pathlib.Path, sha: str) -> pathlib.Path | None:
+    """The zip of a folder made before hashes were recorded, once its hash note is written.
+
+    Only a folder with no hash note and a matching commit note qualifies; one whose
+    recorded hash fails stays rejected.
+    """
+    zips = sorted(folder.rglob("*.zip")) if folder.is_dir() else []
+    try:
+        if (folder / HASH_FILE).exists() or len(zips) != 1:
+            return None
+        if (folder / COMMIT_FILE).read_text().strip() != sha:
+            return None
+        (folder / HASH_FILE).write_text(file_sha256(zips[0]) + "\n")
+    except OSError:
+        return None
+    return zips[0]
+
+
+def _siblings(dest: pathlib.Path) -> list[pathlib.Path]:
+    """The download folders `fetch` made beside `dest` when `dest` could not be used."""
+    return sorted(p for p in dest.parent.glob(f"{dest.name}.*") if p.is_dir())
+
+
 def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.Path:
     """Download the `frozen-windows` artifact of `sha` and return its zip.
 
-    A folder already holding this commit's zip with its recorded hash is reused. A
-    download goes into a fresh temporary folder that is renamed into place, and a zip
-    another run may be staging is never deleted: when the build folder holds something
-    else, the download lands in a folder of its own beside it.
+    A folder already holding this commit's zip with its recorded hash is reused, and so
+    is one made before hashes were recorded (its hash is written then). A download goes
+    into a fresh temporary folder that is renamed into place, and a zip another run may
+    be staging is never deleted: when the build folder holds something else, the
+    download lands in a folder of its own beside it, which later runs reuse. Such
+    folders that nothing reuses and that predate this run are removed.
     """
+    started = time.time()
     sha = full_sha(guest, sha)
     dest = dest or scratch.cache_dir("winwish", sha[:12])
-    held = _held_zip(dest, sha)
+    held = _held_zip(dest, sha) or _adopt(dest, sha)
     if held:
         return held
+    for sibling in _siblings(dest):
+        if held := _held_zip(sibling, sha):
+            return held
     listing = guest.gh("run", "list", "--workflow", WORKFLOW, "--commit", sha,
                        "--limit", "20", "--json",
                        "databaseId,headSha,conclusion,createdAt")
@@ -1679,18 +1709,25 @@ def fetch(guest: Guest, sha: str, dest: pathlib.Path | None = None) -> pathlib.P
         (fresh / COMMIT_FILE).write_text(sha + "\n")
         (fresh / HASH_FILE).write_text(file_sha256(zips[0]) + "\n")
         relative = zips[0].relative_to(fresh)
-        for target in (dest, None):
-            target = target or dest.parent / f"{dest.name}.{fresh.name.rsplit('.', 1)[-1]}"
+        result = None
+        for target in (dest, dest.parent / f"{dest.name}.{fresh.name.rsplit('.', 1)[-1]}"):
             try:
                 fresh.rename(target)
             except OSError:
                 if target == dest and (won := _held_zip(dest, sha)):
-                    return won
+                    result = won
+                    break
                 continue
-            return target / relative
-        raise WinwishError(f"could not move the download into place beside {dest}")
+            result = target / relative
+            break
+        if result is None:
+            raise WinwishError(f"could not move the download into place beside {dest}")
     finally:
         shutil.rmtree(fresh, ignore_errors=True)
+    for sibling in _siblings(dest):
+        if sibling not in result.parents and sibling.stat().st_mtime < started:
+            shutil.rmtree(sibling, ignore_errors=True)
+    return result
 
 
 @contextlib.contextmanager

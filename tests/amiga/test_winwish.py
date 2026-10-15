@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import pathlib
 import re
 import sys
@@ -340,6 +341,44 @@ def test_a_build_folder_whose_zip_fails_its_hash_is_left_alone_and_the_download_
     assert second.parent != folder and second.read_bytes() == b"PK2"
     assert (second.parent / winwish.COMMIT_FILE).read_text().strip() == SHA
     assert not list(tmp_path.glob(".*"))
+
+
+def test_a_folder_made_before_hashes_were_recorded_is_adopted_not_downloaded_again(tmp_path):
+    counter: list[int] = []
+    folder = tmp_path / SHA[:12]
+    folder.mkdir()
+    (folder / "wish-0.zip").write_bytes(b"old")
+    (folder / winwish.COMMIT_FILE).write_text(SHA + "\n")
+    got = winwish.fetch(_downloading(counter), SHA, folder)
+    assert got == folder / "wish-0.zip" and counter == []
+    assert (folder / winwish.HASH_FILE).read_text().strip() == winwish.file_sha256(got)
+    # A recorded hash that fails is not adopted over.
+    got.write_bytes(b"torn")
+    assert winwish.fetch(_downloading(counter), SHA, folder).parent != folder
+
+
+def test_a_later_run_reuses_the_folder_an_earlier_one_downloaded_beside_a_rejected_one(tmp_path):
+    counter: list[int] = []
+    guest = _downloading(counter)
+    folder = tmp_path / SHA[:12]
+    winwish.fetch(guest, SHA, folder).write_bytes(b"torn")
+    beside = winwish.fetch(guest, SHA, folder)
+    assert winwish.fetch(guest, SHA, folder) == beside and len(counter) == 2
+
+
+def test_siblings_nothing_reuses_are_pruned_when_older_than_the_run_and_dest_is_kept(tmp_path):
+    counter: list[int] = []
+    guest = _downloading(counter)
+    folder = tmp_path / SHA[:12]
+    winwish.fetch(guest, SHA, folder).write_bytes(b"torn")
+    stale = tmp_path / (SHA[:12] + ".stale")
+    stale.mkdir()
+    (stale / "wish-9.zip").write_bytes(b"junk")
+    old = stale.stat().st_mtime - 3600
+    os.utime(stale, (old, old))
+    beside = winwish.fetch(guest, SHA, folder)
+    assert not stale.exists() and folder.is_dir() and beside.parent.is_dir()
+    assert len(counter) == 2
 
 
 def test_a_failed_download_leaves_no_temporary_folder(tmp_path):
