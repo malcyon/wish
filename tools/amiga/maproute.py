@@ -519,7 +519,8 @@ def _pool_walkout() -> Phase:
     (ECL00 `$9C43`); W buys WEST and RETURN at WHO WILL PAY? picks the highlighted member, who
     pays 1 platinum. The pier end at 15,1 prints YOU BOARD A BOAT. on a continue page, and the
     boat lands the party on the grid's dock square, where the game asks TAKE BOAT or STAY
-    before it prints the square; STAY leaves it on the grid."""
+    before it prints the square; STAY leaves it on the grid. Sailing out loads no map: the
+    resident block stays New Phlan's, so the landing is checked as a change of view."""
     return _phase(
         "walkout", "world",
         Step("snapshot", "world", snapshot="pool_harbour"),
@@ -548,7 +549,7 @@ def _pool_walkout() -> Phase:
         Step("key", "boat_question", key="RET"),
         Step("key", "grid", key="S", checkpoint="pool_walkout_grid",
              expected=dataclasses.replace(_POOL_DOCK, compare_to="pool_pier",
-                                          relation="area_changed")),
+                                          relation="view_changed")),
     )
 
 

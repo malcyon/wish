@@ -658,7 +658,7 @@ def test_the_pool_walkout_buys_west_and_sails_from_the_pier_to_the_grids_dock(tm
     landed = checkpoints["pool_walkout_grid"]
     assert (dict(landed.engine), dict(landed.window)) == (
         {"outdoors": True, "facing": 1}, {"x": 7, "y": 29})
-    assert (landed.compare_to, landed.relation) == ("pool_pier", "area_changed")
+    assert (landed.compare_to, landed.relation) == ("pool_pier", "view_changed")
     switched = False
     for step in walkout.steps:
         if step.kind == "encounters":
@@ -666,6 +666,35 @@ def test_the_pool_walkout_buys_west_and_sails_from_the_pier_to_the_grids_dock(tm
         elif step.kind == "key":
             assert not switched, f"{step.key} is pressed with the encounter switch on"
     assert not switched
+
+
+def test_the_walkout_landing_passes_with_the_pier_map_still_resident(tmp_path: Path):
+    """The pier and grid readings of live run pool-walkout2-rerun: sailing out leaves New
+    Phlan's map block resident, so only the view and the dock square tell the landing apart."""
+    from tests.amiga import test_winwishaccept as driver
+    from tools.amiga import winwishaccept
+
+    route = maproute.route_for("pool", _manifest("pool", tmp_path))
+    landed = next(step.expected for step in route.phases[-1].steps
+                  if step.checkpoint == "pool_walkout_grid")
+    new_phlan = "4d2541a2db2e3c3af90a9f1de437e2483146be72a91a766f7b970aec9d2db326"
+    controller = winwishaccept.Controller(
+        driver._args(tmp_path), guest=object(), lane=object(), game=driver.FakeGame(),
+        guards=object(), route=driver._route(), zipped=tmp_path / "build.zip",
+        info={"media": {}}, clock=driver.FakeClock())
+    controller.checkpoints["pool_pier"] = {"observed": {
+        "fix": {"x": 14, "y": 1, "facing": 1, "outdoors": False, "world_map": False,
+                "window": None, "heading": None, "area": 0},
+        "geo_sha256": new_phlan}}
+    grid = {"fix": {"x": 7, "y": 29, "facing": None, "outdoors": True, "world_map": False,
+                    "window": 1, "heading": 2, "area": 0},
+            "geo_sha256": new_phlan}
+
+    assert controller._compare_checkpoint("pool_walkout_grid", landed, grid)["status"] == (
+        "awaiting image review")
+    still_indoors = {**grid, "fix": {**grid["fix"], "outdoors": False}}
+    assert controller._compare_checkpoint(
+        "pool_walkout_grid", landed, still_indoors)["status"] == "failed"
 
 
 def test_only_a_title_whose_reload_restarts_the_game_waits_the_boots_title_limit_for_the_title(
