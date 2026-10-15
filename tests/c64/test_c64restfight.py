@@ -3,7 +3,9 @@
 The screens are the rows of run `5a169821a3-f1-c64-compound-rest`
 (`load`, `walk I`, `rest 240h` on the S3 C64 save): the patrol's page as the
 rest stopped (`03-rested-240h.txt`) and the `COM.PREP` screen a Return later
-(`04-lost-rest.txt`), rows 16 to 24; the rows above are blank frame.
+(`04-lost-rest.txt`), rows 16 to 24; the rows above are blank frame.  The
+command bar of another member is run `8d53cd75ea-s4-c64-patrol-fight`'s
+`04-first-bar.txt` whole: MALACHITE's turn, her name on the panel's row 2.
 """
 
 from __future__ import annotations
@@ -36,6 +38,37 @@ def _screen(lower: list[str]) -> list[str]:
     return [BLANK] * 16 + list(lower)
 
 
+MALACHITE_BAR = [
+    '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',
+    '$...89:   ....        $                $',
+    '%...;<=    ....       %MALACHITE       %',
+    '%...>?.     ....      %                %',
+    "%   &'(&'(   ....     %HIT POINTS 58   %",
+    '%   )*+)*+    ....    %                %',
+    '%   ,-.,-.     ....   %AC 7            %',
+    "%.  ...89:&'(   ....  %                %",
+    '%.. ...;<=)*+    .... %                %',
+    '%......>?.,-.     ....%                %',
+    '%....  KLM            %                %',
+    '% .... NOP            %                %',
+    '%  ....QRS            %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '%                     %                %',
+    '&                     &                &',
+    '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',
+    'MOVE VIEW AIM QUICK DONE',
+]
+#: The same frame on SIR DERIC's turn: his name where hers was.
+DERIC_BAR = list(MALACHITE_BAR)
+DERIC_BAR[2] = MALACHITE_BAR[2].replace("MALACHITE", "SIR DERIC")
+
 SCREENS = {
     "world": _screen([BLANK] * 8 + ["MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"]),
     "camp": _screen([BLANK] * 8 + ["REST ALTER FIX VIEW MAGIC SAVE EXIT"]),
@@ -43,10 +76,14 @@ SCREENS = {
     "circle": _screen(BLACK_CIRCLE_ROWS),
     "prep": _screen(PREP_ROWS),
     "command": _screen(PREP_ROWS[:-1] + [COMMAND_BAR]),
+    "malachite": MALACHITE_BAR,
+    "deric": DERIC_BAR,
+    "monster": MALACHITE_BAR[:24] + [""],
 }
 #: LINKER's mode byte in each state.
 MODES = {"world": A.S.DUNGEON, "camp": A.S.DUNGEON, "patrol": A.S.DUNGEON,
-         "circle": A.S.DUNGEON, "prep": A.COMBAT_PREP, "command": A.S.COMBAT}
+         "circle": A.S.DUNGEON, "prep": A.COMBAT_PREP, "command": A.S.COMBAT,
+         "malachite": A.S.COMBAT, "deric": A.S.COMBAT, "monster": A.S.COMBAT}
 
 
 class _Screen:
@@ -71,6 +108,8 @@ class _Session:
         self.state, self.moves, self.later = start, moves, dict(later or {})
         self.sent, self.reads = [], 0
         self.kbd = _Keyboard()
+        #: Where `combat_turn` (DONE, then GUARD) leaves each state.
+        self.turns: dict = {}
 
     def screen(self):
         if self.state in self.later:
@@ -96,9 +135,15 @@ class _Session:
 
     def await_bar(self, bars, timeout=0, interval=0):
         for _ in range(5):
-            if self.screen().row(24).strip() == COMMAND_BAR:
+            if {"AIM", "DONE"} <= set(self.screen().row(24).split()):
                 return COMMAND_BAR
         return None
+
+    def combat_turn(self):
+        self.sent.append(("turn", self.state))
+        assert self.state in self.turns, f"no turn passes from {self.state}"
+        self.state = self.turns[self.state]
+        return "GUARD"
 
     def handle_prompt(self, s=None):
         return False
@@ -229,3 +274,83 @@ def test_rest_fight_parses_hours_and_must_end_the_run():
         A.parse_steps(["load", "rest-fight"])
     with pytest.raises(ValueError, match="rest"):
         A.parse_steps(["load", "rest-fight soon"])
+
+
+PARTY = ["SIR DERIC", "Guy de Valois", "PAINE", "EPONA", "MALACHITE",
+         "DOMINIC", "MORGAINE"]
+
+
+def _named(tmp_path, monkeypatch, turns, later=None, first="malachite"):
+    """The patrol fight opening on FIRST's bar, every passed turn moved by TURNS."""
+    sess = _Session("world", {("patrol", 0x0D): "prep"},
+                    later={"prep": (1, first), **(later or {})})
+    sess.turns = turns
+    run = _run(tmp_path, monkeypatch, sess)
+    run.names = PARTY
+    monkeypatch.setattr(A, "MEMBER_BAR_CHANGE", 0.5)
+    return run, sess
+
+
+def test_other_members_bars_are_passed_with_done_until_sir_deric_s_own(
+        tmp_path, monkeypatch):
+    """The live opening: MALACHITE's bar first.  Her turn is passed with
+    DONE (never QUICK), a monster's turn is waited out with no key, and SIR
+    DERIC's bar is captured whole with nothing pressed on it."""
+    run, sess = _named(tmp_path, monkeypatch, {"malachite": "monster"},
+                       later={"monster": (2, "deric")})
+    got = run.patrol_fight("240h SIR DERIC")
+    run.log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D),
+                         ("turn", "malachite")]
+    assert got["first_bar"]["acting"] == "MALACHITE"
+    assert got["member_bar"]["who"] == "SIR DERIC"
+    assert got["member_bar"]["passed"] == ["MALACHITE"]
+    kept = (tmp_path / sorted(p.name for p in tmp_path.glob("*-member-bar-SIR-DERIC.txt"))[0])
+    assert "SIR DERIC" in kept.read_text().split("\n")[2]
+    assert sess.state == "deric"
+
+
+def test_a_first_bar_that_is_already_his_presses_nothing(tmp_path, monkeypatch):
+    run, sess = _named(tmp_path, monkeypatch, {}, first="deric")
+    got = run.patrol_fight("240h sir  deric")
+    run.log.close()
+    assert sess.sent == [("bar", "ENCAMP"), ("rest", 240, 0), ("key", 0x0D)]
+    assert got["member_bar"]["passed"] == []
+
+
+def test_a_fight_that_ends_before_his_bar_fails_with_the_screen_kept(
+        tmp_path, monkeypatch):
+    run, sess = _named(tmp_path, monkeypatch, {"malachite": "world"})
+    with pytest.raises(A.StepFailed, match="fight ended before SIR DERIC's bar"):
+        run.patrol_fight("240h SIR DERIC")
+    run.log.close()
+    assert sess.sent[-1] == ("turn", "malachite")
+
+
+def test_a_name_not_in_the_party_rests_not_at_all(tmp_path, monkeypatch):
+    run, sess = _named(tmp_path, monkeypatch, {})
+    with pytest.raises(A.StepFailed, match="SIR DERICSON is not in the party"):
+        run.patrol_fight("240h SIR DERICSON")
+    run.log.close()
+    assert sess.sent == []
+
+
+def test_rest_fight_takes_a_member_after_the_duration():
+    steps = A.parse_steps(["load", "rest-fight 240h SIR DERIC"])
+    assert steps[-1] == A.Step("rest-fight", "240h SIR DERIC")
+    assert A.parse_rest_fight("240h sir deric") == ("240h", "SIR DERIC")
+    assert A.parse_rest_fight("8h") == ("8h", None)
+
+
+def test_a_party_outside_the_compound_is_not_sent_to_the_world_bar(
+        tmp_path, monkeypatch):
+    """`to_world` answers a page still drawn; outside the Compound that page
+    is not the step's, so the area is read first and nothing is pressed."""
+    sess = _Session("patrol", {})
+    run = _run(tmp_path, monkeypatch, sess, area=0x10)
+    called = []
+    monkeypatch.setattr(run, "to_world", lambda tries=10: called.append(1) or True)
+    with pytest.raises(A.StepFailed, match="nothing was pressed"):
+        run.patrol_fight("240h")
+    run.log.close()
+    assert called == [] and sess.sent == []

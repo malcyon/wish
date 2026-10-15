@@ -124,7 +124,7 @@ when set, and `degraded` (the trap failed and cleared every checkpoint, so the
 | `warp AREA` | Pool and Curse: fast-travel the loaded party into area AREA (the writes and jump of `automap.actions.FastTravel`, no arrival square), wait for the key-wait loop, and fail unless the live facing byte `$C04D` is the one the area's arrival script sets (area 10: 1, east); returns the writes and the triple `$C04B`-`$C04D`; Curse makes the trip with `FastTravel.run` for its own title, so the departure lookup runs, and fails unless the area byte reads AREA, returning `outcome`, the writes, `jump` (every program-counter target set) and `areas_seen` (the area byte before and after) in place of the triple |
 | `join MOVES` | Curse only: in an area with a row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Pit, area 17: ALIAS and DRAGONBAIT), answers up to `JOIN_ARRIVAL_PRESSES` arrival pages, fails if a joining name is already on the panel, walks every move but the last as `walk` does, steps forward onto the join square with the last (`I`), and answers the square's script screens in the site's order by their text, one KERNAL key each (`$1D`/`$9D` move a bar's highlight, `$0D` chooses), with the script's own continue bar between (its text window logged with each); a list's Return waits for the highlight on its first line; the world bar or the move sub-bar the walk left up gets no key while the square's script prints under it; any other screen, a key that changes nothing, an unreadable screen past the wait, or the world bar or the move sub-bar before the last answer (once a key is pressed, or when the screen has not changed for `FIRST_SCREEN_GRACE`) stops the step with nothing pressed on that screen; either bar after the last answer ends it; a stop puts the encounter gates back; then fails unless the panel lists every joining name; returns the screens, the keys with the row 24 each was pressed on, the square and the panel |
 | `join-arrival AREA` | Silver Blades only: for an area with an `arrival` row in `tools/c64/joinstep.py`'s `JOIN_SITES` (the Compound, area 68: SIR DERIC), fails with nothing written if a joining name is already on the panel, the panel has no room, or the row's `first_visit` bit reads set (`$4C9E` bit 0, which the scene sets as it starts); then makes `warp`'s trip with `FastTravel.run` from the area the party is in, so the arriving script's entry 4 sees another area in `$4BF2`, and answers the scene's screens in the site's order by their text as `join` does; fails unless the panel then lists every joining name; returns the trip, the `first_visit` reading, the screens, the keys, the square and the panel |
-| `rest-fight 240h` | Silver Blades only, and the last step: in the Compound (area `$44`, read live; any other area fails with nothing pressed), `ENCAMP` and `REST` for at most that long with the rest interruption left as the game sets it (not with `--no-encounters`), until the area's rest check stops the rest with `YOU ARE SPOTTED BY A PATROL.`; that page is answered with Return, `COM.PREP` gets no key, and the first command bar is captured as `first-bar` (`first_bar` in the result, with the live area) and the run ends there; a rest that runs its time, a page with other text, or the camp or world bar before the fight fails the step with the screen kept; the party never moves |
+| `rest-fight 240h` | Silver Blades only, and the last step: in the Compound (area `$44`, read live; any other area fails with nothing pressed), `ENCAMP` and `REST` for at most that long with the rest interruption left as the game sets it (not with `--no-encounters`), until the area's rest check stops the rest with `YOU ARE SPOTTED BY A PATROL.`; that page is answered with Return, `COM.PREP` gets no key, and the first command bar is captured as `first-bar` (`first_bar` in the result, with the live area and the panel's acting name) and the run ends there, or with a member named after the duration (`rest-fight 240h SIR DERIC`; a name not in the party fails before any key) every other member's command bar is passed with DONE and GUARD (`Session.combat_turn`, never QUICK) and the run ends at that member's own bar, captured as `member-bar-<NAME>` (`member_bar` in the result), failing with the screen kept when the fight leaves combat mode first or `MEMBER_BAR_TURNS` turns or `MEMBER_BAR_SECONDS` pass; a rest that runs its time, a page with other text, or the camp or world bar before the fight fails the step with the screen kept; the party never moves |
 | `peek ADDR N` | N bytes of memory, ADDR in hex |
 | `save` | the game's own `ENCAMP > SAVE`; the disk copied out once closed and decoded, with the place through `world_state.from_c64` against the staged one (`place_changed`, `facing_changed`), the square being the travel pair when the save stands on the travel grid; Curse and Silver Blades record row 18, row 24, every key and every attach with their times as `save-watch`, `save-key` and `save-attach` events, and a `SAVE GAME` bar that never comes is watched on to the camp bar, the disk copied to `lost-saved.D64`, then lost |
 
@@ -1411,8 +1411,10 @@ def parse_steps(texts) -> list[Step]:
             raise ValueError(f"{verb} needs an argument")
         if verb in ("snapshot", "restore"):
             parse_snapshot_name(verb, arg)
-        if verb == "rest" and arg.lower() != REST_OFFERED or verb == "rest-fight":
+        if verb == "rest" and arg.lower() != REST_OFFERED:
             parse_rest(arg)
+        elif verb == "rest-fight":
+            parse_rest_fight(arg)
         elif verb == "peek":
             parse_peek(arg)
         elif verb == "walk":
@@ -10697,24 +10699,38 @@ class SilverRun(CurseRun):
         sent from `COM.PREP` on.  The party never moves.  A party outside
         `REST_FIGHT_AREA` fails the step before any key; a rest that runs its
         time, or one stopped by anything but the patrol, fails it with the
-        screen kept."""
-        minutes, hours = parse_rest(arg)
-        if not self.to_world():
-            raise self.fail("world", "the world bar never came back")
+        screen kept.
+
+        With a member named after the duration (`240h SIR DERIC`) the step
+        goes on to that member's own command bar (`member_bar`): every other
+        member's bar is passed with DONE and GUARD (`Session.combat_turn`,
+        never QUICK), and his bar is captured as `member-bar-<NAME>`, where
+        the game centres the view on him.  A name not in the party fails the
+        step before any key."""
+        duration, who = parse_rest_fight(arg)
+        minutes, hours = parse_rest(duration)
+        if who is not None and who not in [n.upper() for n in self.names]:
+            raise self.fail("rest-fight", f"{who} is not in the party "
+                                          f"({', '.join(self.names)}); nothing "
+                                          f"was pressed")
+        # The area is memory, read before any key: `to_world` answers a
+        # page still up, which outside the Compound is not ours to answer.
         area = self.area_now()
         if area != REST_FIGHT_AREA:
             raise self.fail("rest-fight", f"the party is in area {area}, not "
                                           f"{REST_FIGHT_AREA}; nothing was pressed")
+        if not self.to_world():
+            raise self.fail("world", "the world bar never came back")
         square = self.position()
         if not self.to_camp():
             raise self.fail("camp", "ENCAMP never put up the camp bar")
         got = route_pool.rest(self.sess, self.log, minutes, hours, self.armed,
                               quiet=False)
-        self.capture(f"rest-fight-{arg}")
+        self.capture(f"rest-fight-{duration}")
         if "failed" in got:
             raise self.fail("rest", got["failed"])
         if got.get("interrupted") is not True:
-            raise self.fail("rest-fight", f"no fight in {arg} of rest: the rest "
+            raise self.fail("rest-fight", f"no fight in {duration} of rest: the rest "
                                           f"ran its time")
         pages, text = self.follow_patrol(got)
         if self.await_mode((S.COMBAT,), SILVER_PREP_SECONDS,
@@ -10727,12 +10743,58 @@ class SilverRun(CurseRun):
             raise self.fail("rest-fight", "no command bar came up in the fight")
         first_bar = {"seen": True, "bar": rows[24].strip() if rows else "",
                      "area": self.area_now()}
+        first_bar["acting"] = panel_name(rows) or None
         self.log.emit("rest-fight-first-bar", **first_bar)
-        return {"area": area, "position": square, "asked": [minutes, hours],
-                "before_clock": got["before"]["clock"],
-                "after_clock": got["after"]["clock"],
-                "rest_interrupt": got.get("rest_interrupt"),
-                "pages": pages, "text": text, "first_bar": first_bar}
+        result = {"area": area, "position": square, "asked": [minutes, hours],
+                  "before_clock": got["before"]["clock"],
+                  "after_clock": got["after"]["clock"],
+                  "rest_interrupt": got.get("rest_interrupt"),
+                  "pages": pages, "text": text, "first_bar": first_bar}
+        if who is not None:
+            result["member_bar"] = self.member_bar(who, rows)
+        return result
+
+    def member_bar(self, who: str, rows: list[str]) -> dict:
+        """From a command bar to WHO's own: each other member's command bar
+        is passed with `Session.combat_turn` (DONE, then GUARD or QUIT; never
+        QUICK, which would take WHO's bar away from the run), monsters' turns
+        and blank bars are waited out, and WHO's bar is captured as
+        `member-bar-<WHO>` with nothing pressed on it.  The fight leaving
+        combat mode, more than `MEMBER_BAR_TURNS` passed turns, or
+        `MEMBER_BAR_SECONDS` fails the step with the screen kept."""
+        passed: list[str] = []
+        end = self.clock() + self.budget(MEMBER_BAR_SECONDS, f"{who}'s bar")
+        out = 0
+        while True:
+            if is_command_bar(rows):
+                acting = " ".join(panel_name(rows).split()) or None
+                if acting == who:
+                    shot = self.capture(f"member-bar-{who}", rows)
+                    got = {"who": who, "passed": passed,
+                           "bar": shot[24].strip(), "area": self.area_now()}
+                    self.log.emit("rest-fight-member-bar", **got)
+                    return got
+                if len(passed) >= MEMBER_BAR_TURNS:
+                    raise self.fail("rest-fight", f"{who}'s bar did not come in "
+                                                  f"{len(passed)} passed turns: "
+                                                  f"{passed}")
+                chose = self.sess.combat_turn()
+                passed.append(acting or "?")
+                self.log.emit("rest-fight-pass", acting=acting, chose=chose)
+                self.wait_rows(lambda r, was=rows: r != was, MEMBER_BAR_CHANGE,
+                               "the next turn")
+            elif self.sess.mode() != S.COMBAT:
+                out += 1
+                if out >= 2:
+                    raise self.fail("rest-fight", f"the fight ended before {who}'s "
+                                                  f"bar, after {passed}")
+            else:
+                out = 0
+            if self.clock() >= end:
+                raise self.fail("rest-fight", f"{who}'s bar did not come in "
+                                              f"{MEMBER_BAR_SECONDS:g} s: {passed}")
+            self.sess.settle(0.5)
+            rows = self.rows()
 
     def follow_patrol(self, got: dict) -> tuple[list[str], list[str]]:
         """From the rest's stop to the fight: each `PRESS ... TO CONTINUE`
@@ -10788,6 +10850,28 @@ class SilverRun(CurseRun):
 #: after Return `SETUPMON` and the fight, on the square the party camped on.
 REST_FIGHT_AREA = 0x44
 REST_FIGHT_TEXT = "YOU ARE SPOTTED BY A PATROL."
+#: `rest-fight DURATION WHO`: how many other members' turns may be passed,
+#: how long the wait for WHO's bar may take, and how long a passed turn may
+#: leave the screen unchanged before the next look.
+MEMBER_BAR_TURNS = 24
+MEMBER_BAR_SECONDS = 600.0
+MEMBER_BAR_CHANGE = 10.0
+
+
+def parse_rest_fight(arg: str) -> tuple[str, str | None]:
+    """`240h` or `240h SIR DERIC`: the rest's duration and the member whose
+    command bar the step stops on, upper-cased, or None for the first bar."""
+    duration, _, who = arg.strip().partition(" ")
+    parse_rest(duration)
+    who = " ".join(who.split()).upper()
+    return duration, who or None
+
+
+def is_command_bar(rows: list[str]) -> bool:
+    """A combat command bar on row 24 (`MOVE VIEW AIM [USE] QUICK DONE`)."""
+    words = rows[24].split() if len(rows) > 24 else []
+    return {"AIM", "DONE"} <= set(words)
+
 
 
 # --- the run ---------------------------------------------------------------------

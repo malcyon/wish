@@ -13756,7 +13756,8 @@ class FakeRestFight(FakeFight):
 PATROL_GLYPHS = _screen(_bar(FakeRestFight.FRAMES["patrol"]), b"").glyphs(dosbox.BAR)
 
 
-def _rest_fighter(tmp_path, monkeypatch, area=68, **kw):
+def _rest_fighter(tmp_path, monkeypatch, area=68,
+                  page="YOU ARE SPOTTED BY A PATROL.", **kw):
     game = FakeRestFight(tmp_path, **kw)
     d = da.Driver(game, lambda **k: None, "D", "ssb", party_size=3)
     d.logged = []
@@ -13775,6 +13776,8 @@ def _rest_fighter(tmp_path, monkeypatch, area=68, **kw):
         return 0, {"days": minutes // 1440}
 
     monkeypatch.setattr(d, "_start_rest", start_rest)
+    # The window text as the title's font would read it off the page.
+    monkeypatch.setattr(d, "_page_text", lambda screen: page, raising=False)
     real = da.fight_bar_kind
     # The measured continue digest is the game's; the fake's page stands in.
     monkeypatch.setattr(da, "fight_bar_kind", lambda s: (
@@ -13835,3 +13838,14 @@ def test_rest_fight_parses_a_duration_and_needs_silver_blades_camp():
         da.validate_steps([da.parse_step(s) for s in
                            ("load", "begin", "camp", "rest-fight 10d", "save D")],
                           "ssb")
+
+
+def test_a_continue_page_that_does_not_name_the_patrol_gets_no_key(
+        tmp_path, monkeypatch):
+    """A page that stops the rest without naming the patrol is not answered:
+    Return there could take a result page for the patrol's."""
+    game, d = _rest_fighter(tmp_path, monkeypatch,
+                            page="YOU WAKE UP REFRESHED.")
+    with pytest.raises(da.StepFailed, match="does not name the patrol"):
+        d.rest_fight(14400)
+    assert game.keys == [] and game.state == "patrol"
