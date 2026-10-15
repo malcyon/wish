@@ -45,6 +45,7 @@ disks are opened read only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -57,6 +58,8 @@ sys.path.insert(0, str(ROOT))
 
 from automap import c64 as machines  # noqa: E402
 from automap import gamedisks  # noqa: E402
+from goldbox import c64_port, world_state  # noqa: E402
+from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools.c64 import session as por  # noqa: E402
 from tools.curse_of_the_azure_bonds import curseload, curserun  # noqa: E402
 from tools.registry import scratch  # noqa: E402
@@ -168,6 +171,86 @@ def walk(sess, moves: str, log) -> list[dict]:
     return steps
 
 
+#: The game's own progress line while it writes `SAVEAZURE`.
+SAVING = "SAVING GAME"
+
+
+def wait_write_end(sess, timeout: float, *, clock=time.time,
+                   sleep=time.sleep) -> dict:
+    """Wait for the game to finish writing: `SAVING GAME` gone and the camp
+    bar back, seen twice four seconds apart, answering disk prompts between.
+
+    `CurseSession.save_game` returns a fixed twelve seconds after `SAVING
+    GAME` comes up, and on a pooled slot the write is still running then: the
+    drive has not closed `SAVEAZURE`, and the image still holds the save
+    before it.  Reads the screen only; presses nothing but a disk prompt's
+    answer.
+    """
+    began = clock()
+    deadline = began + timeout
+    seen = False
+    row = ""
+    while clock() < deadline:
+        s = sess.screen()
+        if s is None:
+            sleep(0.4)
+            continue
+        row = s.row(24).strip()
+        if sess.handle_prompt(s):
+            seen = False
+            continue
+        done = SAVING not in s.text() and por.CAMP_BAR in s.row(24)
+        if done and seen:
+            return {"ended": True, "seconds": round(clock() - began, 1),
+                    "row24": row}
+        seen = done
+        sleep(4.0 if done else 0.5)
+    return {"ended": False, "seconds": round(clock() - began, 1), "row24": row}
+
+
+def saved_place(path: pathlib.Path) -> dict:
+    """The area, square and facing the save file on a disk image holds."""
+    image = D64.open(path)
+    game = c64_port.detect(image)
+    if game is None:
+        raise RuntimeError(f"{path} holds no save file")
+    _, payload = split_load_address(image.read_file(game.save_file))
+    state = world_state.from_c64(bytes(payload), game)
+    return {"area": state.area, "x": state.x, "y": state.y,
+            "facing": state.facing,
+            "payload_sha1": hashlib.sha1(bytes(payload)).hexdigest()}
+
+
+def keep_resave(sess, save_disk: pathlib.Path, dest: pathlib.Path,
+                live: list[int], log, *, before: dict | None = None,
+                attempts: int = 30, backoff: float = 1.0) -> dict:
+    """Copy the game-written save disk to `dest` once its file is closed,
+    and check the save it holds is the one the game just wrote.
+
+    VICE can keep the drive's last track in its buffer until the image is
+    attached again, so a copy that finds the file still open is retried once
+    after attaching the same image.  A disk still open after that raises,
+    and `dest` is not written.  `verified` is whether the saved square and
+    facing are where the party stood, `live`, when the save was made.
+    """
+    try:
+        por.copy_closed_disk(save_disk, dest, attempts=attempts, backoff=backoff)
+        reattached = False
+    except RuntimeError as exc:
+        log(event="resave-copy-open", why=str(exc))
+        sess.attach(str(save_disk))
+        por.copy_closed_disk(save_disk, dest, attempts=attempts, backoff=backoff)
+        reattached = True
+    place = saved_place(dest)
+    square = [place["x"], place["y"], place["facing"]]
+    out = {"kept": str(dest), "reattached": reattached, "place": place,
+           "live": list(live), "verified": bool(live) and square == list(live)}
+    if before is not None:
+        out["before"] = before
+        out["payload_changed"] = before["payload_sha1"] != place["payload_sha1"]
+    return out
+
+
 def run(args) -> int:
     out = scratch.ensure(args.out)
     logfile = (out / "cursecheck.jsonl").open("a")
@@ -196,6 +279,7 @@ def run(args) -> int:
     # The specimen tree is read-only and `stage` copied it; the copy is ours
     # to be written by the game's own save.
     os.chmod(save_disk, 0o644)
+    before = saved_place(pathlib.Path(save_disk)) if args.resave else None
     sess = curserun.CurseSession(first, slot=slot)
     sess.save_disk = save_disk
     report: dict = {"disk": args.disk, "slot": slot.n}
@@ -237,12 +321,29 @@ def run(args) -> int:
             # The save disk is out of the drive by now -- a walk pulls in the
             # side the area lives on -- and `CurseSession.handle_prompt` puts
             # it back when `INSERT CURSE SAVE DISK` asks.
+            live = probe_square(sess)
             report["resaved"] = sess.save_game()
             shot("06-resaved")
-            sess.settle(4)
-            por.copy_closed_disk(pathlib.Path(save_disk), pathlib.Path(args.resave))
+            if not report["resaved"]:
+                log(event="resave", ok=False, note="SAVING GAME never came up")
+                return 1
+            report["write"] = wait_write_end(sess, args.write_wait)
+            shot("07-written")
+            log(event="write-end", **report["write"])
+            if not report["write"]["ended"]:
+                return 1
+            try:
+                report["resave"] = keep_resave(sess, pathlib.Path(save_disk),
+                                               pathlib.Path(args.resave), live, log,
+                                               before=before)
+            except RuntimeError as exc:
+                report["resave"] = {"kept": None, "error": str(exc)}
+                log(event="resave", ok=False, error=str(exc))
+                return 1
             report["resave_kept_at"] = args.resave
-            log(event="resave", ok=report["resaved"], kept=args.resave)
+            log(event="resave", ok=report["resave"]["verified"], **report["resave"])
+            if not report["resave"]["verified"]:
+                return 1
         return 0
     finally:
         log(event="done", **{k: v for k, v in report.items()
@@ -274,6 +375,9 @@ def main(argv=None) -> int:
     ap.add_argument("--resave", default="",
                     help="have the game's own ENCAMP ▸ SAVE write the party "
                          "back, and keep the save disk here")
+    ap.add_argument("--write-wait", type=float, default=300.0,
+                    help="seconds the game's own write may take before the "
+                         "resave is given up")
     ap.add_argument("--no-view", action="store_true",
                     help="skip the VIEW sheets")
     ap.add_argument("--wait", type=float, default=180.0,
