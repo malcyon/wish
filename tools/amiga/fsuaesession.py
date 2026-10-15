@@ -43,12 +43,33 @@ BASE_OPTIONS = ("--amiga_model=A500", "--writable_floppy_images=1", "--floppy_dr
                 "--automatic_input_grab=0", "--initial_input_grab=0")
 STAGED_NAME = re.compile(r"[A-Za-z0-9._-]+\.adf")
 SILENT_ENVIRONMENT = {"SDL_AUDIODRIVER": "dummy", "ALSOFT_DRIVERS": "null"}
+#: The F12 menu's savestate slots; a new snapshot name takes the lowest one no name holds.
+STATE_SLOTS = tuple(range(1, 10))
+#: Up presses that take the menu's top list past its first row onto the window's close button,
+#: more than the list has rows; the Down after them lands on PAUSE. Return on the close button
+#: quits the emulator, so no walk presses Return straight after an Up.
+MENU_PAST_TOP = 20
+#: Down presses that take the top list to its last row, RESET, more than the list has rows.
+MENU_TO_LAST = 20
+#: Seconds the emulator may take to write the log line of a state save, a load or a reset.
+STATE_LOG_WAIT = 30.0
+#: Seconds a restored picture has to come back before the receipt records that it did not.
+REDRAW_WAIT = 10.0
+#: A frame is the black picture a load leaves while fewer than `BLACK_SHARE` of its pixels have
+#: a channel above `BLACK_LEVEL`. Measured on Curse: 2.0% for the black frame after a load (only
+#: the top border), 54% to 99% for the game's own screens.
+BLACK_LEVEL = 40
+BLACK_SHARE = 0.05
+#: The route step kinds this guest carries out; `fsuaewishaccept.guest_gaps` reads `supports`.
+SUPPORTED_STEPS = frozenset({"insert", "snapshot", "restore", "reset"})
 
 
 class FsuaeGuest:
     """One holder's FS-UAE run: a pool slot, its Xvfb and emulator, and the one debugger connection."""
 
-    #: `acceptance.run_recon` stops a run that needs a snapshot before it claims a slot.
+    #: `acceptance.run_recon` stops a run that needs a snapshot before it claims a slot. It stays
+    #: False although `snapshot` and `restore` work: on the default guard-only binary the picture
+    #: stays black after a load until the game draws, so a restore followed by a screen guard fails.
     can_snapshot = False
 
     def __init__(self, game: str = "amiga", first_key_after: float | None = None) -> None:
@@ -75,6 +96,12 @@ class FsuaeGuest:
         #: new frame clears it.
         self._recognised = False
         self._hashes_before: dict[str, str] = {}
+        #: How many menus deep the F12 menu reopens: 1 is its top list. A soft reset leaves 1,
+        #: `insert` 2 and a state save or load 3; None after a walk that did not finish.
+        self._menu_depth: int | None = 1
+        #: Slots the menu believes hold a state. It reads the files once at start and marks a
+        #: slot after a save, never after a file is deleted, so a discarded slot stays here.
+        self._menu_full: set[int] = set()
 
     @staticmethod
     def remote_path(issue: str, holder: str, key: str) -> str:
@@ -181,6 +208,7 @@ class FsuaeGuest:
             port=self.slot.port, extra=extra, screenshots=str(work / "shots"))
         self._mounted = mounted
         self._hashes_before = self._digests()
+        self._menu_full = {slot for slot in STATE_SLOTS if self._state_file(slot).exists()}
         self.xvfb, self.emulator = fsuaegdb.start_processes(args, True)
         self._started = time.monotonic()
         try:
@@ -415,11 +443,17 @@ class FsuaeGuest:
         index = [*self._mounted, *(p for p in self.staged.values() if p not in self._mounted)].index(path)
         if index == self._drive_zero:
             raise RouteError(f"{remote} is already in DF0")
-        log = self._need_slot("insert") / "base" / "Cache" / "Logs" / "fs-uae.log.txt"
+        log = self._log()
         since = log.stat().st_size if log.exists() else 0
+        # The swap walk opens the menu on its first key and counts from PAUSE; the return to
+        # the top replaces that key, so the walk starts on PAUSE wherever the menu was left.
+        sequence = " ".join([*self._top_keys(), fsuaegdb.DEFAULT_SWAP_SEQUENCE.removeprefix("F12 ")])
+        _no_return_after_up(sequence.split())
+        self._menu_depth = None
         keys = fsuaegdb.insert_floppy(
-            fsuaegdb.DEFAULT_SWAP_SEQUENCE, index,
+            sequence, index,
             lambda key: self._send(key), lambda label: time.sleep(SWAP_STEP), self._drive_zero)
+        self._menu_depth = 2
         end = time.monotonic() + min(SWAP_LOG_WAIT, timeout)
         while True:
             lines = fsuaegdb.swap_log_lines(log, since)
@@ -432,16 +466,210 @@ class FsuaeGuest:
                 raise error
             time.sleep(0.5)
 
-    # -- not available yet -------------------------------------------------------------
+    # -- machine states and reset, through the F12 menu -----------------------------------
 
-    def snapshot(self, name: str, holder: str) -> Any:
-        raise RouteError("a machine snapshot is not available on FS-UAE yet")
+    def supports(self, kind: str) -> bool:
+        """Whether this guest carries out a route step of `kind`."""
+        return kind in SUPPORTED_STEPS
 
-    def restore(self, name: str, holder: str) -> Any:
-        raise RouteError("a machine restore is not available on FS-UAE yet")
+    def _log(self) -> pathlib.Path:
+        return self._need_slot("read the emulator log") / "base" / "Cache" / "Logs" / "fs-uae.log.txt"
 
-    def discard(self, name: str, holder: str) -> Any:
-        raise RouteError("a machine snapshot is not available on FS-UAE yet")
+    def _log_size(self) -> int:
+        log = self._log()
+        return log.stat().st_size if log.exists() else 0
+
+    def _log_since(self, since: int) -> str:
+        log = self._log()
+        return log.read_bytes()[since:].decode("utf-8", "replace") if log.exists() else ""
+
+    def _state_file(self, slot: int) -> pathlib.Path:
+        return self._need_slot("name a state file") / "base" / "Save States" / "Default" / f"FS-UAE_{slot}.uss"
+
+    def _table_path(self) -> pathlib.Path:
+        return self._need_slot("read the snapshot table") / "snapshots.json"
+
+    def _table(self) -> dict[str, int]:
+        path = self._table_path()
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def _top_keys(self) -> list[str]:
+        """F12, then back up to the top list and onto PAUSE, from wherever the menu was left.
+
+        BackSpace pops one menu, and on the top list it closes the menu, so the walk sends one
+        fewer than the depth; a BackSpace with the menu closed would reach the game.
+        """
+        if self._menu_depth is None:
+            raise RouteError("an F12 menu walk did not finish, so how deep the menu reopens is not known")
+        return ["F12", *["BackSpace"] * (self._menu_depth - 1), *["Up"] * MENU_PAST_TOP, "Down"]
+
+    def _walk(self, walk: list[str], depth_after: int) -> list[str]:
+        """Send the return to the top, then `walk` from PAUSE; the menu reopens `depth_after` deep."""
+        keys = [*self._top_keys(), *walk]
+        _no_return_after_up(keys)
+        self._menu_depth = None
+        for key in keys:
+            self._send(key)
+            time.sleep(SWAP_STEP)
+        self._menu_depth = depth_after
+        return keys
+
+    def _await_log(self, since: int, done, timeout: float) -> str | None:
+        """The log text after byte `since` once `done(text)` holds, or None at `timeout`."""
+        end = time.monotonic() + timeout
+        while True:
+            text = self._log_since(since)
+            if done(text):
+                return text
+            if time.monotonic() >= end:
+                return None
+            time.sleep(0.5)
+
+    def _named(self, name: str) -> int:
+        try:
+            return self._table()[name]
+        except KeyError:
+            raise RouteError(f"no snapshot is called {name!r}") from None
+
+    def snapshot(self, name: str, holder: str) -> dict[str, Any]:
+        """Save the machine state to a savestate slot through the F12 menu, under `name`.
+
+        Proven by the emulator log's `Save of '<file>' complete`. The receipt keeps the keys,
+        the log lines, the state file's SHA-256 and the Alt+S frame taken just before the keys.
+        """
+        self._require_running("save a machine state")
+        table = self._table()
+        if name in table:
+            slot = table[name]
+        else:
+            free = [s for s in STATE_SLOTS if s not in table.values()]
+            if not free:
+                raise RouteError(f"all {len(STATE_SLOTS)} savestate slots hold snapshots; discard one first")
+            slot = free[0]
+        path = self._state_file(slot)
+        frame = self._shoot(30.0)
+        since = self._log_size()
+        walk = ["Down", "Down", "Return", *["Down"] * (slot - 1), "Return", "Return"]
+        if slot in self._menu_full:
+            walk.append("Return")  # "Overwrite savestate N?" opens on Confirm overwrite
+        keys = self._walk(walk, 3)
+        markers = {f"Save of '{p}' complete" for p in (path, path.resolve())}
+        text = self._await_log(since, lambda t: any(m in t for m in markers), STATE_LOG_WAIT)
+        receipt: dict[str, Any] = {"name": name, "slot": slot, "keys": keys,
+                                   "frame": None if frame is None else frame.name}
+        if text is None:
+            receipt["log"] = _state_lines(self._log_since(since))
+            error = RouteError(f"the emulator log shows no save of {path.name} after the menu keys")
+            error.receipt = receipt
+            raise error
+        self._menu_full.add(slot)
+        receipt["log"] = _state_lines(text)
+        receipt["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if frame is not None:
+            receipt["frame_sha256"] = hashlib.sha256(frame.read_bytes()).hexdigest()
+        table[name] = slot
+        self._table_path().write_text(json.dumps(table, indent=1, sort_keys=True))
+        (self._table_path().parent / f"snapshot-{slot}.json").write_text(json.dumps(receipt, indent=1))
+        return receipt
+
+    def restore(self, name: str, holder: str, fresh: bool = False,
+                redraw_keys: tuple[str, ...] = ()) -> dict[str, Any]:
+        """Load snapshot `name` through the F12 menu, then wait for the picture to come back.
+
+        Proven by `STATERESTORE: '<file>'` and then `State restored` in the emulator log. The
+        guard-only binary leaves the picture black until the game draws again, so the frames
+        are read until one is not black; `redraw_keys`, if given, are pressed once the wait runs
+        out, for a screen whose own key redraws it. The receipt records `picture_redrawn` and
+        whether the frame equals the one taken at the save. `fresh` is WinGuest's argument for a
+        machine just booted; the menu walk is the same either way.
+        """
+        self._require_running("load a machine state")
+        slot = self._named(name)
+        path = self._state_file(slot)
+        if not path.exists():
+            raise RouteError(f"snapshot {name!r} has no state file {path.name}")
+        since = self._log_size()
+        keys = self._walk(["Down", "Down", "Return", *["Down"] * (slot - 1), "Return", "Down", "Return"], 3)
+        starts = {f"STATERESTORE: '{p}'" for p in (path, path.resolve())}
+
+        def restored(text: str) -> bool:
+            return any(m in text and "State restored" in text[text.index(m):] for m in starts)
+
+        text = self._await_log(since, restored, STATE_LOG_WAIT)
+        receipt: dict[str, Any] = {"name": name, "slot": slot, "keys": keys}
+        if text is None:
+            receipt["log"] = _state_lines(self._log_since(since))
+            error = RouteError(f"the emulator log shows no load of {path.name} after the menu keys")
+            error.receipt = receipt
+            raise error
+        receipt["log"] = _state_lines(text)
+        frame = self._redrawn_frame(REDRAW_WAIT)
+        if frame is None and redraw_keys:
+            for key in redraw_keys:
+                self.press(holder, key, 30.0)
+            receipt["redraw_keys"] = list(redraw_keys)
+            frame = self._redrawn_frame(REDRAW_WAIT)
+        receipt["picture_redrawn"] = frame is not None
+        if frame is not None:
+            receipt["frame"] = frame.name
+            saved = self._receipt_of(slot).get("frame_sha256")
+            receipt["matches_snapshot_frame"] = (
+                saved is not None and hashlib.sha256(frame.read_bytes()).hexdigest() == saved)
+        return receipt
+
+    def _receipt_of(self, slot: int) -> dict[str, Any]:
+        path = self._table_path().parent / f"snapshot-{slot}.json"
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def _redrawn_frame(self, timeout: float) -> pathlib.Path | None:
+        """The first Alt+S frame within `timeout` that is not the black picture a load leaves."""
+        end = time.monotonic() + timeout
+        while True:
+            frame = self._shoot(max(1.0, end - time.monotonic()))
+            if frame is not None and not _is_black(frame):
+                return frame
+            if time.monotonic() >= end:
+                return None
+            time.sleep(SETTLE_INTERVAL)
+
+    def discard(self, name: str, holder: str) -> dict[str, Any]:
+        """Delete snapshot `name`'s state file and free its slot for another name."""
+        table = self._table()
+        slot = self._named(name)
+        path = self._state_file(slot)
+        path.unlink(missing_ok=True)
+        del table[name]
+        self._table_path().write_text(json.dumps(table, indent=1, sort_keys=True))
+        (self._table_path().parent / f"snapshot-{slot}.json").unlink(missing_ok=True)
+        return {"name": name, "slot": slot, "deleted": path.name}
+
+    def reset(self, holder: str, timeout: float) -> dict[str, Any]:
+        """Soft-reset the Amiga through the F12 menu's RESET and SOFT RESET, as Ctrl-Amiga-Amiga does.
+
+        Proven by a `Reset at ` line in the emulator log with neither a load nor a hard reset
+        after the keys. When Wish's connection helper was alive before the reset it must be
+        alive after it, since it holds the emulator's one debugger connection.
+        """
+        self._need_slot("reset")
+        self._require_running("reset")
+        port = self.slot.port
+        helper_before = fsuaegdb.helper_row(port)["alive"]
+        since = self._log_size()
+        keys = self._walk([*["Down"] * MENU_TO_LAST, "Return", "Return"], 1)
+        text = self._await_log(since, lambda t: _SOFT_RESET.search(t) is not None, min(STATE_LOG_WAIT, timeout))
+        receipt: dict[str, Any] = {"keys": keys, "helper_before": helper_before}
+        lines = _state_lines(self._log_since(since) if text is None else text)
+        receipt["log"] = lines
+        if text is None or "STATERESTORE" in text or "hardreset, memory cleared" in text:
+            error = RouteError("the emulator log shows no soft reset after the menu keys")
+            error.receipt = receipt
+            raise error
+        receipt["helper_after"] = fsuaegdb.helper_row(port)["alive"]
+        if helper_before and not receipt["helper_after"]:
+            error = RouteError("Wish's connection helper was alive before the reset and is gone after it")
+            error.receipt = receipt
+            raise error
+        return receipt
 
     def answer_io(self, holder: str, settle: float = 1.0) -> tuple[Any, Any]:
         """The `(capture, press)` pair the journal answerer reads and types with."""
@@ -455,6 +683,32 @@ class FsuaeGuest:
             time.sleep(settle)
 
         return capture, press
+
+
+_SOFT_RESET = re.compile(r"^Reset at [0-9A-F]{8}\.", re.MULTILINE)
+_STATE_LINE = re.compile(r"^(?:Save of '|STATESAVE |STATERESTORE: |State restored|Reset at |hardreset)")
+
+
+def _state_lines(text: str) -> list[str]:
+    """The log lines that say what a state save, a load or a reset did."""
+    return [line for line in text.splitlines() if _STATE_LINE.match(line)]
+
+
+def _no_return_after_up(keys: list[str]) -> None:
+    """RouteError for a walk that presses Return straight after Up, which can quit the emulator."""
+    if any(a == "Up" and b == "Return" for a, b in zip(keys, keys[1:])):
+        raise RouteError("an F12 menu walk presses Return after Up, where the close button can be")
+
+
+def _is_black(path: pathlib.Path) -> bool:
+    """Whether the frame is the black picture a load leaves (`BLACK_LEVEL`, `BLACK_SHARE`)."""
+    from PIL import Image, ImageChops  # noqa: PLC0415
+
+    with Image.open(path) as image:
+        red, green, blue = image.convert("RGB").split()
+    brightest = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+    lit = sum(brightest.histogram()[BLACK_LEVEL + 1:])
+    return lit < BLACK_SHARE * brightest.width * brightest.height
 
 
 _DRIVE_CHANGE = re.compile(r"gui_disk_image_change drive (\d+) name (.+?)(?: write protected \d+)?\s*$")

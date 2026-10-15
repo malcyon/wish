@@ -140,6 +140,42 @@ of padding after a `ret` at `0x6b3440`.
   (`.eh_frame`) covers either patched padding range, and no initialiser or
   finaliser table entry points there.
 
+## Driving state saves and reset
+
+`FsuaeGuest` in `tools/amiga/fsuaesession.py` saves, loads and resets the
+machine through the F12 menu, because this build binds no key to any of them.
+It has no Mod+R: the Mod shortcuts in `fsemu/src/fsemu-sdlwindow.c` are A, F,
+G, I, K, O, P, Q, S, V, W, Z and Return, and Alt+R had no effect in a live
+Curse run.
+
+- **The menu's layout.** The top list holds PAUSE, FAST FORWARD, SAVESTATES,
+  one row per drive, one row per input port and, last, RESET. Down stops at
+  the last row. Up goes past PAUSE onto the window's close button, where
+  Return quits the emulator, so no walk presses Return straight after Up.
+- **The menu keeps its place.** It reopens as deep as it was left: three menus
+  deep after a save or a load, two after a disk insert and one after a soft
+  reset. BackSpace pops one menu and closes the top one. The guest records
+  the depth and starts every walk with F12, one BackSpace fewer than the
+  depth, Up twenty times and one Down, which lands on PAUSE.
+- **A save to a used slot asks first.** The menu marks a slot used when the
+  emulator starts or after a save to it, and never unmarks it, so a slot whose
+  file was deleted still asks "Overwrite savestate N?".
+- **What proves each step** in `base/Cache/Logs/fs-uae.log.txt`:
+  - a save writes `Save of '<file>' complete`;
+  - a load writes `STATERESTORE: '<file>'`, then `State restored`;
+  - a soft reset writes `Reset at <pc>.` with no `hardreset, memory cleared`.
+    A load writes both lines, and so does a cold start.
+- **A soft reset keeps Wish's connection helper attached.** CONFIRMED in one
+  Curse boot. The helper kept the same process, and the debugger log shows one
+  connection, held from start to shutdown. The game rebooted to its front end,
+  the party loaded again, and Wish read its square.
+- **After a load the guest waits for the picture.** It reads Alt+S frames until
+  one has at least 5% of its pixels brighter than 40 in a channel. The black
+  frame measured 2.0% and the game's screens measured 54-99%. On the
+  guard-only binary the picture comes back only when the game draws, so the
+  receipt records `picture_redrawn` and the caller may name keys that redraw
+  its screen.
+
 ## The SHA-256 chain
 
 `installfsuae.REDRAW_CHAIN` lists the steps in order. Each step starts from

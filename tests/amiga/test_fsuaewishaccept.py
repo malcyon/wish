@@ -387,6 +387,29 @@ def test_a_reset_route_stops_before_the_claim_on_a_guest_with_no_reset(tmp_path)
     assert game.calls == []
 
 
+def test_a_snapshot_route_stops_before_the_claim_on_a_guest_whose_snapshot_is_a_placeholder(tmp_path):
+    (tmp_path / "prepare.json").write_text("{}")
+    route = _route(reopen=(_step("snapshot", "world", snapshot="walk"), _step("key", "world", key="V")))
+
+    class StubbedGame(FakeGame):
+        def supports(self, kind):
+            return kind != "snapshot"
+
+    game = StubbedGame(tmp_path)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="snapshot is not built yet"):
+        fsuaewishaccept.preflight(_args(tmp_path), game=game,
+                                  route_for=lambda title, manifest: route)
+    assert game.calls == []
+
+
+def test_the_fs_uae_guest_passes_the_preflight_for_its_state_and_reset_steps(tmp_path):
+    from tools.amiga import fsuaesession
+
+    route = _route(reopen=(_step("snapshot", "world", snapshot="walk"), _step("restore", "world", snapshot="walk"),
+                           _step("reset", "title"), _step("key", "world", key="V")))
+    assert fsuaewishaccept.guest_gaps(fsuaesession.FsuaeGuest(), route) == []
+
+
 def test_cleanup_still_stops_copies_and_releases_after_a_failure(tmp_path, monkeypatch):
     media, mounted = _ssb_media(tmp_path)
     controller, game, wish, _ = _controller(tmp_path, monkeypatch,
@@ -406,6 +429,21 @@ def test_cleanup_still_stops_copies_and_releases_after_a_failure(tmp_path, monke
     assert wish.events == ["open", "close"]
     assert (tmp_path / "working-df0.adf").read_bytes() == b"adf"
     assert json.loads((tmp_path / "summary.json").read_text())["failure"] == result["failure"]
+
+
+def test_a_claim_whose_log_line_cannot_be_written_still_releases_the_slot(tmp_path, monkeypatch):
+    controller, game, _wish, _ = _controller(tmp_path, monkeypatch)
+    real_log = controller.log
+
+    def log(event, **payload):
+        if event == "claim":
+            raise OSError("disk full")
+        return real_log(event, **payload)
+
+    monkeypatch.setattr(controller, "log", log)
+    result = controller.run_title()
+    assert "disk full" in result["failure"]
+    assert [call[0] for call in game.calls].count("release") == 1
 
 
 def test_reads_reuse_one_helper_client_until_the_program_restarts(tmp_path, monkeypatch):

@@ -45,8 +45,8 @@ CLIENT_WAIT = 120
 JOURNAL_SETTLE = 1.0
 #: Seconds the connection helper may take to end once the emulator has gone.
 HELPER_END_WAIT = 10.0
-#: Route step kinds and the guest call each needs. `reset`, and the state saves behind
-#: `snapshot` and `restore`, are the FS-UAE state-save stage's.
+#: Route step kinds and the guest call each needs; a guest's `supports(kind)`, where it has one,
+#: says whether that call is built rather than a placeholder that raises.
 STEP_CALLS = {"insert": "insert", "snapshot": "snapshot", "restore": "restore", "reset": "reset"}
 
 
@@ -77,10 +77,13 @@ def guest_gaps(game: Any, route: Any) -> list[str]:
     if not hasattr(game, "last_shot"):
         gaps.append("the FS-UAE guest records no last shot")
     kinds = sorted({step.kind for phase in route.phases for step in phase.steps})
+    supports = getattr(game, "supports", None)
     for kind in kinds:
         call = STEP_CALLS.get(kind)
         if call and not callable(getattr(game, call, None)):
             gaps.append(f"the route has a {kind} step and the FS-UAE guest has no {call}")
+        elif call and supports is not None and not supports(kind):
+            gaps.append(f"the route has a {kind} step and the FS-UAE guest's {call} is not built yet")
     return gaps
 
 
@@ -571,8 +574,9 @@ class FsuaeController(base.Controller):
 
     def _up(self) -> None:
         holder = self.args.holder
-        self.log("claim", receipt=self.game.claim(holder, self.left(60)))
+        receipt = self.game.claim(holder, self.left(60))
         self.claimed = True
+        self.log("claim", receipt=receipt)
         self._stage_media()
         drives = [self.remotes[key] for key in self.route.mounted]
         self.booted = True

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import types
 
 import pytest
@@ -13,6 +14,9 @@ from tools.amiga import fsuaegdb, fsuaepor, fsuaesession
 from tools.amiga.winuaesession import RouteError
 
 SILENT = {"SDL_AUDIODRIVER": "dummy", "ALSOFT_DRIVERS": "null"}
+#: The return to the F12 menu's top list from a menu left on it: open, Up past the first row onto
+#: the close button (`fsuaesession.MENU_PAST_TOP`, 20), then Down onto PAUSE.
+TOP = ["F12", *["Up"] * 20, "Down"]
 
 
 class Clock:
@@ -338,8 +342,9 @@ def test_insert_walks_the_f12_menu_to_the_spare_and_proves_the_change_from_the_l
 
     guest._send = send
     receipt = guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
-    # Entry 0 is in DF0, so its row is disabled: Eject, entry 1, entry 2.
-    assert lane.keys == ["F12", "Down", "Down", "Down", "Return", "Down", "Down", "Down", "Return", "F12"]
+    # Entry 0 is in DF0, so its row is disabled: Eject, entry 1, entry 2. The walk first returns
+    # to the top list and onto PAUSE, which the menu opened on before.
+    assert lane.keys == [*TOP, "Down", "Down", "Down", "Return", "Down", "Down", "Down", "Return", "F12"]
     assert receipt["index"] == 2 and receipt["staged"] == str(guest.staged[two])
     assert receipt["log"] == [f"gui_disk_image_change drive 0 name {guest.staged[two]}"]
     one = guest.remote_path("1", "wish1-test", "one")
@@ -354,8 +359,10 @@ def test_insert_walks_the_f12_menu_to_the_spare_and_proves_the_change_from_the_l
 
     guest._send = send_back
     guest.insert("wish1-test", 0, one, 30, hashlib.sha256(b"one").hexdigest())
-    # Entry 2 is in DF0 now and entry 0 sits above it: Eject, entry 0.
-    assert lane.keys == ["F12", "Down", "Down", "Down", "Return", "Down", "Down", "Return", "F12"]
+    # Entry 2 is in DF0 now and entry 0 sits above it: Eject, entry 0. The first swap left the
+    # menu in DF0's submenu, so one BackSpace takes it back to the top list.
+    assert lane.keys == ["F12", "BackSpace", *TOP[1:], "Down", "Down", "Down", "Return", "Down", "Down",
+                         "Return", "F12"]
 
 
 @pytest.mark.parametrize(("index", "inserted", "rows"), [(2, 0, 3), (1, 0, 2), (0, 2, 2), (2, 1, 3), (1, 2, 3)])
@@ -594,12 +601,14 @@ def test_capture_returns_on_the_second_identical_frame(lane, tmp_path, monkeypat
     assert len(frames) == 4
 
 
-def test_a_machine_snapshot_says_it_is_not_available_yet(lane):
+def test_a_machine_state_or_reset_before_the_claim_is_a_route_error_and_sends_nothing(lane):
     guest = fsuaesession.FsuaeGuest()
     for verb in (guest.snapshot, guest.restore, guest.discard):
-        with pytest.raises(RouteError, match="not available on FS-UAE yet"):
+        with pytest.raises(RouteError, match="before the slot was claimed"):
             verb("walk", "wish1-test")
-    assert guest.can_snapshot is False
+    with pytest.raises(RouteError, match="before the slot was claimed"):
+        guest.reset("wish1-test", 60)
+    assert lane.keys == [] and guest.can_snapshot is False
 
 
 def test_stop_without_a_start_is_a_route_error(lane):
@@ -698,3 +707,226 @@ def test_insert_reads_the_real_log_line_and_matches_a_resolved_path(lane, tmp_pa
     guest._send = send
     receipt = guest.insert("wish1-test", 0, two, 30, hashlib.sha256(b"two").hexdigest())
     assert receipt["index"] == 2
+
+
+# -- machine states and reset ---------------------------------------------------------------
+
+
+def _frames(guest, monkeypatch, lane, colours):
+    """Alt+S writes the next of `colours` as a doubled frame; the last one repeats."""
+    queue = list(colours)
+
+    def alt_s(display, key, settle):
+        lane.shots.append(key)
+        colour = queue.pop(0) if len(queue) > 1 else queue[0]
+        Image.new("RGB", (754, 576), colour).save(
+            guest.work / "shots" / f"FS-UAE_Full_261015-0000_{len(lane.shots):02d}.png")
+
+    monkeypatch.setattr(fsuaegdb, "press", alt_s)
+
+
+def _on_first_key(guest, *lines):
+    """Write `lines` to the emulator log when the next walk sends its first key."""
+    real_send = guest._send
+    pending = list(lines)
+
+    def send(key):
+        real_send(key)
+        while pending:
+            _log_line(guest, pending.pop(0))
+
+    guest._send = send
+
+
+def _state(guest, slot):
+    return guest.work / "base" / "Save States" / "Default" / f"FS-UAE_{slot}.uss"
+
+
+def _save(guest, monkeypatch, lane, name, slot, content=b"state"):
+    path = _state(guest, slot)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    _on_first_key(guest, f"STATESAVE ({path}):", f"Save of '{path}' complete")
+    return guest.snapshot(name, "wish1-test")
+
+
+BLUE, BLACK = (0, 0, 170), (0, 0, 0)
+
+
+def test_snapshot_walks_from_the_top_to_the_slot_and_proves_the_save_from_the_log(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE])
+    receipt = _save(guest, monkeypatch, lane, "walk", 1, b"one")
+    # Savestates is two rows below PAUSE, the list opens on slot 1, the slot opens on Save.
+    assert lane.keys == [*TOP, "Down", "Down", "Return", "Return", "Return"]
+    assert receipt["slot"] == 1 and receipt["sha256"] == hashlib.sha256(b"one").hexdigest()
+    assert receipt["log"][-1].startswith("Save of ") and lane.shots == ["alt+s"]
+    lane.keys.clear()
+    receipt = _save(guest, monkeypatch, lane, "fight", 2)
+    # The save left the menu in the slot's own menu, three deep.
+    assert lane.keys == ["F12", "BackSpace", "BackSpace", *TOP[1:], "Down", "Down", "Return", "Down",
+                         "Return", "Return"]
+    assert receipt["slot"] == 2
+    assert json.loads((guest.work / "snapshots.json").read_text()) == {"fight": 2, "walk": 1}
+
+
+def test_a_second_save_under_one_name_confirms_the_overwrite(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE])
+    _save(guest, monkeypatch, lane, "walk", 1)
+    lane.keys.clear()
+    _save(guest, monkeypatch, lane, "walk", 1)
+    assert lane.keys[-4:] == ["Return", "Return", "Return", "Return"]
+
+
+def test_a_state_file_there_at_start_needs_the_overwrite_confirmed(lane, tmp_path, monkeypatch, clock):
+    guest = fsuaesession.FsuaeGuest(game="amiga-pool")
+    guest.claim("wish1-test", 30)
+    _state(guest, 1).parent.mkdir(parents=True)
+    _state(guest, 1).write_bytes(b"old")
+    guest.put(_disk(tmp_path, "one.src", b"one"), guest.remote_path("1", "wish1-test", "one"), 30)
+    guest.start("wish1-test", guest.remote_path("1", "wish1-test", "one"), timeout=30)
+    _frames(guest, monkeypatch, lane, [BLUE])
+    _save(guest, monkeypatch, lane, "walk", 1)
+    assert lane.keys == [*TOP, "Down", "Down", "Return", "Return", "Return", "Return"]
+
+
+def test_a_tenth_name_finds_no_slot_and_sends_nothing(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    (guest.work / "snapshots.json").write_text(json.dumps({f"s{n}": n for n in range(1, 10)}))
+    with pytest.raises(RouteError, match="all 9 savestate slots"):
+        guest.snapshot("tenth", "wish1-test")
+    assert lane.keys == []
+
+
+def test_a_save_with_no_log_line_raises_with_the_receipt_and_records_no_name(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE])
+    _log_line(guest, "Save of '/somewhere/else.uss' complete")
+    with pytest.raises(RouteError, match="no save of FS-UAE_1.uss") as caught:
+        guest.snapshot("walk", "wish1-test")
+    assert caught.value.receipt["keys"][-1] == "Return"
+    assert not (guest.work / "snapshots.json").exists()
+
+
+def test_restore_loads_the_slot_and_waits_for_the_picture_to_come_back(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE, BLACK, BLACK, BLUE])
+    _save(guest, monkeypatch, lane, "walk", 1)
+    lane.keys.clear()
+    path = _state(guest, 1)
+    _on_first_key(guest, f"STATERESTORE: '{path}'", "Reset at 00FCEB5A. Chipset mask = 00000000",
+                  "State restored")
+    receipt = guest.restore("walk", "wish1-test")
+    assert lane.keys == ["F12", "BackSpace", "BackSpace", *TOP[1:], "Down", "Down", "Return", "Return",
+                         "Down", "Return"]
+    assert receipt["picture_redrawn"] is True and receipt["matches_snapshot_frame"] is True
+    assert receipt["log"] == [f"STATERESTORE: '{path}'", "Reset at 00FCEB5A. Chipset mask = 00000000",
+                              "State restored"]
+
+
+def test_a_picture_still_black_is_recorded_and_the_redraw_keys_go_to_the_game(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE, BLACK])
+    _save(guest, monkeypatch, lane, "walk", 1)
+    path = _state(guest, 1)
+    _on_first_key(guest, f"STATERESTORE: '{path}'", "State restored")
+    assert guest.restore("walk", "wish1-test")["picture_redrawn"] is False
+    _on_first_key(guest, f"STATERESTORE: '{path}'", "State restored")
+    lane.keys.clear()
+    receipt = guest.restore("walk", "wish1-test", redraw_keys=("v", "e"))
+    assert lane.keys[-2:] == ["v", "e"] and receipt["redraw_keys"] == ["v", "e"]
+    assert receipt["picture_redrawn"] is False
+
+
+def test_restore_of_an_unknown_name_or_with_no_log_line_raises(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    with pytest.raises(RouteError, match="no snapshot is called 'walk'"):
+        guest.restore("walk", "wish1-test")
+    _frames(guest, monkeypatch, lane, [BLUE])
+    _save(guest, monkeypatch, lane, "walk", 1)
+    _on_first_key(guest, "State restored")
+    with pytest.raises(RouteError, match="no load of FS-UAE_1.uss") as caught:
+        guest.restore("walk", "wish1-test")
+    assert caught.value.receipt["slot"] == 1
+
+
+def test_discard_deletes_the_state_and_the_slot_is_reused_with_the_overwrite_confirmed(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE])
+    _save(guest, monkeypatch, lane, "walk", 1)
+    assert guest.discard("walk", "wish1-test") == {"name": "walk", "slot": 1, "deleted": "FS-UAE_1.uss"}
+    assert not _state(guest, 1).exists()
+    assert json.loads((guest.work / "snapshots.json").read_text()) == {}
+    with pytest.raises(RouteError, match="no snapshot is called"):
+        guest.discard("walk", "wish1-test")
+    lane.keys.clear()
+    # The menu marks a slot full at a save and never clears the mark, so it still asks.
+    assert _save(guest, monkeypatch, lane, "fight", 1)["slot"] == 1
+    assert lane.keys[-4:] == ["Return", "Return", "Return", "Return"]
+
+
+def test_reset_walks_to_the_last_row_and_proves_a_soft_reset_with_the_helper_alive(
+        lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": True})
+    _on_first_key(guest, "Reset at 00C456B2. Chipset mask = 00000000")
+    receipt = guest.reset("wish1-test", 60)
+    assert lane.keys == [*TOP, *["Down"] * 20, "Return", "Return"]
+    assert receipt["helper_before"] is True and receipt["helper_after"] is True
+    lane.keys.clear()
+    # SOFT RESET pops back to the top list as it closes, so the next walk needs no BackSpace.
+    _on_first_key(guest, "Reset at 00FC0002. Chipset mask = 00000000")
+    guest.reset("wish1-test", 60)
+    assert lane.keys[:2] == ["F12", "Up"]
+
+
+@pytest.mark.parametrize("lines", [
+    (),
+    ("STATERESTORE: '/x.uss'", "Reset at 00FCEB5A. Chipset mask = 00000000", "State restored"),
+    ("Reset at 00000000. Chipset mask = 00000000", "hardreset, memory cleared"),
+])
+def test_no_reset_a_load_or_a_hard_reset_is_not_a_soft_reset(lane, tmp_path, monkeypatch, clock, lines):
+    guest = _started(tmp_path, lane)
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": False})
+    _on_first_key(guest, *lines)
+    with pytest.raises(RouteError, match="no soft reset"):
+        guest.reset("wish1-test", 60)
+
+
+def test_a_helper_that_dies_with_the_reset_is_a_route_error(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    alive = iter([True, False])
+    monkeypatch.setattr(fsuaegdb, "helper_row", lambda port: {"alive": next(alive)})
+    _on_first_key(guest, "Reset at 00C456B2. Chipset mask = 00000000")
+    with pytest.raises(RouteError, match="helper was alive before the reset") as caught:
+        guest.reset("wish1-test", 60)
+    assert caught.value.receipt["helper_after"] is False
+
+
+def test_no_walk_presses_return_straight_after_up(lane, tmp_path):
+    with pytest.raises(RouteError, match="Return after Up"):
+        fsuaesession._no_return_after_up(["F12", "Up", "Return"])
+    fsuaesession._no_return_after_up([*TOP, "Return"])
+
+
+def test_a_walk_that_did_not_finish_blocks_the_next_one(lane, tmp_path, monkeypatch, clock):
+    guest = _started(tmp_path, lane)
+    _frames(guest, monkeypatch, lane, [BLUE])
+
+    def broken(key):
+        raise RouteError("xdotool went away")
+
+    guest._send = broken
+    with pytest.raises(RouteError, match="xdotool"):
+        guest.snapshot("walk", "wish1-test")
+    with pytest.raises(RouteError, match="did not finish"):
+        guest.reset("wish1-test", 60)
+
+
+def test_the_guest_says_which_route_steps_it_carries_out():
+    guest = fsuaesession.FsuaeGuest()
+    assert all(guest.supports(kind) for kind in ("insert", "snapshot", "restore", "reset"))
+    assert not guest.supports("teleport")

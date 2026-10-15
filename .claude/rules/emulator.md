@@ -118,10 +118,15 @@ purpose. Amiga: under WinUAE, `tools/amiga/amigadrive.py` has `snapshot`,
 calls. The state records each drive's image path, not its contents, so a game
 save made between a snapshot and its restore stays on the disk image while
 memory goes back; a run that saved in between treats that image as changed.
-FS-UAE has no machine snapshot in the drivers (`FsuaeGuest.can_snapshot` is
-False, and `tools/amiga/acceptance.py` stops a run that needs one before it
-claims a slot); its F12 state save needs the NULL guard that `tools/amiga/installfsuae.py` applies
-([the FS-UAE patch notes](../../docs/239-fs-uae-patches.md)). DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
+FS-UAE: `tools/amiga/fsuaesession.py`'s `FsuaeGuest` has `snapshot`,
+`restore`, `discard` and `reset`, walking the F12 menu's savestate slots 1-9
+and its soft reset, each proven from the emulator's log; its F12 state save
+needs the NULL guard that `tools/amiga/installfsuae.py` applies
+([the FS-UAE patch notes](../../docs/239-fs-uae-patches.md), "Driving state
+saves and reset"). On the default binary the picture stays black after a
+restore until the game draws, so `FsuaeGuest.can_snapshot` stays False and
+`tools/amiga/acceptance.py` still stops a run that restores before it claims
+a slot. DOS: the acceptance driver's `snapshot NAME` and `restore NAME` steps use
 `tools/dos/dossnapshot.py`'s `SnapshotSession`, which works on DOSBox-X only,
 because DOSBox 0.74 has no save states and the driver stops the run there; a
 restore lists the `SAVE` files changed since the snapshot, since a game save
