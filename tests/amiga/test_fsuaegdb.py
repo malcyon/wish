@@ -1158,6 +1158,50 @@ def test_journal_answer_letters_are_typed_lower_case(monkeypatch):
     assert sent == ["a", "b", "Return"]
 
 
+def test_a_guest_journal_reads_the_guests_own_frame_cut_to_the_winuae_crop(
+        monkeypatch, tmp_path):
+    """An `FsuaeGuest` never fits its window, so the X root grab is not the picture."""
+    Image = pytest.importorskip("PIL.Image")
+    from tools.amiga import amigabladesjournal as tool
+
+    # A 377x288 picture doubled is FS-UAE's own 754x576 Alt+S frame; the
+    # window starts at Amiga column 8, row 2, so native (18, 7) is the crop's
+    # Amiga pixel (10, 5), drawn at (20..21, 10..11) of 720x568.
+    native = Image.new("RGB", (377, 288), (0, 51, 102))
+    native.putpixel((18, 7), (85, 238, 85))
+    frame = tmp_path / "alt-s.png"
+    native.resize((754, 576), Image.NEAREST).save(frame)
+
+    class Guest:
+        shots = 0
+
+        def shot(self, path):
+            Guest.shots += 1
+            pathlib.Path(path).write_bytes(frame.read_bytes())
+
+    def root_grab(display, path):
+        raise AssertionError("the X root grab was taken")
+
+    seen = {}
+
+    def answer(**kw):
+        target = tmp_path / "capture.png"
+        kw["capture"](target)
+        with Image.open(target) as image:
+            seen["size"] = image.size
+            seen["marker"] = image.convert("RGB").getpixel((21, 11))
+        seen["aspects"] = kw["aspects"]
+        return True
+
+    monkeypatch.setattr(fsuaegdb, "shot", root_grab)
+    monkeypatch.setattr(tool, "find_disk", lambda adf: None)
+    monkeypatch.setattr(tool, "answer", answer)
+    assert fsuaegdb.journal(argparse.Namespace(display=":99", settle=0),
+                            guest=Guest()) is True
+    assert Guest.shots == 1
+    assert seen == {"size": (720, 568), "marker": (85, 238, 85), "aspects": (1.0,)}
+
+
 @pytest.mark.parametrize("key", ["!", "@", "~", "alt+Q", "ctrl+alt+A"])
 def test_shifted_symbols_and_compound_upper_case_keys_are_blocked(key):
     with pytest.raises(ValueError, match="^Key .* would send Shift"):

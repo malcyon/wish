@@ -936,22 +936,48 @@ def play(args, out: pathlib.Path, idle, limit: float) -> dict:
     return row
 
 
-def journal(args, adf: str = "") -> bool:
+def journal(args, adf: str = "", guest=None) -> bool:
     """Answer Silver Blades' journal prompt, with the game still running.
 
     The reading is `tools/amiga/amigabladesjournal.py`'s and the tables come off the
     player's own disk at run time; this supplies the two ends that differ on
-    this emulator -- a screenshot off the X server the emulator draws on, and
-    keys through XTEST.  Nothing about the challenge or its answer is printed
-    or written down, which is that tool's rule and not this one's to relax.
+    this emulator -- a screenshot, and keys through XTEST.  Nothing about the
+    challenge or its answer is printed or written down, which is that tool's
+    rule and not this one's to relax.
+
+    The screenshot is the X root grab of the window `launch` fits to 800x600,
+    read at the FS-UAE window's pixel ratios, unless `guest` is given: an
+    `FsuaeGuest` never fits its window, so the root grab is not the picture,
+    and the guest's own Alt+S frame is taken instead, cut to WinUAE's
+    720x568 crop and read as WinUAE's is.
     """
     from tools.amiga import amigabladesjournal as journal_tool
+
+    if guest is None:
+        aspects = journal_tool.aspect_sweep()
+
+        def capture(path):
+            shot(args.display, pathlib.Path(path))
+    else:
+        aspects = (1.0,)
+
+        def capture(path):
+            from tools.amiga import screens  # noqa: PLC0415
+
+            path = pathlib.Path(path)
+            guest.shot(path)
+            try:
+                screens.canonical_file(path, path)
+            except screens.NotExactCapture:
+                # Left uncut: the reader fits its grid from the text, and a
+                # frame with no picture yet reads as no challenge.
+                pass
 
     return journal_tool.answer(
         holder="", settle=args.settle,
         adf=journal_tool.find_disk(adf or None),
-        aspects=journal_tool.aspect_sweep(),
-        capture=lambda path: shot(args.display, pathlib.Path(path)),
+        aspects=aspects,
+        capture=capture,
         # The answer's case comes from the disk's tables; the game shows
         # upper case whatever is typed.
         press=lambda key: press(args.display,

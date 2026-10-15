@@ -521,7 +521,8 @@ class FsuaeController(base.Controller):
             raise AcceptanceStop("journal answer is only defined for Silver Blades")
         disk = next(m.path for m in self.route.media if m.key == self.route.mounted[0])
         answered = fsuaegdb.journal(argparse.Namespace(display=self.game.slot.display,
-                                                       settle=JOURNAL_SETTLE), adf=str(disk))
+                                                       settle=JOURNAL_SETTLE), adf=str(disk),
+                                    guest=self.game)
         self.log("journal_answer", answered=bool(answered))
         if not answered:
             raise AcceptanceStop("journal was not answered")

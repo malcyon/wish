@@ -317,13 +317,50 @@ def test_the_journal_step_answers_through_fsuaegdb(tmp_path, monkeypatch, answer
                                               route=_route(media=media, mounted=mounted))
     seen = []
     monkeypatch.setattr(fsuaewishaccept.fsuaegdb, "journal",
-                        lambda args, adf="": seen.append((args.display, adf)) or answered)
+                        lambda args, adf="", guest=None:
+                        seen.append((args.display, adf, guest is _game)) or answered)
     if answered:
         controller._answer_journal()
     else:
         with pytest.raises(winwishaccept.AcceptanceStop, match="journal was not answered"):
             controller._answer_journal()
-    assert seen == [(":93", str(media[0].path))]
+    assert seen == [(":93", str(media[0].path), True)]
+
+
+def test_the_journal_step_answers_the_question_on_the_guests_own_frame(tmp_path, monkeypatch):
+    """The FS-UAE run's own journal screen is read and answered from the guest's Alt+S frame.
+
+    The frame is specimen `WISH-SPEC-ssb-fsuae-journal-frame`, FS-UAE's own
+    screenshot of the question in an `fsuaewishaccept` run that stopped there
+    with no challenge read; the tables come off the player's Silver Blades
+    disk and the reader out of the private repository.  Nothing about the
+    question or the word is asserted in a form a failure would print.
+    """
+    from tests import gamedata
+    from tools.amiga import amigabladesjournal as tool
+
+    frame = gamedata.specimen("ssb-fsuae-journal-frame", "amiga") / "game-049.raw.png"
+    try:
+        tool._blades_modules()
+        disk = tool.find_disk(None)
+    except SystemExit as exc:
+        pytest.skip(f"needs the private journal reader and a Silver Blades disk: {exc}")
+    media = (SimpleNamespace(key="df0", path=disk, sha256=""),)
+    controller, game, _wish, _ = _controller(tmp_path, monkeypatch,
+                                             route=_route(media=media, mounted=("df0",)))
+    game.shot = lambda path, timeout=30.0: pathlib.Path(path).write_bytes(frame.read_bytes())
+    keys = []
+    monkeypatch.setattr(fsuaewishaccept.fsuaegdb, "press",
+                        lambda display, key, settle: keys.append(key))
+
+    def root_grab(display, path):
+        raise AssertionError("the X root grab was taken")
+
+    monkeypatch.setattr(fsuaewishaccept.fsuaegdb, "shot", root_grab)
+    controller._answer_journal()
+    typed_a_word_then_return = len(keys) > 1 and keys[-1] == "Return"
+    assert typed_a_word_then_return
+    assert controller.summary["interstitial_keys"] == 1
 
 
 def test_the_code_wheel_stops_the_run_naming_the_screen(tmp_path, monkeypatch):
