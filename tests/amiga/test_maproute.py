@@ -93,7 +93,57 @@ def test_every_title_with_a_measured_source_is_ready_and_the_tilverton_curse_sav
         assert route.unresolved == ()
     assert [action.kind for action in route.actions] == [
         "heal", "spells", "identify", "quickfight", "levelup"]
-    assert all(not action.enabled for action in route.actions)
+    assert {action.kind for action in route.actions if action.enabled} == (
+        set() if title == "pool" else {"heal", "identify"})
+
+
+def _enabled(title: str, tmp_path: Path) -> dict[str, maproute.Action]:
+    route = maproute.route_for(title, _manifest(title, tmp_path))
+    return {action.kind: action for action in route.actions if action.enabled}
+
+
+@pytest.mark.parametrize("title", ("ssb", "darkness", "curse"))
+def test_heal_and_identify_carry_the_measured_camp_routes(title: str, tmp_path: Path):
+    actions = _enabled(title, tmp_path)
+
+    heal, identify = actions["heal"], actions["identify"]
+    assert [(s.kind, s.state, s.key) for s in heal.show.steps] == [
+        ("key", "camp", "E"), ("select", "camp", None), ("key", "camp_sheet", "V")]
+    assert (heal.show.initial_state, heal.show.steps[-1].checkpoint) == ("world", "heal_sheet")
+    assert [(s.state, s.key) for s in heal.back.steps] == [("camp", "E"), ("world", "E")]
+    assert heal.back.initial_state == "camp_sheet"
+    assert [(s.kind, s.state, s.key) for s in identify.show.steps] == [
+        ("key", "camp", "E"), ("select", "camp", None), ("key", "camp_sheet", "V"),
+        ("key", "camp_items", "I")]
+    assert identify.show.steps[-1].checkpoint == "identify_items"
+    assert identify.back.initial_state == "camp_items"
+    assert [(s.state, s.key) for s in identify.back.steps] == [
+        ("camp_sheet", "E"), ("camp", "E"), ("world", "E")]
+
+
+@pytest.mark.parametrize("title", ("ssb", "darkness", "curse"))
+def test_the_enabled_actions_wait_only_for_screens_the_title_guards(title: str, tmp_path: Path):
+    actions = _enabled(title, tmp_path)
+    route = maproute.route_for(title, _manifest(title, tmp_path))
+    guards = json.loads(route.guard_path.read_text())["guards"]
+    phases = [p for a in actions.values() for p in (a.show, a.back)]
+    states = {p.initial_state for p in phases} | {s.state for p in phases for s in p.steps}
+
+    assert states <= guards.keys()
+    # The Pools of Darkness Cast list also matches camp_use_list.
+    assert "camp_use_list" not in states
+
+
+@pytest.mark.parametrize("title", ("pool", "curse", "ssb", "darkness"))
+def test_spells_quickfight_and_levelup_stay_off_and_pool_has_no_camp_route(
+        title: str, tmp_path: Path):
+    route = maproute.route_for(title, _manifest(title, tmp_path))
+    by_kind = {action.kind: action for action in route.actions}
+
+    assert not any(by_kind[k].enabled for k in ("spells", "quickfight", "levelup"))
+    assert all(by_kind[k].show is None for k in ("spells", "quickfight", "levelup"))
+    if title == "pool":
+        assert not any(action.enabled for action in route.actions)
 
 
 def test_the_tilverton_curse_save_keeps_its_observe_only_outdoor_phase(tmp_path: Path):

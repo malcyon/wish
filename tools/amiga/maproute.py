@@ -266,14 +266,42 @@ def _legacy_title(base: AmigaTitle, load: Phase) -> AmigaTitle:
     )
 
 
+def _camp_actions(title: str) -> dict[str, tuple[Phase, Phase]]:
+    """The show and back visits measured live for Heal and Identify on the three Amiga camps.
+
+    Every visit selects the member again, because the game keeps the last highlighted one.
+    """
+    if title == "pool":
+        return {}
+    heal_show = _phase("heal_show", "world", Step("key", "camp", key="E"),
+                       Step("select", "camp"),
+                       Step("key", "camp_sheet", key="V", checkpoint="heal_sheet"))
+    heal_back = _phase("heal_back", "camp_sheet", Step("key", "camp", key="E"),
+                       Step("key", "world", key="E"))
+    identify_show = _phase(
+        "identify_show", "world", Step("key", "camp", key="E"), Step("select", "camp"),
+        Step("key", "camp_sheet", key="V"),
+        Step("key", "camp_items", key="I", checkpoint="identify_items"))
+    identify_back = _phase(
+        "identify_back", "camp_items", Step("key", "camp_sheet", key="E"),
+        Step("key", "camp", key="E"), Step("key", "world", key="E"))
+    return {"heal": (heal_show, heal_back), "identify": (identify_show, identify_back)}
+
+
 def _actions(title: str) -> tuple[Action, ...]:
-    """Offer selectors to the controller, but no press before its game-screen route is measured."""
+    """Press only the actions whose camp route was measured; the rest stay off."""
+    measured = _camp_actions(title)
+
+    def action(kind: str, selector: str | None) -> Action:
+        show, back = measured.get(kind, (None, None))
+        return Action(kind, kind in measured, selector, show, back)
+
     return (
-        Action("heal", False, "hp", None, None),
-        Action("spells", False, "memorised", None, None),
-        Action("identify", False, "item", None, None),
-        Action("quickfight", False, "controlled" if title != "darkness" else None, None, None),
-        Action("levelup", False, "pod_levelup" if title == "darkness" else None, None, None),
+        action("heal", "hp"),
+        action("spells", "memorised"),
+        action("identify", "item"),
+        action("quickfight", "controlled" if title != "darkness" else None),
+        action("levelup", "pod_levelup" if title == "darkness" else None),
     )
 
 
@@ -784,7 +812,8 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
         *specimen_gaps,
         *(phase.reason for phase in phases if not phase.ready and phase.reason),
         *(("Game-sheet routes and readbacks for the Wish action presses are not measured.",)
-          if any(action.enabled for action in _actions(title)) else ()),
+          if any(action.enabled and (action.show is None or action.back is None)
+                 for action in _actions(title)) else ()),
     )
     guard_path = pathlib.Path(__file__).resolve().with_name(_GUARD_NAMES[title])
     return MappingRoute(

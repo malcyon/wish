@@ -146,9 +146,8 @@ def _opening_first_phase(route: Any) -> Any:
     load = maproute._load("ssb", "D", opening_scene=True)
     if (route.title != "ssb" or route.loaded_slot != "D"
             or route.mounted != ("df0", "df1")
-            or not route.phases or route.phases[0] != load
-            or any(action.enabled for action in route.actions)):
-        raise AcceptanceStop("opening discovery needs the exact disabled Silver Blades load prefix")
+            or not route.phases or route.phases[0] != load):
+        raise AcceptanceStop("opening discovery needs the exact Silver Blades load prefix")
     return maproute.Phase("opening_menu", "title", load.steps[:6])
 
 
@@ -164,8 +163,6 @@ def _discovery_phases(route: Any) -> dict[str, Any]:
         raise AcceptanceStop("discovery needs a distinct ordered load, stationary and walk prefix")
     if any(not phases[name].ready for name in ("load", "stationary", "walk")):
         raise AcceptanceStop("discovery prefix is not ready")
-    if any(action.enabled for action in route.actions):
-        raise AcceptanceStop("discovery cannot enable actions")
     load, stationary, walk = (phases[name] for name in ("load", "stationary", "walk"))
     if ([s.kind for s in load.steps] != ["key"] * 6 + ["answer", "key", "key"]
             or [s.key for s in load.steps[:6]] != ["P", "L", "D", "V", "E", "B"]

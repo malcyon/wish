@@ -1122,7 +1122,7 @@ def test_discovery_self_hashed_replacement_media_stops_before_artifact(tmp_path,
                                 driver_sha=SHA)
 
 
-@pytest.mark.parametrize("fault", ["slot", "action", "terminal", "deadline", "source"])
+@pytest.mark.parametrize("fault", ["slot", "terminal", "deadline", "source"])
 def test_discovery_rejects_wrong_prepared_route_before_guest(tmp_path, fault):
     args = _discovery_args(tmp_path)
     args.manifest.write_text('{"title":"ssb","substitute":{"letter":"A"},'
@@ -1132,8 +1132,6 @@ def test_discovery_rejects_wrong_prepared_route_before_guest(tmp_path, fault):
     route = _discovery_route(tmp_path)
     if fault == "slot":
         route.loaded_slot = "A"
-    elif fault == "action":
-        route.actions = (SimpleNamespace(enabled=True),)
     elif fault == "terminal":
         route.phases = (*route.phases[:2], _phase("walk", "world", _step("move", "world", "NP8")),
                         *route.phases[3:])
@@ -1980,7 +1978,7 @@ def test_a_story_page_in_a_later_phase_gets_no_key(tmp_path, monkeypatch):
     assert game.keys == []
 
 
-@pytest.mark.parametrize("fault", ["none", "scene", "actions", "prefix", "guard_primary",
+@pytest.mark.parametrize("fault", ["none", "scene", "prefix", "guard_primary",
                                    "guard_footer", "guard_missing", "pin"])
 def test_opening_preflight_requires_independent_two_box_rule_and_pins(tmp_path, monkeypatch, fault):
     from tools.amiga import maproute, route_silver_blades
@@ -2008,8 +2006,6 @@ def test_opening_preflight_requires_independent_two_box_rule_and_pins(tmp_path, 
     if fault == "scene":
         args.manifest.write_text(args.manifest.read_text().replace('"opening_scene":true',
                                                                   '"opening_scene":false'))
-    elif fault == "actions":
-        route.actions = (SimpleNamespace(enabled=True),)
     elif fault == "prefix":
         route.phases = (maproute._load("ssb", "A"), *route.phases[1:])
     elif fault == "pin":
@@ -3167,6 +3163,26 @@ def test_leave_yes_discovery_answers_yes_only_on_the_guarded_question(tmp_path, 
     assert result["discovery"]["status"] == "awaiting image review"
     assert snapshots[0] == "ssb_new_verdigris"
     assert ("down",) in calls
+
+
+@pytest.mark.parametrize("mode", ["discovery", "opening"])
+def test_discovery_and_opening_press_no_action_on_a_route_with_enabled_actions(
+        tmp_path, monkeypatch, mode):
+    from tools.amiga import route_silver_blades
+
+    monkeypatch.setattr(route_silver_blades, "run_journal_answer", lambda *args: (0, "answered"))
+    if mode == "opening":
+        controller, game, _, _, _ = _opening_controller(tmp_path, monkeypatch)
+    else:
+        controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
+    assert {a.kind for a in controller.route.actions if a.enabled} == {"heal", "identify"}
+    before = json.loads(json.dumps(controller.summary["actions"]))
+    result = (controller.run_opening_first() if mode == "opening"
+              else controller.run_discovery())
+    assert result["failure"] is None
+    assert game.keys
+    assert controller.action_commands == 0
+    assert result["actions"] == before
 
 
 def test_leave_yes_discovery_sends_no_yes_when_the_question_is_not_recognized(
