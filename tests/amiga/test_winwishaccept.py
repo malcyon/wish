@@ -531,7 +531,9 @@ def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypa
     modes = iter((True, False, True, True))
     def controls(*args):
         enabled = next(modes)
-        return [f"Button|{name}|{name}|enabled={enabled}" for name in names]
+        # Fast Travel has no flag of its own, so it reads as it does with the flags on.
+        return [f"Button|{name}|{name}|enabled={True if name == 'Fast Travel' else enabled}"
+                for name in names]
     monkeypatch.setattr(winwishaccept.winwish, "ui", controls)
     monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
     restarts = []
@@ -542,6 +544,55 @@ def test_map_only_flag_controls_require_every_button_disabled(tmp_path, monkeypa
     assert [entry["flag"] for entry in restarts] == [True, False, True]
     assert all(value["status"] == "awaiting image review"
                for value in controller.summary["flags"].values())
+
+
+def _flag_run(tmp_path, monkeypatch, readings):
+    """Run flag_controls with readings[mode][name] -> enabled; returns the controller."""
+    clock = FakeClock()
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=SimpleNamespace(**{**vars(_route()), "title": "pool"}),
+        zipped=tmp_path / "build.zip", info={"media": {}},
+        clock=clock, sleep=clock.sleep)
+    controller.pipe_released = False
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    modes = iter(readings)
+    def controls(*args):
+        reading = next(modes)
+        return [f"Button|{name}|{name}|enabled={enabled}" for name, enabled in reading.items()]
+    monkeypatch.setattr(winwishaccept.winwish, "ui", controls)
+    monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
+    monkeypatch.setattr(winwishaccept.winwish, "restart_wish", lambda *args, **kwargs: None)
+    return controller
+
+
+def _readings(actions, travel):
+    names = ("Heal party", "Save spells", "Restore spells", "Identify", "Quickfight off")
+    return {**{name: actions for name in names}, "Fast Travel": travel}
+
+
+def test_map_only_leaves_fast_travel_enabled_as_with_the_flags_on(tmp_path, monkeypatch):
+    # The pool-accept2 listings: only the five flagged actions change in map-only mode.
+    controller = _flag_run(tmp_path, monkeypatch, [
+        _readings(True, True), _readings(False, True), _readings(False, True),
+        _readings(True, True)])
+    controller.flag_controls()
+    assert [value["status"] for value in controller.summary["flags"].values()] == [
+        "awaiting image review"] * 4
+
+
+def test_map_only_still_stops_on_an_enabled_action(tmp_path, monkeypatch):
+    heal_on = {**_readings(False, True), "Heal party": True}
+    controller = _flag_run(tmp_path, monkeypatch, [_readings(True, True), heal_on])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="map-only flag left an action enabled"):
+        controller.flag_controls()
+
+
+def test_map_only_stops_when_fast_travel_differs_from_the_flags_on_state(tmp_path, monkeypatch):
+    controller = _flag_run(tmp_path, monkeypatch, [_readings(True, True), _readings(False, False)])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="changed Fast Travel"):
+        controller.flag_controls()
 
 
 def _action_controller(tmp_path, monkeypatch, *, guard=True):
@@ -3539,6 +3590,36 @@ def _ordinary_ssb_controller(tmp_path, monkeypatch, extra_phase=()):
     return controller
 
 
+def test_the_full_pool_route_fits_the_ordinary_key_limit_and_has_a_walkout_row(
+        tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    phases = maproute._phases("pool", maproute._load("pool", "A"), "A")
+    keys = sum(winwishaccept._phase_keys(phase) for phase in phases)
+    assert keys == winwishaccept.ORDINARY_MAPPING_COMMANDS["pool"] == 55
+    controller, *_ = _discovery_controller(tmp_path, monkeypatch)
+    controller.route.title = "pool"
+    controller.route.phases = phases
+    controller.args.discover = None
+    for _ in range(keys):
+        controller._count()
+    with pytest.raises(winwishaccept.AcceptanceStop, match="55-command mapping cap"):
+        controller._count()
+    walkout = [step.checkpoint for phase in phases if phase.name == "walkout"
+               for step in phase.steps if step.checkpoint]
+    assert walkout[-1] == "pool_walkout_grid"
+    pool = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=SimpleNamespace(**{**vars(_route()), "title": "pool", "phases": phases}),
+        zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    assert list(pool.summary["mapping"]).index("walkout") == list(
+        pool.summary["mapping"]).index("reopen") + 1
+    plain = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    assert "walkout" not in plain.summary["mapping"]
+
+
 def test_the_full_silver_blades_route_fits_the_ordinary_key_limit(tmp_path, monkeypatch):
     controller = _ordinary_ssb_controller(tmp_path, monkeypatch)
     keys = sum(1 for phase in controller.route.phases for step in phase.steps
@@ -3566,7 +3647,7 @@ def test_other_titles_and_discovery_keep_the_default_key_limit(tmp_path, monkeyp
     with pytest.raises(winwishaccept.AcceptanceStop, match="40-command mapping cap"):
         controller._count()
     controller.args.discover = None
-    controller.route.title = "pool"
+    controller.route.title = "curse"
     with pytest.raises(winwishaccept.AcceptanceStop, match="40-command mapping cap"):
         controller._count()
 
@@ -3584,7 +3665,9 @@ def test_the_flag_check_runs_on_silver_blades(tmp_path, monkeypatch):
     modes = iter((True, False, True, True))
     def controls(*args):
         enabled = next(modes)
-        return [f"Button|{name}|{name}|enabled={enabled}" for name in names]
+        # Fast Travel has no flag of its own, so it reads as it does with the flags on.
+        return [f"Button|{name}|{name}|enabled={True if name == 'Fast Travel' else enabled}"
+                for name in names]
     monkeypatch.setattr(winwishaccept.winwish, "ui", controls)
     monkeypatch.setattr(winwishaccept.winwish, "shot", lambda *args: 1)
     monkeypatch.setattr(winwishaccept.winwish, "restart_wish", lambda *args, **kwargs: None)

@@ -35,7 +35,7 @@ from tools.amiga.winuaesession import (  # noqa: E402
 BUILD_SHA = re.compile(r"[0-9a-f]{40}\Z")
 REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
 MAPPING_ROWS = ("title", "load", "stationary", "walk", "transition", "reload",
-                "reopen", "disconnect", "reconnect")
+                "reopen", "walkout", "disconnect", "reconnect")
 STATUSES = ("passed", "failed", "unproven", "awaiting image review")
 LEGS = ("mapping", "persist")
 ACTION_KINDS = ("heal", "spells", "identify", "quickfight", "levelup")
@@ -54,8 +54,9 @@ MAX_SECONDS = 3300
 CLEANUP_SECONDS = 300
 MAX_MAPPING_COMMANDS = 40
 #: Ordinary-run key limits above the default; the full Silver Blades route presses 44 keys,
-#: and the full Pools of Darkness route, with its village leg, 53.
-ORDINARY_MAPPING_COMMANDS = {"ssb": 44, "darkness": 53}
+#: the full Pools of Darkness route, with its village leg, 53, and the full Pool route, with
+#: its walk-out to the travel grid, 55.
+ORDINARY_MAPPING_COMMANDS = {"ssb": 44, "darkness": 53, "pool": 55}
 #: The camp reload adds Y, the slot letter, B, E and N to the 38 keys before them.
 CAMP_LOAD_MAPPING_COMMANDS = 43
 #: Seconds to wait for each guarded camp LOAD screen, and for the disk load after the slot.
@@ -790,7 +791,9 @@ class Controller:
         self.checkpoints: dict[str, dict[str, Any]] = {}
         self.area_by_geo: dict[str, set[int]] | None = None
         self.party_nodes: list[tuple[int, int]] = []
-        rows = MAPPING_ROWS
+        # Only a route with a walk-out phase has a walk-out row to prove.
+        rows = tuple(name for name in MAPPING_ROWS if name != "walkout"
+                     or any(phase.name == "walkout" for phase in route.phases))
         if self.persist:
             from tools.amiga import maproute  # noqa: PLC0415
 
@@ -1354,11 +1357,17 @@ class Controller:
                    reason=("unreadable expected fields: " + ", ".join(missing)) if missing else None)
 
     def flag_controls(self) -> None:
-        """Pool's and Silver Blades' flag modes use the same boot and retain Wish settings."""
+        """Pool's and Silver Blades' flag modes use the same boot and retain Wish settings.
+
+        Map-only greys the five flagged actions and Level up; Fast Travel has no flag
+        of its own and must read as it did with the flags on.
+        """
         if self.route.title not in ("pool", "ssb"):
             return
-        controls_wanted = ("Heal party", "Save spells", "Restore spells",
-                           "Identify", "Quickfight off", "Fast Travel")
+        flagged_actions = ("Heal party", "Save spells", "Restore spells",
+                           "Identify", "Quickfight off")
+        controls_wanted = (*flagged_actions, "Fast Travel")
+        flags_on_travel = None
         self._map_section()
         for name, flag, features, delay in (("on", True, True, 10),
                                              ("map_only", True, False, 10),
@@ -1382,9 +1391,14 @@ class Controller:
                 missing = [key for key in controls_wanted if len(controls.get(key, ())) != 1]
                 if missing:
                     raise AcceptanceStop(f"{name} flags: absent or ambiguous controls {missing}; kept {listed}")
+            if name == "on":
+                flags_on_travel = controls["Fast Travel"][0]
             if name == "map_only":
-                if any(controls[key][0] != "enabled=False" for key in controls_wanted):
+                if any(controls[key][0] != "enabled=False" for key in flagged_actions):
                     raise AcceptanceStop(f"map-only flag left an action enabled; kept {listed}")
+                if controls["Fast Travel"][0] != flags_on_travel:
+                    raise AcceptanceStop(
+                        f"map-only flag changed Fast Travel from the flags-on state; kept {listed}")
                 if any("card_" in line and "_level_up" in line and "enabled=True" in line
                        for line in listing):
                     raise AcceptanceStop(f"map-only flag left Level up enabled; kept {listed}")
