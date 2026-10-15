@@ -41,8 +41,41 @@ MAPPING_ROWS = ("title", "load", "stationary", "walk", "transition", "reload",
 #: The reconnect leg loads the party, stops the game, and starts and loads it again.
 RECONNECT_ROWS = ("title", "load", "disconnect", "reconnect")
 STATUSES = ("passed", "failed", "unproven", "awaiting image review")
-LEGS = ("mapping", "persist", "reconnect")
+LEGS = ("mapping", "persist", "reconnect", "fight")
 ACTION_KINDS = ("heal", "spells", "identify", "quickfight", "levelup")
+#: The fight leg's rows before its own: the title and the load.
+FIGHT_ROWS = ("title", "load")
+#: Keys the fight leg may press after the load: its walk, its way into the fight and every
+#: answer of the fight loop, each counted as an action key.
+FIGHT_COMMANDS = 200
+#: Steps the guarded walk to an encounter takes, and the backward restores it may spend on a
+#: screen it does not answer.
+FIGHT_WALK_STEPS = 40
+FIGHT_RESTORES = 2
+FIGHT_WALK_SNAPSHOT = "fight_walk"
+#: Seconds after a walk key before its screen is looked at.
+FIGHT_STEP_SETTLE = 6.0
+#: The Automapper's action buttons, by label, and the action name `PartyRow.combat_legal` uses.
+GREYED_ACTIONS = {"Heal party": "heal", "Save spells": "store-spells",
+                  "Restore spells": "restore-spells", "Identify": "identify",
+                  "Quickfight off": "clear-quickfight"}
+#: How `maproute.route_for` opens the sentence naming a title's missing route specimen.
+SPECIMEN_GAPS = {"pool": "Pool needs ", "curse": "Curse needs ", "ssb": "Silver Blades needs ",
+                 "darkness": "Pools of Darkness needs "}
+#: The fight specimen each title other than Pool runs, pinned by its source: Curse's Tilverton
+#: slot B (`cursefight.py stage` of the registered `WISH-SPEC-curse-c64toamiga-slotb-walked-saved-c`),
+#: Silver Blades' slot D at 3,7 (`ssbfight.py stage` of `WISH-SPEC-amiga-ssb-foundation-walked`,
+#: gate $4C2D set to 1) and Pools of Darkness' WISH-2 a3 slot D imported into B. Pool runs the
+#: route's own outdoor specimen.
+FIGHT_PINS: dict[str, dict[str, Any]] = {
+    "curse": {"source_sha256": "752ed821e94cbedb96b7f8e8d4df09cd61e0c1a63c40ff2aab07d2c5203bcd71",
+              "load": "B", "place": {"area": 1, "x": 4, "y": 4, "facing": 0}},
+    "ssb": {"source_sha256": "e4f231fe86f30bfc31e32fa7b1262157a67fdcb85663ed4935fc7d70e62ccb20",
+            "load": "D", "place": {"area": 16, "x": 3, "y": 7, "facing": 2}},
+    "darkness": {"substitute_sha256": "ab19a53ebc43f87c5bbab53d7f1b41254e0207d51fa333be194b0cb12ab0fa67",
+                 "substitute_letter": "D", "load": "B",
+                 "place": {"area": 0, "x": 4, "y": 7, "facing": 1}},
+}
 #: The longest `--wait-lanes`, in seconds: the lane pool's own claim wait.
 MAX_WAIT_LANES = 1800
 #: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
@@ -291,6 +324,289 @@ def _plain_cut(raw: pathlib.Path, crop: pathlib.Path) -> bool:
 
 class AcceptanceStop(RuntimeError):
     """A route failed closed; the run still collects evidence and cleans up."""
+
+
+@dataclasses.dataclass(frozen=True)
+class FightPlan:
+    """How the fight leg reaches one title's fight and answers it."""
+
+    title: str
+    #: `grid_walk` (Pool), `tavern` (Curse), `wander` (Silver Blades) or `walk` (Pools of Darkness).
+    entry: str
+    #: The `cursefight.FightRules` the fight loop answers by.
+    rules: Any
+    #: The guard of the map the fight starts and ends on, which the loop calls `world`.
+    map_state: str
+    #: The keys each screen may receive.
+    allowed: dict[str, frozenset[str]]
+    #: Screens the walk to the fight answers, and the screens that end it.
+    walk_answers: dict[str, str] = dataclasses.field(default_factory=dict)
+    opens: tuple[str, ...] = ()
+    #: Rules added to the exported guard map for this run: a state's rule, or alternatives
+    #: added to an existing state's rules.
+    extra_guards: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: Whether the party's hit points are raised at the first bar so it outlasts the fight.
+    survive: bool = True
+
+    def states(self) -> set[str]:
+        """Every guard the walk and the fight loop answer or wait for."""
+        rules = self.rules
+        named = {*rules.answers, *rules.won, *rules.starting, *rules.after_bars,
+                 *self.walk_answers, *self.opens, "world"}
+        if self.entry == "tavern":
+            named |= {"tavern", "injuries", "continue"}
+        return {self.map_state if state == "world" else state for state in named}
+
+
+def fight_plan(title: str) -> FightPlan:
+    """The fight leg's plan for one title."""
+    from tools.amiga import cursefight, ssbfight  # noqa: PLC0415
+
+    if title == "curse":
+        return FightPlan("curse", "tavern", cursefight.CURSE_FIGHT, "world",
+                         dict(cursefight.ALLOWED_KEYS), extra_guards=dict(cursefight.FIGHT_GUARDS))
+    if title == "ssb":
+        return FightPlan("ssb", "wander", ssbfight.SSB_FIGHT, "world", dict(ssbfight.ALLOWED_KEYS),
+                         extra_guards={"treasure_bar": [ssbfight.TREASURE_SHORT]})
+    fields = ("control", "quickfight", "hit_points")
+    if title == "pool":
+        # COMBAT on the encounter menu and RETURN on YOU ARE SURPRISED (`route_pool._SURPRISED`);
+        # the end-of-fight guards are 827e2d5d's.
+        answers = {"encounter": "C", "surprised": "RET", "combat_bar": "Q",
+                   "continue_battle": "N", "party_won": "RET", "treasure": "E",
+                   "treasure_left": "N", "continue": "RET"}
+        known = ("world", "encounter", "surprised", "party_won", "treasure_left", "continue",
+                 "combat_bar", "continue_battle", "treasure")
+        walk = {"continue": "RET"}
+        opens: tuple[str, ...] = ("encounter", "surprised", "combat_bar")
+        entry, map_state = "grid_walk", "grid"
+    elif title == "darkness":
+        # ATTACK on the encounter menu (af62c3ab); the won page also matches `continue` and
+        # the treasure question `yes_no`, so both come first.
+        answers = {"encounter": "A", "combat_bar": "Q", "continue_battle": "N",
+                   "party_won": "RET", "treasure": "E", "treasure_left": "N", "continue": "RET"}
+        known = ("world", "encounter", "party_won", "treasure_left", "continue", "yes_no",
+                 "combat_bar", "continue_battle", "treasure")
+        walk = {"continue": "RET", "yes_no": "N"}
+        opens = ("encounter", "combat_bar")
+        entry, map_state = "walk", "world"
+    else:
+        raise AcceptanceStop(f"no fight plan for {title}")
+    rules = cursefight.FightRules(known=known, answers=answers, bar_fields=fields,
+                                  linger=60.0, won=("party_won",))
+    allowed = {"world": frozenset({"NP8", "NP4"}),
+               **{state: frozenset({key}) for state, key in answers.items()},
+               **{state: frozenset({key}) for state, key in walk.items()}}
+    return FightPlan(title, entry, rules, map_state, allowed, walk, opens)
+
+
+def _fight_specimen(title: str, manifest: dict[str, Any], route: Any) -> dict[str, Any]:
+    """The pinned fight specimen's place, or why the manifest is not one."""
+    if title == "pool":
+        gaps = [reason for reason in route.unresolved if reason.startswith(SPECIMEN_GAPS["pool"])]
+        if gaps:
+            raise AcceptanceStop("the Pool fight runs the route's own outdoor specimen: " + gaps[0])
+        return {"place": None, "pin": "the route's outdoor specimen"}
+    pin = FIGHT_PINS[title]
+    problems = []
+    if route.loaded_slot != pin["load"]:
+        problems.append(f"loaded slot {route.loaded_slot}, not {pin['load']}")
+    if manifest.get("state_a") != pin["place"]:
+        problems.append(f"place {manifest.get('state_a')}, not {pin['place']}")
+    if title == "darkness":
+        source = manifest.get("substitute") or {}
+        if (source.get("sha256"), source.get("letter")) != (pin["substitute_sha256"],
+                                                            pin["substitute_letter"]):
+            problems.append("not the pinned substitute slot")
+    else:
+        fight_ = manifest.get("fight") or {}
+        source = fight_.get("source") or {}
+        if source.get("sha256") != pin["source_sha256"]:
+            problems.append("not the pinned source disk")
+        if fight_.get("load") != pin["load"] or fight_.get("place") != pin["place"]:
+            problems.append("its fight stage loads another slot or square")
+        if title == "curse" and not fight_.get("route"):
+            problems.append("its fight stage has no walk to the tavern")
+        if title == "ssb" and ("facing" not in fight_ or "square" not in fight_):
+            problems.append("its fight stage has no street pair")
+    if problems:
+        raise AcceptanceStop(f"the {title} fight needs its pinned specimen: " + "; ".join(problems))
+    return {"place": dict(pin["place"]), "pin": pin}
+
+
+def _staged_gate(path: pathlib.Path, letter: str) -> int:
+    """The Silver Blades wandering-fight gate in slot `letter` of a staged disk one."""
+    from goldbox.amiga_adf import AmigaDisk  # noqa: PLC0415
+    from tools.amiga import ssbfight  # noqa: PLC0415
+
+    return ssbfight.word(AmigaDisk.open(path).read_file(f"/SAVE/savgam{letter}.sav"), ssbfight.GATE)
+
+
+def _check_fight_stage(title: str, manifest: dict[str, Any], route: Any) -> dict[str, Any] | None:
+    """A Silver Blades stage's source hash and its gate, read back from the staged slot."""
+    if title != "ssb":
+        return None
+    from tools.amiga import ssbfight  # noqa: PLC0415
+
+    fight_ = manifest["fight"]
+    key = f"{ssbfight.GATE:04X}"
+    staged = (fight_.get("staged") or {}).get(key) or {}
+    if staged.get("after") != ssbfight.GATE_ON:
+        raise AcceptanceStop(f"the Silver Blades stage did not set ${key} to {ssbfight.GATE_ON}")
+    source = pathlib.Path(fight_["source"]["path"])
+    if not source.is_file() or digest(source) != fight_["source"]["sha256"]:
+        raise AcceptanceStop(f"the Silver Blades stage's source disk {source} is missing or changed")
+    disk = next(m.path for m in route.media if m.key == route.mounted[0])
+    value = _staged_gate(disk, route.loaded_slot)
+    if value != ssbfight.GATE_ON:
+        raise AcceptanceStop(f"the staged slot {route.loaded_slot} reads ${key} = {value}, "
+                             f"not {ssbfight.GATE_ON}")
+    return {"gate": key, "before": staged.get("before"), "value": value,
+            "source_sha256": fight_["source"]["sha256"]}
+
+
+def _check_fight(route: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    """The fight leg's static dependencies: a ready load phase and the title's pinned specimen."""
+    load = next((phase for phase in route.phases if phase.name == "load"), None)
+    if load is None or route.phases[0].name != "load":
+        raise AcceptanceStop("load must be the first phase")
+    specimen = _fight_specimen(route.title, manifest, route)
+    # Another phase's reason does not stop a leg that never runs that phase, and the specimen
+    # gap is the pin's to judge.
+    skipped = {phase.reason for phase in route.phases if not phase.ready and phase.name != "load"}
+    unready = [] if load.ready else [f"load: {load.reason or 'no reason supplied'}"]
+    unready.extend(reason for reason in route.unresolved if reason not in skipped
+                   and not reason.startswith("Game-sheet routes")
+                   and not (specimen["place"] is not None
+                            and reason.startswith(SPECIMEN_GAPS[route.title])))
+    if unready:
+        raise AcceptanceStop("route incomplete: " + "; ".join(unready))
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    _check_steps(SimpleNamespace(phases=[load]))
+    return specimen
+
+
+def _fight_load(route: Any, place: dict[str, int] | None) -> Any:
+    """The route's load phase, its `loaded` checkpoint expecting the fight specimen's square."""
+    load = route.phases[0]
+    if place is None:
+        return load
+    from tools.amiga import maproute  # noqa: PLC0415
+
+    expected = maproute.Expected(engine={k: place[k] for k in ("x", "y", "facing")})
+    steps = tuple(dataclasses.replace(step, expected=expected) if step.checkpoint == "loaded"
+                  else step for step in load.steps)
+    return dataclasses.replace(load, steps=steps)
+
+
+def _fight_memory(holder: str, route: Any) -> Any:
+    """Reads of the running fight: the record in turn and its fields, the fix and the mode.
+
+    Curse and Silver Blades use their fight drivers' own; Pool and Pools of Darkness read the
+    record named by their party row's `current`, with its control, quickfight and hit points."""
+    from automap import amigaparty  # noqa: PLC0415
+    from tools.amiga import cursefight, ssbfight  # noqa: PLC0415
+
+    if route.title == "curse":
+        return cursefight.Memory(holder)
+    if route.title == "ssb":
+        return ssbfight.Memory(holder)
+    row_ = amigaparty.ROWS[route.game_key]
+    memory = cursefight.Memory(holder)
+    memory.title = route.game_key
+    memory.current = row_.current
+    memory.record = {"control": row_.control.offset, "quickfight": row_.quickfight.offset,
+                     "hit_points": row_.hp.offset}
+    memory.record_size = row_.record_size
+    return memory
+
+
+def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
+    """`cursefight.fight`'s screens over the controller's game and guards.
+
+    Its map is the plan's `map_state` under the name `world`. Every key is an action key of the
+    controller's budget; the first key on a command bar waits for the greyed check. The mode is
+    read once on each newly seen screen and recorded with the key sent on it."""
+    from automap import amigaparty  # noqa: PLC0415
+    from tools.amiga import curseadd, cursefight  # noqa: PLC0415
+
+    modes = controller.summary["fight"]["modes"]
+
+    class FightScreens(curseadd.Screens):
+        known = plan.rules.known
+        allowed = plan.allowed
+
+        def __init__(self) -> None:
+            super().__init__(controller.game, controller.args.holder, controller.out / "fight",
+                             controller.guards, controller.route_end, clock=controller.clock,
+                             sleep=controller.sleep)
+            self.last_state: object = object()
+
+        def _matches(self, state: str, crop: pathlib.Path) -> bool:
+            name = plan.map_state if state == "world" else state
+            rules = getattr(self.guards, "rules", None)
+            return (rules is None or name in rules) and bool(self.guards(name, crop))
+
+        def _mode(self) -> Any:
+            if memory._target is None:
+                return "not located"
+            try:
+                return curseadd.bounded(lambda _h: amigaparty.mode(memory.target()), memory.holder,
+                                        cursefight.MODE_READ_LIMIT)
+            except RouteError as exc:
+                return f"error: {exc}"
+
+        def look(self, label: str) -> tuple[list[str], pathlib.Path]:
+            self.count += 1
+            raw = self.out / f"{self.count:03d}-{label}-raw.png"
+            crop = self.out / f"{self.count:03d}-{label}.png"
+            try:
+                self.grabbed = bool(self.guest.grab(label, raw, crop, self.left(20)))
+            except ShotTimedOut as exc:
+                controller.log("shot_retry", state=label, error=str(exc))
+                self.grabbed = False
+            if not self.grabbed:
+                return [], raw
+            seen = [state for state in self.known if self._matches(state, crop)]
+            state = seen[0] if seen else None
+            if state != self.last_state:
+                self.last_state = state
+                modes.append({"screen": state, "shot": str(crop), "mode": self._mode(),
+                              "elapsed": round(controller.clock() - controller.started, 3)})
+            return seen, crop
+
+        def press(self, key: str, on: str) -> None:
+            curseadd.require(key in self.allowed.get(on, ()),
+                             f"{key} is not a key this driver sends on {on}")
+            if on == "combat_bar" and not controller.greyed_done:
+                controller._fight_bar(memory)
+            controller._count(action=True)
+            self.guest.press(self.holder, key, timeout=self.left(30))
+            self.events.append({"from": on, "key": key})
+            controller.log("key", key=key, screen=on)
+            if modes and modes[-1]["screen"] == on and "key" not in modes[-1]:
+                modes[-1]["key"] = key
+            else:
+                modes.append({"screen": on, "key": key, "mode": self._mode(),
+                              "elapsed": round(controller.clock() - controller.started, 3)})
+
+    return FightScreens()
+
+
+def _merge_guards(path: pathlib.Path, extra: dict[str, Any]) -> None:
+    """Add a fight plan's rules to an exported guard file: a new state, or alternatives."""
+    rules = json.loads(path.read_text())
+    for state, rule in extra.items():
+        added = rule if isinstance(rule, list) else [rule]
+        if state in rules:
+            if not isinstance(rule, list):
+                raise AcceptanceStop(f"the fight guard {state} is already a guard of this title")
+            have = rules[state] if isinstance(rules[state], list) else [rules[state]]
+            rules[state] = [*have, *added]
+        else:
+            rules[state] = rule
+    path.write_text(json.dumps(rules, indent=2) + "\n")
 
 
 def digest(path: pathlib.Path) -> str:
@@ -559,7 +875,9 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         raise AcceptanceStop("--leg reconnect is not a discovery mode")
     if leg == "reconnect" and getattr(args, "action", None):
         raise AcceptanceStop("--leg reconnect presses no actions")
-    if leg == "mapping" and getattr(args, "action", None):
+    if leg == "fight" and mode:
+        raise AcceptanceStop("--leg fight is not a discovery mode")
+    if leg in ("mapping", "fight") and getattr(args, "action", None):
         raise AcceptanceStop("--action needs --leg persist")
     wait_lanes = getattr(args, "wait_lanes", 0)
     if not 0 <= wait_lanes <= MAX_WAIT_LANES:
@@ -575,6 +893,8 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     if not pathlib.Path(args.manifest).is_file():
         raise AcceptanceStop("the prepared manifest is missing")
     manifest = json.loads(pathlib.Path(args.manifest).read_text())
+    if leg != "fight" and isinstance(manifest, dict) and "fight" in manifest:
+        raise AcceptanceStop("a fight stage runs only with --leg fight")
     route = route_for(args.title, manifest)
     if discovery:
         source = manifest.get("substitute")
@@ -597,6 +917,9 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         persist_actions = _check_persist(args, route) if leg == "persist" else None
         if leg == "reconnect":
             _check_reconnect(route)
+        elif leg == "fight":
+            fight_specimen = _check_fight(route, manifest)
+            fight_stage = _check_fight_stage(args.title, manifest, route)
         elif persist_actions is None:
             _phase_map(route)
         if args.title == "ssb":
@@ -646,6 +969,9 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     if rc:
         raise AcceptanceStop(f"guard export failed with exit {rc}")
     exported = export_dir / "guards.json"
+    plan = fight_plan(route.title) if leg == "fight" else None
+    if plan is not None:
+        _merge_guards(exported, plan.extra_guards)
     guards = screens.PixelGuards(exported)
     if opening:
         phase = _opening_first_phase(route)
@@ -667,6 +993,10 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
             for state in (phase.initial_state, *(s.state for s in phase.steps))}
     elif persist:
         states = _persist_states(route, persist_actions, persist["letter"])
+    elif plan is not None:
+        load = route.phases[0]
+        states = ({"title", load.initial_state, *(step.state for step in load.steps)}
+                  | _page_states(route) | _declared_pages(route, [load]) | plan.states())
     else:
         states = _states(route, actions=False)
     missing = states - guards.rules.keys()
@@ -706,6 +1036,14 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     if persist:
         info["leg"] = "persist"
         info["persist"] = persist
+    if plan is not None:
+        info["leg"] = "fight"
+        info["fight"] = {"entry": plan.entry, "survive": plan.survive,
+                         "place": fight_specimen["place"], "pin": fight_specimen["pin"],
+                         "stage": fight_stage,
+                         "walk": ({k: manifest["fight"].get(k)
+                                   for k in ("place", "route", "square", "facing", "names")}
+                                  if "fight" in manifest else None)}
     return route, guards, zipped, info
 
 
@@ -807,13 +1145,16 @@ class Controller:
         self.events = self.out / "events.jsonl"
         self.leg = getattr(args, "leg", "mapping")
         self.persist: dict[str, Any] | None = info.get("persist") if self.leg == "persist" else None
+        self.fight: dict[str, Any] | None = info.get("fight") if self.leg == "fight" else None
+        #: Whether the fight leg's greyed check has run, at the first command bar.
+        self.greyed_done = False
         self._set_deadlines()
         self.mapping_commands = self.action_commands = 0
         #: The reload after the game restarts has its own key budget, so it neither
         #: spends the mapping cap nor is stopped by it.
         self.reconnect_commands = 0
         self.reconnect_limit: int | None = None
-        self.action_limit = _action_budget(route) + (
+        self.action_limit = FIGHT_COMMANDS if self.fight is not None else _action_budget(route) + (
             _persist_budget(route, self.persist["letter"]) if self.persist else 0)
         #: Set while the persist leg's own keys are pressed, so they count against the action budget.
         self.persist_keys = False
@@ -847,15 +1188,22 @@ class Controller:
             from tools.amiga import maproute  # noqa: PLC0415
 
             rows = ("title", *maproute.LEG_PREFIX[route.title])
+        if self.fight is not None:
+            rows = FIGHT_ROWS
         self.summary: dict[str, Any] = {**info,
             "mapping": {name: row() for name in rows},
-            "actions": ({} if self.leg == "reconnect"
+            "actions": ({} if self.leg in ("reconnect", "fight")
                         else {action.kind: row() for action in route.actions}),
             "original_slot_reload": row(),
             "checkpoints": self.checkpoints, "completed_sequence": [],
             "failure": None, "cleanup": {}}
         if self.persist:
             self.summary["persistence"] = row()
+        if self.fight is not None:
+            self.summary["fight"] = {"modes": [], "interventions": [], "walk": None,
+                                     "found": {}, "outcome": None, "after": None}
+            self.summary["fight_greyed"] = row()
+            self.summary["fight_no_write"] = row()
 
     def _set_deadlines(self) -> None:
         """Start the route clock now; `_up` starts it again once a lane wait has ended."""
@@ -2371,6 +2719,276 @@ class Controller:
             (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
         return self.summary
 
+    def _read_mode(self) -> int | None:
+        """One read of the game's mode byte, through a pipe connection the driver closes again."""
+        from automap import amiga, amigaparty  # noqa: PLC0415
+        from tools.amiga import amigatarget  # noqa: PLC0415
+
+        target = amigatarget.connect_pipe(self.args.holder, amiga.MACHINES[self.route.game_key])
+        try:
+            return amigaparty.mode(target)
+        finally:
+            target.close()
+            self.game._pipe = None
+
+    @staticmethod
+    def _record_differences(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+        """Each record byte and item node that differs, as `NAME +0xOFF` or `NAME item N`."""
+        old = {record["slot"]: record for record in before}
+        new = {record["slot"]: record for record in after}
+        if old.keys() != new.keys():
+            return [f"party slots {sorted(old)} became {sorted(new)}"]
+        found = []
+        for slot, record in old.items():
+            then, now = bytes.fromhex(record["raw"]), bytes.fromhex(new[slot]["raw"])
+            found += [f"{record['name']} +0x{at:02X}" for at in range(max(len(then), len(now)))
+                      if then[at:at + 1] != now[at:at + 1]]
+            if record["items"] != new[slot]["items"]:
+                found.append(f"{record['name']} items")
+        return found
+
+    def _greyed_check(self, memory: Any) -> None:
+        """At the first command bar: every action button greyed unless combat-legal, one click on
+        a greyed one, and the bar, its owner, the mode and every party byte as they were."""
+        from automap import amigaparty  # noqa: PLC0415
+        from tools.amiga import curseadd, cursefight, maproute  # noqa: PLC0415
+
+        result = self.summary["fight_greyed"]
+        row_ = amigaparty.ROWS[self.route.game_key]
+        observed: dict[str, Any] = {}
+        result["observed"] = observed
+
+        def owner() -> dict[str, Any] | None:
+            return curseadd.bounded(lambda _h: memory.owner(), memory.holder,
+                                    self.left(cursefight.READ_LIMIT))
+
+        self._game_section()
+        frame = self._capture("combat_bar")
+        observed["owner"] = owner()
+        observed["mode"] = self._read_mode()
+        before = self._action_readback()
+        self._checkpoint("fight_bar", None, frame, reads=(maproute.Read("mode", "base", row_.mode, 1),))
+        listing_path = pathlib.Path(self.checkpoints["fight_bar"]["controls"])
+        result["evidence"] = ["fight_bar", str(listing_path)]
+        listing = listing_path.read_text().splitlines()
+        enabled = {}
+        for label in GREYED_ACTIONS:
+            lines = [line for line in listing if len(parts := line.split("|")) >= 4 and parts[1] == label]
+            if len(lines) != 1:
+                result.update(status="failed", reason=f"{label} is absent or ambiguous; kept {listing_path}")
+                raise AcceptanceStop(f"fight bar: {result['reason']}")
+            enabled[label] = "enabled=True" in lines[0]
+        observed["enabled"] = enabled
+        wrong = [label for label, on in enabled.items()
+                 if on and GREYED_ACTIONS[label] not in row_.combat_legal]
+        wrong += [line.split("|")[2] for line in listing if len(line.split("|")) >= 4
+                  and "card_" in line.split("|")[2] and "_level_up" in line.split("|")[2]
+                  and "enabled=True" in line]
+        if wrong:
+            result.update(status="failed", reason=f"enabled in a fight: {', '.join(wrong)}; kept {listing_path}")
+            raise AcceptanceStop(f"fight bar: {result['reason']}")
+        label = next(label for label, action in GREYED_ACTIONS.items()
+                     if action not in row_.combat_legal)
+        click: dict[str, Any] = {"control": label, "acknowledged_as_action": False}
+        self._map_section()
+        try:
+            click["reply"] = winwish.ui(self.guest, self.args.holder, "click", (label,))
+        except Exception as exc:  # noqa: BLE001 - the reply or error is the record, not a verdict
+            click["error"] = f"{type(exc).__name__}: {exc}"
+        observed["click"] = click
+        self.log("greyed_click", **click)
+        self._game_section()
+        problems = []
+        try:
+            again = self._capture("combat_bar")
+            result["evidence"].append(again["raw"])
+        except AcceptanceStop as exc:
+            problems.append(f"the command bar did not stay: {exc}")
+        observed["owner_after"] = owner()
+        observed["mode_after"] = self._read_mode()
+        after = self._action_readback()
+        if (observed["owner_after"] or {}).get("address") != (observed["owner"] or {}).get("address"):
+            problems.append(f"the bar's owner moved from {observed['owner']} to {observed['owner_after']}")
+        for name in ("mode", "mode_after"):
+            if observed[name] != row_.combat_value:
+                problems.append(f"{name} reads {observed[name]}, not {row_.combat_value}")
+        changed = self._record_differences(before, after)
+        if changed:
+            problems.append("party bytes changed: " + ", ".join(changed))
+        observed["party_before"], observed["party_after"] = before, after
+        if problems:
+            result.update(status="failed", reason="; ".join(problems))
+        else:
+            result["status"] = "awaiting image review"
+
+    def _survive(self) -> None:
+        """Raise every member's hit points and maximum to one value the field holds unsigned and
+        signed alike, so the party outlasts the fight. The leg never saves."""
+        from automap import amiga, amigaparty  # noqa: PLC0415
+        from tools.amiga import amigatarget  # noqa: PLC0415
+
+        target = amigatarget.connect_pipe(self.args.holder, amiga.MACHINES[self.route.game_key])
+        try:
+            party = amigaparty.read_party(target)
+            if not party:
+                raise AcceptanceStop("no party is readable for the survival write")
+            written = []
+            for member in party:
+                hp, top = member.row.hp, member.row.hp_max
+                value = (1 << (8 * min(hp.length, top.length) - 1)) - 1
+                target.write(member.address + top.offset, value.to_bytes(top.length, "big"))
+                target.write(member.address + hp.offset, value.to_bytes(hp.length, "big"))
+                written.append({"name": member.name, "address": member.address, "value": value,
+                                "hp_before": member.hp, "hp_max_before": member.hp_max})
+            again = amigaparty.read_party(target)
+            if not again or any((m.hp, m.hp_max) != (w["value"], w["value"])
+                                for m, w in zip(again, written)):
+                raise AcceptanceStop("the survival write did not read back")
+        finally:
+            target.close()
+            self.game._pipe = None
+        self.summary["fight"]["interventions"].append({"survival": written})
+        self.log("survival", members=written)
+
+    def _fight_bar(self, memory: Any) -> None:
+        """What the leg does at the first command bar, before its key."""
+        self.greyed_done = True
+        self._greyed_check(memory)
+        if self.fight.get("survive"):
+            self._survive()
+
+    def _walk_to_fight(self, plan: FightPlan, screens: Any, memory: Any) -> dict[str, Any]:
+        """NP8 on the map, NP4 after a key that left the square as it was, until a screen in
+        `plan.opens`; the walk's own screens get their answer, and any other screen restores the
+        snapshot taken before the first step, at most `FIGHT_RESTORES` times."""
+        self._game_section()
+        self.game.snapshot(FIGHT_WALK_SNAPSHOT, self.args.holder)
+        steps: list[dict[str, Any]] = []
+        restores, key = 0, "NP8"
+
+        def settled() -> tuple[str | None, Any]:
+            end = self.clock() + FIGHT_STEP_SETTLE * 3
+            while True:
+                seen, shot = screens.look("walk")
+                state = seen[0] if seen else None
+                if state is not None or self.clock() >= end:
+                    return state, shot
+                self.sleep(2.0)
+
+        for _ in range(FIGHT_WALK_STEPS):
+            # A key only on the recognised map.
+            screens.wait(("world",), 30)
+            before = memory.fix()
+            screens.press(key, "world")
+            self.sleep(FIGHT_STEP_SETTLE)
+            state, shot = settled()
+            answered = 0
+            while state in plan.walk_answers and answered < 4:
+                screens.press(plan.walk_answers[state], state)
+                answered += 1
+                self.sleep(FIGHT_STEP_SETTLE)
+                state, shot = settled()
+            if state in plan.opens:
+                steps.append({"key": key, "before": before, "met": state, "shot": str(shot)})
+                return {"steps": steps, "met": state, "restores": restores}
+            if state == "world":
+                after = memory.fix()
+                steps.append({"key": key, "before": before, "after": after})
+                key = ("NP4" if key == "NP8" and before is not None and after is not None
+                       and after[:2] == before[:2] else "NP8")
+                continue
+            if restores >= FIGHT_RESTORES:
+                raise AcceptanceStop(f"the walk to a fight met a screen it does not answer; kept {shot}")
+            steps.append({"key": key, "before": before, "unanswered": str(shot)})
+            self.game.restore(FIGHT_WALK_SNAPSHOT, self.args.holder)
+            restores += 1
+            key = "NP4"
+            self.sleep(FIGHT_STEP_SETTLE)
+        raise AcceptanceStop(f"{FIGHT_WALK_STEPS} walk keys met no fight")
+
+    def _fight_entry(self, plan: FightPlan, screens: Any, memory: Any) -> dict[str, Any]:
+        """The way into the title's fight, ending once the fight has begun."""
+        from tools.amiga import curseadd, cursefight, ssbfight  # noqa: PLC0415
+
+        walk = self.fight.get("walk") or {}
+        if plan.entry == "tavern":
+            steps = cursefight.walk(screens, memory, walk["place"], walk["route"])
+            cursefight.reach_tavern(screens)
+            screens.press("P", "tavern")
+            screens.sleep(cursefight.AFTER_KEY)
+            return {"steps": steps}
+        if plan.entry == "wander":
+            gate = curseadd.bounded(lambda _h: memory.variable(ssbfight.GATE), memory.holder,
+                                    self.left(cursefight.READ_LIMIT))
+            if gate != ssbfight.GATE_ON:
+                raise AcceptanceStop(f"the gate ${ssbfight.GATE:04X} reads {gate} in the running "
+                                     f"game, not {ssbfight.GATE_ON}; no step was sent")
+            return {"gate": gate, **ssbfight.wander(screens, memory, walk["place"], walk)}
+        return self._walk_to_fight(plan, screens, memory)
+
+    def run_fight(self) -> dict[str, Any]:
+        """Load the pinned specimen, walk into a fight, check the greyed buttons at the first
+        bar, answer every screen to the map logging the mode, read the party back, and halt."""
+        from tools.amiga import curseadd, cursefight  # noqa: PLC0415
+
+        result = self.summary["fight"]
+        try:
+            self._up()
+            self._game_section()
+            title = self._await_title()
+            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            self.run_phase(_fight_load(self.route, self.fight.get("place")))
+            self.summary["mapping"]["load"] = row("awaiting image review")
+            plan = fight_plan(self.route.title)
+            memory = _fight_memory(self.args.holder, self.route)
+            curseadd.bounded(lambda _h: memory.target(), memory.holder,
+                             self.left(cursefight.READ_LIMIT))
+            screens = _fight_screens(self, plan, memory)
+            result["walk"] = self._fight_entry(plan, screens, memory)
+            outcome = cursefight.fight(screens, memory, [], plan.rules, found=result["found"])
+            result["outcome"] = outcome["outcome"]
+            if not self.greyed_done:
+                raise AcceptanceStop("the fight ended before a command bar showed")
+            self._game_section()
+            result["after"] = self._action_readback()
+            if self.summary["fight_greyed"]["status"] == "failed":
+                raise AcceptanceStop(f"fight_greyed failed: {self.summary['fight_greyed']['reason']}")
+        except BaseException as exc:
+            self.summary["failure"] = f"{type(exc).__name__}: {exc}"
+            self.log("failure", error=self.summary["failure"], **guest_failure_fields(exc))
+            greyed = self.summary["fight_greyed"]
+            if greyed["status"] == "unproven" and not greyed.get("reason"):
+                greyed["reason"] = self.summary["failure"]
+        finally:
+            self._cleanup()
+            self._verify_no_write()
+            (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
+        return self.summary
+
+    def _verify_no_write(self) -> None:
+        """The fight leg saves nothing, so every fetched working disk has the hash this run's own
+        manifest staged it with; another prepare of the same specimen stamps other dates."""
+        result = self.summary.get("fight_no_write")
+        if result is None:
+            return
+        hashes, changed, missing = {}, [], []
+        for medium in self.route.media:
+            fetched = self.info["media"].get(medium.key, {}).get("guest_working_sha256")
+            hashes[medium.key] = {"staged": medium.sha256, "fetched": fetched}
+            if fetched is None:
+                missing.append(medium.key)
+            elif fetched != medium.sha256:
+                changed.append(medium.key)
+        result["observed"] = hashes
+        if changed:
+            result.update(status="failed",
+                          reason=f"working disk {', '.join(changed)} changed with no save made")
+            self.summary["failure"] = self.summary["failure"] or f"fight_no_write: {result['reason']}"
+        elif missing:
+            result.update(status="unproven", reason=f"working disk {', '.join(missing)} was not fetched")
+        else:
+            result.update(status="passed", reason=None)
+
     def _reload_party(self) -> None:
         """Load the party into the restarted game as the run's start did, then leave Wish on the Automapper."""
         load = next(phase for phase in self.route.phases if phase.name == "load")
@@ -2924,7 +3542,9 @@ def _parser() -> argparse.ArgumentParser:
                              "presses the actions, saves to a free slot and loads it again; "
                              "reconnect loads the "
                              "party, stops the game, grabs Wish, starts the game again and "
-                             "reloads")
+                             "reloads; fight loads a pinned fight specimen, walks into a fight, "
+                             "checks the action buttons are greyed at the first command bar and "
+                             "plays the fight on QUICK, logging the game's mode on each screen")
     parser.add_argument("--action", action="append", choices=ACTION_KINDS,
                         help="run only this enabled action; repeat for several (--leg persist only)")
     parser.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
@@ -2947,7 +3567,8 @@ def main(argv: list[str] | None = None) -> int:
         result = (controller.run_opening_first() if args.discover == "ssb-opening-first"
                   else controller.run_opening_second() if args.discover in OPENING_MODES[1:]
                   else controller.run_discovery() if args.discover
-                  else controller.run_persist() if args.leg == "persist" else controller.run_title())
+                  else controller.run_persist() if args.leg == "persist"
+                  else controller.run_fight() if args.leg == "fight" else controller.run_title())
     except (AcceptanceStop, RouteError, winwish.WinwishError, OSError, ValueError) as exc:
         print(f"winwishaccept: {exc}", file=sys.stderr)
         return 2
