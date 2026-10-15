@@ -113,10 +113,13 @@ class Keys:
 class ItemScreen:
     """The item screen as the captures showed it, driven by keys."""
 
-    def __init__(self, name, items, bar, *, reject=(), hang=()):
+    def __init__(self, name, items, bar, *, reject=(), hang=(), dead=(), late=0):
         self.name, self.items, self.bar = name, list(items), bar
         self.words = bar.split()
         self.reject, self.hang = set(reject), set(hang)
+        # DEAD rows ignore the Return; LATE is how many reads after a Return
+        # still show the list from before it.
+        self.dead, self.late = set(dead), late
         self.mode, self.cursor, self.bar_at = "sheet", 0, 0
         self.pending: list[Screen] = []
         self.keys: list[str] = []
@@ -161,6 +164,9 @@ class ItemScreen:
         if at in self.hang:
             self.mode = "unknown"
             return
+        if at in self.dead:
+            return
+        self.pending += [self.frame(cursor=at, exit_row=True, bar_colour=7)] * self.late
         # The redraw: the list with no cursor, as Silver Blades drew it.
         self.pending.append(self.frame(exit_row=True, bar_colour=7))
         if at in self.reject:
@@ -350,3 +356,21 @@ def test_main_accepts_ready_for_silver_blades(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "ready step" not in err
     assert "no save disk" in err
+
+
+def test_a_late_redraw_is_waited_for_not_read_as_unchanged(tmp_path, monkeypatch):
+    # 24 reads 0.05 s apart (1.2 s, Curse's measured bound) of the list as it
+    # was before the Return, then the redraw.
+    screen = ItemScreen(CURSE_NAME, CURSE_ITEMS, CURSE_BAR, late=24)
+    got = _run(tmp_path, monkeypatch, CURSE, screen).ready("ALIAS>COMPOSITE SHORT BOW")
+    assert got["outcome"] == "unreadied"
+    assert got["row_now"] == "NO  COMPOSITE SHORT BOW"
+
+
+def test_a_row_that_never_changes_fails_the_step(tmp_path, monkeypatch):
+    screen = ItemScreen(SSB_NAME, SSB_ITEMS, SSB_BAR, dead={2})
+    run = _run(tmp_path, monkeypatch, SILVER, screen)
+    with pytest.raises(A.StepFailed, match="still reads 'NO  LONG SWORD \\+1'"):
+        run.ready("1>LONG SWORD +1")
+    assert run.left == []
+    assert screen.keys == ["Return", "Down", "Down", "Return"]
