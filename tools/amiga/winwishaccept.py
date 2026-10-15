@@ -48,12 +48,8 @@ MAX_WAIT_LANES = 1800
 #: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
 #: L, Y, slot, B, E and N; Pools of Darkness' L, Y, P, slot and B.
 PERSIST_RELOAD_KEYS = 6
-#: The most `continue` pages (PRESS RETURN TO CONTINUE) one camp LOAD answers on its way back to
-#: the world bar. A party that has not set out shows the opening story: nine pages before the
-#: treasure screen and three after its offer, twelve in all (`PUBLISHED_CONTINUE_LIMIT`);
-#: the run that stopped at three had answered four pages, none of them a stale frame. Two more
-#: are the margin.
-PERSIST_CONTINUE_PAGES = 14
+#: The most `continue` pages (PRESS RETURN TO CONTINUE) a camp LOAD answers on its way back to the world bar.
+PERSIST_CONTINUE_PAGES = 3
 #: Seconds after a RETURN during which a frame identical to the page's own is the game not yet redrawn.
 CONTINUE_SETTLE = 5.0
 #: Screens a persist reload answers beyond its phases' own, which need a guard like any other.
@@ -821,8 +817,6 @@ class Controller:
             _persist_budget(route, self.persist["letter"]) if self.persist else 0)
         #: Set while the persist leg's own keys are pressed, so they count against the action budget.
         self.persist_keys = False
-        #: RETURN presses on continue pages in the camp LOAD under way; `PERSIST_CONTINUE_PAGES` caps it.
-        self.continue_presses = 0
         self.discovery = getattr(args, "discover", None) in (*LEAVE_MODES, *OPENING_MODES)
         self.discovery_snapshot = False
         self.encounters = None
@@ -2106,7 +2100,6 @@ class Controller:
         """From the camp bar, camp LOAD of slot `letter`, answering only the guarded screens
         the title can show; the frame of the world bar it ends on."""
         self._game_section()
-        self.continue_presses = 0
         if self.route.title == "ssb":
             state, _ = self._press_to("L", ("load_anyway", "load_picker"), CAMP_LOAD_WAIT)
             if state == "load_anyway":
@@ -2138,11 +2131,12 @@ class Controller:
                           ) -> tuple[str, dict[str, Any]]:
         """RETURN on each `continue` page (the "grown bored with peace" text after a load), a
         bounded number of times, until the world bar or one of `also` is up."""
+        pages = 0
         while state == "continue":
-            if self.continue_presses == PERSIST_CONTINUE_PAGES:
+            if pages == PERSIST_CONTINUE_PAGES:
                 raise AcceptanceStop(f"persist reload: still on a continue page after "
-                                     f"{self.continue_presses} RETURN presses; kept {frame['raw']}")
-            self.continue_presses += 1
+                                     f"{pages} RETURN presses; kept {frame['raw']}")
+            pages += 1
             shown = digest(pathlib.Path(frame["crop"]))
             self._press("RET", action=True)
             pressed = self.clock()

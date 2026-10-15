@@ -132,7 +132,7 @@ def _keys_allowed(screens, game):
 
 def test_guard_rules_add_the_fight_screens_to_the_curse_map():
     rules = cursefight.guard_rules()
-    assert set(cursefight.KNOWN) <= set(rules)
+    assert set(cursefight.KNOWN) - set(rules) <= set(cursefight.CAST_UNCAPTURED)
     for state, rule in cursefight.FIGHT_GUARDS.items():
         assert rules[state] == rule
     assert set(cursefight.ALLOWED_KEYS) <= set(cursefight.KNOWN) | set(cursefight.PIT_KNOWN)
@@ -819,7 +819,9 @@ def test_drive_stops_when_the_loaded_party_differs(tmp_path, monkeypatch):
         _drive(tmp_path, monkeypatch, parties=[loaded, loaded])
 
 
-@pytest.mark.parametrize("on, key", [("world", "S"), ("camp", "E"), ("combat_bar", "D"),
+@pytest.mark.parametrize("on, key", [("world", "S"), ("camp", "E"), ("combat_bar", "E"),
+                                     ("aim", "E"), ("aim", "M"), ("spell_list", "E"),
+                                     ("abort_spell", "Y"),
                                      ("combat_bar", "SPACE"), ("tavern", "H"),
                                      ("loaded_menu", "D"), ("nowhere", "A")])
 def test_a_key_outside_the_allowlist_is_never_sent(tmp_path, on, key):
@@ -1137,7 +1139,8 @@ def test_pit_fight_answers_attack_and_logs_the_first_bar(tmp_path):
 def test_the_slugs_question_is_uncaptured_and_a_run_stops_on_it_unpressed(tmp_path):
     rules = cursefight.guard_rules()
     assert cursefight.missing(rules) == ["attack_evade"]
-    assert set(cursefight.PIT_KNOWN) - set(cursefight.UNCAPTURED) <= set(rules)
+    assert (set(cursefight.PIT_KNOWN) - set(cursefight.UNCAPTURED)
+            - set(cursefight.CAST_UNCAPTURED)) <= set(rules)
     assert cursefight.ALLOWED_KEYS["attack_evade"] == frozenset({"A"})
     clock = Clock()
     game = PitGame(clock, ["continue", "attack_evade"], uncaptured={"attack_evade"})
@@ -1435,3 +1438,354 @@ def test_the_fight_driver_reads_the_party_with_the_shared_limit():
     from tools.amiga import curseadd, ssbfight
 
     assert cursefight.READ_LIMIT == ssbfight.READ_LIMIT == curseadd.READ_LIMIT >= 70
+
+
+# -- the cast: a staged Confusion on the caster's bars, aimed at a watched member -----------
+
+BRUTUS_AT, GALAIN_AT, HOLLAND_AT = 0xC5B000, 0xC5A000, 0xC5C000
+CAST_NAMES = ["GALAIN", "HOLLAND", "IILANDA", "SUNDRA", "BRUTUS"]
+
+
+def _watch(effects=(), left=3, status=1, control=0xB3, hp=60, kind=4):
+    return {"BRUTUS": {"address": BRUTUS_AT, "control": control, "picture": 0, "status": status,
+                       "side": 0, "quickfight": 0, "hit_points": hp, "creature_type": kind,
+                       "effects": list(effects), "spell_left": 0},
+            "GALAIN": {"address": GALAIN_AT, "control": 0, "picture": 0, "status": 0, "side": 0,
+                       "quickfight": 0, "hit_points": 9, "creature_type": 0, "effects": [],
+                       "spell_left": left}}
+
+
+class CastGame(Game):
+    """The scripted game with the cast's memory: each grab writes its screen's name as the
+    crop, so a held frame keeps its digest; `unguarded` screens have no guard."""
+
+    def __init__(self, clock, script, *, owners=(), watches=(), aims=((BRUTUS_AT, 6),),
+                 ids=(0x52, 0x52, 0x52), unguarded=()):
+        super().__init__(clock, script, owners=owners)
+        self.walking = False
+        self.watches, self.aims = list(watches), list(aims)
+        self.ids = list(ids)
+        self.unguarded = set(unguarded)
+
+    def grab(self, label, raw, crop, timeout):
+        super().grab(label, raw, crop, timeout)
+        pathlib.Path(crop).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(crop).write_bytes(str(self.current).encode())
+        return True
+
+    def __contains__(self, state):
+        return state in cursefight.KNOWN and state not in self.unguarded
+
+    def __call__(self, state, crop):
+        return state in self and state == self.current
+
+    def watch(self, names, spell):
+        assert spell == 0x52 and names == ["BRUTUS", "GALAIN"]
+        return self.watches.pop(0) if len(self.watches) > 1 else self.watches[0]
+
+    def spell_list(self):
+        return 0xC60000, list(self.ids)
+
+    def casting(self, address):
+        assert address == GALAIN_AT
+        return 0x52
+
+    def turn_pointer(self):
+        """HOLLAND is in turn while a monster's frame shows, GALAIN otherwise."""
+        return HOLLAND_AT if self.current == "~monster" else GALAIN_AT
+
+    def aim(self):
+        return self.aims.pop(0) if len(self.aims) > 1 else self.aims[0]
+
+
+def _cast(game, capture=False):
+    return cursefight.Cast(game, "GALAIN", 0x52, "BRUTUS", "BRUTUS", capture=capture)
+
+
+#: HOLLAND's bar, GALAIN's bar (CAST), the list, the aim menu straight after it (one NEXT,
+#: then TARGET), the cast beginning, GALAIN's bar with BRUTUS confused (DONE), GALAIN's bar
+#: once BRUTUS goes berserk (QUICK), then the won message and the map.
+CAST_FIGHT = ["combat_bar", "combat_bar", "combat_bar", "combat_bar", "spell_list", "aim",
+              "aim", "aim", "~begun", "combat_bar", "combat_bar", "combat_bar", "combat_bar",
+              "party_won", "world"]
+
+
+def _cast_owners():
+    return [{"address": HOLLAND_AT, **_member("HOLLAND")},
+            *({"address": GALAIN_AT, **_member("GALAIN")} for _ in range(3))]
+
+
+def test_the_cast_runs_on_the_casters_bars_and_quick_elsewhere(tmp_path):
+    clock = Clock()
+    game = CastGame(clock, CAST_FIGHT, owners=_cast_owners(),
+                    watches=[_watch(), _watch(), _watch((35,), left=2),
+                             _watch((35, 137), left=2)],
+                    aims=[(HOLLAND_AT, 6), (BRUTUS_AT, 6)])
+    screens = _screens(tmp_path, game, clock)
+    cast = _cast(game)
+    found = cursefight.fight(screens, game, [], cast=cast)
+    assert game.keys == ["Q", "C", "C", "N", "T", "D", "Q", "RET"]
+    assert found["outcome"] == "won" and [b["owner"] for b in found["bars"]] == [
+        "HOLLAND", "GALAIN", "GALAIN", "GALAIN"]
+    log = cast.log()
+    assert log["events"] == [{"bar": 2, "left_before": 3, "listed": 3, "casting_after_list": 0x52,
+                              "aims": 1, "casting_at_aim": 0x52, "aim_count": 6,
+                              "targets": [HOLLAND_AT, BRUTUS_AT], "outcome": "aimed",
+                              "next_presses": 1, "target": BRUTUS_AT,
+                              "casting_after_target": 0x52, "left_after": 2, "spent": 1}]
+    assert log["lowered_seen"] and log["quick"] and len(log["reads"]) == 4
+    assert "E" not in game.keys
+    _keys_allowed(screens, game)
+
+
+def test_the_caster_gets_quick_once_his_spell_runs_out(tmp_path):
+    clock = Clock()
+    game = CastGame(clock, ["combat_bar", "combat_bar", "party_won", "world"],
+                    owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch(left=0)])
+    found = cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+    assert game.keys == ["Q", "RET"] and found["outcome"] == "won"
+
+
+def test_a_spell_list_holding_another_spell_stops_the_run_before_any_key(tmp_path):
+    clock = Clock()
+    game = CastGame(clock, ["combat_bar", "combat_bar", "spell_list"],
+                    owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch()], ids=(0x52, 0x0F))
+    with pytest.raises(RouteError, match=r"holds \[82, 15\]"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+    assert game.keys == ["C"]
+
+
+def test_an_aim_that_cycles_without_the_target_stops_with_no_target_key(tmp_path):
+    clock = Clock()
+    game = CastGame(clock, ["combat_bar", "combat_bar", "spell_list", "aim"],
+                    owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch()], aims=[(HOLLAND_AT, 6), (GALAIN_AT, 6), (HOLLAND_AT, 6)])
+    with pytest.raises(RouteError, match="came back"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+    assert game.keys == ["C", "C", "N", "N"] and "T" not in game.keys
+
+
+def test_the_aim_menu_with_nothing_begun_stops_the_run(tmp_path):
+    clock = Clock()
+    game = CastGame(clock, ["aim"])
+    with pytest.raises(RouteError, match="no spell chosen"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game))
+    assert game.keys == []
+
+
+def test_a_capture_takes_the_list_from_memory_and_stops_at_the_aim_menu(tmp_path):
+    clock = Clock()
+    script = ["combat_bar", "combat_bar", *["~list"] * 8, *["~aim"] * 8]
+    game = CastGame(clock, script, owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch()], unguarded=("spell_list", "aim"))
+    cast = _cast(game, capture=True)
+    found = cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=cast)
+    assert found["outcome"] == "captured" and game.keys == ["C", "C"]
+    shots = {c["screen"]: pathlib.Path(c["shot"]).read_bytes() for c in cast.captures}
+    assert shots == {"spell_list": b"~list", "aim": b"~aim"}
+
+
+def test_a_capture_takes_no_frame_as_the_aim_menu_while_another_is_in_turn(tmp_path):
+    clock = Clock()
+    script = ["combat_bar", "combat_bar", *["~list"] * 8, *["~monster"] * 200]
+    game = CastGame(clock, script, owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch()], unguarded=("spell_list", "aim"))
+    with pytest.raises(RouteError, match="unchanged mid-fight"):
+        cursefight.fight(_screens(tmp_path, game, clock), game, [], cast=_cast(game, True))
+    assert game.keys == ["C", "C"]
+
+
+def _log(reads, events=None):
+    return {"watch": "BRUTUS", "spell": 0x52,
+            "events": [{"outcome": "aimed", "spent": 1}] if events is None else events,
+            "reads": reads}
+
+
+LOADED = {"control": 0xB3, "status": 1}
+
+
+def _saved(**fields):
+    row = {"name": "BRUTUS", "control": 0, "status": 1, "hit_points": 60, "creature_type": 4,
+           "effects": []}
+    row.update(fields)
+    return row
+
+
+def test_cast_verdict_passes_a_lowered_member_saved_living_under_orders():
+    log = _log([_watch(), _watch((35,)), _watch((137,)), _watch(control=0)])
+    assert cursefight.cast_verdict(log, _watch(control=0), _saved(), LOADED) == ("pass", [])
+
+
+@pytest.mark.parametrize("saved, after, match", [
+    (_saved(effects=[142]), _watch(control=0), "saved holding effects"),
+    (_saved(hit_points=0), _watch(control=0), "0 hit points saved"),
+    (_saved(status=0), _watch(control=0), "status 0 saved"),
+    (None, _watch(control=0), "no saved reading"),
+])
+def test_cast_verdict_names_what_keeps_a_lowered_member_from_passing(saved, after, match):
+    log = _log([_watch((137,))])
+    kind, problems = cursefight.cast_verdict(log, after, saved, LOADED)
+    assert kind == "inconclusive" and any(match in p for p in problems), problems
+
+
+def test_cast_verdict_refutes_a_member_still_under_the_game_after_137():
+    log = _log([_watch((142,))])
+    kind, problems = cursefight.cast_verdict(log, _watch(), _saved(control=0xB3), LOADED)
+    assert kind == "refuted" and "still reads control 0xb3" in problems[0]
+
+
+def test_cast_verdict_records_got_away_as_its_own_outcome():
+    log = _log([_watch((142,)), _watch((142,), status=3)])
+    assert cursefight.cast_verdict(log, _watch(control=0, status=0),
+                                   _saved(status=0), LOADED) == ("got_away", [])
+    kind, problems = cursefight.cast_verdict(log, _watch(control=0, status=0),
+                                             _saved(status=0, creature_type=0), LOADED)
+    assert kind == "got_away" and "expected 0, 0x00, 4" in problems[0]
+
+
+def test_cast_verdict_needs_a_cast_and_one_copy_spent_per_cast():
+    kind, problems = cursefight.cast_verdict(_log([_watch()], events=[]), _watch(), _saved(),
+                                             LOADED)
+    assert kind == "inconclusive" and "no cast event" in problems
+    assert any("never held 137 or 142" in p for p in problems)
+    kind, problems = cursefight.cast_verdict(
+        _log([_watch((137,))], events=[{"outcome": "aimed", "spent": 2}]),
+        _watch(control=0), _saved(), LOADED)
+    assert kind == "inconclusive" and problems == ["cast 1 (aimed) spent 2 of 82, not 1"]
+
+
+@pytest.mark.parametrize("text, match", [
+    ("BRUTUS:control=0", "writes only"), ("BRUTUS:status=1", "writes only"),
+    ("BRUTUS:creature_type=0", "writes only"), ("BRUTUS:side=1", "writes only"),
+    ("NOBODY:hp=60", "not in the party"), ("BRUTUS:hp=0", "not 1 to 255"),
+    ("GALAIN:memorised0=128", "not 1 to 127"), ("BRUTUS:hp=60,hp=61", "twice"),
+    ("BRUTUS", "not NAME:FIELD"), ("GALAIN:memorised84=82", "writes only")])
+def test_a_stage_record_writes_only_hit_points_and_memorised_slots(text, match):
+    with pytest.raises(RouteError, match=match):
+        cursefight.parse_records([text], CAST_NAMES)
+
+
+def test_apply_records_writes_each_byte_in_its_members_block():
+    blocks = ((0, 0x1AC), (0x1AC, 0x358))
+    data = bytes(0x358)
+    plans = cursefight.parse_records(["B:hp=0x3C,hp_max=60", "A:memorised0=82,memorised2=82"],
+                                     ["A", "B"])
+    out, staged = cursefight.apply_records(data, blocks, ["A", "B"], plans)
+    assert [i for i in range(len(out)) if out[i]] == [0x1E, 0x20, 0x1AC + 0x78, 0x1AC + 0x1A9]
+    assert staged[0]["fields"]["hp"] == {"record_offset": 0x1A9, "file_offset": 0x1AC + 0x1A9,
+                                         "before": 0, "after": 60}
+    with pytest.raises(RouteError, match="not an empty slot"):
+        cursefight.apply_records(out, blocks, ["A", "B"],
+                                 cursefight.parse_records(["A:memorised0=82"], ["A", "B"]))
+    with pytest.raises(RouteError, match="above hp_max"):
+        cursefight.apply_records(data, blocks, ["A", "B"],
+                                 cursefight.parse_records(["A:hp=9"], ["A", "B"]))
+
+
+def _brutus_inputs():
+    specimen = (specimens.tree_root() / "coab-amiga"
+                / "WISH-SPEC-wish303-s4-curse-brutus-pool-add-slot-d" / "fetched-save.adf")
+    _evoker, diskb = _registered_inputs()
+    if not specimen.is_file():
+        pytest.skip("the BRUTUS specimen is not on this machine")
+    return specimen, diskb
+
+
+def test_stage_writes_only_the_staged_bytes_into_the_brutus_slot(tmp_path):
+    specimen, diskb = _brutus_inputs()
+    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()  # noqa: E731
+    prep = tmp_path / "prep.json"
+    prep.write_text(json.dumps({
+        "title": "curse", "registered": {},
+        "disks": {"save": {"path": str(specimen), "sha256": digest(specimen)},
+                  "diskb": {"path": str(diskb), "sha256": digest(diskb)}}}))
+    path = cursefight.stage(prep, specimen, tmp_path / "out", load="D", save="F",
+                            records=["BRUTUS:hp=60,hp_max=60",
+                                     "GALAIN:memorised0=82,memorised1=82,memorised2=82"])
+    staged = json.loads(path.read_text())
+    fight = staged["fight"]
+    before = cursefight.amiga_adf.AmigaDisk.open(specimen).read_file("/SAVE/savgamD.dat")
+    disk = cursefight.amiga_adf.AmigaDisk.open(pathlib.Path(staged["disks"]["save"]["path"]))
+    after = disk.read_file("/SAVE/savgamD.dat")
+    assert disk.verify() == []
+    assert [(i, before[i], after[i]) for i in range(len(before)) if before[i] != after[i]] == [
+        (0x3237, 0, 82), (0x3238, 0, 82), (0x3239, 0, 82), (0x3BED, 11, 60), (0x3D1E, 11, 60)]
+    assert fight["spells"]["GALAIN"] == [82, 82, 82]
+    assert fight["members"]["BRUTUS"]["control"] == 0xB3
+    assert fight["members"]["BRUTUS"]["status"] == 1
+    assert fight["members"]["BRUTUS"]["hit_points"] == 60
+    assert [r["name"] for r in fight["staged_records"]] == ["BRUTUS", "GALAIN"]
+
+
+def _cast_args(tmp_path, manifest, **options):
+    args = _args(tmp_path, manifest, members=())
+    args.cast, args.aim, args.watch, args.capture = "GALAIN:CONFUSION", "BRUTUS", "BRUTUS", False
+    for key, value in options.items():
+        setattr(args, key, value)
+    return args
+
+
+def _cast_staged(tmp_path, spells=(0x52, 0x52, 0x52)):
+    manifest = _staged(tmp_path)
+    value = json.loads(manifest.read_text())
+    value["fight"]["names"] = CAST_NAMES
+    value["fight"]["members"]["BRUTUS"] = {"control": 0xB3, "status": 1}
+    value["fight"]["spells"] = {"GALAIN": list(spells)}
+    manifest.write_text(json.dumps(value))
+    return manifest
+
+
+@pytest.mark.parametrize("problem, match", [
+    ("no_guards", "capture them with --capture"), ("other_spell", "staged list holds"),
+    ("no_spell", "staged list holds"), ("capture_alone", "--capture needs --cast"),
+    ("aim_alone", "go together"), ("absent", "not in slot"), ("number", "not 1 to 127")])
+def test_a_cast_run_stops_before_the_guest(tmp_path, monkeypatch, problem, match):
+    spells = {"other_spell": (0x52, 0x0F), "no_spell": ()}.get(problem, (0x52, 0x52, 0x52))
+    manifest = _cast_staged(tmp_path, spells)
+    monkeypatch.setattr(cursefight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(cursefight.curseadd, "slot_letters", lambda disk: ["D"])
+    options = {"capture_alone": {"cast": None, "aim": None, "watch": None, "capture": True},
+               "aim_alone": {"cast": None, "watch": None},
+               "absent": {"aim": "EVOKER"}, "number": {"cast": "GALAIN:200"}}.get(problem, {})
+    if problem == "no_guards":
+        monkeypatch.setattr(cursefight, "FIGHT_GUARDS", {
+            k: v for k, v in cursefight.FIGHT_GUARDS.items() if k not in ("spell_list", "aim")})
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match=match):
+        cursefight.run(_cast_args(tmp_path, manifest, **options), guest=guest, guards=object(),
+                       boot=pytest.fail, halt=pytest.fail, memory=object())
+    assert guest.calls == []
+
+
+def test_a_capture_run_saves_nothing_and_needs_both_frames(tmp_path, monkeypatch):
+    manifest = _cast_staged(tmp_path)
+    monkeypatch.setattr(cursefight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(cursefight.curseadd, "slot_letters", lambda disk: ["D"])
+    monkeypatch.setattr(cursefight.curseadd, "mute", lambda guest, out, timeout: out / "mute.json")
+    seen = {}
+
+    def drive(screens, manifest, members, memory, *, save, found, cast):
+        seen.update(save=save, capture=cast.capture)
+        cast.captures += [{"screen": "spell_list"}, {"screen": "aim"}]
+        return {"bars": [], "outcome": "captured"}
+
+    monkeypatch.setattr(cursefight, "drive", drive)
+    receipt = cursefight.run(_cast_args(tmp_path, manifest, capture=True), guest=LaneGuest(),
+                             guards=object(), boot=lambda *a, **k: {"claim": "ok"},
+                             memory=object(), halt=lambda *a, **k: {"fetched": {}})
+    assert seen == {"save": False, "capture": True}
+    assert receipt["success"] and receipt["save"] is False and receipt["problems"] == []
+
+
+def test_the_cast_guards_name_the_captured_list_and_aim_menu_and_nothing_else(tmp_path):
+    shots = ACCEPTANCE / "WISH-303/i6cap/cap1/screens"
+    frames = {name: shots / f"{name}-fight.png" for name in ("051", "054", "055", "061")}
+    if not all(f.is_file() for f in frames.values()):
+        pytest.skip("the WISH-303 cast capture is not on this machine")
+    guards = _real_guards(tmp_path)
+    named = {name: [s for s in cursefight.KNOWN if s in guards and guards(s, f)]
+             for name, f in frames.items()}
+    assert named == {"051": ["combat_bar"], "054": ["spell_list"], "055": ["aim"],
+                     "061": ["aim"]}

@@ -20,6 +20,15 @@ nothing. A brawl counts as won only once the game shows THE PARTY HAS WON. `--no
 loads the slot, begins, then camps and saves at once, with no walk and no fight, and reads
 the save back, each member's combat picture included. Memory is only read, never written, so the Pit's gate stays at `$80` in a save the run makes; the
 receipt records it.
+
+`stage --stage-record NAME:FIELD=VALUE` writes hit points, their maximum or a memorised slot on
+one member of the copy, and nothing else. `run --cast CASTER:SPELL --aim MEMBER --watch MEMBER`
+has the caster cast a staged spell on his own bars: CAST, the list checked in memory to hold
+only that spell, NEXT on the aim menu until the target is MEMBER's record, then TARGET; DONE
+while the watched member is confused, and QUICK once he has held effect 137 or 142 or the
+spell is spent. The watched member is read at every bar and after the fight, and the receipt
+judges the run pass, got_away, refuted or inconclusive (`cast_verdict`). `--capture` takes the
+list and the aim menu from memory and a held frame, stops at the aim menu and saves nothing.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
 
@@ -113,12 +122,23 @@ FIGHT_GUARDS = {
                     "sha256": "89b99bc33b8a2b0494ad7d39adcf238a8802b4fec1186f7ce8774f168ff04a73",
                     "and": [{"box": [74, 302, 690, 318],
                              "sha256": "62e2c5b54a7168bf15231eb25872aa96f17c857a1994d07fcecf3c381750cdd2"}]},
+    # CHOOSE SPELL: CAST EXIT under the caster's spells in memory, and the aim menu (AIM: NEXT
+    # PREV MANUAL TARGET CNTR. EXIT) with SPELL:CONFUSION above it, cut from the brawl capture
+    # WISH-303 `i6cap/cap1/screens/054-fight.png` and `055-fight.png`; neither matches any of
+    # the 5513 earlier 720x568 Amiga frames under the acceptance folder.
+    "spell_list": {"box": [72, 404, 434, 426],
+                   "sha256": "5dd38cfa6b6676cd31e6ec0724d03c8b28cfa870c47d6fda54b6f4604a053560"},
+    "aim": {"box": [72, 404, 686, 426],
+            "sha256": "2d90f56c352c39fe6525cd7d759a8b9cf8109c4f36e75128059767fe22511d09",
+            "and": [{"box": [74, 388, 320, 402],
+                     "sha256": "9bc6bec89c50a9423888368a8e63f57b7ebbb9c0396baa6af386306b6f46ff06"}]},
 }
 #: "party_won", "party_destroyed" and "tossed" come before "continue": the first known screen
 #: a grab matches names it.
 KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
          "party_won", "party_destroyed", "tossed", "continue", "tavern", "injuries", "combat_bar", "continue_battle", "treasure",
-         "treasure_left", "investigate", "camp", "camp_save_picker", "exit_game")
+         "treasure_left", "investigate", "camp", "camp_save_picker", "exit_game",
+         "spell_list", "aim", "abort_spell")
 #: The only keys each screen may receive. The tavern's L(EAVE) is for a bar shown again after
 #: the fight; the investigate question is answered NO, which keeps the party out of a second fight.
 ALLOWED_KEYS = {
@@ -128,11 +148,14 @@ ALLOWED_KEYS = {
     "continue": frozenset({"RET"}), "tossed": frozenset({"RET"}),
     "party_won": frozenset({"RET"}),
     "tavern": frozenset({"P", "L"}), "injuries": frozenset({"I"}),
-    "combat_bar": frozenset({"Q"}), "continue_battle": frozenset({"N"}),
+    "combat_bar": frozenset({"Q", "C", "D"}), "continue_battle": frozenset({"N"}),
     "treasure": frozenset({"E"}), "treasure_left": frozenset({"N"}),
     "investigate": frozenset({"N"}), "camp": frozenset({"S"}),
     "camp_save_picker": frozenset("ABCDEFGHIJ"), "exit_game": frozenset({"N"}),
     "attack_evade": frozenset({"A"}), "party_destroyed": frozenset({"RET"}),
+    # The cast: CAST on the list, NEXT and TARGET on the aim menu (never EXIT), and NO to the
+    # abort question.
+    "spell_list": frozenset({"C"}), "aim": frozenset({"N", "T"}), "abort_spell": frozenset({"N"}),
 }
 #: Answers to the screens that come between the first command bar and the map.
 FIGHT_ANSWERS = {"combat_bar": "Q", "continue_battle": "N", "treasure": "E",
@@ -196,12 +219,57 @@ UNCAPTURED = {
 #: "party_destroyed" comes before "continue": the first known screen a grab matches names it.
 PIT_KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
              "party_destroyed", "continue", "attack_evade", "combat_bar", "continue_battle", "treasure",
-             "treasure_left", "camp", "camp_save_picker", "exit_game")
+             "treasure_left", "camp", "camp_save_picker", "exit_game", "spell_list", "aim",
+             "abort_spell")
 #: Answers to the screens between the step that met the monsters and the map after the fight;
 #: the slugs' question gets ATTACK, never EVADE, and the destroyed party's message RETURN.
 PIT_ANSWERS = {"continue": "RET", "attack_evade": "A", "combat_bar": "Q",
                "continue_battle": "N", "treasure": "E", "treasure_left": "N",
                "party_destroyed": "RET"}
+
+#: Spell ids `--cast` takes by name: Curse's spell row 82 (`g1EDE + 16 * 82`) is Confusion.
+SPELLS = {"CONFUSION": 0x52}
+#: Record offsets the cast reads besides `RECORD`: the memorised list (84 bytes, a listed spell
+#: is 1-0x7F), the creature type, and the pointer to the member's combat block, whose byte 0
+#: holds the spell he has begun casting.
+MEMORISED = 0x1E
+MEMORISED_SIZE = 0x54
+CREATURE_TYPE = 0x11B
+COMBAT_BLOCK = 0x192
+#: Data-hunk globals: the spell list's head (a pointer, set while a list is built) and its ids
+#: (`0x2FD26`); the aim menu's target record (`0x9F38` stores it, TARGET takes it) and the
+#: count of combatants NEXT steps through (a byte).
+SPELL_LIST_HEAD = 0x63E2
+SPELL_LIST = 0x63E6
+AIM_TARGET = 0x4FE6
+AIM_COUNT = 0x4FE0
+#: Effect ids: confused (35), goes berserk (137) and runs away (142). Removing 137 or 142
+#: clears a control of `$B3` (`0x12626`, `0x126A8`).
+CONFUSED = 35
+BERSERK = 137
+RUNS_AWAY = 142
+LOWERING = (BERSERK, RUNS_AWAY)
+#: The status a member gets on leaving the map ("Got Away", `0xF1F0`).
+GOT_AWAY = 3
+#: NEXT presses the aim may take when the count byte reads 0 or more than this.
+AIM_PRESSES = 24
+#: Seconds the caster's bar may still show after CAST before the run stops.
+CAST_LINGER = 12.0
+#: Seconds an unguarded screen must hold before `--capture` takes it as the list or the aim.
+CAPTURE_STILL = 5.0
+#: The cast's screens; the guard map has rules for the first two, and `--capture` would take
+#: them again from memory and a held frame. The abort question shows only after EXIT on the
+#: aim menu, which the run never presses, so it has no rule.
+CAST_UNCAPTURED = {
+    "spell_list": "the combat spell list, `Spells in Memory` (`0x2388C`)",
+    "aim": "the aim menu, `Next Prev Manual Target Center Exit` (`0x9F38`)",
+    "abort_spell": "the `Abort Spell?` question (EXIT on the aim menu)",
+}
+#: Record fields `stage --stage-record` may write: hit points and their maximum, and one
+#: memorised slot each (`memorised0` is +0x1E). Control, status, type, side and effects are
+#: never written.
+STAGE_FIELDS = {"hp": RECORD["hit_points"], "hp_max": 0x78,
+                **{f"memorised{i}": MEMORISED + i for i in range(MEMORISED_SIZE)}}
 
 
 class Screens(curseadd.Screens):
@@ -321,23 +389,97 @@ def tavern_map(diskb: pathlib.Path):
     return area_map(diskb, TAVERN_GEO)
 
 
-def stage_gate(local: pathlib.Path, load: str) -> dict:
-    """Set the Pit's gate in slot `load` of the copy at `local`, in place; the copy's new digest."""
+def stage_slot(local: pathlib.Path, load: str, staged: bytes) -> dict:
+    """Write `staged` over slot `load` of the copy at `local`, in place; the copy's new digest."""
     path = amiga_savegame.slot_path(amiga_savegame.CURSE, load)
     copy = amiga_adf.AmigaDisk.open(local)
-    staged = with_gate(copy.read_file(path), PIT_GATE_ON)
     replace_file_in_place(copy, path, staged)
     copy.save(local)
     check = amiga_adf.AmigaDisk.open(local)
     require(not check.verify() and check.read_file(path) == staged,
             "the staged slot does not read back")
-    require(gate_word(check.read_file(path)) == PIT_GATE_ON, "the staged gate does not read back")
     return {"path": str(local), "sha256": sha256(local)}
 
 
+def stage_gate(local: pathlib.Path, load: str) -> dict:
+    """Set the Pit's gate in slot `load` of the copy at `local`, in place; the copy's new digest."""
+    path = amiga_savegame.slot_path(amiga_savegame.CURSE, load)
+    staged = with_gate(amiga_adf.AmigaDisk.open(local).read_file(path), PIT_GATE_ON)
+    digest = stage_slot(local, load, staged)
+    check = amiga_adf.AmigaDisk.open(local)
+    require(gate_word(check.read_file(path)) == PIT_GATE_ON, "the staged gate does not read back")
+    return digest
+
+
+def parse_records(records: list[str], names: list[str]) -> list[dict]:
+    """Read and check every `NAME:FIELD=VALUE[,FIELD=VALUE]` before anything is written.
+
+    A value is decimal or `0x` hex. Stops on a member outside the party or named twice, a
+    field outside `STAGE_FIELDS`, a field named twice, or a value out of range: hit points
+    1-255, a memorised spell 1-0x7F.
+    """
+    plans: list[dict] = []
+    for text in records:
+        name, sep, fields_text = text.partition(":")
+        require(bool(sep) and bool(name) and bool(fields_text),
+                f"stage record {text!r} is not NAME:FIELD=VALUE[,FIELD=VALUE]")
+        require(name in names, f"{name} is not in the party: {names}")
+        require(all(plan["name"] != name for plan in plans), f"{name} is named twice")
+        changes: dict[str, int] = {}
+        for part in fields_text.split(","):
+            field, sep, value = part.partition("=")
+            require(bool(sep), f"stage record field {part!r} is not FIELD=VALUE")
+            require(field in STAGE_FIELDS,
+                    f"a stage record writes only hp, hp_max and memorised0-memorised"
+                    f"{MEMORISED_SIZE - 1}, not {field!r}")
+            require(field not in changes, f"stage record names {field} twice")
+            try:
+                number = int(value, 0)
+            except ValueError:
+                raise RouteError(f"stage record value {value!r} is not a number") from None
+            top = 0x7F if field.startswith("memorised") else 0xFF
+            require(1 <= number <= top, f"{field} {number} is not 1 to {top}")
+            changes[field] = number
+        plans.append({"name": name, "changes": changes})
+    return plans
+
+
+def apply_records(data: bytes, blocks: tuple, names: list[str],
+                  plans: list[dict]) -> tuple[bytes, list[dict]]:
+    """The saved game's bytes with each planned field written, and what the manifest records:
+    each byte's record and file offset, before and after.
+
+    Stops, with nothing returned, on a memorised slot that was not empty or a member whose hit
+    points end above his maximum."""
+    out = bytearray(data)
+    staged: list[dict] = []
+    for plan in plans:
+        start = blocks[names.index(plan["name"])][0]
+        fields = {}
+        for field, value in plan["changes"].items():
+            at = start + STAGE_FIELDS[field]
+            require(not field.startswith("memorised") or out[at] == 0,
+                    f"{plan['name']}'s {field} holds {out[at]:#04x}, not an empty slot")
+            fields[field] = {"record_offset": STAGE_FIELDS[field], "file_offset": at,
+                             "before": out[at], "after": value}
+            out[at] = value
+        hp, top = out[start + STAGE_FIELDS["hp"]], out[start + STAGE_FIELDS["hp_max"]]
+        require(hp <= top, f"{plan['name']}: hp {hp} is above hp_max {top}")
+        staged.append({"name": plan["name"], "fields": fields})
+    return bytes(out), staged
+
+
+def spells_of(raw: bytes) -> list[int]:
+    """The ids the combat spell list would offer from a record's memorised slots: 1-0x7F."""
+    return [b for b in raw[MEMORISED:MEMORISED + MEMORISED_SIZE] if 0 < b < 0x80]
+
+
 def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, out: pathlib.Path, *,
-          load: str, save: str) -> pathlib.Path:
-    """Copy a Curse save disk in as a prepare run's disk A and write `out/prepare.json`."""
+          load: str, save: str, records: list[str] | None = None) -> pathlib.Path:
+    """Copy a Curse save disk in as a prepare run's disk A and write `out/prepare.json`.
+
+    Each of `records` (`parse_records`) is written into the loaded slot of the copy in the
+    same in-place write as a Pit gate, and the manifest lists every byte written."""
     require(not out.exists(), f"{out} already exists")
     require(bool(SLOT.fullmatch(load)) and bool(SLOT.fullmatch(save)) and load != save,
             "the load and save letters must be two letters A-J")
@@ -353,6 +495,8 @@ def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, out: pathlib.P
     require(load in letters, f"slot {load} is not on {source_disk}: {letters}")
     require(save not in letters, f"slot {save} is already on {source_disk}")
     saved = _slot(disk, load)
+    names = [m.name for m in saved.characters]
+    plans = parse_records(records or [], names)
     state = amiga_savegame.state_from_savegame(saved)
     place = {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing}
     require(state.area in (TAVERN_AREA, PIT_AREA),
@@ -375,13 +519,24 @@ def stage(manifest_path: pathlib.Path, source_disk: pathlib.Path, out: pathlib.P
         walk_plan["staged"] = {f"{PIT_GATE:04X}": {"before": gate_word(saved.data),
                                                    "after": PIT_GATE_ON}}
         disks["save"] = stage_gate(pathlib.Path(disks["save"]["path"]), load)
+    now = saved
+    staged_records: list[dict] = []
+    if plans:
+        local = pathlib.Path(disks["save"]["path"])
+        path = amiga_savegame.slot_path(amiga_savegame.CURSE, load)
+        before = amiga_adf.AmigaDisk.open(local).read_file(path)
+        written, staged_records = apply_records(before, saved.blocks, names, plans)
+        disks["save"] = stage_slot(local, load, written)
+        now = _slot(amiga_adf.AmigaDisk.open(local), load)
+        require([m.name for m in now.characters] == names, "the staged slot's party differs")
     staged = {**manifest, "disks": disks,
               "prepared_from": {"path": str(manifest_path.resolve()),
                                 "save_sha256": manifest["disks"]["save"]["sha256"]},
               "fight": {"source": {"path": str(source_disk.resolve()), "sha256": source_hash},
                         "load": load, "save": save, "place": place, **walk_plan,
-                        "names": [m.name for m in saved.characters],
-                        "members": {m.name: member_fields(m.raw) for m in saved.characters}}}
+                        "names": names, "staged_records": staged_records,
+                        "spells": {m.name: spells_of(m.raw) for m in now.characters},
+                        "members": {m.name: member_fields(m.raw) for m in now.characters}}}
     path = out / "prepare.json"
     write_json(path, staged)
     return path
@@ -475,6 +630,48 @@ class Memory:
         from automap import amigavars  # noqa: PLC0415
 
         return amigavars.read_variable(self.target(), self.title, var).value
+
+    def _global(self, offset: int, size: int) -> int:
+        target = self.target()
+        return int.from_bytes(target.read(target.data_base + offset, size), "big")
+
+    def watch(self, names: list[str], spell: int) -> dict[str, dict]:
+        """Each named member's control, status, hit points, quickfight, creature type, effect
+        ids in chain order, record address, and how many of `spell` he holds memorised."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        members = amigaparty.read_party(self.target())
+        require(members is not None, "the party list does not read")
+        rows = {}
+        for name in names:
+            found = [m for m in members if m.name == name]
+            require(len(found) == 1, f"{name} is in the party {len(found)} times")
+            rows[name] = watch_row(found[0].raw, found[0].address,
+                                   [raw[0] for _at, raw in found[0].effects()], spell)
+        return rows
+
+    def spell_list(self) -> tuple[int, list[int]]:
+        """The combat spell list: its head pointer and every nonzero id in it."""
+        target = self.target()
+        ids = bytes(target.read(target.data_base + SPELL_LIST, MEMORISED_SIZE))
+        return self._global(SPELL_LIST_HEAD, 4), [b for b in ids if b]
+
+    def casting(self, address: int) -> int | None:
+        """The spell the record at `address` has begun casting, None with no combat block."""
+        target = self.target()
+        block = int.from_bytes(target.read(address + COMBAT_BLOCK, 4), "big")
+        return None if not block else bytes(target.read(block, 1))[0]
+
+    def aim(self) -> tuple[int, int]:
+        """The aim menu's target record address and the count of combatants NEXT steps through."""
+        return self._global(AIM_TARGET, 4), self._global(AIM_COUNT, 1)
+
+
+def watch_row(raw: bytes, address: int, effects: list[int], spell: int) -> dict:
+    """One watched member's reading: `RECORD`'s fields, his type, effects and spells left."""
+    return {"address": address, **{field: raw[at] for field, at in RECORD.items()},
+            "creature_type": raw[CREATURE_TYPE], "effects": list(effects),
+            "spell_left": raw[MEMORISED:MEMORISED + MEMORISED_SIZE].count(spell)}
 
 
 def walk(screens: Screens, memory: Memory, start: dict, route: list[int]) -> list[dict]:
@@ -653,12 +850,219 @@ PIT_FIGHT = FightRules(
     defeat=("party_destroyed",))
 
 
+class Captured(Exception):
+    """`--capture` reached the aim menu and kept its frame; the fight goes no further."""
+
+
+class Cast:
+    """One caster's spell, cast on his own bars at one member, with another member watched.
+
+    On the caster's bar, while the watched member has never held `LOWERING` and the caster
+    still holds the spell, the bar gets CAST; while the watched member is confused it gets
+    DONE instead; after that it gets QUICK, as every other bar does. The list gets CAST once
+    every id on it is the spell; the aim menu, which the game shows straight after the list,
+    gets NEXT until the target global holds the aim member's record, then TARGET. Every bar
+    reads the watched member and the caster, and a cast event checks that exactly one
+    memorised copy was spent.
+
+    With `capture`, the list and the aim menu are taken from memory and a held frame: the list
+    gets CAST, and the aim menu's frame ends the fight with nothing pressed on it.
+    """
+
+    def __init__(self, memory: Any, caster: str, spell: int, aim: str, watch: str, *,
+                 capture: bool = False):
+        self.memory, self.caster, self.spell = memory, caster, spell
+        self.aim_at, self.watched = aim, watch
+        self.capture = capture
+        #: idle, chose (CAST on the bar), begun (CAST on the list) or aimed (TARGET).
+        self.phase = "idle"
+        self.events: list[dict] = []
+        self.reads: list[dict] = []
+        self.captures: list[dict] = []
+        self.lowered = False
+        self.left: int | None = None
+        self.quick = False
+        self._chose_at = 0.0
+        self._list_digest: str | None = None
+
+    def names(self) -> list[str]:
+        return list(dict.fromkeys((self.watched, self.caster, self.aim_at)))
+
+    def read(self, screens: Any, when: str) -> dict:
+        rows = curseadd.bounded(lambda _h: self.memory.watch(self.names(), self.spell),
+                                self.memory.holder, screens.left(READ_LIMIT))
+        reading = {"when": when, **rows}
+        self.reads.append(reading)
+        screens.events.append({"watch": reading})
+        if set(rows[self.watched]["effects"]) & set(LOWERING):
+            self.lowered = True
+        return reading
+
+    def _settle(self, reading: dict) -> None:
+        """Close a cast the caster's next bar or the fight's end finds unfinished, and check
+        the spend while no cast is in flight and the caster has not been given QUICK."""
+        left = reading[self.caster]["spell_left"]
+        if self.phase in ("chose", "begun"):
+            self.events[-1]["outcome"] = "lost" if self.phase == "begun" else "no_list"
+            self.phase = "idle"
+        if self.phase == "aimed":
+            self.phase = "idle"
+        if self.events and not self.quick:
+            event = self.events[-1]
+            if "left_after" not in event:
+                event["left_after"] = left
+                event["spent"] = event["left_before"] - left
+        self.left = left
+
+    def on_bar(self, owner: dict, screens: Any, bar: int) -> str:
+        """The key for a bar: CAST, DONE or QUICK on the caster's, QUICK on everyone else's."""
+        reading = self.read(screens, f"bar {bar} ({owner['name']})")
+        if owner["name"] != self.caster:
+            return "Q"
+        self._settle(reading)
+        if self.lowered or not self.left or self.quick:
+            self.quick = True
+            return "Q"
+        if CONFUSED in reading[self.watched]["effects"]:
+            return "D"
+        self.events.append({"bar": bar, "left_before": self.left})
+        self.phase, self._chose_at = "chose", screens.clock()
+        return "C"
+
+    def bar_again(self, owner: dict, screens: Any) -> bool:
+        """Whether a caster's bar still showing just after CAST is that same bar, not a new one."""
+        if self.phase != "chose" or owner["name"] != self.caster:
+            return False
+        require(screens.clock() - self._chose_at < CAST_LINGER,
+                f"{self.caster}'s bar stayed {CAST_LINGER:.0f}s after CAST")
+        return True
+
+    def after(self, screens: Any) -> dict:
+        """The read once the fight is over, closing any cast still open."""
+        reading = self.read(screens, "after the fight")
+        self._settle(reading)
+        return reading
+
+    def check_list(self, screens: Any, shot: Any) -> None:
+        require(self.phase == "chose", f"the spell list showed with no CAST on the bar; {shot}")
+        head, ids = curseadd.bounded(lambda _h: self.memory.spell_list(), self.memory.holder,
+                                     screens.left(READ_LIMIT))
+        require(head != 0 and bool(ids), f"the spell list reads empty in memory; {shot}")
+        require(all(i == self.spell for i in ids),
+                f"the spell list holds {ids}, not only {self.spell}; {shot}")
+        self.events[-1]["listed"] = len(ids)
+
+    def on_list(self, screens: Any, shot: Any) -> None:
+        self.check_list(screens, shot)
+        screens.press("C", "spell_list")
+        self.phase = "begun"
+        screens.sleep(AFTER_KEY)
+        caster = self._address(self.caster, screens)
+        self.events[-1]["casting_after_list"] = curseadd.bounded(
+            lambda _h: self.memory.casting(caster), self.memory.holder, screens.left(READ_LIMIT))
+
+    def _address(self, name: str, screens: Any) -> int:
+        rows = [r for r in reversed(self.reads) if name in r]
+        if not rows:
+            self.read(screens, "address")
+            rows = [self.reads[-1]]
+        return rows[0][name]["address"]
+
+    def _in_turn(self, screens: Any) -> tuple[int, int | None]:
+        caster = self._address(self.caster, screens)
+        pointer = curseadd.bounded(lambda _h: self.memory.turn_pointer(), self.memory.holder,
+                                   screens.left(READ_LIMIT))
+        casting = (curseadd.bounded(lambda _h: self.memory.casting(caster), self.memory.holder,
+                                    screens.left(READ_LIMIT)) if pointer == caster else None)
+        return pointer, casting
+
+    def on_aim(self, screens: Any, shot: Any) -> None:
+        """NEXT until the target global names the aim member's record, then TARGET.
+
+        The menu comes straight after the list's CAST, with the caster in turn; a second menu
+        for the same cast (aimed again when a deferred spell goes off) is answered the same way.
+        """
+        require(self.phase in ("begun", "aimed"),
+                f"the aim menu showed with no spell chosen; {shot}")
+        caster = self._address(self.caster, screens)
+        pointer, casting = self._in_turn(screens)
+        require(pointer == caster, f"the aim menu showed with {pointer:#x} in turn, not "
+                                   f"{self.caster} ({caster:#x}); {shot}")
+        want = self._address(self.aim_at, screens)
+        target, count = curseadd.bounded(lambda _h: self.memory.aim(), self.memory.holder,
+                                         screens.left(READ_LIMIT))
+        event = self.events[-1]
+        event["aims"] = event.get("aims", 0) + 1
+        event.update(casting_at_aim=casting, aim_count=count, targets=[target])
+        limit = count if 0 < count <= AIM_PRESSES else AIM_PRESSES
+        presses = 0
+        while target != want:
+            require(presses < limit, f"{presses} NEXT presses never reached {self.aim_at} "
+                                     f"({want:#x}): {[hex(t) for t in event['targets']]}")
+            seen, now = screens.look("aim")
+            require("aim" in seen, f"the aim menu went before TARGET; shot {now}")
+            screens.press("N", "aim")
+            presses += 1
+            screens.sleep(AFTER_KEY)
+            target, _count = curseadd.bounded(lambda _h: self.memory.aim(), self.memory.holder,
+                                              screens.left(READ_LIMIT))
+            require(target not in event["targets"],
+                    f"NEXT came back to {target:#x} without reaching {self.aim_at} ({want:#x})")
+            event["targets"].append(target)
+        seen, now = screens.look("aim")
+        require("aim" in seen, f"the aim menu went before TARGET; shot {now}")
+        screens.press("T", "aim")
+        event.update(outcome="aimed", next_presses=presses, target=target)
+        self.phase = "aimed"
+        screens.sleep(AFTER_KEY)
+        event["casting_after_target"] = curseadd.bounded(
+            lambda _h: self.memory.casting(caster), self.memory.holder, screens.left(READ_LIMIT))
+
+    def unguarded(self, screens: Any, shot: Any, digest: str | None, still_since: float) -> bool:
+        """With `capture`, take a held unguarded frame as the list or the aim menu when memory
+        agrees; True when it pressed a key. Raises `Captured` at the aim menu."""
+        if not self.capture or self.phase not in ("chose", "begun"):
+            return False
+        if digest is None or screens.clock() - still_since < CAPTURE_STILL:
+            return False
+        if self.phase == "chose":
+            pointer, _casting = self._in_turn(screens)
+            head, ids = curseadd.bounded(lambda _h: self.memory.spell_list(), self.memory.holder,
+                                         screens.left(READ_LIMIT))
+            if pointer != self._address(self.caster, screens) or not head or not ids:
+                return False
+            self.captures.append({"screen": "spell_list", "shot": str(shot), "ids": ids})
+            screens.events.append({"capture": self.captures[-1]})
+            self._list_digest = digest
+            self.on_list(screens, shot)
+            return True
+        if digest == self._list_digest:
+            return False
+        pointer, casting = self._in_turn(screens)
+        if pointer == self._address(self.caster, screens):
+            target, count = curseadd.bounded(lambda _h: self.memory.aim(), self.memory.holder,
+                                             screens.left(READ_LIMIT))
+            self.captures.append({"screen": "aim", "shot": str(shot), "target": target,
+                                  "count": count, "casting": casting})
+            screens.events.append({"capture": self.captures[-1]})
+            raise Captured(str(shot))
+        return False
+
+    def log(self) -> dict:
+        return {"caster": self.caster, "spell": self.spell, "aim": self.aim_at,
+                "watch": self.watched, "events": self.events, "reads": self.reads,
+                "captures": self.captures, "lowered_seen": self.lowered, "quick": self.quick}
+
+
 def fight(screens: Screens, memory: Memory, members: list[str],
-          rules: FightRules = CURSE_FIGHT, found: dict | None = None) -> dict:
+          rules: FightRules = CURSE_FIGHT, found: dict | None = None,
+          cast: Cast | None = None) -> dict:
     """Answer every screen from the first bar to the map; log each bar with its owner.
 
     With `found`, its `bars` and `answered` are the lists the loop fills as it goes, so a
-    caller still holds them when a stop inside the fight raises.
+    caller still holds them when a stop inside the fight raises. With `cast`, each bar's key
+    and the list, aim and abort screens are `cast`'s; a `--capture` that reaches the aim menu
+    ends the fight there as `captured`.
     """
     bars: list[dict] = []
     answered: list[dict] = []
@@ -666,7 +1070,7 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         found.update(bars=bars, answered=answered)
     started = still_since = guided = screens.clock()
     settle_from = None
-    lost = won = False
+    lost = won = captured = False
     last: object = object()
     while True:
         require(screens.clock() - started < FIGHT_LIMIT,
@@ -703,6 +1107,13 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         require(screens.clock() - still_since < FIGHT_STALL,
                 f"{named} stayed {FIGHT_STALL:.0f}s unchanged mid-fight; shot {shot}")
         if state is None:
+            try:
+                if cast is not None and cast.unguarded(screens, shot, digest, still_since):
+                    guided = screens.clock()
+                    continue
+            except Captured:
+                captured = True
+                break
             # An animated picture keeps changing the frame, so the digest above never trips;
             # the monster turns of a fight are such pictures, and the game's mode byte tells
             # them from a stalled bar.
@@ -715,16 +1126,32 @@ def fight(screens: Screens, memory: Memory, members: list[str],
                     + f"; shot {shot}")
             screens.sleep(1.5)
             continue
+        key = rules.answers.get(state)
         if state == "combat_bar":
             owner = curseadd.bounded(lambda _h: memory.owner(), memory.holder,
                                      screens.left(READ_LIMIT))
             again, _ = screens.look("bar-again")
             require("combat_bar" in again, f"the command bar went before its owner was read; {shot}")
             require(owner is not None, f"a command bar with no record in turn; {shot}")
+            if cast is not None and cast.bar_again(owner, screens):
+                screens.sleep(1.5)
+                continue
             bars.append({"owner": owner["name"], "address": owner["address"],
                          **{field: owner[field] for field in rules.bar_fields},
                          "shot": str(shot), "number": len(bars) + 1})
             screens.events.append({"bar": bars[-1]})
+            if cast is not None:
+                key = cast.on_bar(owner, screens, len(bars))
+        elif cast is not None and state in ("spell_list", "aim", "abort_spell"):
+            if state == "spell_list":
+                cast.on_list(screens, shot)
+            elif state == "aim":
+                cast.on_aim(screens, shot)
+            else:
+                screens.press("N", state)
+                screens.sleep(AFTER_KEY)
+            answered.append({"screen": state, "shot": str(shot)})
+            continue
         elif state in rules.after_bars and bars:
             key = rules.after_bars[state]
             screens.press(key, state)
@@ -741,10 +1168,11 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         elif state not in rules.answers:
             raise RouteError(f"{state} showed mid-fight; shot {shot}")
         won = won or state in rules.won
-        key = rules.answers[state]
         screens.press(key, state)
         answered.append({"screen": state, "key": key, "shot": str(shot)})
         screens.sleep(AFTER_KEY)
+    if captured:
+        return {"bars": bars, "answered": answered, "outcome": "captured"}
     require(lost or won or not rules.won,
             f"the fight reached the map without the {', '.join(rules.won)} screen, so its "
             f"result is unknown; shot {shot}")
@@ -778,12 +1206,15 @@ def destroyed(found: dict, rules: FightRules) -> bool:
 
 
 def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, *,
-          save: bool, found: dict | None = None, no_fight: bool = False) -> dict:
+          save: bool, found: dict | None = None, no_fight: bool = False,
+          cast: Cast | None = None) -> dict:
     """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
     made, so a step that stops still leaves what came before it for the receipt. With
     `no_fight` the party camps and saves as loaded, with no walk and no fight. A destroyed
     party ends the drive at its message, saving nothing; after any other fight each member
-    named must pass `check_members` before the save."""
+    named must pass `check_members` before the save. With `cast` the fight is `cast`'s, its
+    watched member is read once more after the fight, and a capture that reached the aim menu
+    ends the drive there, saving nothing."""
     fight_ = manifest["fight"]
     pit = fight_.get("kind") == PIT
     found = {} if found is None else found
@@ -816,9 +1247,10 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
                 f"not {PIT_GATE_ON}; no step was sent")
         screens.sleep(AFTER_KEY)
         found["walk"] = pit_walk(screens, memory, fight_["place"], fight_)
-        found.update(fight(screens, memory, members, PIT_FIGHT, found=found))
+        found.update(fight(screens, memory, members, PIT_FIGHT, found=found,
+                           **({"cast": cast} if cast is not None else {})))
         found["first_bar"] = found["bars"][0] if found["bars"] else None
-        if destroyed(found, PIT_FIGHT):
+        if found.get("outcome") == "captured" or destroyed(found, PIT_FIGHT):
             return found
         found[GATE_AFTER] = curseadd.bounded(lambda _h: memory.variable(PIT_GATE),
                                              memory.holder, screens.left(READ_LIMIT))
@@ -828,9 +1260,12 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Memory, 
         reach_tavern(screens)
         screens.press("P", "tavern")
         screens.sleep(AFTER_KEY)
-        found.update(fight(screens, memory, members))
-        if destroyed(found, CURSE_FIGHT):
+        found.update(fight(screens, memory, members,
+                           **({"cast": cast} if cast is not None else {})))
+        if found.get("outcome") == "captured" or destroyed(found, CURSE_FIGHT):
             return found
+    if cast is not None:
+        found["watch_after"] = cast.after(screens)
     found["after"] = curseadd.bounded(lambda _h: memory.party(), memory.holder,
                                       screens.left(READ_LIMIT))
     found["members"] = check_members(found["after"], manifest, members)
@@ -864,7 +1299,10 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
     return {"letter": fight_["save"], "verify": disk.verify(),
             "loaded_slot_unchanged": disk.read_file(loaded_file) == staged.read_file(loaded_file),
             **({SAVED_GATE: gate_word(saved.data)} if fight_.get("kind") == PIT else {}),
-            "members": [{"name": m.name, **member_fields(m.raw)} for m in saved.characters]}
+            "members": [{"name": m.name, **member_fields(m.raw),
+                         "creature_type": m.raw[CREATURE_TYPE],
+                         "effects": [node[0] for node in m.effects]}
+                        for m in saved.characters]}
 
 
 def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won") -> list[str]:
@@ -907,6 +1345,79 @@ def verdict(found: dict, manifest: dict, members: list[str], outcome: str = "won
     return problems
 
 
+def cast_verdict(log: dict, after: dict | None, saved: dict | None,
+                 loaded: dict) -> tuple[str, list[str]]:
+    """The cast run's verdict and the problems behind it.
+
+    `pass`: a cast event; the watched member held 137 or 142 at some read; after the fight
+    his control reads 0 and his status as loaded, live and in the saved slot (`saved`, his
+    read-back row); the saved chain holds none of 35, 137 and 142; his hit points are above 0.
+    `got_away`: he read status 3 during the fight, and is expected saved at status 0, control 0
+    and the creature type he was loaded with. `refuted`: 137 or 142 was seen and his control
+    still reads as loaded after the fight. Anything else is `inconclusive`. Every cast event
+    must also have spent exactly one memorised copy.
+    """
+    name = log["watch"]
+    reads = [r[name] for r in log["reads"] if name in r]
+    events = log["events"]
+    problems = []
+    if not events:
+        problems.append("no cast event")
+    for number, event in enumerate(events, 1):
+        if event.get("spent") != 1:
+            problems.append(f"cast {number} ({event.get('outcome')}) spent {event.get('spent')} "
+                            f"of {log['spell']}, not 1")
+    lowered = any(set(r["effects"]) & set(LOWERING) for r in reads)
+    live = None if after is None else after.get(name)
+    rows = [("live", live), ("saved", saved)]
+    if any(r["status"] == GOT_AWAY for r in reads):
+        kind = reads[0]["creature_type"] if reads else None
+        for where, row in rows:
+            if row is None:
+                problems.append(f"no {where} reading of {name} after the fight")
+        if saved is not None and (saved["status"], saved["control"],
+                                  saved["creature_type"]) != (0, 0, kind):
+            problems.append(f"{name} got away but was saved with status {saved['status']}, "
+                            f"control {saved['control']:#04x}, type {saved['creature_type']}; "
+                            f"expected 0, 0x00, {kind}")
+        return "got_away", problems
+    if lowered and any(row is not None and row["control"] == loaded["control"]
+                       for _where, row in rows):
+        problems.append(f"{name} held {LOWERING[0]} or {LOWERING[1]} and still reads control "
+                        f"{loaded['control']:#04x} after the fight")
+        return "refuted", problems
+    if not lowered:
+        problems.append(f"{name} never held {LOWERING[0]} or {LOWERING[1]}")
+    for where, row in rows:
+        if row is None:
+            problems.append(f"no {where} reading of {name} after the fight")
+            continue
+        if row["control"] != 0 or row["status"] != loaded["status"]:
+            problems.append(f"{name} reads control {row['control']:#04x}, status "
+                            f"{row['status']} {where}, not 0x00 and {loaded['status']}")
+        if row["hit_points"] == 0:
+            problems.append(f"{name} reads 0 hit points {where}")
+    if saved is not None:
+        left = sorted(set(saved["effects"]) & {CONFUSED, *LOWERING})
+        if left:
+            problems.append(f"{name} was saved holding effects {left}")
+    return ("pass" if not problems else "inconclusive"), problems
+
+
+def parse_cast(text: str) -> tuple[str, int]:
+    """`CASTER:SPELL`, the spell by name (`SPELLS`) or as a number."""
+    caster, sep, spell = text.partition(":")
+    require(bool(sep) and bool(caster) and bool(spell), f"--cast {text!r} is not CASTER:SPELL")
+    if spell.upper() in SPELLS:
+        return caster, SPELLS[spell.upper()]
+    try:
+        number = int(spell, 0)
+    except ValueError:
+        raise RouteError(f"--cast spell {spell!r} is not one of {sorted(SPELLS)} or a number") from None
+    require(0 < number < 0x80, f"--cast spell {number} is not 1 to 127")
+    return caster, number
+
+
 def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
         boot: Callable = acceptance.boot_lane, halt: Callable = acceptance.halt_lane,
         memory: Any = None, clock: Callable[[], float] = time.monotonic,
@@ -922,9 +1433,30 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             "the manifest is not a cursefight.py stage")
     fight_ = manifest["fight"]
     pit = fight_.get("kind") == PIT
-    require(bool(args.member), "name at least one --member")
-    absent = [name for name in args.member if name not in fight_["names"]]
+    cast_text = getattr(args, "cast", None)
+    capture = getattr(args, "capture", False)
+    aim, watched = getattr(args, "aim", None), getattr(args, "watch", None)
+    require(not capture or cast_text is not None, "--capture needs --cast")
+    require((cast_text is None) == (aim is None) == (watched is None),
+            "--cast, --aim and --watch go together")
+    require(bool(args.member) or cast_text is not None, "name at least one --member, or --cast")
+    require(not (cast_text and no_fight), "--cast needs a fight; it cannot go with --no-fight")
+    absent = [name for name in [*args.member, *([aim, watched] if aim else [])]
+              if name not in fight_["names"]]
+    if cast_text is not None:
+        caster, spell = parse_cast(cast_text)
+        absent += [caster] if caster not in fight_["names"] else []
     require(not absent, f"{absent} are not in slot {fight_['load']}: {fight_['names']}")
+    if cast_text is not None:
+        require("spells" in fight_, "the stage records no memorised spells; stage it again")
+        held = fight_["spells"][caster]
+        require(bool(held) and all(i == spell for i in held),
+                f"{caster}'s staged list holds {held}; the run casts only from a list of "
+                f"{spell} alone")
+    rules = guard_rules()
+    unguarded = [state for state in CAST_UNCAPTURED if state not in rules]
+    require(cast_text is None or capture or not {"spell_list", "aim"} & set(unguarded),
+            f"the guard map has no rule for {unguarded}; capture them with --capture first")
     for key, entry in (*manifest["disks"].items(), *manifest["registered"].items()):
         require(sha256(pathlib.Path(entry["path"])) == entry["sha256"], f"the {key} disk hash differs")
     staged = amiga_adf.AmigaDisk.open(manifest["disks"]["save"]["path"])
@@ -936,16 +1468,27 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                                "members": list(args.member), "save": not args.no_save,
                                "fight": not no_fight,
                                "out": str(args.out.resolve()), "success": False, "cleanup": []}
-    rules = guard_rules()
     if pit:
         receipt["uncaptured"] = missing(rules)
+    cast = None
+    if cast_text is not None:
+        receipt.update(cast_uncaptured=unguarded,
+                       cast_args={"cast": cast_text, "aim": aim, "watch": watched},
+                       capture=capture)
     guest = guest if guest is not None else WinGuest()
     memory = memory if memory is not None else Memory(args.holder)
+    if cast_text is not None:
+        cast = Cast(memory, caster, spell, aim, watched, capture=capture)
+    save = not (args.no_save or capture)
+    receipt["save"] = save
     command = [str(pathlib.Path(__file__)), "run", "--manifest", str(args.manifest),
                "--holder", args.holder, "--out", str(args.out),
                *(f"--member={name}" for name in args.member),
                *(["--no-save"] if args.no_save else []),
-               *(["--no-fight"] if no_fight else [])]
+               *(["--no-fight"] if no_fight else []),
+               *([f"--cast={cast_text}", f"--aim={aim}", f"--watch={watched}"]
+                 if cast_text is not None else []),
+               *(["--capture"] if capture else [])]
     booted = False
     found: dict[str, Any] = {}
     screens = None
@@ -962,8 +1505,9 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             guest, args.holder, args.out / "screens", guards, clock() + args.budget,
             clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory,
-                             save=not args.no_save, found=found,
-                             **({"no_fight": True} if no_fight else {})))
+                             save=save, found=found,
+                             **({"no_fight": True} if no_fight else {}),
+                             **({"cast": cast} if cast is not None else {})))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
@@ -971,6 +1515,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             receipt.setdefault(key, value)
         if screens is not None:
             receipt["screens"] = screens.events
+        if cast is not None:
+            receipt["cast"] = cast.log()
         if booted:
             try:
                 receipt["halt"] = halt(guest, args.holder, manifest_path=args.manifest,
@@ -992,6 +1538,10 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
             pass
         elif receipt.get("destroyed"):
             receipt["problems"] = ["the party was destroyed, so nothing was saved"]
+        elif capture:
+            got = {c["screen"] for c in receipt["cast"]["captures"]}
+            receipt["problems"] = [f"the capture kept no {state} frame"
+                                   for state in ("spell_list", "aim") if state not in got]
         elif args.no_save:
             receipt["problems"] = []
         elif fetched:
@@ -1001,6 +1551,15 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                 receipt["problems"] = verdict(found, manifest, list(args.member),
                                               "unfought" if no_fight
                                               else receipt.get("outcome", "won"))
+                if cast is not None:
+                    rows = [m for m in found["members"] if m["name"] == watched]
+                    kind, problems = cast_verdict(receipt["cast"], receipt.get("watch_after"),
+                                                  rows[0] if len(rows) == 1 else None,
+                                                  fight_["members"][watched])
+                    receipt["cast_verdict"] = kind
+                    receipt["cast_problems"] = problems
+                    receipt["problems"] += [f"the cast verdict is {kind}"] if kind != "pass" else []
+                    receipt["problems"] += problems
             except Exception as exc:  # noqa: BLE001
                 receipt["problems"] = [f"read-back: {type(exc).__name__}: {exc}"]
         else:
@@ -1029,6 +1588,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="the slot the run loads, in Tilverton (area 1) or the Pit (area 17)")
     s.add_argument("--save", required=True, help="the free slot the run saves to")
     s.add_argument("--out", type=pathlib.Path, required=True)
+    s.add_argument("--stage-record", action="append", default=[],
+                   metavar="NAME:FIELD=VALUE[,FIELD=VALUE]",
+                   help="write hp, hp_max or memorised0-memorised83 on one member of the loaded "
+                        "slot; repeat for another member")
     g = sub.add_parser("run", help="boot a staged manifest in one muted WinUAE lane, take the "
                                    "tavern or Pit fight, save once, halt, fetch and read back")
     g.add_argument("--manifest", type=pathlib.Path, required=True, help="the stage's prepare.json")
@@ -1042,6 +1605,15 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--no-fight", action="store_true",
                    help="load the slot, begin, then camp and save at once, with no walk and no "
                         "fight, and read the save back")
+    g.add_argument("--cast", metavar="CASTER:SPELL",
+                   help="CASTER casts SPELL (CONFUSION or an id) on his bars until --watch holds "
+                        "137 or 142 or the spell runs out; DONE while --watch is confused")
+    g.add_argument("--aim", metavar="MEMBER", help="the member the cast is aimed at")
+    g.add_argument("--watch", metavar="MEMBER",
+                   help="the member read at every bar and after the fight, and judged")
+    g.add_argument("--capture", action="store_true",
+                   help="with --cast: take the spell list and aim menu from memory and a held "
+                        "frame, stop at the aim menu, and save nothing")
     g.add_argument("--budget", type=float, default=2700)
     g.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS")
     r = sub.add_parser("read", help="read a fetched Curse disk's saved slot against a manifest")
@@ -1057,13 +1629,15 @@ def main(argv: list[str] | None = None) -> int:
         with terminating():
             if args.command == "stage":
                 print(stage(args.manifest, args.source_disk, args.out, load=args.load,
-                            save=args.save))
+                            save=args.save, records=args.stage_record))
                 return 0
             if args.command == "run":
                 receipt = run(args)
                 print(json.dumps(receipt, indent=1, sort_keys=True))
                 print(f"cursefight: fight outcome {receipt.get('outcome', 'unknown')}; "
-                      f"success {receipt['success']}")
+                      + (f"cast verdict {receipt['cast_verdict']}; "
+                         if "cast_verdict" in receipt else "")
+                      + f"success {receipt['success']}")
                 return 0
             require(bool(args.member), "name at least one --member")
             require((args.receipt is None) != (args.outcome is None),
