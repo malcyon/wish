@@ -27,12 +27,15 @@ What it does, in order:
    reported as `stopped` and the run stops without booting anything;
 2. boots what came out. A C64 destination goes to the reader that knows
    its title -- `tools/c64/savecheck.py` for Pool of Radiance,
-   `tools/curse_of_the_azure_bonds/cursecheck.py` for Curse of the Azure Bonds -- which reads the
+   `tools/curse_of_the_azure_bonds/cursecheck.py` for Curse of the Azure Bonds,
+   `tools/c64/acceptance.py --title ssb` for Secret of the Silver Blades -- which reads the
    party panel and the `VIEW` sheets off the C64's own
    screen memory; a DOS destination is copied into a `tools.dos.dosbox` staged
    game tree and loaded through the game's own `LOAD SAVED GAME`, walked,
    and saved back by `ENCAMP ▸ SAVE` so the engine's own rewrite can be
-   diffed against ours. An Amiga destination is written into a copy of the
+   diffed against ours; Curse and Silver Blades go through
+   `tools/dos/acceptance.py --title`, and a title no driver plays stops
+   before any boot, naming it. An Amiga destination is written into a copy of the
    player's disk 2 (`--amiga-disk`, as the editor's Save As asks for it) and
    the run stops there: no Amiga emulator is driven from this tool. A Curse
    or Silver Blades slot is written onto a copy of the title's disk 1
@@ -233,6 +236,39 @@ def c64_title(disk: pathlib.Path) -> str:
     return game.key
 
 
+def _acceptance_events(log: pathlib.Path) -> list[dict]:
+    events = []
+    if log.exists():
+        for line in log.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    events.append(json.loads(line))
+                except ValueError:
+                    pass
+    return events
+
+
+def _play_c64_acceptance(disk: pathlib.Path, out: pathlib.Path,
+                         disks: pathlib.Path, walk: str,
+                         no_encounters: bool) -> dict:
+    """Silver Blades: load, list the camp, walk and save through
+    `tools/c64/acceptance.py --title ssb`."""
+    where = out / "acceptance-c64"
+    steps = ["load", "camp-list"] + ([f"walk {walk}"] if walk else []) + ["save"]
+    argv = [str(ROOT / ".venv" / "bin" / "python"),
+            str(TOOLS / "c64" / "acceptance.py"), "--title", "ssb",
+            "--save", str(disk), "--disks", str(disks), "--out", str(where),
+            "--run", "convertrun", "--steps", *steps]
+    if no_encounters:
+        argv += ["--no-encounters"]
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
+    log = where / "run.jsonl"
+    return {"returncode": proc.returncode, "log": str(log),
+            "tail": proc.stdout[-4000:], "stderr": proc.stderr[-2000:],
+            "events": _acceptance_events(log), "moved": None}
+
+
 def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
              walk: str, view: bool, resave: str | None,
              no_encounters: bool = False) -> dict:
@@ -242,9 +278,9 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
     Radiance's fastloader prompt, main menu and copy protection and none of
     Curse's -- so a Curse disk goes to `tools/curse_of_the_azure_bonds/cursecheck.py`, which boots
     through `tools/curse_of_the_azure_bonds/curserun.py` and reads the same things off the same kinds
-    of screen.  Secret of the Silver Blades has no such tool yet and falls
-    through to `savecheck.py`, where it will not boot; that is the row this
-    file cannot run unattended.
+    of screen.  Secret of the Silver Blades goes to `tools/c64/acceptance.py
+    --title ssb`, which boots it; a title none of these handles stops before
+    any boot, naming the title.
 
     `no_encounters` is `savecheck.py --no-encounters`, which puts the gates
     back and verifies them before the resave.  `cursecheck.py` has no such
@@ -254,7 +290,13 @@ def play_c64(disk: pathlib.Path, out: pathlib.Path, disks: pathlib.Path,
     `savecheck.py`'s own `walk` records; None for a Curse disk, whose reader
     keeps no such record.
     """
-    curse = c64_title(disk) == "curse-of-the-azure-bonds"
+    title = c64_title(disk)
+    curse = title == "curse-of-the-azure-bonds"
+    if title == "secret-of-the-silver-blades":
+        return _play_c64_acceptance(disk, out, disks, walk, no_encounters)
+    if title != "pool-of-radiance" and not curse:
+        return {"returncode": 2, "moved": None, "events": [],
+                "error": f"convertrun.py has no C64 play leg for {title}"}
     if curse and no_encounters:
         return {"returncode": 2, "moved": None, "events": [],
                 "error": "cursecheck.py has no encounter switch, so a Curse "
@@ -333,13 +375,56 @@ def word_diff(ours: bytes, theirs: bytes) -> list[str]:
     return out
 
 
+def dos_play_title(key: str | None) -> str:
+    """The `tools/dos/acceptance.py --title` name for a source title key, or
+    `SystemExit` naming the title when no driver plays it. `None` is Pool of
+    Radiance, the default for a source nothing could open."""
+    from goldbox import titles
+    from tools.dos.acceptance import CONVERT_TITLE_KEYS
+    if key is None:
+        return "pool"
+    for short, held in CONVERT_TITLE_KEYS.items():
+        if held == key:
+            return short
+    raise SystemExit(f"convertrun.py has no DOS play leg for "
+                     f"{titles.by_key(key).title}.")
+
+
+def _play_dos_acceptance(written: list[pathlib.Path], slot: str,
+                         out: pathlib.Path, steps: int, resave: str,
+                         title: str) -> dict:
+    """Curse and Silver Blades: load, begin, walk, camp, view the first
+    sheet, save and read back through `tools/dos/acceptance.py`."""
+    source = out / "acceptance-dos-source"
+    source.mkdir(parents=True, exist_ok=True)
+    for p in written:
+        shutil.copy(p, source / p.name)
+    where = out / "acceptance-dos"
+    walk = "walk MI" if title == "curse" else "walk 1"
+    run_steps = (["load", "begin"] + [walk] * steps
+                 + ["camp", "sheet 1", f"save {resave}", "read"])
+    argv = [str(ROOT / ".venv" / "bin" / "python"),
+            str(TOOLS / "dos" / "acceptance.py"), "--title", title,
+            "--save", str(source), "--from-slot", slot, "--slot", slot,
+            "--out", str(where), "--run", "convertrun",
+            "--steps", *run_steps]
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=3600)
+    return {"slot": slot, "steps_asked": steps, "returncode": proc.returncode,
+            "tail": proc.stdout[-4000:], "stderr": proc.stderr[-2000:],
+            "evidence": str(where), "moved": proc.returncode == 0}
+
+
 def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
              steps: int, resave: str,
-             game: pathlib.Path | None = None) -> dict:
+             game: pathlib.Path | None = None,
+             title: str | None = None) -> dict:
     """Copy the dialog's files into a staged game tree and load them.
 
     `game` is the folder the save was written against, staged so the game
     that loads it is the one its bytes name; `None` stages Pool of Radiance.
+    `title` is the source title key: Pool of Radiance (or `None`) is played
+    here, Curse and Silver Blades through `tools/dos/acceptance.py`, and any
+    other title stops naming itself before a boot.
 
     The files are copied verbatim -- nothing is rebuilt here, which is the
     whole point of the run. `goldbox.dos_codec.new_dos_save` clears the slot's
@@ -347,6 +432,9 @@ def play_dos(written: list[pathlib.Path], slot: str, out: pathlib.Path,
     into a freshly staged tree has to do the same or a shipped party's
     record could outlive the one being loaded.
     """
+    short = dos_play_title(title)
+    if short != "pool":
+        return _play_dos_acceptance(written, slot, out, steps, resave, short)
     report: dict = {"slot": slot, "steps_asked": steps}
     with dosbox.claim("convertrun") as claimed:
         s = dosbox.Session(claimed, game or dosbox.find_game())
@@ -532,13 +620,15 @@ def main(argv: list[str] | None = None) -> int:
     if disks is None and args.to != "amiga":
         raise SystemExit("No game disks found. Set $POR_DISKS.")
     game = pathlib.Path(args.game) if args.game else None
+    source_key = None
     if args.to == "dos":
         # Settled before `--out` is made, so a wrong folder writes nothing.
-        game = dos_game_folder(
-            source_title(pathlib.Path(args.source).expanduser(),
-                         args.source_slot.upper() if args.source_slot
-                         else None),
-            game)
+        source_key = source_title(pathlib.Path(args.source).expanduser(),
+                                  args.source_slot.upper() if args.source_slot
+                                  else None)
+        game = dos_game_folder(source_key, game)
+        if not args.no_play:
+            dos_play_title(source_key)
     out = pathlib.Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
 
@@ -613,7 +703,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         report["play"] = play_dos(written, report["write"]["slot"] or "A",
                                   out, args.steps, args.resave or "D",
-                                  game)
+                                  game, source_key)
         # `moved` is read out of the built and resaved files, not the
         # per-step digest count, so a step that crossed into another area
         # cannot read as a failure here the way it could in `walked` (#341

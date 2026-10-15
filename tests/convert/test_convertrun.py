@@ -617,3 +617,76 @@ def test_a_curse_amiga_destination_is_written_onto_a_copy_of_disk_one(
     assert save.data[at + 0x10] == 100
     assert [claim for claim, ok, _ in amigasavecheck.check(save)
             if not ok] == []
+
+
+# ---------------------------------------------------------------------------
+# Each title plays through its own driver
+# ---------------------------------------------------------------------------
+
+def _record_runs(monkeypatch):
+    import subprocess
+    argvs = []
+
+    def run(argv, **kw):
+        argvs.append([str(a) for a in argv])
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(convertrun.subprocess, "run", run)
+    return argvs
+
+
+def test_a_silver_blades_disk_goes_to_the_c64_acceptance_driver(
+        tmp_path, monkeypatch):
+    argvs = _record_runs(monkeypatch)
+    monkeypatch.setattr(convertrun, "c64_title",
+                        lambda disk: "secret-of-the-silver-blades")
+    played = convertrun.play_c64(tmp_path / "W.D64", tmp_path, tmp_path,
+                                 "II", True, None)
+    assert len(argvs) == 1
+    argv = argvs[0]
+    assert argv[1].endswith("tools/c64/acceptance.py")
+    assert argv[argv.index("--title") + 1] == "ssb"
+    assert not any(a.endswith("savecheck.py") for a in argv)
+    assert played["returncode"] == 0
+
+
+def test_a_c64_title_no_driver_plays_stops_before_booting(
+        tmp_path, monkeypatch):
+    argvs = _record_runs(monkeypatch)
+    monkeypatch.setattr(convertrun, "c64_title", lambda disk: "pools-of-darkness")
+    played = convertrun.play_c64(tmp_path / "W.D64", tmp_path, tmp_path,
+                                 "II", True, None)
+    assert argvs == []
+    assert played["returncode"] == 2
+    assert "pools-of-darkness" in played["error"]
+
+
+@pytest.mark.parametrize("key, short", [
+    ("curse-of-the-azure-bonds", "curse"),
+    ("secret-of-the-silver-blades", "ssb"),
+])
+def test_a_later_dos_title_goes_to_the_dos_acceptance_driver(
+        tmp_path, monkeypatch, key, short):
+    argvs = _record_runs(monkeypatch)
+
+    def claim(*a, **k):
+        raise AssertionError("Pool of Radiance's driver was used")
+
+    monkeypatch.setattr(convertrun.dosbox, "claim", claim)
+    save = tmp_path / "SAVGAMA.DAT"
+    save.write_bytes(b"")
+    played = convertrun.play_dos([save], "A", tmp_path, 2, "D", None, key)
+    argv = argvs[0]
+    assert argv[1].endswith("tools/dos/acceptance.py")
+    assert argv[argv.index("--title") + 1] == short
+    assert (tmp_path / "acceptance-dos-source" / "SAVGAMA.DAT").is_file()
+    assert played["moved"] is True
+
+
+def test_a_dos_title_no_driver_plays_stops_naming_it(tmp_path, monkeypatch):
+    argvs = _record_runs(monkeypatch)
+    with pytest.raises(SystemExit) as stopped:
+        convertrun.play_dos([], "A", tmp_path, 2, "D", None,
+                            "pools-of-darkness")
+    assert "Pools of Darkness" in str(stopped.value)
+    assert argvs == []
