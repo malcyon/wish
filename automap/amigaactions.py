@@ -337,6 +337,7 @@ class AmigaQuickfightWatcher(engine.QuickfightWatcher):
         self.action = action
         self.enabled = enabled
         self.was: int | None = None
+        self.in_fight = False
 
     @property
     def game(self):
@@ -346,10 +347,16 @@ class AmigaQuickfightWatcher(engine.QuickfightWatcher):
         parties = _parties()
         row = _row(target, self.action.key)
         now = None if parties is None or row is None else parties.mode(_unwrap(target))
-        was, self.was = self.was, now
-        combat = None if row is None else row.combat_value
-        if not self.enabled or was != combat or now == combat or now is None:
+        self.was = now
+        if row is None or now is None:
             return None
+        # The mode dips to other values mid-fight, so only the value the game
+        # stores after a won fight ends it, and only if a fight was seen.
+        if now == row.combat_value:
+            self.in_fight = True
+        if not self.enabled or not self.in_fight or now != row.after_fight_value:
+            return None
+        self.in_fight = False
         return self.action.apply(target)
 
 

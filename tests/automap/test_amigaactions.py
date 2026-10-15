@@ -64,7 +64,7 @@ def make_row(confirmed=ALL, combat_legal=frozenset(), measured=MEASURED,
              title="Curse of the Azure Bonds", **spots):
     row = SimpleNamespace(
         title=title, confirmed=confirmed, combat_legal=combat_legal,
-        measured=measured, combat_value=2,
+        measured=measured, combat_value=2, after_fight_value=3,
         hp=Spot(offset=0x10, length=1, mask=0xFF),
         memorised=Spot(offset=0x20, length=4, mask=0xFF),
         quickfight=Spot(offset=0x30, length=1, mask=0x80),
@@ -262,11 +262,42 @@ def test_the_watcher_fires_once_when_combat_ends(world, store):
     watcher = aa.AmigaQuickfightWatcher(
         aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=True)
     fired = []
-    for mode in (0, 2, 2, 0, 0):
+    for mode in (0, 2, 2, 3, 3):
         world.mode = mode
         fired.append(watcher.poll(world.target))
     assert [o is not None for o in fired] == [False, False, False, True, False]
     assert world.target.mem[BASE + 0x30] == 0
+
+
+@pytest.mark.parametrize("modes", [(2, 0, 2), (2, 1, 2), (2, 0, 1, 2, 2)])
+def test_the_watcher_ignores_a_dip_in_the_mode_mid_fight(world, modes):
+    world.target.mem[BASE + 0x30] = 0x80
+    world.members = [Member("A", BASE, 5, 9, quickfight=True)]
+    watcher = aa.AmigaQuickfightWatcher(
+        aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=True)
+    for mode in modes:
+        world.mode = mode
+        assert watcher.poll(world.target) is None
+    assert world.target.mem[BASE + 0x30] == 0x80
+
+
+def test_the_watcher_fires_when_a_dip_is_followed_by_the_after_fight_value(world):
+    world.target.mem[BASE + 0x30] = 0x80
+    world.members = [Member("A", BASE, 5, 9, quickfight=True)]
+    watcher = aa.AmigaQuickfightWatcher(
+        aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=True)
+    fired = []
+    for mode in (2, 0, 2, 0, 3):
+        world.mode = mode
+        fired.append(watcher.poll(world.target) is not None)
+    assert fired == [False, False, False, False, True]
+
+
+@pytest.mark.parametrize("key", sorted(aa.amiga.MACHINES))
+def test_every_title_ends_a_fight_at_mode_6(key):
+    from automap import amigaparty
+
+    assert amigaparty.ROWS[key].after_fight_value == 6
 
 
 def test_a_disabled_watcher_never_fires(world, store):

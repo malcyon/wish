@@ -121,6 +121,9 @@ class PartyRow:
     #: game's own escape from quickfight leaves alone.
     control: Spot | None = None
     combat_value: int = 5
+    #: The mode the game stores once a fight is won, before it draws the page;
+    #: the mode dips to other values mid-fight, so only this one ends it.
+    after_fight_value: int = 6
     #: Action names whose field was written, seen on the game's own screen and
     #: kept across a game step; each row says what was measured.
     confirmed: frozenset[str] = frozenset()
