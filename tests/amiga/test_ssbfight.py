@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import types
 
 import pytest
 
-from goldbox import amiga_adf, amiga_savegame
+from goldbox import amiga_adf, amiga_port, amiga_savegame, dos_port
 from tools.amiga import amigakeys, ssbfight
 from tools.amiga.screens import PixelGuards
 from tools.amiga.winuaesession import RouteError
@@ -1202,3 +1203,173 @@ def test_verdict_without_a_member_compares_the_save_with_the_party_after_the_fig
 def test_check_bars_stops_when_nobody_had_a_command_bar():
     with pytest.raises(RouteError, match="no member having a command bar"):
         ssbfight.check_bars(_petrified_party(), [])
+
+
+# -- the save-only mode ------------------------------------------------------------------------
+
+def test_the_picture_offset_is_where_the_field_map_puts_the_combat_picture():
+    # The same DOS field Curse keeps at 0x126 and its Amiga record at 0x127.
+    dos = {f.name: f.offset for f in dos_port.layout_for(dos_port.SECRET_OF_THE_SILVER_BLADES)}
+    assert ssbfight.RECORD["picture"] == amiga_port.SILVER_BLADES_DELTAS.offset(dos["unnamed_0ab"])
+
+
+class _Disk:
+    """Enough of an ADF for `stage`: one slot file, verified, copied as bytes."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def verify(self):
+        return []
+
+    def read_file(self, path):
+        return self.data
+
+    def save(self, path):
+        pass
+
+
+def _stage_without_a_fight(tmp_path, monkeypatch, *, fight, area=68):
+    source, diskb = tmp_path / "a.adf", tmp_path / "b.adf"
+    source.write_bytes(b"disk one")
+    diskb.write_bytes(b"disk two")
+    state = types.SimpleNamespace(area=area, x=2, y=3, facing=1)
+    members = [types.SimpleNamespace(name=n, raw=bytes(ssbfight.RECORD_SIZE)) for n in NAMES]
+    saved = types.SimpleNamespace(characters=members, blocks=(), data=b"slot")
+    monkeypatch.setattr(ssbfight.route_silver_blades, "DISK_B_SHA256", ssbfight.sha256(diskb))
+    monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: _Disk(b"slot"))
+    monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present", lambda disk, title: ["A"])
+    monkeypatch.setattr(ssbfight.amiga_savegame, "state_from_savegame", lambda slot: state)
+    monkeypatch.setattr(ssbfight.world_state, "has_not_set_out", lambda s: False)
+    monkeypatch.setattr(ssbfight, "_slot", lambda disk, letter: saved)
+    monkeypatch.setattr(ssbfight, "with_word", lambda data, address, value: b"gate")
+    monkeypatch.setattr(ssbfight, "word", lambda data, address: 1 if data == b"gate" else 0)
+    monkeypatch.setattr(ssbfight, "area_map", lambda diskb: pytest.fail("no map is read"))
+    written = []
+    monkeypatch.setattr(ssbfight, "replace_file_in_place",
+                        lambda disk, path, data: written.append(data))
+    monkeypatch.setattr(ssbfight, "wander_plan", lambda geo, start: PLAN)
+    path = ssbfight.stage(source, tmp_path / "out", load="A", save="B", diskb=diskb, fight=fight)
+    return json.loads(path.read_text())["fight"], written
+
+
+def test_stage_without_a_fight_takes_a_slot_in_any_area_and_plants_no_gate(tmp_path, monkeypatch):
+    fight, written = _stage_without_a_fight(tmp_path, monkeypatch, fight=False)
+    assert fight["place"]["area"] == 68 and fight["fight"] is False
+    assert fight["staged"] == {} and "route" not in fight
+    assert written == [b"slot"]
+    assert set(fight["members"]) == set(NAMES)
+    assert all("picture" in row and "control" in row for row in fight["members"].values())
+
+
+def test_stage_asking_for_a_fight_still_stops_outside_new_verdigris(tmp_path, monkeypatch):
+    with pytest.raises(RouteError, match="area 68"):
+        _stage_without_a_fight(tmp_path, monkeypatch, fight=True)
+    assert not (tmp_path / "out").exists()
+
+
+NO_FIGHT_DRIVE = [None, "credits", "title", "party_menu", "load_picker", None, "scrolls_dropped",
+                  "loaded_menu", "loaded_menu", "journal", "world", "world", "camp", "journal",
+                  "camp_save_picker", None, "exit_game", "exit_game", "camp"]
+
+
+def test_drive_without_a_fight_loads_camps_and_saves_without_walking_or_reading_the_gate(
+        tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, NO_FIGHT_DRIVE, parties=[[_member(name) for name in NAMES]])
+    game.walking = False
+    game.variable = pytest.fail
+    for name in ("wander", "fight", "capture"):
+        monkeypatch.setattr(ssbfight, name, pytest.fail)
+    answers = []
+    screens = _screens(tmp_path, game, clock)
+    found = ssbfight.drive(screens, _manifest(), [], game,
+                           lambda holder, adf, timeout: answers.append(game.current) or (0, "answered"),
+                           save=True, no_fight=True)
+    assert game.keys == ["ESC", "P", "L", "D", "B", "E", "S", "E", "N"]
+    assert found["saved"] == "E" and "outcome" not in found and ssbfight.LIVE_GATE not in found
+    _keys_allowed(screens, game)
+
+
+def _saved(manifest, **changes):
+    rows = [{"name": name, **{k: v for k, v in row.items()}}
+            for name, row in manifest["fight"]["members"].items()]
+    rows[1].update(changes)
+    return {"verify": [], "loaded_slot_unchanged": True, "members": rows}
+
+
+def _unfought_manifest():
+    manifest = _manifest()
+    for row in manifest["fight"]["members"].values():
+        row.update(picture=0x16, control=0)
+    manifest["fight"]["members"]["PAINE"].update(picture=0x17, control=0x80)
+    return manifest
+
+
+def test_the_verdict_of_an_unfought_save_is_clean_when_every_picture_and_control_is_as_loaded():
+    manifest = _unfought_manifest()
+    assert ssbfight.verdict(_saved(manifest), manifest, [], outcome="unfought") == []
+
+
+@pytest.mark.parametrize("changes, match", [({"picture": 0x01}, "picture"),
+                                            ({"control": 0}, "saved as")])
+def test_the_verdict_of_an_unfought_save_checks_a_member_nobody_named(changes, match):
+    manifest = _unfought_manifest()
+    problems = ssbfight.verdict(_saved(manifest, **changes), manifest, [], outcome="unfought")
+    assert len(problems) == 1 and "PAINE" in problems[0] and match in problems[0]
+
+
+def test_the_verdict_of_a_fought_save_still_wants_a_party_after_the_fight():
+    manifest = _unfought_manifest()
+    problems = ssbfight.verdict(_saved(manifest), manifest, [])
+    assert problems == ["no reading of the party after the fight to compare the save with"]
+
+
+def test_run_without_a_fight_saves_and_judges_the_read_back_unfought(tmp_path, monkeypatch):
+    seen = {}
+
+    def drive(screens, manifest, members, memory, answer, *, save, capture_only, retries, found,
+              no_fight=False):
+        seen.update(save=save, no_fight=no_fight)
+        return {"saved": "E"}
+
+    def verdict(found, manifest, members, after=None, outcome="won"):
+        seen["outcome"] = outcome
+        return []
+
+    manifest = _staged(tmp_path)
+    value = json.loads(manifest.read_text())
+    value["fight"]["fight"] = False
+    manifest.write_text(json.dumps(value))
+    rules = {k: v for k, v in ssbfight.guard_rules().items() if k != "combat_bar"}
+    monkeypatch.setattr(ssbfight, "guard_rules", lambda: rules)
+    monkeypatch.setattr(ssbfight.amiga_adf.AmigaDisk, "open", lambda path: object())
+    monkeypatch.setattr(ssbfight.amiga_savegame, "slots_present", lambda disk, title: ["D"])
+    monkeypatch.setattr(ssbfight.curseadd, "mute", lambda guest, out, timeout: out / "mute.json")
+    monkeypatch.setattr(ssbfight, "drive", drive)
+    monkeypatch.setattr(ssbfight, "read_back", lambda path, value: {})
+    monkeypatch.setattr(ssbfight, "verdict", verdict)
+    fetched = tmp_path / "fetched-df0.adf"
+    fetched.write_bytes(b"fetched")
+    args = _args(tmp_path, manifest, members=())
+    args.no_fight = True
+    receipt = ssbfight.run(args, guest=LaneGuest(), guards=object(), memory=object(),
+                           boot=lambda *a, **k: {"claim": "ok"}, preflight=lambda python: None,
+                           halt=lambda *a, **k: {"fetched": {"df0": {"path": str(fetched)}}})
+    assert seen == {"save": True, "no_fight": True, "outcome": "unfought"}
+    assert receipt["success"] and receipt["fight"] is False
+
+
+@pytest.mark.parametrize("how", ["no_save", "capture", "fight_asked_of_a_no_fight_stage"])
+def test_run_stops_before_the_guest_when_the_save_only_mode_is_contradicted(tmp_path, how):
+    manifest = _staged(tmp_path)
+    value = json.loads(manifest.read_text())
+    value["fight"]["fight"] = how != "fight_asked_of_a_no_fight_stage"
+    manifest.write_text(json.dumps(value))
+    args = _args(tmp_path, manifest, no_save=how == "no_save", capture=how == "capture")
+    args.no_fight = how != "fight_asked_of_a_no_fight_stage"
+    guest = LaneGuest()
+    with pytest.raises(RouteError, match="no-fight"):
+        ssbfight.run(args, guest=guest, guards=object(), boot=pytest.fail, halt=pytest.fail,
+                     memory=object(), preflight=lambda python: None)
+    assert guest.calls == []

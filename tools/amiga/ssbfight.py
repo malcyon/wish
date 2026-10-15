@@ -13,6 +13,9 @@ bar it is from memory. A won fight is checked and saved once; a fight the party 
 recorded and nothing is saved. `--capture` stops at the fight's first command bar instead and
 presses nothing on it, keeping the frame for a guard to be cut from. Memory is only read,
 never written.
+`--no-fight` (on `stage` and on `run`) is the save-only mode: `stage` accepts a slot in any area and
+plants no gate, and `run` loads the slot, begins, camps and saves at once, with no walk and no
+fight, then checks each member's combat picture and control byte against the loaded slot.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
 
@@ -69,9 +72,11 @@ SAVED_GATE = f"saved_wander_gate_{GATE:04X}"
 NOTED = (0x4CD9, 0x4BF2, 0x4C05)
 #: A street square's map attribute: no script and bit 7 clear, the squares the roll runs on.
 STREET = 0x00
-#: Record offsets in `/Secret`: name at 0, control 0x9A, status 0x143, side 0x145, quickfight
-#: 0x146 (QUICK at 0x4A2E sets it; the turn routine reads it at 0x3DB2), hit points 0x152.
-RECORD = {"control": 0x9A, "status": 0x143, "side": 0x145, "quickfight": 0x146,
+#: Record offsets in `/Secret`: name at 0, control 0x9A, the combat picture 0xC6 (DOS 0x12B,
+#: `unnamed_0ab`, which `SILVER_BLADES_DELTAS` places there and which Curse keeps at 0x127), status
+#: 0x143, side 0x145, quickfight 0x146 (QUICK at 0x4A2E sets it; the turn routine reads it at
+#: 0x3DB2), hit points 0x152.
+RECORD = {"control": 0x9A, "picture": 0xC6, "status": 0x143, "side": 0x145, "quickfight": 0x146,
           "hit_points": 0x152}
 RECORD_SIZE = 0x154
 #: The data-hunk global holding the record whose turn it is: the turn routine 0x3CC6 stores
@@ -319,8 +324,11 @@ def wander_plan(geo, start: tuple[int, int]) -> dict:
 
 def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
           diskb: pathlib.Path | None = None, issue: str = "391",
-          records: list[str] | None = None) -> pathlib.Path:
+          records: list[str] | None = None, fight: bool = True) -> pathlib.Path:
     """Copy a Silver Blades disk one in as DF0 with its slot's gate set, and write `out/prepare.json`.
+
+    With `fight` false the slot may stand in any area: no gate is written and no walk is
+    planned, for a run that only loads, camps and saves.
 
     Each of `records` (`MEMBER:FIELD=VALUE[,FIELD=VALUE]`, fields of `STAGE_FIELDS`) is written
     in the same in-place write as the gate."""
@@ -343,14 +351,15 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
     state = amiga_savegame.state_from_savegame(saved)
     require(not world_state.has_not_set_out(state),
             f"the party in slot {load} has not set out; the game starts it in the opening scene")
-    require(state.area == AREA, f"slot {load} is in area {state.area}; the fight is New "
-                                f"Verdigris', area {AREA}")
+    require(not fight or state.area == AREA, f"slot {load} is in area {state.area}; the fight "
+                                             f"is New Verdigris', area {AREA}")
     place = {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing}
-    plan = wander_plan(area_map(diskb), (state.x, state.y))
+    plan = wander_plan(area_map(diskb), (state.x, state.y)) if fight else {}
     path = f"/SAVE/savgam{load}.sav"
     before = disk.read_file(path)
     plans = plan_records(records or [], len(saved.characters), [m.name for m in saved.characters])
-    staged, staged_records = apply_records(with_word(before, GATE, GATE_ON), saved.blocks, plans)
+    staged, staged_records = apply_records(with_word(before, GATE, GATE_ON) if fight else before,
+                                           saved.blocks, plans)
     out.mkdir(parents=True)
     df0 = out / "df0.adf"
     shutil.copyfile(source_disk, df0)
@@ -361,7 +370,8 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
     check = amiga_adf.AmigaDisk.open(df0)
     require(not check.verify() and check.read_file(path) == staged,
             "the staged slot does not read back")
-    require(word(check.read_file(path), GATE) == GATE_ON, "the staged gate does not read back")
+    require(not fight or word(check.read_file(path), GATE) == GATE_ON,
+            "the staged gate does not read back")
     df1 = out / "df1.adf"
     shutil.copyfile(diskb, df1)
     now = _slot(check, load)
@@ -372,8 +382,9 @@ def stage(source_disk: pathlib.Path, out: pathlib.Path, *, load: str, save: str,
                   "df1": {"path": str(df1), "sha256": sha256(df1)}},
         "registered": {}, "loaded_letter": load, "state_a": place, "names_a": names,
         "fight": {"source": {"path": str(source_disk.resolve()), "sha256": source_hash},
-                  "load": load, "save": save, "place": place, **plan,
-                  "staged": {f"{GATE:04X}": {"before": word(before, GATE), "after": GATE_ON}},
+                  "load": load, "save": save, "place": place, **plan, "fight": fight,
+                  "staged": ({f"{GATE:04X}": {"before": word(before, GATE), "after": GATE_ON}}
+                             if fight else {}),
                   "noted": {f"{a:04X}": word(before, a) for a in NOTED},
                   "staged_records": staged_records,
                   "names": names,
@@ -457,7 +468,7 @@ def wander(screens: Screens, memory: Any, start: dict, plan: dict,
 #: The wandering fight: the map may still show while its monsters load, and a lost fight ends
 #: on the destroyed message, after its one RETURN, or on a menu, with no key.
 SSB_FIGHT = cursefight.FightRules(
-    known=KNOWN, answers=FIGHT_ANSWERS, bar_fields=tuple(RECORD), linger=NO_BAR_LIMIT,
+    known=KNOWN, answers=FIGHT_ANSWERS, bar_fields=tuple(f for f in RECORD if f != "picture"), linger=NO_BAR_LIMIT,
     defeat=DEFEAT, name_key=name_key)
 
 
@@ -579,9 +590,10 @@ def to_load_picker(screens: Screens, landing: str) -> None:
 
 
 def begin(screens: Screens, manifest: dict, memory: Any, answer: Callable,
-          into: dict) -> None:
+          into: dict, *, fight: bool = True) -> None:
     """From the load picker: load the staged slot, check the party, begin past the journal,
-    and read the live gate and the turn pointer, each reading into `into` as it is made."""
+    and read the live gate and the turn pointer, each reading into `into` as it is made.
+    Without `fight` neither is read: no gate was staged and no fight follows."""
     fight_ = manifest["fight"]
     adf = pathlib.Path(manifest["disks"]["df0"]["path"])
     screens.press(fight_["load"], "load_picker")
@@ -598,6 +610,9 @@ def begin(screens: Screens, manifest: dict, memory: Any, answer: Callable,
                 f"{row['name']} was staged at {want} hit points; the game holds {got}")
     screens.press("B", "loaded_menu")
     wait_past_journal(screens, ("world",), 120, answer, adf, past=("loaded_menu",))
+    if not fight:
+        screens.sleep(AFTER_KEY)
+        return
     into[LIVE_GATE] = curseadd.bounded(lambda _h: memory.variable(GATE), memory.holder,
                                        screens.left(READ_LIMIT))
     require(into[LIVE_GATE] == GATE_ON,
@@ -607,9 +622,26 @@ def begin(screens: Screens, manifest: dict, memory: Any, answer: Callable,
     screens.sleep(AFTER_KEY)
 
 
+def camp_save(screens: Screens, letter: str, answer: Callable, adf: pathlib.Path,
+              found: dict) -> None:
+    """From the map: camp, save to `letter`, and answer the exit question with NO. `found`
+    gets `saved` once the game reports the save written."""
+    screens.wait(("world",), 30, past=())
+    screens.press("E", "world")
+    screens.wait(("camp",), 60, past=("world",))
+    screens.press("S", "camp")
+    wait_past_journal(screens, ("camp_save_picker",), 60, answer, adf, past=("camp",))
+    screens.press(letter, "camp_save_picker")
+    wait_past_journal(screens, ("exit_game",), 120, answer, adf, past=("camp_save_picker",))
+    found["saved"] = letter
+    screens.sleep(POST_WRITE_WAIT)
+    screens.press("N", "exit_game")
+    screens.wait(("camp",), 60, past=("exit_game",))
+
+
 def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, answer: Callable,
           *, save: bool, capture_only: bool = False, retries: int = 0,
-          found: dict | None = None) -> dict:
+          found: dict | None = None, no_fight: bool = False) -> dict:
     """Load, begin, walk to the fight and take it; each reading goes into `found` as it is
     made, so a step that stops still leaves what came before it for the receipt.
 
@@ -617,6 +649,9 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
     rests on a screen in `RELOAD_FROM` is followed back to the load picker, the staged slot is
     loaded again and the walk repeated, at most `retries` more times; each attempt is one entry
     of `attempts`, and the last one's readings are also `found`'s own.
+
+    With `no_fight` the party is loaded, begun, then camped and saved as loaded, with no walk
+    and no fight.
     """
     fight_ = manifest["fight"]
     adf = pathlib.Path(manifest["disks"]["df0"]["path"])
@@ -624,6 +659,11 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
     attempts: list[dict] = found.setdefault("attempts", [])
     screens.to_title(300)
     landing = "title"
+    if no_fight:
+        to_load_picker(screens, landing)
+        begin(screens, manifest, memory, answer, found, fight=False)
+        camp_save(screens, fight_["save"], answer, adf, found)
+        return found
     while True:
         for key in attempts[-1].keys() - {"number", "after_defeat"} if attempts else ():
             found.pop(key, None)
@@ -657,17 +697,7 @@ def drive(screens: Screens, manifest: dict, members: list[str], memory: Any, ans
                         else check_bars(found["after"], found.get("bars", [])))
     if not save:
         return found
-    screens.wait(("world",), 30, past=())
-    screens.press("E", "world")
-    screens.wait(("camp",), 60, past=("world",))
-    screens.press("S", "camp")
-    wait_past_journal(screens, ("camp_save_picker",), 60, answer, adf, past=("camp",))
-    screens.press(fight_["save"], "camp_save_picker")
-    wait_past_journal(screens, ("exit_game",), 120, answer, adf, past=("camp_save_picker",))
-    found["saved"] = fight_["save"]
-    screens.sleep(POST_WRITE_WAIT)
-    screens.press("N", "exit_game")
-    screens.wait(("camp",), 60, past=("exit_game",))
+    camp_save(screens, fight_["save"], answer, adf, found)
     return found
 
 
@@ -719,17 +749,22 @@ SAVED_ROW = ("status", "hit_points", "control", "side", "quickfight")
 
 
 def verdict(found: dict, manifest: dict, members: list[str],
-            after: list[dict] | None = None) -> list[str]:
+            after: list[dict] | None = None, outcome: str = "won") -> list[str]:
     """Problems with a read-back.
 
     With members named, empty when each was saved QUICK, as loaded. With none, the saved party
     must equal `after`, the party as the game held it when it saved, row by row; a member the
     fight petrified (status 7) is acceptable if he was saved so.
+
+    With outcome "unfought" nobody pressed QUICK, so every member in the loaded slot, named or
+    not, is checked for his control byte, combat picture, status and hit points as loaded.
     """
     keyed = {**found, "members": _keyed(found["members"])}
+    unfought = outcome == "unfought"
+    watched = list(manifest["fight"]["names"]) if unfought else members
     problems = cursefight.verdict(keyed, _keyed_manifest(manifest),
-                                  [name_key(n) for n in members])
-    if members:
+                                  [name_key(n) for n in watched], outcome)
+    if unfought or members:
         return problems
     if after is None:
         return [*problems, "no reading of the party after the fight to compare the save with"]
@@ -754,6 +789,9 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     retries = getattr(args, "retry_lost", 0)
     require(0 <= retries <= RETRY_LIMIT, f"--retry-lost is 0 to {RETRY_LIMIT}")
     require(not (retries and args.capture), "--retry-lost does not go with --capture")
+    no_fight = getattr(args, "no_fight", False)
+    require(not (no_fight and (args.no_save or args.capture or retries)),
+            "--no-fight saves; it cannot go with --no-save, --capture or --retry-lost")
     require(0 < args.budget <= 3600 * (1 + retries),
             f"budget must be at most {3600 * (1 + retries)} seconds")
     require(not args.out.exists(), f"{args.out} already exists")
@@ -761,11 +799,13 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
     require("fight" in manifest and manifest.get("title") == "ssb",
             "the manifest is not an ssbfight.py stage")
     fight_ = manifest["fight"]
+    require(no_fight or fight_.get("fight", True),
+            "the manifest was staged with --no-fight; run it with --no-fight")
     keys = [name_key(n) for n in fight_["names"]]
     absent = [name for name in args.member if name_key(name) not in keys]
     require(not absent, f"{absent} are not in slot {fight_['load']}: {fight_['names']}")
     rules = guard_rules()
-    if not args.capture:
+    if not args.capture and not no_fight:
         require("combat_bar" in rules, "the Silver Blades guard map has no combat_bar rule yet; "
                                        "capture the bar with --capture first")
     require(answer is not None or bool(args.journal_python),
@@ -785,6 +825,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                                "manifest": str(args.manifest.resolve()), "holder": args.holder,
                                "members": list(args.member), "capture": args.capture,
                                "save_requested": not (args.no_save or args.capture),
+                               "fight": not no_fight,
                                "saved": None, "uncaptured": missing(rules), "out": str(args.out.resolve()),
                                "success": False, "cleanup": []}
     guest = guest if guest is not None else WinGuest()
@@ -793,6 +834,7 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                "--holder", args.holder, "--out", str(args.out),
                *(f"--member={name}" for name in args.member),
                *(["--no-save"] if args.no_save else []), *(["--capture"] if args.capture else []),
+               *(["--no-fight"] if no_fight else []),
                *([f"--retry-lost={retries}"] if retries else [])]
     booted = False
     found: dict[str, Any] = {}
@@ -811,7 +853,8 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                           clock=clock, sleep=sleep)
         receipt.update(drive(screens, manifest, list(args.member), memory, answer,
                              save=receipt["save_requested"], capture_only=args.capture,
-                             retries=retries, found=found))
+                             retries=retries, found=found,
+                             **({"no_fight": True} if no_fight else {})))
     except BaseException as exc:
         receipt["error"] = f"{type(exc).__name__}: {exc}"
     finally:
@@ -861,8 +904,9 @@ def run(args: argparse.Namespace, *, guest: Any = None, guards: Any = None,
                 found = read_back(pathlib.Path(fetched["path"]), manifest)
                 receipt["read_back"] = found
                 receipt["problems"] = verdict(found, manifest, list(args.member),
-                                              receipt.get("after"))
-                if not args.member and (receipt.get("outcome") != "won"
+                                              receipt.get("after"),
+                                              **({"outcome": "unfought"} if no_fight else {}))
+                if not args.member and not no_fight and (receipt.get("outcome") != "won"
                                         or receipt.get("saved") != fight_["save"]):
                     receipt["problems"].append(
                         f"outcome {receipt.get('outcome')}, saved {receipt.get('saved')}: "
@@ -895,6 +939,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--stage-record", action="append", default=[], metavar="MEMBER:FIELD=VALUE",
                    help="set hp_max and/or hp_current (1-255) of a party member, 1 the first; "
                         "repeat for several members")
+    s.add_argument("--no-fight", action="store_true",
+                   help="for a run that only loads, camps and saves: the slot may be in any area, "
+                        "and no gate is written")
     s.add_argument("--out", type=pathlib.Path, required=True)
     g = sub.add_parser("run", help="boot a staged manifest in one muted WinUAE lane, walk until "
                                    "the fight, take it, save once, halt, fetch and read back")
@@ -915,27 +962,33 @@ def main(argv: list[str] | None = None) -> int:
                    help="after a lost fight, go back to the load picker by the boot's own route, "
                         "load the staged slot again and walk again, at most N more times; "
                         "needs a larger --budget")
+    g.add_argument("--no-fight", action="store_true",
+                   help="load the slot, begin, then camp and save at once, with no walk and no "
+                        "fight, and check each member's picture and control byte as loaded")
     g.add_argument("--budget", type=float, default=2700)
     g.add_argument("--wait-lane", type=float, default=0, metavar="SECONDS")
     r = sub.add_parser("read", help="read a fetched disk's saved slot against a manifest")
     r.add_argument("--manifest", type=pathlib.Path, required=True)
     r.add_argument("--disk", type=pathlib.Path, required=True)
     r.add_argument("--member", action="append", default=[])
+    r.add_argument("--no-fight", action="store_true",
+                   help="judge the disk as a save-only run's: every member as loaded")
     args = parser.parse_args(argv)
     try:
         with terminating():
             if args.command == "stage":
                 print(stage(args.source_disk, args.out, load=args.load, save=args.save,
                             diskb=args.diskb, issue=args.issue,
-                            records=args.stage_record))
+                            records=args.stage_record, fight=not args.no_fight))
                 return 0
             if args.command == "run":
                 print(json.dumps(run(args), indent=1, sort_keys=True))
                 return 0
-            require(bool(args.member), "name at least one --member")
+            require(bool(args.member) or args.no_fight, "name at least one --member")
             manifest = json.loads(args.manifest.read_text())
             found = read_back(args.disk, manifest)
-            problems = verdict(found, manifest, args.member)
+            problems = verdict(found, manifest, args.member,
+                               **({"outcome": "unfought"} if args.no_fight else {}))
             print(json.dumps({"found": found, "problems": problems}, indent=1, sort_keys=True))
             return 0 if not problems else 1
     except (RouteError, OSError, ValueError, KeyError, amiga_adf.AmigaDiskError) as exc:
