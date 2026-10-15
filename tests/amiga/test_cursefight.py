@@ -132,7 +132,8 @@ def _keys_allowed(screens, game):
 
 def test_guard_rules_add_the_fight_screens_to_the_curse_map():
     rules = cursefight.guard_rules()
-    assert set(cursefight.KNOWN) - set(rules) <= set(cursefight.CAST_UNCAPTURED)
+    assert set(cursefight.KNOWN) - set(rules) <= (set(cursefight.CAST_UNCAPTURED)
+                                                  | set(cursefight.CAST_UNREACHED))
     for state, rule in cursefight.FIGHT_GUARDS.items():
         assert rules[state] == rule
     assert set(cursefight.ALLOWED_KEYS) <= set(cursefight.KNOWN) | set(cursefight.PIT_KNOWN)
@@ -1140,7 +1141,7 @@ def test_the_slugs_question_is_uncaptured_and_a_run_stops_on_it_unpressed(tmp_pa
     rules = cursefight.guard_rules()
     assert cursefight.missing(rules) == ["attack_evade"]
     assert (set(cursefight.PIT_KNOWN) - set(cursefight.UNCAPTURED)
-            - set(cursefight.CAST_UNCAPTURED)) <= set(rules)
+            - set(cursefight.CAST_UNCAPTURED) - set(cursefight.CAST_UNREACHED)) <= set(rules)
     assert cursefight.ALLOWED_KEYS["attack_evade"] == frozenset({"A"})
     clock = Clock()
     game = PitGame(clock, ["continue", "attack_evade"], uncaptured={"attack_evade"})
@@ -1457,15 +1458,20 @@ def _watch(effects=(), left=3, status=1, control=0xB3, hp=60, kind=4):
 
 class CastGame(Game):
     """The scripted game with the cast's memory: each grab writes its screen's name as the
-    crop, so a held frame keeps its digest; `unguarded` screens have no guard."""
+    crop, so a held frame keeps its digest; `unguarded` screens have no guard. A bar reads the
+    next of `watches`; a poll reads BRUTUS alone, the next of `polls` (a `RouteError` in it
+    fails that read), or with no `polls` the row the last bar read."""
 
     def __init__(self, clock, script, *, owners=(), watches=(), aims=((BRUTUS_AT, 6),),
-                 ids=(0x52, 0x52, 0x52), unguarded=()):
+                 ids=(0x52, 0x52, 0x52), unguarded=(), polls=()):
         super().__init__(clock, script, owners=owners)
         self.walking = False
         self.watches, self.aims = list(watches), list(aims)
         self.ids = list(ids)
         self.unguarded = set(unguarded)
+        self.polls = list(polls)
+        self.last_watch = None
+        self.polled = 0
 
     def grab(self, label, raw, crop, timeout):
         super().grab(label, raw, crop, timeout)
@@ -1474,14 +1480,25 @@ class CastGame(Game):
         return True
 
     def __contains__(self, state):
-        return state in cursefight.KNOWN and state not in self.unguarded
+        return ((state in cursefight.KNOWN or state == "brutus_runs_away")
+                and state not in self.unguarded)
 
     def __call__(self, state, crop):
         return state in self and state == self.current
 
     def watch(self, names, spell):
-        assert spell == 0x52 and names == ["BRUTUS", "GALAIN"]
-        return self.watches.pop(0) if len(self.watches) > 1 else self.watches[0]
+        assert spell == 0x52
+        if names == ["BRUTUS"]:
+            self.polled += 1
+            if not self.polls:
+                return {"BRUTUS": (self.last_watch or self.watches[0])["BRUTUS"]}
+            row = self.polls.pop(0) if len(self.polls) > 1 else self.polls[0]
+            if isinstance(row, Exception):
+                raise row
+            return {"BRUTUS": row}
+        assert names == ["BRUTUS", "GALAIN"]
+        self.last_watch = self.watches.pop(0) if len(self.watches) > 1 else self.watches[0]
+        return self.last_watch
 
     def spell_list(self):
         return 0xC60000, list(self.ids)
@@ -1690,13 +1707,125 @@ def test_cast_verdict_refutes_a_member_still_under_the_game_after_137():
     assert kind == "refuted" and "still reads control 0xb3" in problems[0]
 
 
-def test_cast_verdict_records_got_away_as_its_own_outcome():
-    log = _log([_watch((142,)), _watch((142,), status=3)])
-    assert cursefight.cast_verdict(log, _watch(control=0, status=0),
-                                   _saved(status=0), LOADED) == ("got_away", [])
-    kind, problems = cursefight.cast_verdict(log, _watch(control=0, status=0),
+def _row(effects=(), status=1, control=0xB3, frame=1):
+    return {"frame": frame, "when": "poll", **{k: v for k, v in _watch(
+        effects, status=status, control=control)["BRUTUS"].items()
+        if k in cursefight.WATCHED_FIELDS}}
+
+
+def test_cast_verdict_judges_a_member_who_ran_off_the_map_fled_with_control_cleared():
+    """Stage 3's run-away branch: 142 at a bar, status 3 only at a poll between bars, and the
+    after-fight pass leaving him at status 0 with control 0 and the zombie's type."""
+    log = {**_log([_watch((142,))]), "changes": [_row((142,), status=3, frame=99)]}
+    after, saved = _watch(control=0, status=0), _saved(status=0)
+    assert cursefight.cast_verdict(log, after, saved, LOADED) == ("fled", [])
+    kind, problems = cursefight.cast_verdict(log, after, _saved(status=0, creature_type=0),
+                                             LOADED)
+    assert kind == "fled" and "saved with type 0, not 4" in problems[0]
+    kind, problems = cursefight.cast_verdict(log, after, _saved(status=1), LOADED)
+    assert kind == "fled" and "status 1 saved, not 0x00 and 0" in problems[0]
+
+
+def test_cast_verdict_takes_the_runs_away_frame_as_running():
+    log = {**_log([_watch((35,))]), "changes": [_row((35,), status=3, frame=99)],
+           "runs_away_frames": [{"frame": 64, "shot": "064-fight.png"}]}
+    assert cursefight.cast_verdict(log, _watch(control=0, status=0), _saved(status=0),
+                                   LOADED) == ("fled", [])
+
+
+def test_cast_verdict_refutes_a_member_who_fled_still_under_the_game():
+    log = {**_log([_watch((142,))]), "changes": [_row((142,), status=3)]}
+    kind, problems = cursefight.cast_verdict(log, _watch(status=0), _saved(status=0, control=0xB3),
+                                             LOADED)
+    assert kind == "refuted" and "still reads control 0xb3" in problems[0]
+
+
+def test_cast_verdict_records_got_away_without_running_as_its_own_outcome():
+    log = {**_log([_watch((35,))]), "changes": [_row((35,), status=3)]}
+    saved = _saved(status=0, control=0xB3)
+    assert cursefight.cast_verdict(log, _watch(status=0), saved, LOADED) == ("got_away", [])
+    kind, problems = cursefight.cast_verdict(log, _watch(status=0),
                                              _saved(status=0, creature_type=0), LOADED)
-    assert kind == "got_away" and "expected 0, 0x00, 4" in problems[0]
+    assert kind == "got_away" and "expected 0, 4" in problems[0]
+
+
+def test_cast_verdict_expects_the_loaded_status_only_of_the_berserk_form():
+    """142 with no read off the map is not judged against status 1, however he was saved."""
+    log = _log([_watch((142,))])
+    for saved in (_saved(), _saved(status=0)):
+        kind, problems = cursefight.cast_verdict(log, _watch(control=0, status=saved["status"]),
+                                                 saved, LOADED)
+        assert kind == "inconclusive" and problems == [
+            "BRUTUS held 142 but no read caught him off the map (status 3)"]
+
+
+def test_cast_verdict_of_the_stage_3_receipt_names_the_missing_read_off_the_map():
+    receipt_path = ACCEPTANCE / "WISH-303/i6/stage/run1/receipt.json"
+    if not receipt_path.is_file():
+        pytest.skip("the WISH-303 stage 3 receipt is not on this machine")
+    receipt = json.loads(receipt_path.read_text())
+    saved = [m for m in receipt["read_back"]["members"] if m["name"] == "BRUTUS"]
+    loaded = json.loads(pathlib.Path(receipt["manifest"]).read_text())["fight"]["members"]["BRUTUS"]
+    kind, problems = cursefight.cast_verdict(receipt["cast"], receipt["watch_after"], saved[0],
+                                             loaded)
+    assert kind == "inconclusive" and problems == [
+        "BRUTUS held 142 but no read caught him off the map (status 3)"]
+
+
+#: GALAIN's bar (CAST, and its second look), the list, the aim menu (TARGET, and its second
+#: look), BRUTUS's runs-away message, two frames of the fight with no bar, then the won
+#: message and the map. The fight loop's own grabs, the ones it polls at, are 1, 3, 4 and 6-10.
+RUN_AWAY_FIGHT = ["combat_bar", "combat_bar", "spell_list", "aim", "aim", "brutus_runs_away",
+                  "~monster", "~monster2", "party_won", "world"]
+
+
+def test_every_fight_poll_reads_the_watched_member_and_logs_each_change_with_its_frame(
+        tmp_path):
+    clock = Clock()
+    polls = [_watch()["BRUTUS"], _watch()["BRUTUS"], _watch()["BRUTUS"],
+             _watch((35, 142))["BRUTUS"], _watch((35, 142), status=3)["BRUTUS"],
+             _watch((35, 142), status=3)["BRUTUS"], _watch(status=0, control=0)["BRUTUS"]]
+    game = CastGame(clock, RUN_AWAY_FIGHT, owners=[{"address": GALAIN_AT, **_member("GALAIN")}],
+                    watches=[_watch()], aims=[(BRUTUS_AT, 6)], polls=polls)
+    screens = _cast_screens(tmp_path, game, clock)
+    cast = _cast(game)
+    found = cursefight.fight(screens, game, [], cast=cast)
+    assert found["outcome"] == "won" and game.keys == ["C", "C", "T", "RET"]
+    assert game.polled >= len(polls)
+    assert [(c["frame"], c["status"], c["control"], c["effects"]) for c in cast.changes] == [
+        (1, 1, 0xB3, []), (6, 1, 0xB3, [35, 142]), (7, 3, 0xB3, [35, 142]), (9, 0, 0, [])]
+    assert [f["frame"] for f in cast.runs_away_frames] == [6]
+    assert cast.lowered and cast.log()["changes"] == cast.changes
+    assert any("watch_change" in e for e in screens.events)
+    _keys_allowed(screens, game)
+
+
+def test_a_failed_poll_is_logged_and_the_fight_goes_on(tmp_path):
+    clock = Clock()
+    polls = [_watch()["BRUTUS"], RouteError("no answer"), _watch(status=3)["BRUTUS"]]
+    game = CastGame(clock, ["~monster", "~monster2", "party_won", "world"], polls=polls,
+                    watches=[_watch()])
+    cast = _cast(game)
+    found = cursefight.fight(_cast_screens(tmp_path, game, clock), game, [], cast=cast)
+    assert found["outcome"] == "won"
+    assert [e["frame"] for e in cast.poll_errors] == [2]
+    assert [(c["frame"], c["status"]) for c in cast.changes] == [(1, 1), (3, 3)]
+
+
+def test_a_fight_with_no_cast_reads_no_member_between_bars(tmp_path):
+    clock = Clock()
+    game = CastGame(clock, ["~monster", "~monster2", "party_won", "world"], watches=[_watch()])
+    found = cursefight.fight(_screens(tmp_path, game, clock), game, [])
+    assert found["outcome"] == "won" and game.polled == 0
+
+
+def test_the_runs_away_guard_names_brutus_running_and_no_other_stage_3_frame(tmp_path):
+    shots = ACCEPTANCE / "WISH-303/i6/stage/run1/screens"
+    frames = sorted(f for f in shots.glob("*-fight.png")) if shots.is_dir() else []
+    if not any(f.name == "064-fight.png" for f in frames):
+        pytest.skip("the WISH-303 stage 3 frames are not on this machine")
+    guards = _real_guards(tmp_path)
+    assert [f.name for f in frames if guards("brutus_runs_away", f)] == ["064-fight.png"]
 
 
 def test_cast_verdict_needs_a_cast_and_one_copy_spent_per_cast():
@@ -1831,6 +1960,7 @@ def test_a_capture_run_saves_nothing_and_needs_both_frames(tmp_path, monkeypatch
                              memory=object(), halt=lambda *a, **k: {"fetched": {}})
     assert seen == {"save": False, "capture": True}
     assert receipt["success"] and receipt["save"] is False and receipt["problems"] == []
+    assert receipt["cast_uncaptured"] == []
 
 
 def test_the_cast_guards_name_the_captured_list_and_aim_menu_and_nothing_else(tmp_path):

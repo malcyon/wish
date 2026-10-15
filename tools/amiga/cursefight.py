@@ -26,8 +26,9 @@ one member of the copy, and nothing else. `run --cast CASTER:SPELL --aim MEMBER 
 has the caster cast a staged spell on his own bars: CAST, the list checked in memory to hold
 only that spell, NEXT on the aim menu until the target is MEMBER's record, then TARGET; DONE
 while the watched member is confused, and QUICK once he has held effect 137 or 142 or the
-spell is spent. The watched member is read at every bar and after the fight, and the receipt
-judges the run pass, got_away, refuted or inconclusive (`cast_verdict`). `--capture` takes the
+spell is spent. The watched member is read at every bar, on every other poll of the fight and
+after it, each change logged with its frame, and the receipt judges the run pass, fled,
+got_away, refuted or inconclusive (`cast_verdict`). `--capture` takes the
 list and the aim menu from memory and a held frame, stops at the aim menu and saves nothing.
 `read` reads a fetched disk's saved slot against a staged manifest.
 """
@@ -132,7 +133,14 @@ FIGHT_GUARDS = {
             "sha256": "2d90f56c352c39fe6525cd7d759a8b9cf8109c4f36e75128059767fe22511d09",
             "and": [{"box": [74, 388, 320, 402],
                      "sha256": "9bc6bec89c50a9423888368a8e63f57b7ebbb9c0396baa6af386306b6f46ff06"}]},
+    # BRUTUS RUNS AWAY in the combat panel, the game's message as effect 142 takes him, cut
+    # from the Confusion run WISH-303 `i6/stage/run1/screens/064-fight.png`. It is never a
+    # state of the fight loop and gets no key: a `--watch BRUTUS` poll records its frames.
+    "brutus_runs_away": {"box": [426, 190, 600, 224],
+                         "sha256": "c09b5c811a5c98865751d5560584e9fabaf460bce9b2d58af55b844bf18e9d15"},
 }
+#: The watched member's runs-away message, by name: the guard each poll checks.
+RUNS_AWAY_GUARDS = {"BRUTUS": "brutus_runs_away"}
 #: "party_won", "party_destroyed" and "tossed" come before "continue": the first known screen
 #: a grab matches names it.
 KNOWN = ("intro", "front_end", "title", "load_picker", "load_error", "loaded_menu", "world",
@@ -261,14 +269,24 @@ AIM_PRESSES = 24
 CAST_LINGER = 12.0
 #: Seconds an unguarded screen must hold before `--capture` takes it as the list or the aim.
 CAPTURE_STILL = 5.0
-#: The cast's screens; the guard map has rules for the first two, and `--capture` would take
-#: them again from memory and a held frame. The abort question shows only after EXIT on the
-#: aim menu, which the run never presses, so it has no rule.
+#: The cast's screens; the guard map has rules for both, and `--capture` would take them
+#: again from memory and a held frame. A run lists those without a rule as uncaptured.
 CAST_UNCAPTURED = {
     "spell_list": "the combat spell list, `Spells in Memory` (`0x2388C`)",
     "aim": "the aim menu, `Next Prev Manual Target Center Exit` (`0x9F38`)",
+}
+#: A cast screen no run reaches, so it has no rule and is not listed as uncaptured: the abort
+#: question shows only after EXIT on the aim menu, which the run never presses.
+CAST_UNREACHED = {
     "abort_spell": "the `Abort Spell?` question (EXIT on the aim menu)",
 }
+#: The watched member's fields a poll compares; a change in any of them is logged with its
+#: frame. No established record or combat-block offset holds his combat map square, so none
+#: is read.
+WATCHED_FIELDS = ("control", "status", "hit_points", "quickfight", "creature_type", "effects")
+#: Seconds one poll's read of the watched member may take; a failed poll is logged and the
+#: fight goes on.
+POLL_READ_LIMIT = 10.0
 #: Record fields `stage --stage-record` may write: hit points and their maximum, and one
 #: memorised slot each (`memorised0` is +0x1E). Control, status, type, side and effects are
 #: never written.
@@ -899,6 +917,12 @@ class Cast:
         self.quick = False
         self._chose_at = 0.0
         self._list_digest: str | None = None
+        #: Each change in the watched member's `WATCHED_FIELDS`, with the frame it was read at.
+        self.changes: list[dict] = []
+        self._last_seen: tuple | None = None
+        #: Frames that showed the watched member's runs-away message, and failed poll reads.
+        self.runs_away_frames: list[dict] = []
+        self.poll_errors: list[dict] = []
 
     def names(self) -> list[str]:
         return list(dict.fromkeys((self.watched, self.caster, self.aim_at)))
@@ -909,9 +933,36 @@ class Cast:
         reading = {"when": when, **rows}
         self.reads.append(reading)
         screens.events.append({"watch": reading})
-        if set(rows[self.watched]["effects"]) & set(LOWERING):
-            self.lowered = True
+        self._note(screens, rows[self.watched], when)
         return reading
+
+    def _note(self, screens: Any, row: dict, when: str) -> None:
+        """Log the watched member's row when any of `WATCHED_FIELDS` differs from the last."""
+        if set(row["effects"]) & set(LOWERING):
+            self.lowered = True
+        seen = tuple(tuple(row[f]) if f == "effects" else row[f] for f in WATCHED_FIELDS)
+        if seen == self._last_seen:
+            return
+        self._last_seen = seen
+        change = {"frame": screens.count, "when": when,
+                  **{f: (list(row[f]) if f == "effects" else row[f]) for f in WATCHED_FIELDS}}
+        self.changes.append(change)
+        screens.events.append({"watch_change": change})
+
+    def poll(self, screens: Any, shot: Any) -> None:
+        """One fight poll: note a frame showing the watched member's runs-away message, then
+        read him and log a change. A read that fails is logged and the fight goes on."""
+        guard = RUNS_AWAY_GUARDS.get(self.watched)
+        if guard is not None and guard in screens.guards and screens.guards(guard, shot):
+            self.runs_away_frames.append({"frame": screens.count, "shot": str(shot)})
+            screens.events.append({"runs_away": self.runs_away_frames[-1]})
+        try:
+            rows = curseadd.bounded(lambda _h: self.memory.watch([self.watched], self.spell),
+                                    self.memory.holder, screens.left(POLL_READ_LIMIT))
+        except RouteError as exc:
+            self.poll_errors.append({"frame": screens.count, "error": str(exc)})
+            return
+        self._note(screens, rows[self.watched], "poll")
 
     def _settle(self, reading: dict) -> None:
         """Close a cast the caster's next bar or the fight's end finds unfinished, and check
@@ -1082,7 +1133,9 @@ class Cast:
     def log(self) -> dict:
         return {"caster": self.caster, "spell": self.spell, "aim": self.aim_at,
                 "watch": self.watched, "events": self.events, "reads": self.reads,
-                "captures": self.captures, "lowered_seen": self.lowered, "quick": self.quick}
+                "captures": self.captures, "lowered_seen": self.lowered, "quick": self.quick,
+                "changes": self.changes, "runs_away_frames": self.runs_away_frames,
+                "poll_errors": self.poll_errors}
 
 
 def fight(screens: Screens, memory: Memory, members: list[str],
@@ -1092,8 +1145,9 @@ def fight(screens: Screens, memory: Memory, members: list[str],
 
     With `found`, its `bars` and `answered` are the lists the loop fills as it goes, so a
     caller still holds them when a stop inside the fight raises. With `cast`, each bar's key
-    and the list, aim and abort screens are `cast`'s; a `--capture` that reaches the aim menu
-    ends the fight there as `captured`.
+    and the list, aim and abort screens are `cast`'s, every grab is a `cast.poll` of the
+    watched member, and a `--capture` that reaches the aim menu ends the fight there as
+    `captured`.
     """
     bars: list[dict] = []
     answered: list[dict] = []
@@ -1107,6 +1161,8 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         require(screens.clock() - started < FIGHT_LIMIT,
                 f"the fight was still going after {FIGHT_LIMIT:.0f}s")
         seen, shot = screens.look("fight")
+        if cast is not None and screens.grabbed:
+            cast.poll(screens, shot)
         state = next((s for s in rules.known if s in seen), None)
         digest = _digest(shot)
         if state is not None:
@@ -1387,16 +1443,21 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
                  loaded: dict) -> tuple[str, list[str]]:
     """The cast run's verdict and the problems behind it.
 
-    `pass`: a cast event; the watched member held 137 or 142 at some read; after the fight
-    his control reads 0 and his status as loaded, live and in the saved slot (`saved`, his
-    read-back row); the saved chain holds none of 35, 137 and 142; his hit points are above 0.
-    `got_away`: he read status 3 during the fight, and is expected saved at status 0, control 0
-    and the creature type he was loaded with. `refuted`: 137 or 142 was seen and his control
-    still reads as loaded after the fight. Anything else is `inconclusive`. Every cast event
-    must also have spent exactly one memorised copy.
+    The watched member's readings are every bar's and every logged poll change. He left the
+    map when one reads status 3; he ran when one holds 142 or a frame showed his runs-away
+    message. `fled`: he ran and left the map; after the fight his control reads 0 and his
+    status 0, live and in the saved slot (`saved`, his read-back row), saved with the creature
+    type he was first read with, holding none of 35, 137 and 142, above 0 hit points.
+    `got_away`: he left the map without running; expected saved at status 0 with the type he
+    was first read with, his control recorded and not judged. `refuted`: 137 or 142 was seen
+    and his control still reads as loaded after the fight. `pass`, only for the berserk form
+    that stays on the map: he held 137; after the fight his control reads 0 and his status as
+    loaded, live and saved; the saved chain holds none of 35, 137 and 142; his hit points are
+    above 0. A member who ran and was never read off the map is `inconclusive`, as is anything
+    else. Every cast event must also have spent exactly one memorised copy.
     """
     name = log["watch"]
-    reads = [r[name] for r in log["reads"] if name in r]
+    seen = [r[name] for r in log["reads"] if name in r] + list(log.get("changes", []))
     events = log["events"]
     problems = []
     if not events:
@@ -1405,40 +1466,61 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
         if event.get("spent") != 1:
             problems.append(f"cast {number} ({event.get('outcome')}) spent {event.get('spent')} "
                             f"of {log['spell']}, not 1")
-    lowered = any(set(r["effects"]) & set(LOWERING) for r in reads)
+    held = {effect for r in seen for effect in r["effects"]}
+    ran = RUNS_AWAY in held or bool(log.get("runs_away_frames"))
+    berserk = BERSERK in held
+    left_map = any(r["status"] == GOT_AWAY for r in seen)
+    kind = seen[0]["creature_type"] if seen else None
     live = None if after is None else after.get(name)
     rows = [("live", live), ("saved", saved)]
-    if any(r["status"] == GOT_AWAY for r in reads):
-        kind = reads[0]["creature_type"] if reads else None
-        for where, row in rows:
-            if row is None:
-                problems.append(f"no {where} reading of {name} after the fight")
-        if saved is not None and (saved["status"], saved["control"],
-                                  saved["creature_type"]) != (0, 0, kind):
-            problems.append(f"{name} got away but was saved with status {saved['status']}, "
-                            f"control {saved['control']:#04x}, type {saved['creature_type']}; "
-                            f"expected 0, 0x00, {kind}")
-        return "got_away", problems
-    if lowered and any(row is not None and row["control"] == loaded["control"]
-                       for _where, row in rows):
-        problems.append(f"{name} held {LOWERING[0]} or {LOWERING[1]} and still reads control "
-                        f"{loaded['control']:#04x} after the fight")
-        return "refuted", problems
-    if not lowered:
-        problems.append(f"{name} never held {LOWERING[0]} or {LOWERING[1]}")
     for where, row in rows:
         if row is None:
             problems.append(f"no {where} reading of {name} after the fight")
+
+    def leftover() -> None:
+        left = sorted(set(saved["effects"]) & {CONFUSED, *LOWERING}) if saved else []
+        if left:
+            problems.append(f"{name} was saved holding effects {left}")
+
+    if (ran or berserk) and any(row is not None and row["control"] == loaded["control"]
+                                for _where, row in rows):
+        problems.append(f"{name} held {BERSERK} or {RUNS_AWAY} and still reads control "
+                        f"{loaded['control']:#04x} after the fight")
+        return "refuted", problems
+    if left_map and not ran:
+        if saved is not None and (saved["status"], saved["creature_type"]) != (0, kind):
+            problems.append(f"{name} got away but was saved with status {saved['status']}, "
+                            f"type {saved['creature_type']}; expected 0, {kind}")
+        return "got_away", problems
+    if left_map:
+        for where, row in rows:
+            if row is not None and (row["control"], row["status"]) != (0, 0):
+                problems.append(f"{name} ran off the map but reads control "
+                                f"{row['control']:#04x}, status {row['status']} {where}, "
+                                f"not 0x00 and 0")
+        if saved is not None:
+            if saved["creature_type"] != kind:
+                problems.append(f"{name} ran off the map but was saved with type "
+                                f"{saved['creature_type']}, not {kind}")
+            if saved["hit_points"] == 0:
+                problems.append(f"{name} reads 0 hit points saved")
+        leftover()
+        return "fled", problems
+    if ran and not berserk:
+        problems.append(f"{name} held {RUNS_AWAY} but no read caught him off the map "
+                        f"(status {GOT_AWAY})")
+        return "inconclusive", problems
+    if not berserk:
+        problems.append(f"{name} never held {BERSERK} or {RUNS_AWAY}")
+    for where, row in rows:
+        if row is None:
             continue
         if row["control"] != 0 or row["status"] != loaded["status"]:
             problems.append(f"{name} reads control {row['control']:#04x}, status "
                             f"{row['status']} {where}, not 0x00 and {loaded['status']}")
         if row["hit_points"] == 0:
             problems.append(f"{name} reads 0 hit points {where}")
-    if saved is not None:
-        left = sorted(set(saved["effects"]) & {CONFUSED, *LOWERING})
-        if left:
-            problems.append(f"{name} was saved holding effects {left}")
+    leftover()
     return ("pass" if not problems else "inconclusive"), problems
 
 
