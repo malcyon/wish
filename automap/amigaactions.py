@@ -330,13 +330,18 @@ class AmigaClearQuickfight(_AmigaAction, engine.ClearQuickfight):
                               tuple(writes))
 
 
+#: Mode values the game passes through mid-fight (the Strength message, a
+#: fight starting); the watcher stays in the fight across them.
+_MID_FIGHT_DIPS = (2, 4)
+
+
 class AmigaQuickfightWatcher(engine.QuickfightWatcher):
-    """Fire on the tick combat ends, reading the mode from `amigaparty`."""
+    """Clear quickfight when the mode reaches the after-fight value in `amigaparty`."""
 
     def __init__(self, action: AmigaClearQuickfight, enabled: bool = False):
         self.action = action
         self.enabled = enabled
-        self.was: int | None = None
+        #: A fight was seen and has not yet ended in the after-fight value.
         self.in_fight = False
 
     @property
@@ -347,17 +352,19 @@ class AmigaQuickfightWatcher(engine.QuickfightWatcher):
         parties = _parties()
         row = _row(target, self.action.key)
         now = None if parties is None or row is None else parties.mode(_unwrap(target))
-        self.was = now
-        if row is None or now is None:
+        if now is None or not self.enabled:
+            self.in_fight = False
             return None
-        # The mode dips to other values mid-fight, so only the value the game
-        # stores after a won fight ends it, and only if a fight was seen.
         if now == row.combat_value:
             self.in_fight = True
-        if not self.enabled or not self.in_fight or now != row.after_fight_value:
-            return None
-        self.in_fight = False
-        return self.action.apply(target)
+        elif now == row.after_fight_value:
+            fired, self.in_fight = self.in_fight, False
+            return self.action.apply(target) if fired else None
+        elif now not in _MID_FIGHT_DIPS:
+            # A fight that ended some other way (fled, wiped, a load) must not
+            # leave a later after-fight value looking like its end.
+            self.in_fight = False
+        return None
 
 
 def actions(store: engine.SpellStore | None, key: str) -> tuple:

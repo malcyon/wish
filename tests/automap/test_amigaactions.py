@@ -256,48 +256,80 @@ def test_pools_of_darkness_never_gets_c64_addresses(world, store):
     assert out.ok and out.writes == ((BASE + 0x10, b"\x09"),)
 
 
-def test_the_watcher_fires_once_when_combat_ends(world, store):
+@pytest.fixture
+def real_modes(world):
+    """The fake row, given the mode values the real rows carry."""
+    from automap import amigaparty
+
+    real = amigaparty.ROWS["pool-of-radiance"]
+    world.row.combat_value = real.combat_value
+    world.row.after_fight_value = real.after_fight_value
     world.target.mem[BASE + 0x30] = 0x80
     world.members = [Member("A", BASE, 5, 9, quickfight=True)]
-    watcher = aa.AmigaQuickfightWatcher(
-        aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=True)
+    return real
+
+
+def _watcher(enabled=True):
+    return aa.AmigaQuickfightWatcher(
+        aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=enabled)
+
+
+def _run(world, watcher, modes):
     fired = []
-    for mode in (0, 2, 2, 3, 3):
+    for mode in modes:
         world.mode = mode
-        fired.append(watcher.poll(world.target))
-    assert [o is not None for o in fired] == [False, False, False, True, False]
+        fired.append(watcher.poll(world.target) is not None)
+    return fired
+
+
+def test_the_watcher_fires_once_when_combat_ends(world, real_modes):
+    assert _run(world, _watcher(), (0, 5, 5, 6, 6)) == [
+        False, False, False, True, False]
     assert world.target.mem[BASE + 0x30] == 0
 
 
-@pytest.mark.parametrize("modes", [(2, 0, 2), (2, 1, 2), (2, 0, 1, 2, 2)])
-def test_the_watcher_ignores_a_dip_in_the_mode_mid_fight(world, modes):
-    world.target.mem[BASE + 0x30] = 0x80
-    world.members = [Member("A", BASE, 5, 9, quickfight=True)]
-    watcher = aa.AmigaQuickfightWatcher(
-        aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=True)
-    for mode in modes:
-        world.mode = mode
-        assert watcher.poll(world.target) is None
+@pytest.mark.parametrize("modes", [(5, 2, 5), (5, 4, 5), (5, 2, 4, 2, 5, 5)])
+def test_the_watcher_ignores_a_dip_in_the_mode_mid_fight(world, real_modes, modes):
+    assert not any(_run(world, _watcher(), modes))
     assert world.target.mem[BASE + 0x30] == 0x80
 
 
-def test_the_watcher_fires_when_a_dip_is_followed_by_the_after_fight_value(world):
-    world.target.mem[BASE + 0x30] = 0x80
-    world.members = [Member("A", BASE, 5, 9, quickfight=True)]
-    watcher = aa.AmigaQuickfightWatcher(
-        aa.AmigaClearQuickfight("curse-of-the-azure-bonds"), enabled=True)
-    fired = []
-    for mode in (2, 0, 2, 0, 3):
-        world.mode = mode
-        fired.append(watcher.poll(world.target) is not None)
-    assert fired == [False, False, False, False, True]
+def test_the_watcher_fires_when_a_dip_is_followed_by_the_after_fight_value(
+        world, real_modes):
+    assert _run(world, _watcher(), (5, 2, 5, 4, 6)) == [
+        False, False, False, False, True]
 
 
-@pytest.mark.parametrize("key", sorted(aa.amiga.MACHINES))
-def test_every_title_ends_a_fight_at_mode_6(key):
-    from automap import amigaparty
+def test_a_fight_won_while_the_watcher_was_off_does_not_arm_it(world, real_modes):
+    watcher = _watcher(enabled=False)
+    assert not any(_run(world, watcher, (5, 5)))
+    watcher.enabled = True
+    assert not any(_run(world, watcher, (0, 6)))
+    assert world.target.mem[BASE + 0x30] == 0x80
 
-    assert amigaparty.ROWS[key].after_fight_value == 6
+
+def test_switching_the_watcher_off_mid_fight_disarms_it(world, real_modes):
+    watcher = _watcher()
+    _run(world, watcher, (5,))
+    watcher.enabled = False
+    _run(world, watcher, (5,))
+    watcher.enabled = True
+    assert not any(_run(world, watcher, (6,)))
+
+
+@pytest.mark.parametrize("leave", [0, 1, 3])
+def test_a_fight_that_ends_without_the_after_fight_value_disarms_it(
+        world, real_modes, leave):
+    assert not any(_run(world, _watcher(), (5, leave, 6)))
+    assert world.target.mem[BASE + 0x30] == 0x80
+
+
+def test_an_unreadable_mode_disarms_it(world, real_modes):
+    watcher = _watcher()
+    _run(world, watcher, (5,))
+    world.mode = None
+    assert watcher.poll(world.target) is None
+    assert not any(_run(world, watcher, (6,)))
 
 
 def test_a_disabled_watcher_never_fires(world, store):
