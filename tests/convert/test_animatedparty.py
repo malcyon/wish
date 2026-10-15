@@ -1741,10 +1741,11 @@ def test_a_pools_of_darkness_zombie_with_no_hit_points_reads_back_living(
 # and Pools of Darkness' saves as an animated member under a player
 # character's control byte.
 
-def _lowered_zombie(key, hp=None):
+def _lowered_zombie(key, hp=None, quick=0):
     """The title's specimen's first member with the cast's bytes and the
-    end state an effect end leaves: control 0, quickfight cleared, status
-    still animated. He carries no Animate Dead node, as one imported from
+    end state an effect end leaves: control 0, status still animated, and
+    quickfight as the game leaves it (`quick`: 1 after a berserk member's
+    effect ends, 0 after a charm's). He carries no Animate Dead node, as one imported from
     Pool does not."""
     first = _later_party(key)[0]
     raw = bytearray(first.to_bytes())
@@ -1752,7 +1753,8 @@ def _lowered_zombie(key, hp=None):
     for name, value in _CAST.items():
         if name in o:
             raw[o[name]] = value
-    raw[o["ctl"]] = raw[o["quick"]] = 0
+    raw[o["ctl"]] = 0
+    raw[o["quick"]] = quick
     if hp is not None:
         raw[o["hp"]] = hp
     return dos_codec.DosCharacter(bytes(raw), first.items,
@@ -1760,10 +1762,11 @@ def _lowered_zombie(key, hp=None):
                                   deltas=first.deltas)
 
 
+@pytest.mark.parametrize("quick", [0, 1])
 @pytest.mark.parametrize("port", ["dos", "amiga"])
 @pytest.mark.parametrize("key", _LATER_TITLES)
-def test_a_lowered_zombie_player_converts_living(key, port):
-    zombie = _lowered_zombie(key, hp=0)
+def test_a_lowered_zombie_player_converts_living(key, port, quick):
+    zombie = _lowered_zombie(key, hp=0, quick=quick)
     source = _later_from(key, zombie, port)
     assert (source.get("status"), source.get("npc")) == ("animated", False)
     assert c64_codec.zombie_player(source)
@@ -2100,3 +2103,104 @@ def test_a_living_record_with_turn_class_two_alone_is_not_a_zombie():
                              creature_type=0)
     assert not c64_codec.zombie_player(char)
     assert c64_codec.living_player(char) is char
+
+
+# -- the berserk form, restaged on the got-away specimen ----------------------
+#
+# A Confusion that makes a zombie go berserk ends with status 1, control 0
+# and quickfight 1, and no fight has produced that save. BRUTUS of
+# `_GOT_AWAY` is restaged to it in the Amiga save, so Save As starts from an
+# Amiga Curse save as a player's would.
+
+def _berserk_save_as(tmp_path, port):
+    import dataclasses
+    import shutil
+
+    from editor import convert, roster, saveplan
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.convert import convertdrops
+    from tools.dos import dosbox
+
+    status, quick = 0x19A, 0x19D
+    _disk, adf = _got_away_disk()
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    image = tmp_path / "berserk.adf"
+    shutil.copyfile(adf, image)
+    image.chmod(0o644)
+    disk = AmigaDisk(bytearray(image.read_bytes()))
+    save = amiga_savegame.read_slot(disk, "F", _LATER_CURSE)
+    staged = []
+    for char in save.characters:
+        if amiga_later.to_neutral_later(char).get("name") == "BRUTUS":
+            raw = bytearray(char.raw)
+            assert (raw[status], raw[quick]) == (0, 0), "specimen changed"
+            raw[status], raw[quick] = 1, 1
+            char = dataclasses.replace(char, raw=bytes(raw))
+        staged.append(char)
+    disk.write_file(amiga_savegame.slot_path(save.container, "F"),
+                    amiga_savegame.rebuild(save, staged))
+    image.write_bytes(disk.to_bytes())
+    back = {c.get("name"): c for c in (
+        amiga_later.to_neutral_later(c) for c in amiga_savegame.read_slot(
+            AmigaDisk(bytearray(image.read_bytes())), "F",
+            _LATER_CURSE).characters)}["BRUTUS"]
+    assert (back.get("status"), back.get("npc"), back.get("quickfight")) \
+        == ("animated", False, True)
+    assert c64_codec.zombie_player(back)
+    party = roster.Party(convert.Source.detect(image, slot="F"))
+    source = party.source or convert.Source.detect(party.path)
+    try:
+        if port == "c64":
+            assets = saveplan.resolve_assets(
+                source, "c64", game_files=convertdrops.game_files)
+            where = tmp_path / "out.d64"
+        else:
+            assets = saveplan.resolve_assets(
+                source, "dos", game_files=convertdrops.game_files,
+                dos_folder=dosbox.find_game("CURSE"))
+            where = tmp_path / "dos-out"
+    except (FileNotFoundError, saveplan.MissingAssets):
+        pytest.skip("needs Curse's own game files")
+    plan = saveplan.prepare_save_as(party, port, where, assets)
+    assert plan.report.dropped == [] and saveplan.losses(plan.report) == []
+    return plan
+
+
+def _c64_members(tmp_path, plan):
+    from goldbox.d64 import D64
+    from goldbox.savegame import ROSTER_STRIDE, load_save
+
+    (image,) = plan.files
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    out = tmp_path / "read-back.d64"
+    out.write_bytes(plan.files[image])
+    _game, sg0, sg1 = load_save(D64.open(str(out)))
+    out = {}
+    for s in sg0.characters:
+        block = sg1.roster(s.index)
+        out[str(s.record.get("name"))] = (
+            bytes(s.record.to_bytes()),
+            bytes(block._data[block._base:block._base + ROSTER_STRIDE]))
+    return out
+
+
+def _dos_members(plan):
+    return {bytes(d[1:1 + d[0]]).decode(): d for n, d in plan.files.items()
+            if n.endswith(".SAV") and len(d) > 0x1A4}
+
+
+def test_a_berserk_zombie_converts_to_the_bytes_the_got_away_form_does_on_dos(
+        tmp_path):
+    berserk = _dos_members(_berserk_save_as(tmp_path / "b", "dos"))
+    away = _dos_members(_got_away_save_as(tmp_path / "a", "dos"))
+    assert berserk.keys() == away.keys() and "BRUTUS" in berserk
+    assert berserk["BRUTUS"] == away["BRUTUS"]
+
+
+def test_a_berserk_zombie_converts_to_the_bytes_the_got_away_form_does_on_the_c64(
+        tmp_path):
+    berserk = _c64_members(tmp_path / "b", _berserk_save_as(tmp_path / "b", "c64"))
+    away = _c64_members(tmp_path / "a", _got_away_save_as(tmp_path / "a", "c64"))
+    assert berserk.keys() == away.keys() and "BRUTUS" in berserk
+    assert berserk["BRUTUS"] == away["BRUTUS"]
