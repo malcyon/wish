@@ -87,7 +87,7 @@ def fight_row(monkeypatch):
     return make
 
 
-def _greyed(controller, monkeypatch, *, heal=False, quick=False, after=None, click_error=False):
+def _greyed(controller, monkeypatch, *, heal=False, quick=False, after=None, click="disabled"):
     """Fake the pipe and Wish around `_greyed_check`; returns the click log."""
     party = [{"slot": 0, "name": "IN RANGE", "raw": "00" * 8, "items": []}]
     readbacks = [party, after or party]
@@ -108,8 +108,10 @@ def _greyed(controller, monkeypatch, *, heal=False, quick=False, after=None, cli
 
     def ui(guest, holder, action, names=(), **kwargs):
         clicks.append((action, names))
-        if click_error:
-            raise RuntimeError("the control is disabled")
+        if click == "disabled":
+            raise winwishaccept.winwish.ControlDisabled(f"fail {names[0]} is disabled", names[0])
+        if click == "missing":
+            raise winwishaccept.winwish.WinwishError(f"no control named {names[0]}")
         return ["clicked"]
 
     monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
@@ -137,20 +139,25 @@ def test_fight_greyed_check_accepts_a_combat_legal_action_enabled(tmp_path, monk
     greyed = controller.summary["fight_greyed"]
     assert greyed["status"] == "awaiting image review", greyed["reason"]
     assert greyed["observed"]["enabled"]["Quickfight off"] is True
-    # One click on a greyed button, its reply kept, never taken as an action.
+    # One click on a greyed button, which the click layer answers as disabled; never an action.
     assert clicks == [("click", ("Heal party",))]
-    assert greyed["observed"]["click"]["reply"] == ["clicked"]
+    assert greyed["observed"]["click"]["disabled"] == "Heal party"
     assert controller.action_commands == 0
 
 
-def test_a_greyed_click_with_no_reply_leaves_the_row_unproven(tmp_path, monkeypatch, fight_row):
+@pytest.mark.parametrize("click,status,reason", [
+    ("missing", "unproven", "found no greyed button: WinwishError: no control named Heal party"),
+    ("reply", "failed", "was carried out, so the button was enabled")])
+def test_only_the_disabled_answer_proves_the_clicked_button_greyed(tmp_path, monkeypatch,
+                                                                    fight_row, click, status,
+                                                                    reason):
     fight_row()
     controller = _controller(tmp_path)
-    _greyed(controller, monkeypatch, click_error=True)
+    _greyed(controller, monkeypatch, click=click)
     controller._greyed_check(MEMORY)
     greyed = controller.summary["fight_greyed"]
-    assert greyed["status"] == "unproven"
-    assert "disabled" in greyed["reason"] and "disabled" in greyed["observed"]["click"]["error"]
+    assert greyed["status"] == status
+    assert reason in greyed["reason"]
 
 
 def test_a_greyed_click_that_changes_a_party_byte_fails_the_row(tmp_path, monkeypatch, fight_row):

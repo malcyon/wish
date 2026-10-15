@@ -2812,6 +2812,9 @@ class Controller:
         self._map_section()
         try:
             click["reply"] = winwish.ui(self.guest, self.args.holder, "click", (label,))
+        except winwish.ControlDisabled as exc:
+            # The click script found the button and left it alone: the answer a greyed one gives.
+            click.update(disabled=exc.control, message=str(exc))
         except Exception as exc:  # noqa: BLE001 - the reply or error is the record, not a verdict
             click["error"] = f"{type(exc).__name__}: {exc}"
         observed["click"] = click
@@ -2835,11 +2838,16 @@ class Controller:
         if changed:
             problems.append("party bytes changed: " + ", ".join(changed))
         observed["party_before"], observed["party_after"] = before, after
+        if "reply" in click:
+            # The click script invokes only an enabled control.
+            problems.append(f"the click on {label} was carried out, so the button was enabled")
+        elif "disabled" in click and click["disabled"] != label:
+            problems.append(f"the click on {label} answered for {click['disabled']}")
         if problems:
             result.update(status="failed", reason="; ".join(problems))
         elif "error" in click:
             result.update(status="unproven",
-                          reason=f"the click on {label} returned no reply: {click['error']}")
+                          reason=f"the click on {label} found no greyed button: {click['error']}")
         else:
             result["status"] = "awaiting image review"
 

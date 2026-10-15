@@ -1399,6 +1399,20 @@ def test_a_failure_line_from_the_window_is_the_error():
         winwish.ui(winwish.Guest(run), "h", "click", ("Heal party",))
 
 
+def test_a_click_on_a_disabled_control_has_its_own_error_naming_it():
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("fail Heal party is disabled"))])
+    with pytest.raises(winwish.ControlDisabled) as caught:
+        winwish.ui(winwish.Guest(run), "h", "click", ("Heal party",))
+    assert caught.value.control == "Heal party"
+
+
+def test_a_control_that_is_not_found_is_not_reported_as_disabled():
+    run = FakeRun([(lambda a: a[1] == "ps", 0, _ui_reply("fail no control named Heal party"))])
+    with pytest.raises(winwish.WinwishError) as caught:
+        winwish.ui(winwish.Guest(run), "h", "click", ("Heal party",))
+    assert not isinstance(caught.value, winwish.ControlDisabled)
+
+
 def test_no_answer_at_all_is_one_sentence():
     run = FakeRun([(lambda a: a[1] == "ps", 1, "ssh: nope")])
     with pytest.raises(winwish.WinwishError, match="answered with nothing"):

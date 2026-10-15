@@ -99,6 +99,18 @@ class WinwishError(RuntimeError):
     """A failure to report in one line."""
 
 
+class ControlDisabled(WinwishError):
+    """A `click` found the one control it was given and left it alone because it is disabled."""
+
+    def __init__(self, message: str, control: str):
+        super().__init__(message)
+        self.control = control
+
+
+#: The click script's answer for a disabled control (`ui_inner`), with its name.
+DISABLED_LINE = re.compile(r"fail (?P<control>.+) is disabled")
+
+
 # -- paths and the settings Wish starts with ---------------------------------
 
 def short_sha(sha: str) -> str:
@@ -1050,6 +1062,9 @@ def ui_lines(text: str, kind: str | None = None, rc: int | None = None) -> list[
         raise WinwishError(fail or "the window answered with nothing: "
                            + (text.strip()[:200] or "no output")) from None
     if not body or body[0] != "ok":
+        disabled = DISABLED_LINE.fullmatch(body[0]) if body else None
+        if disabled:
+            raise ControlDisabled(body[0], disabled["control"])
         raise WinwishError(body[0] if body and body[0] else "the window answered with nothing")
     lines = []
     for line in body[1:]:
