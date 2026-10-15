@@ -49,6 +49,23 @@ CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
 #: Seconds the Automapper waits between roster reads; the grab after a game restart waits one.
 ROSTER_SECONDS = 1
+#: The disconnect grabs at 0, 15 and 30 s.
+DISCONNECT_SECONDS = 45
+#: Wish's wait before a checkpoint's pair of shots (`_checkpoint`); the guards, reads and shots around it are not measured.
+CHECKPOINT_SETTLE = 10
+
+
+def _reconnect_seconds(route: Any) -> int:
+    """Route time kept back for the disconnect grabs, the game's restart and the load phase's waits and checkpoint settles."""
+    load = next((phase for phase in route.phases if phase.name == "load"), None)
+    if load is None:
+        return 0
+    limits, title = route.amiga_title.wait_limits, route.amiga_title.title_limit
+    waits = limits.get(load.initial_state, title) + sum(limits.get(step.state, 90)
+                                                        for step in load.steps)
+    checkpoints = sum(1 for step in load.steps if step.checkpoint)
+    return (DISCONNECT_SECONDS + winwish.START_SECONDS + 30 + waits
+            + checkpoints * CHECKPOINT_SETTLE + ROSTER_SECONDS)
 #: The leave-town route checkpoints 13 times before its terminal key; 1800 s of route.
 LEAVE_DISCOVERY_SECONDS = 2100
 #: Where Wish's tab rests while the party walks: the Character Editor, which frees the pipe
@@ -629,7 +646,11 @@ class Controller:
         self.out.mkdir(parents=True, exist_ok=True)
         self.events = self.out / "events.jsonl"
         self.started = self.clock()
-        self.route_end = self.started + args.deadline - CLEANUP_SECONDS
+        self.reconnect_end = self.started + args.deadline - CLEANUP_SECONDS
+        #: The route stops early by what the restart and reload will need; `run_title` lifts this at the disconnect step.
+        self.route_end = self.reconnect_end
+        if getattr(args, "discover", None) is None:
+            self.route_end -= _reconnect_seconds(route)
         self.total_end = self.started + args.deadline
         self.mapping_commands = self.action_commands = 0
         #: The reload after the game restarts has its own key budget, so it neither
@@ -644,6 +665,7 @@ class Controller:
         self.booted = False
         #: Whether the game was started a second time after the disconnect grabs.
         self.restarted = False
+        self.restart_stop_error: str | None = None
         #: The floppy images and WinUAE settings `_up` started the game with, for a restart.
         self.launch: tuple[tuple[str, ...], tuple[str, ...]] | None = None
         self.down_done = False
@@ -1836,6 +1858,8 @@ class Controller:
         """Load the party into the restarted game as the run's start did, then leave Wish on the Automapper."""
         load = next(phase for phase in self.route.phases if phase.name == "load")
         self.reconnect_limit = _phase_keys(load)
+        # The restarted emulator is a new pipe peer; nothing cached from the first may be reused.
+        self.game._pipe = None
         try:
             self.run_phase(load, namespace="reconnect-load")
         finally:
@@ -1874,7 +1898,8 @@ class Controller:
         if self.discovery:
             self._cleanup_discovery()
             return
-        failures = []
+        failures = ([f"restart stop: {self.restart_stop_error}"]
+                    if self.restart_stop_error else [])
         if self.encounters_on:
             self._encounters_off(failures)
         if self.booted:
@@ -2303,6 +2328,7 @@ class Controller:
                 self._game_section()
                 self._await("world")
                 self._final_reload()
+            self.route_end = self.reconnect_end
             self._map_section()
             if self.launch is None:
                 raise AcceptanceStop("the game's launch settings were not recorded")
@@ -2320,9 +2346,9 @@ class Controller:
                 "awaiting image review", evidence=[str(connected), *pictures])
             # The same lane and the same Wish window: only the game comes back.
             drives, options = self.launch
-            self.restarted = True
             self.lane.start(self.args.holder, *drives,
                             timeout=self.left(winwish.START_SECONDS + 30), options=options)
+            self.restarted = True
             self._reload_party()
             self.sleep(self.left(ROSTER_SECONDS))
             back = self.out / "reconnected.png"
@@ -2339,10 +2365,13 @@ class Controller:
         finally:
             if self.restarted:
                 # Cleanup copies the working ADFs, which a running game holds open.
+                left = self.total_end - self.clock()
                 try:
-                    self.lane.stop(self.args.holder, 60)
+                    if left <= 0:
+                        raise AcceptanceStop("no time is left to stop the restarted game")
+                    self.lane.stop(self.args.holder, min(60, left))
                 except Exception as exc:  # noqa: BLE001
-                    self.summary["cleanup"]["restart_stop"] = str(exc)
+                    self.restart_stop_error = str(exc)
             self._cleanup()
             (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
         return self.summary

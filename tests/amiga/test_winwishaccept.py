@@ -276,8 +276,7 @@ def test_a_game_that_cannot_be_restarted_is_found_before_the_lane_is_stopped(tmp
     assert events[-1] == "down"
 
 
-def test_a_failed_restart_leaves_the_row_unproven_and_still_stops_the_game_and_goes_down(
-        tmp_path, monkeypatch):
+def test_a_failed_restart_leaves_the_row_unproven_and_still_goes_down(tmp_path, monkeypatch):
     def start(*args, **kwargs):
         raise winuaesession.RouteError("lane start timed out")
 
@@ -289,7 +288,7 @@ def test_a_failed_restart_leaves_the_row_unproven_and_still_stops_the_game_and_g
     assert result["mapping"]["reconnect"]["status"] == "unproven"
     assert "lane start timed out" in result["mapping"]["reconnect"]["reason"]
     assert result["mapping"]["disconnect"]["status"] == "awaiting image review"
-    assert events[-3:] == ["disconnect-2.png", "lane-stop", "down"]
+    assert events[-2:] == ["disconnect-2.png", "down"]
     assert result["cleanup"]["errors"] == []
 
 
@@ -4377,3 +4376,61 @@ def test_the_plain_cut_of_an_exact_frame_is_the_canonical_crop(tmp_path):
     odd = tmp_path / "odd.png"
     Image.new("RGB", (100, 100)).save(odd)
     assert not winwishaccept._plain_cut(odd, tmp_path / "none.png")
+
+
+def test_a_restarted_game_that_will_not_stop_fails_the_run_and_its_stop_is_bounded(
+        tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(tmp_path, monkeypatch)
+    stops = []
+
+    def stop(holder, timeout):
+        stops.append(timeout)
+        if len(stops) == 2:
+            raise winuaesession.RouteError("stop timed out")
+
+    controller.lane.stop = stop
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert any("stop timed out" in error for error in result["cleanup"]["errors"])
+    assert stops[1] <= 60 and stops[1] <= controller.total_end
+    assert events[-1] == "down"
+
+
+def test_no_time_left_is_an_error_rather_than_a_stop_with_no_timeout(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(
+        tmp_path, monkeypatch,
+        start=lambda *args, **kwargs: setattr(controller, "total_end", -1.0))
+    stops = []
+    controller.lane.stop = lambda holder, timeout: stops.append(timeout)
+
+    result = controller.run_title()
+
+    assert stops == [60.0]
+    assert any("no time is left" in error for error in result["cleanup"]["errors"])
+
+
+def test_the_route_keeps_back_the_time_the_restart_and_reload_need(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(tmp_path, monkeypatch)
+    # The test route's load phase has one key step and no checkpoint, on a 30 s title limit.
+    need = (winwishaccept.DISCONNECT_SECONDS + winwishaccept.winwish.START_SECONDS + 30
+            + 30 + 90 + winwishaccept.ROSTER_SECONDS)
+    assert winwishaccept._reconnect_seconds(controller.route) == need
+    assert controller.route_end == controller.reconnect_end - need
+    assert controller.reconnect_end == controller.started + 3300 - winwishaccept.CLEANUP_SECONDS
+
+    controller.run_title()
+
+    assert controller.route_end == controller.reconnect_end
+
+
+def test_the_reload_starts_with_no_pipe_from_the_game_before_the_restart(tmp_path, monkeypatch):
+    seen = []
+    controller, events = _disconnect_controller(
+        tmp_path, monkeypatch, reload_step=lambda c: seen.append(c.game._pipe))
+    controller.game._pipe = "the first emulator's pipe"
+
+    controller.run_title()
+
+    assert seen == [None]
