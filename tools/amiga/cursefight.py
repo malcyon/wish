@@ -1631,7 +1631,8 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
     The watched member's saved row decides the form (`saved`, his read-back row; `loaded`, his
     staged fields):
 
-    * `pass`, the berserk form: saved control 0 and the loaded status.
+    * `pass`, the berserk form: saved control 0 and the loaded status, with a reading that
+      held 137 or a frame that showed his berserk message; with neither it is `inconclusive`.
     * `fled`: saved control 0 and status 0, the run-away form that left the map.
     * `got_away`: saved status 0 with the loaded control: he left the map unlowered.
     * `refuted`: saved with the loaded control and status although a reading held 137 or 142
@@ -1705,8 +1706,12 @@ def cast_verdict(log: dict, after: dict | None, saved: dict | None,
     left = sorted(set(saved["effects"]) & {CONFUSED, *LOWERING})
     if left:
         problems.append(f"{name} was saved holding effects {left}")
+    if form == "pass" and not berserk:
+        problems.append(f"no reading held {BERSERK} and no frame showed {name} GOES BERSERK")
+        form = "inconclusive"
     gaps = {
-        "pass": [(berserk, f"no reading held {BERSERK} and no frame showed {name} GOES BERSERK")],
+        "pass": [],
+        "inconclusive": [],
         "fled": [(ran or berserk, f"no reading held {RUNS_AWAY} or {BERSERK} and no frame showed "
                                   f"{name} RUNS AWAY or GOES BERSERK"),
                  (left_map, f"no reading caught {name} off the map (status {GOT_AWAY})")],

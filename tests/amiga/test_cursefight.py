@@ -1757,11 +1757,19 @@ def _message(message, frame=60):
 def test_the_saved_berserk_form_passes_and_the_watch_only_confirms_it():
     log = _log([_watch((35,)), _watch((137,))])
     assert cursefight.cast_verdict(log, _watch(control=0), _saved(), LOADED) == ("pass", [], [])
-    log = _log([_watch((35,))])
-    assert cursefight.cast_verdict(log, _watch(control=0), _saved(), LOADED) == (
-        "pass", [], [NO_BERSERK])
     log = _log([_watch((35,))], messages=[_message("berserk")])
     assert cursefight.cast_verdict(log, _watch(control=0), _saved(), LOADED) == ("pass", [], [])
+
+
+def test_a_pass_shaped_save_with_no_berserk_evidence_is_inconclusive():
+    """Saved control 0 at the loaded status, but no reading held 137 and no frame showed the
+    berserk message: the save alone does not make the run a pass."""
+    log = _log([_watch((35,))])
+    assert cursefight.cast_verdict(log, _watch(control=0), _saved(), LOADED) == (
+        "inconclusive", [NO_BERSERK], [])
+    log = _log([_watch((35,))], messages=[_message("forced_to_flee")])
+    assert cursefight.cast_verdict(log, _watch(control=0), _saved(), LOADED) == (
+        "inconclusive", [NO_BERSERK], ["frames showed BRUTUS IS FORCED TO FLEE"])
 
 
 @pytest.mark.parametrize("saved, after, changes, match", [
@@ -1833,7 +1841,7 @@ def test_anything_else_the_saved_row_holds_is_inconclusive(saved, loaded, match)
 
 
 def test_cast_verdict_needs_a_cast_and_one_copy_spent_per_cast():
-    kind, problems, _notes = cursefight.cast_verdict(_log([_watch()], events=[]),
+    kind, problems, _notes = cursefight.cast_verdict(_log([_watch((137,))], events=[]),
                                                      _watch(control=0), _saved(), LOADED)
     assert kind == "pass" and problems == ["no cast event"]
     kind, problems, _notes = cursefight.cast_verdict(_log([_watch((137,))], spent=2),
@@ -1844,7 +1852,7 @@ def test_cast_verdict_needs_a_cast_and_one_copy_spent_per_cast():
 def test_a_cast_is_charged_only_the_drop_the_first_read_after_it_shows():
     """Run2's accounting: the aimed cast spends one by bar 2, and the computer, casting for the
     confused GALAIN, spends another before the read after the fight."""
-    log = _log([_watch((35,)), _watch((35,))])
+    log = _log([_watch((35,)), _watch((35, 137))])
     log["reads"].append({"when": "after the fight", **_watch(left=1)})
     assert cursefight.cast_spends(log) == [
         {"spent": 1, "left_after": 2,
