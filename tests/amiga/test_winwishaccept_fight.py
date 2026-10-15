@@ -87,7 +87,7 @@ def fight_row(monkeypatch):
     return make
 
 
-def _greyed(controller, monkeypatch, *, heal=False, quick=False, after=None):
+def _greyed(controller, monkeypatch, *, heal=False, quick=False, after=None, click_error=False):
     """Fake the pipe and Wish around `_greyed_check`; returns the click log."""
     party = [{"slot": 0, "name": "IN RANGE", "raw": "00" * 8, "items": []}]
     readbacks = [party, after or party]
@@ -108,7 +108,9 @@ def _greyed(controller, monkeypatch, *, heal=False, quick=False, after=None):
 
     def ui(guest, holder, action, names=(), **kwargs):
         clicks.append((action, names))
-        raise RuntimeError("the control is disabled")
+        if click_error:
+            raise RuntimeError("the control is disabled")
+        return ["clicked"]
 
     monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
     return clicks
@@ -135,10 +137,20 @@ def test_fight_greyed_check_accepts_a_combat_legal_action_enabled(tmp_path, monk
     greyed = controller.summary["fight_greyed"]
     assert greyed["status"] == "awaiting image review", greyed["reason"]
     assert greyed["observed"]["enabled"]["Quickfight off"] is True
-    # One click on a greyed button, its error kept, never taken as an action.
+    # One click on a greyed button, its reply kept, never taken as an action.
     assert clicks == [("click", ("Heal party",))]
-    assert "disabled" in greyed["observed"]["click"]["error"]
+    assert greyed["observed"]["click"]["reply"] == ["clicked"]
     assert controller.action_commands == 0
+
+
+def test_a_greyed_click_with_no_reply_leaves_the_row_unproven(tmp_path, monkeypatch, fight_row):
+    fight_row()
+    controller = _controller(tmp_path)
+    _greyed(controller, monkeypatch, click_error=True)
+    controller._greyed_check(MEMORY)
+    greyed = controller.summary["fight_greyed"]
+    assert greyed["status"] == "unproven"
+    assert "disabled" in greyed["reason"] and "disabled" in greyed["observed"]["click"]["error"]
 
 
 def test_a_greyed_click_that_changes_a_party_byte_fails_the_row(tmp_path, monkeypatch, fight_row):
@@ -325,6 +337,32 @@ def test_the_walk_restores_on_a_screen_it_does_not_answer_and_then_stops(tmp_pat
         controller._walk_to_fight(plan, screens, memory)
     assert game.restores == [winwishaccept.FIGHT_WALK_SNAPSHOT] * winwishaccept.FIGHT_RESTORES
     assert [key for _on, key in screens.keys] == ["NP8", "NP4", "NP4"]
+
+
+@pytest.mark.parametrize("looks", [[None], ["world", None]])
+def test_the_walk_stops_at_once_on_an_unrecognized_screen_or_a_failed_grab(tmp_path, monkeypatch,
+                                                                         looks):
+    game = ScriptGame(["world"])
+    controller = _controller(tmp_path, game=game)
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    memory = SimpleNamespace(fix=lambda: (1, 1, 0))
+    # settled() looks again for a while before it gives up on a frame no guard knows.
+    screens = WalkScreens([*looks, *[None] * 40])
+    plan = winwishaccept.fight_plan("darkness")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="no recognized screen; kept walk.png"):
+        controller._walk_to_fight(plan, screens, memory)
+    assert game.restores == []
+    assert len(screens.keys) == len(looks)
+
+
+def test_no_fight_plan_allows_a_save_or_camp_key():
+    saving = {"camp", "camp_save_picker", "save_picker", "exit_game", "load_picker", "title",
+              "party_menu", "loaded_menu"}
+    for title in ("pool", "curse", "ssb", "darkness"):
+        plan = winwishaccept.fight_plan(title)
+        assert set(plan.allowed) <= plan.named(), (title, set(plan.allowed) - plan.named())
+        assert not saving & set(plan.allowed), (title, saving & set(plan.allowed))
+        assert plan.allowed["world"] <= {"NP2", "NP4", "NP6", "NP8"}, (title, plan.allowed["world"])
 
 
 def test_the_fight_load_expects_the_specimens_own_square():

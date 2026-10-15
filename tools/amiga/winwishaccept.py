@@ -348,14 +348,18 @@ class FightPlan:
     #: Whether the party's hit points are raised at the first bar so it outlasts the fight.
     survive: bool = True
 
-    def states(self) -> set[str]:
-        """Every guard the walk and the fight loop answer or wait for."""
+    def named(self) -> set[str]:
+        """Every screen the walk and the fight loop answer or wait for, the map as `world`."""
         rules = self.rules
         named = {*rules.answers, *rules.won, *rules.starting, *rules.after_bars,
                  *self.walk_answers, *self.opens, "world"}
         if self.entry == "tavern":
             named |= {"tavern", "injuries", "continue"}
-        return {self.map_state if state == "world" else state for state in named}
+        return named
+
+    def states(self) -> set[str]:
+        """Every guard the walk and the fight loop answer or wait for."""
+        return {self.map_state if state == "world" else state for state in self.named()}
 
 
 def fight_plan(title: str) -> FightPlan:
@@ -363,11 +367,13 @@ def fight_plan(title: str) -> FightPlan:
     from tools.amiga import cursefight, ssbfight  # noqa: PLC0415
 
     if title == "curse":
-        return FightPlan("curse", "tavern", cursefight.CURSE_FIGHT, "world",
-                         dict(cursefight.ALLOWED_KEYS), extra_guards=dict(cursefight.FIGHT_GUARDS))
+        return _walk_keys_only(FightPlan(
+            "curse", "tavern", cursefight.CURSE_FIGHT, "world", dict(cursefight.ALLOWED_KEYS),
+            extra_guards=dict(cursefight.FIGHT_GUARDS)))
     if title == "ssb":
-        return FightPlan("ssb", "wander", ssbfight.SSB_FIGHT, "world", dict(ssbfight.ALLOWED_KEYS),
-                         extra_guards={"treasure_bar": [ssbfight.TREASURE_SHORT]})
+        return _walk_keys_only(FightPlan(
+            "ssb", "wander", ssbfight.SSB_FIGHT, "world", dict(ssbfight.ALLOWED_KEYS),
+            extra_guards={"treasure_bar": [ssbfight.TREASURE_SHORT]}))
     fields = ("control", "quickfight", "hit_points")
     if title == "pool":
         # COMBAT on the encounter menu and RETURN on YOU ARE SURPRISED (`route_pool._SURPRISED`);
@@ -397,7 +403,20 @@ def fight_plan(title: str) -> FightPlan:
     allowed = {"world": frozenset({"NP8", "NP4"}),
                **{state: frozenset({key}) for state, key in answers.items()},
                **{state: frozenset({key}) for state, key in walk.items()}}
-    return FightPlan(title, entry, rules, map_state, allowed, walk, opens)
+    return _walk_keys_only(FightPlan(title, entry, rules, map_state, allowed, walk, opens))
+
+
+#: Keys the map may receive in a fight leg: moves and turns, never camp's E.
+FIGHT_MAP_KEYS = frozenset({"NP2", "NP4", "NP6", "NP8"})
+
+
+def _walk_keys_only(plan: FightPlan) -> FightPlan:
+    """A plan whose keys are only those of the screens it answers or waits for, and only walk
+    keys on the map: no camp, save picker, exit or load key, so the leg can never save."""
+    named = plan.named()
+    allowed = {state: keys for state, keys in plan.allowed.items() if state in named}
+    allowed["world"] = allowed.get("world", frozenset()) & FIGHT_MAP_KEYS
+    return dataclasses.replace(plan, allowed=allowed)
 
 
 def _fight_specimen(title: str, manifest: dict[str, Any], route: Any) -> dict[str, Any]:
@@ -2818,6 +2837,9 @@ class Controller:
         observed["party_before"], observed["party_after"] = before, after
         if problems:
             result.update(status="failed", reason="; ".join(problems))
+        elif "error" in click:
+            result.update(status="unproven",
+                          reason=f"the click on {label} returned no reply: {click['error']}")
         else:
             result["status"] = "awaiting image review"
 
@@ -2897,8 +2919,12 @@ class Controller:
                 key = ("NP4" if key == "NP8" and before is not None and after is not None
                        and after[:2] == before[:2] else "NP8")
                 continue
+            if state is None:
+                # No guard matched, or no frame was grabbed: nothing says what the key did.
+                raise AcceptanceStop(f"the walk to a fight met no recognized screen; kept {shot}")
             if restores >= FIGHT_RESTORES:
-                raise AcceptanceStop(f"the walk to a fight met a screen it does not answer; kept {shot}")
+                raise AcceptanceStop(f"the walk to a fight met {state}, which it does not answer; "
+                                     f"kept {shot}")
             steps.append({"key": key, "before": before, "unanswered": str(shot)})
             self.game.restore(FIGHT_WALK_SNAPSHOT, self.args.holder)
             restores += 1
