@@ -1579,8 +1579,6 @@ class Guest:
 
     def __init__(self, run: Callable[[list[str], float], tuple[int, str]] = _run):
         self.run = run
-        #: Whether the staged build reads `OLD_WINUAE_ENV`; set by `up`, used by every later start.
-        self.winuae_flag = False
 
     def winvm(self, *args: str, timeout: float = CALL_SECONDS, step: str = "") -> str:
         rc, out = self.run(["winvm", *args], timeout)
@@ -1885,7 +1883,7 @@ def start_wish(guest: Guest, holder: str, disks: tuple[str, ...] = (),
         raise WinwishError(f"{holder} runs no WinUAE and does not hold every lane, "
                            "so Wish could attach to another holder's emulator")
     try:
-        return guest.ps(start_script(holder, environment(holder, features, pipe, guest.winuae_flag), disks=disks,
+        return guest.ps(start_script(holder, environment(holder, features, pipe, _read_winuae_flag(holder)), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
                         timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30, step="start_wish")
@@ -2027,7 +2025,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     with terminating():
         try:
             every = args.keep_lanes or not drives or not _build_reads_pipe(guest, sha)
-            guest.winuae_flag = _build_reads_winuae_flag(guest, sha)
+            _write_winuae_flag(args.holder, _build_reads_winuae_flag(guest, sha))
             result["lanes"] = "every" if every else "one"
             if not every:
                 result["claim"] = lane.claim(args.holder, CALL_SECONDS, wait=args.wait_lanes)
@@ -2057,6 +2055,25 @@ def _build_reads_pipe(guest: Guest, sha: str) -> bool:
     """Whether the build at `sha` reads `WISH_WINUAE_PIPE`; a git failure counts as no."""
     rc, _ = guest.run(["git", "grep", "-q", "-F", PIPE_ENV, sha, "--", "wish/winuae.py"], CALL_SECONDS)
     return rc == 0
+
+
+def _flag_file(holder: str) -> pathlib.Path:
+    """Where `up` leaves whether the holder's staged build reads `OLD_WINUAE_ENV`, for every later start."""
+    return scratch.cache_dir("winwish", f"old-winuae-flag-{holder}")
+
+
+def _write_winuae_flag(holder: str, reads: bool) -> None:
+    path = _flag_file(holder)
+    scratch.ensure(path.parent)
+    path.write_text("1" if reads else "0", encoding="ascii")
+
+
+def _read_winuae_flag(holder: str) -> bool:
+    """False when no `up` recorded the build."""
+    try:
+        return _flag_file(holder).read_text(encoding="ascii") == "1"
+    except OSError:
+        return False
 
 
 def _build_reads_winuae_flag(guest: Guest, sha: str) -> bool:

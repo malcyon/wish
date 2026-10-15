@@ -2987,6 +2987,16 @@ def test_the_first_checkpoint_stops_a_wish_that_never_connected(tmp_path, monkey
     assert "loaded" not in controller.checkpoints
 
 
+@pytest.mark.parametrize("rows", [0, 2])
+def test_the_first_checkpoint_records_whether_the_dump_held_messages_rows(tmp_path, monkeypatch, rows):
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
+    dump = ["Button|Heal|||enabled=True", *["ListItem|a message|||"] * rows]
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: dump)
+    controller._checkpoint("loaded", None, {"raw": "game"})
+    controller._checkpoint("later", None, {"raw": "game"})
+    assert controller.summary["messages_panel_rows"] == rows
+
+
 def test_the_first_checkpoint_goes_on_once_wish_connects(tmp_path, monkeypatch):
     controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
     replies = iter([["ListItem|Waiting to connect...|||"], ["Button|Heal|||enabled=True"]])

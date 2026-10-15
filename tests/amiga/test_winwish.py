@@ -652,6 +652,13 @@ def test_the_build_is_searched_for_the_variable_at_its_sha(tmp_path, monkeypatch
     assert SHA in grep and "WISH_WINUAE_PIPE" in grep
 
 
+@pytest.fixture(autouse=True)
+def _own_flag_file(tmp_path_factory, monkeypatch):
+    """The record of whether the build reads the old flag goes to a folder of the test's own."""
+    folder = tmp_path_factory.mktemp("flag")
+    monkeypatch.setattr(winwish, "_flag_file", lambda holder: folder / f"flag-{holder}", raising=False)
+
+
 def _task_after_up(tmp_path, monkeypatch, rules=()):
     run = FakeRun(rules)
     winwish.up(winwish.Guest(run), FakeLane(), _args(tmp_path, monkeypatch))
@@ -673,12 +680,11 @@ def test_a_build_without_the_old_winuae_flag_is_started_without_it(tmp_path, mon
     assert f"$env:{winwish.OLD_WINUAE_ENV}" not in body
 
 
-def test_a_later_start_keeps_the_old_winuae_flag(tmp_path, monkeypatch):
-    guest = winwish.Guest(FakeRun())
-    winwish.up(guest, FakeLane(), _args(tmp_path, monkeypatch))
-    guest.run.calls.clear()
-    winwish.start_wish(guest, "h")
-    start = next(c[2] for c in guest.run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+def test_a_standalone_start_in_a_new_process_keeps_the_old_winuae_flag(tmp_path, monkeypatch):
+    winwish.up(winwish.Guest(FakeRun()), FakeLane(), _args(tmp_path, monkeypatch))
+    later = FakeRun()
+    winwish.start_wish(winwish.Guest(later), "h")
+    start = next(c[2] for c in later.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
     assert f"$env:{winwish.OLD_WINUAE_ENV} = '1'" in _task_text(start)
 
 

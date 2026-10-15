@@ -1664,6 +1664,8 @@ class Controller:
 
     def _await_connection(self, controls: list[str]) -> list[str]:
         """The controls once Wish no longer waits to connect; stops the run if it still does after `CONNECT_WAIT`."""
+        # Whether the dump exposes the Messages panel's rows at all decides if this check can see anything.
+        self.summary["messages_panel_rows"] = sum(line.startswith("ListItem|") for line in controls)
         deadline = self.clock() + CONNECT_WAIT
         while any(WAITING_LINE in line for line in controls):
             if self.clock() >= deadline:
