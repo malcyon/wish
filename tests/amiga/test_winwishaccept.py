@@ -24,11 +24,11 @@ from tools.amiga import winuaesession, winwishaccept
 SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
-def _args(tmp_path):
+def _args(tmp_path, leg="mapping"):
     return argparse.Namespace(title="ssb", sha=SHA, holder="test-acw",
                               manifest=tmp_path / "prepare.json",
                               mute_proof=tmp_path / "mute.json", out=tmp_path,
-                              deadline=3300)
+                              deadline=3300, leg=leg)
 
 
 def _phase(name, initial, *steps, ready=True, reason=None):
@@ -173,8 +173,10 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
     result = controller.run_title()
 
     assert result["failure"] is None
+    # The mapping leg ends at the disconnect grabs; restarting the game and reloading the
+    # party belong to the reconnect leg, so no "reconnect-load:load" follows.
     assert events == ["up", "load", "transition", "stationary", "walk", "reload",
-                      "stop_wish", "reopen_step", "reconnect-load:load"]
+                      "stop_wish", "reopen_step"]
 
 
 def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish(
@@ -187,7 +189,7 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
         start=lambda holder, *drives, timeout, options: events.append(
             ("lane-start", holder, drives, options)))
     controller = winwishaccept.Controller(
-        _args(tmp_path), guest=object(), lane=lane, game=FakeGame(), guards=object(),
+        _args(tmp_path, leg="reconnect"), guest=object(), lane=lane, game=FakeGame(), guards=object(),
         route=route, zipped=tmp_path / "build.zip", info={"media": {}},
         clock=clock, sleep=lambda seconds: (events.append(("sleep", seconds)), clock.sleep(seconds)))
 
@@ -224,7 +226,7 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
 
 
 def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ()),
-                           reload_step=None):
+                           reload_step=None, leg="reconnect"):
     """A controller at the disconnect step, with the real cleanup and everything before it stubbed."""
     route = _route()
     clock = FakeClock()
@@ -234,8 +236,8 @@ def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ())
         start=start or (lambda *args, **kwargs: events.append("lane-start")),
         status=lambda timeout: "no claims")
     controller = winwishaccept.Controller(
-        _args(tmp_path), guest=object(), lane=lane, game=FakeGame(), guards=object(),
-        route=route, zipped=tmp_path / "build.zip", info={"media": {}},
+        _args(tmp_path, leg=leg), guest=object(), lane=lane, game=FakeGame(),
+        guards=object(), route=route, zipped=tmp_path / "build.zip", info={"media": {}},
         clock=clock, sleep=clock.sleep)
 
     def up():
@@ -4496,18 +4498,62 @@ def test_no_time_left_is_an_error_rather_than_a_stop_with_no_timeout(tmp_path, m
     assert any("no time is left" in error for error in result["cleanup"]["errors"])
 
 
-def test_the_route_keeps_back_the_time_the_restart_and_reload_need(tmp_path, monkeypatch):
+@pytest.mark.parametrize("leg", ["mapping", "persist", "reconnect"])
+def test_every_leg_has_the_whole_route_time_to_the_cleanup_reserve(tmp_path, monkeypatch, leg):
+    # The restart and reload used to be subtracted from every mapping run, which left the
+    # longer titles' routes short of their last checkpoints; the reconnect leg alone does them.
+    controller, _ = _disconnect_controller(tmp_path, monkeypatch, leg=leg)
+    controller._set_deadlines()
+
+    assert controller.route_end == controller.started + 3300 - winwishaccept.CLEANUP_SECONDS
+
+
+def test_the_mapping_leg_grabs_the_disconnect_and_never_restarts_the_game(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(tmp_path, monkeypatch, leg="mapping")
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert events[events.index("connected.png"):events.index("lane-stop") + 4] == [
+        "connected.png", "lane-stop", "disconnect-0.png", "disconnect-1.png", "disconnect-2.png"]
+    assert "lane-start" not in events and "reconnected.png" not in events
+    assert "reconnect" not in result["mapping"]
+    assert controller.restarted is False
+
+
+def test_the_reconnect_leg_runs_only_the_load_then_the_disconnect_and_reload(tmp_path, monkeypatch):
     controller, events = _disconnect_controller(tmp_path, monkeypatch)
-    # The test route's load phase has one key step and no checkpoint, on a 30 s title limit.
-    need = (winwishaccept.DISCONNECT_SECONDS + winwishaccept.winwish.START_SECONDS + 30
-            + 30 + 90 + winwishaccept.ROSTER_SECONDS)
-    assert winwishaccept._reconnect_seconds(controller.route) == need
-    assert controller.route_end == controller.reconnect_end - need
-    assert controller.reconnect_end == controller.started + 3300 - winwishaccept.CLEANUP_SECONDS
+    monkeypatch.setattr(controller, "flag_controls", lambda: pytest.fail("flags set"))
+    monkeypatch.setattr(controller, "run_actions", lambda: pytest.fail("actions pressed"))
 
-    controller.run_title()
+    result = controller.run_title()
 
-    assert controller.route_end == controller.reconnect_end
+    assert result["failure"] is None
+    assert controller.phases_run == [("load", None), ("load", "reconnect-load")]
+    assert tuple(result["mapping"]) == winwishaccept.RECONNECT_ROWS
+    assert result["actions"] == {}
+    assert result["mapping"]["reconnect"]["status"] == "awaiting image review"
+
+
+@pytest.mark.parametrize("extra, message", [
+    (["--discover", "ssb-leave"], "not a discovery mode"),
+    (["--action", "heal"], "presses no actions")])
+def test_the_reconnect_leg_stops_preflight_for_a_discovery_mode_or_an_action(
+        tmp_path, extra, message):
+    args = winwishaccept._parser().parse_args([
+        "--title", "pool", "--manifest", "m", "--sha", SHA, "--holder", "h", "--mute-proof", "p",
+        "--out", "o", "--leg", "reconnect", *extra])
+    args.deadline = 1500
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match=message):
+        winwishaccept.preflight(args, guest=object(), route_for=None)
+
+
+def test_the_parser_takes_the_reconnect_leg():
+    args = winwishaccept._parser().parse_args([
+        "--title", "pool", "--manifest", "m", "--sha", SHA, "--holder", "h", "--mute-proof", "p",
+        "--out", "o", "--leg", "reconnect", "--deadline", "1500"])
+    assert (args.leg, args.deadline) == ("reconnect", 1500)
 
 
 def test_the_reload_starts_with_no_pipe_from_the_game_before_the_restart(tmp_path, monkeypatch):

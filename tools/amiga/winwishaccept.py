@@ -35,9 +35,11 @@ from tools.amiga.winuaesession import (  # noqa: E402
 BUILD_SHA = re.compile(r"[0-9a-f]{40}\Z")
 REQUIRED = ("load", "stationary", "walk", "transition", "reload", "reopen_step")
 MAPPING_ROWS = ("title", "load", "stationary", "walk", "transition", "reload",
-                "reopen", "walkout", "disconnect", "reconnect")
+                "reopen", "walkout", "disconnect")
+#: The reconnect leg loads the party, stops the game, and starts and loads it again.
+RECONNECT_ROWS = ("title", "load", "disconnect", "reconnect")
 STATUSES = ("passed", "failed", "unproven", "awaiting image review")
-LEGS = ("mapping", "persist")
+LEGS = ("mapping", "persist", "reconnect")
 ACTION_KINDS = ("heal", "spells", "identify", "quickfight", "levelup")
 #: The longest `--wait-lanes`, in seconds: the lane pool's own claim wait.
 MAX_WAIT_LANES = 1800
@@ -65,23 +67,6 @@ CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
 #: Seconds the Automapper waits between roster reads; the grab after a game restart waits one.
 ROSTER_SECONDS = 1
-#: The disconnect grabs at 0, 15 and 30 s.
-DISCONNECT_SECONDS = 45
-#: Wish's wait before a checkpoint's pair of shots (`_checkpoint`); the guards, reads and shots around it are not measured.
-CHECKPOINT_SETTLE = 10
-
-
-def _reconnect_seconds(route: Any) -> int:
-    """Route time kept back for the disconnect grabs, the game's restart and the load phase's waits and checkpoint settles."""
-    load = next((phase for phase in route.phases if phase.name == "load"), None)
-    if load is None:
-        return 0
-    limits, title = route.amiga_title.wait_limits, route.amiga_title.title_limit
-    waits = limits.get(load.initial_state, title) + sum(limits.get(step.state, 90)
-                                                        for step in load.steps)
-    checkpoints = sum(1 for step in load.steps if step.checkpoint)
-    return (DISCONNECT_SECONDS + winwish.START_SECONDS + 30 + waits
-            + checkpoints * CHECKPOINT_SETTLE + ROSTER_SECONDS)
 #: The leave-town route checkpoints 13 times before its terminal key; 1800 s of route.
 LEAVE_DISCOVERY_SECONDS = 2100
 #: Where Wish's tab rests while the party walks: the Character Editor, which frees the pipe
@@ -476,6 +461,25 @@ def _check_persist(args: argparse.Namespace, route: Any) -> list[Any]:
     return actions
 
 
+def _check_reconnect(route: Any) -> None:
+    """The reconnect leg's static dependencies: the load phase alone, ready and well formed."""
+    load = next((phase for phase in route.phases if phase.name == "load"), None)
+    if load is None:
+        raise AcceptanceStop("required phases missing: load")
+    if route.phases[0].name != "load":
+        raise AcceptanceStop("load must be the first phase")
+    # Another phase's reason does not stop a leg that never runs that phase.
+    skipped = {phase.reason for phase in route.phases if not phase.ready
+               and phase.name != "load"}
+    unready = [] if load.ready else [f"load: {load.reason or 'no reason supplied'}"]
+    unready.extend(reason for reason in route.unresolved if reason not in skipped)
+    if unready:
+        raise AcceptanceStop("route incomplete: " + "; ".join(unready))
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    _check_steps(SimpleNamespace(phases=[load]))
+
+
 def _persist_phases(route: Any, letter: str) -> list[Any]:
     """Every phase the persist leg runs, for the static checks."""
     from tools.amiga import maproute  # noqa: PLC0415
@@ -513,6 +517,10 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
     leg = getattr(args, "leg", "mapping")
     if leg == "persist" and mode:
         raise AcceptanceStop("--leg persist is not a discovery mode")
+    if leg == "reconnect" and mode:
+        raise AcceptanceStop("--leg reconnect is not a discovery mode")
+    if leg == "reconnect" and getattr(args, "action", None):
+        raise AcceptanceStop("--leg reconnect presses no actions")
     wait_lanes = getattr(args, "wait_lanes", 0)
     if not 0 <= wait_lanes <= MAX_WAIT_LANES:
         raise AcceptanceStop(f"--wait-lanes must be from 0 to {MAX_WAIT_LANES} seconds")
@@ -547,7 +555,9 @@ def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
         route_silver_blades.journal_preflight(sys.executable)
     else:
         persist_actions = _check_persist(args, route) if leg == "persist" else None
-        if persist_actions is None:
+        if leg == "reconnect":
+            _check_reconnect(route)
+        elif persist_actions is None:
             _phase_map(route)
             _selected_actions(args, route)
         if args.title == "ssb":
@@ -792,15 +802,17 @@ class Controller:
         self.area_by_geo: dict[str, set[int]] | None = None
         self.party_nodes: list[tuple[int, int]] = []
         # Only a route with a walk-out phase has a walk-out row to prove.
-        rows = tuple(name for name in MAPPING_ROWS if name != "walkout"
-                     or any(phase.name == "walkout" for phase in route.phases))
+        rows = RECONNECT_ROWS if self.leg == "reconnect" else tuple(
+            name for name in MAPPING_ROWS if name != "walkout"
+            or any(phase.name == "walkout" for phase in route.phases))
         if self.persist:
             from tools.amiga import maproute  # noqa: PLC0415
 
             rows = ("title", *maproute.LEG_PREFIX[route.title])
         self.summary: dict[str, Any] = {**info,
             "mapping": {name: row() for name in rows},
-            "actions": {action.kind: row() for action in route.actions},
+            "actions": ({} if self.leg == "reconnect"
+                        else {action.kind: row() for action in route.actions}),
             "original_slot_reload": row(),
             "checkpoints": self.checkpoints, "completed_sequence": [],
             "failure": None, "cleanup": {}}
@@ -811,10 +823,7 @@ class Controller:
         """Start the route clock now; `_up` starts it again once a lane wait has ended."""
         self.started = self.clock()
         self.reconnect_end = self.started + self.args.deadline - CLEANUP_SECONDS
-        #: The route stops early by what the restart and reload will need; `run_title` lifts this at the disconnect step.
         self.route_end = self.reconnect_end
-        if getattr(self.args, "discover", None) is None and self.leg != "persist":
-            self.route_end -= _reconnect_seconds(self.route)
         self.total_end = self.started + self.args.deadline
 
     def log(self, event: str, **data: Any) -> None:
@@ -2742,9 +2751,13 @@ class Controller:
             self._game_section()
             title = self._await_title()
             self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
-            _phase_map(self.route)
+            reconnect = self.leg == "reconnect"
+            if not reconnect:
+                _phase_map(self.route)
             for phase in self.route.phases:
                 name = phase.name
+                if reconnect and name != "load":
+                    continue
                 if name == "reopen_step":
                     self._map_section()
                     winwish.stop_wish(self.guest, self.args.holder)
@@ -2753,16 +2766,17 @@ class Controller:
                 label = "reopen" if name == "reopen_step" else name
                 if label in self.summary["mapping"]:
                     self.summary["mapping"][label] = row("awaiting image review")
-                if name == "load":
+                if name == "load" and not reconnect:
                     self.flag_controls()
-            self.run_actions()
-            if any(action.enabled for action in self.route.actions):
-                self._game_section()
-                self._await("world")
-                self._final_reload()
-            self.route_end = self.reconnect_end
+            if not reconnect:
+                self.run_actions()
+                if any(action.enabled for action in self.route.actions):
+                    self._game_section()
+                    self._await("world")
+                    self._final_reload()
             self._map_section()
-            if self.launch is None:
+            if reconnect and self.launch is None:
+                # Found before the game is stopped, while it can still be left running.
                 raise AcceptanceStop("the game's launch settings were not recorded")
             connected = self.out / "connected.png"
             winwish.shot(self.guest, self.args.holder, "wish", connected)
@@ -2776,6 +2790,8 @@ class Controller:
                 pictures.append(str(path))
             self.summary["mapping"]["disconnect"] = row(
                 "awaiting image review", evidence=[str(connected), *pictures])
+            if not reconnect:
+                return self.summary
             # The same lane and the same Wish window: only the game comes back.
             drives, options = self.launch
             self.lane.start(self.args.holder, *drives,
@@ -2823,7 +2839,9 @@ def _parser() -> argparse.ArgumentParser:
                         help="the Wish tab left showing while the party walks")
     parser.add_argument("--leg", choices=LEGS, default="mapping",
                         help="mapping is the whole route; persist loads, presses the actions, "
-                             "saves to a free slot and loads it again")
+                             "saves to a free slot and loads it again; reconnect loads the "
+                             "party, stops the game, grabs Wish, starts the game again and "
+                             "reloads")
     parser.add_argument("--action", action="append", choices=ACTION_KINDS,
                         help="run only this enabled action; repeat for several")
     parser.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",
