@@ -50,8 +50,14 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("wish.goldbox.c64_codec")
 
+#: The titles whose converted THAC0 byte and 0x0EC take the readied weapon's
+#: terms, and so need the game's item-type table to be read for the
+#: conversion.
+WEAPON_RULE_TITLES = ("pool-of-radiance", "curse-of-the-azure-bonds")
+
 __all__ = [
     "Report",
+    "WEAPON_RULE_TITLES",
     "INFRAVISION",
     "LEVEL_FIELDS",
     "strength_index",
@@ -1342,8 +1348,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None, *,
     # the other four are one character whose block was not rebuilt after
     # shopping; none holds a bowman.  Silver Blades is unread, so it keeps
     # base plus strength.
-    weapon_table = (deltas.key in ("pool-of-radiance",
-                                   "curse-of-the-azure-bonds")
+    weapon_table = (deltas.key in WEAPON_RULE_TITLES
                     and item_types is not None)
     w = neutral.Writer(
         char, rep, into="C64",

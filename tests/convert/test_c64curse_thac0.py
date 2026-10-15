@@ -96,3 +96,33 @@ def test_the_converted_alias_with_his_bow_arrives_at_thac0_13():
     rec, _ = dos_codec.to_c64_record(char, item_types=_curse_item_types())
     assert rec.get("missile_attack_adjustment") == 2
     assert rec.get("thac0") == COMBAT_BIAS - 13
+
+
+@pytest.mark.skipif(not ALIAS_SAV.exists(),
+                    reason="needs the WISH-387 Amiga-to-DOS re-save")
+@gamedata.needs_curse_disks
+def test_the_converter_path_reads_the_item_table_for_curse(tmp_path):
+    """What `convertrun --to c64` and Save As do: the game files come off the
+    player's folder through `saveplan`, and the table must be among them or
+    ALIAS arrives with a zero 0x0EC and the strength-only byte."""
+    import shutil
+
+    from editor import dosimport, saveplan
+    from goldbox import c64_port
+    from goldbox.savegame import SaveGame1
+
+    game = c64_port.by_key(CURSE)
+    files = saveplan._game_files_from_folder(gamedata.curse_dir(), game)
+    assert files is not None
+    folder = tmp_path / "dos"
+    folder.mkdir()
+    for path in ALIAS_SAV.parent.iterdir():
+        shutil.copy(path, folder / path.name)
+    conversion = dosimport.rehearse(folder, "D", files)
+    slot = next(s for s in conversion.save0.slots if s.occupied
+                if s.record.name == "ALIAS")
+    assert slot.record.get("missile_attack_adjustment") == 2
+    roster = SaveGame1(conversion.save0.roster_page(), game)
+    block = next(b for b in roster.roster_blocks
+                 if b.slot_index == slot.index)
+    assert block.thac0 == 13

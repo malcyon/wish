@@ -945,6 +945,7 @@ def _game_files_from_folder(folder: pathlib.Path,
             portraits = tables_from_disks(folder)
         except (PortraitError, OSError) as exc:
             _log.debug("no creation menu off %s: %s", folder, exc)
+    if game.key in c64_codec.WEAPON_RULE_TITLES:
         # `ITEMS` is on side 1, not on the disk that carries the icons.
         items_disk = find(load_item_types)
         if items_disk is not None:

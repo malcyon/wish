@@ -120,8 +120,9 @@ class GameFiles:
     #: field here without which a conversion still goes ahead.
     portraits: PortraitTables | None = None
     #: `ITEMS` read off the player's own disk (side 1 for Pool of Radiance),
-    #: `None` for the other titles or when no disk answers.  Without it a Pool
-    #: of Radiance character's movement is copied, not computed.
+    #: `None` for Silver Blades or when no disk answers.  Without it a Pool
+    #: of Radiance character's movement is copied, not computed, and a Pool or
+    #: Curse character's THAC0 ignores his readied weapon.
     item_types: dict | None = None
     #: The title's companion table, read off its game sides, or `None` for a
     #: title that has none and when a side cannot be read.  Without it a

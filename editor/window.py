@@ -2102,6 +2102,7 @@ class EditorBinding(QObject):
                     break
                 except (PortraitError, OSError) as exc:
                     _log.debug("no creation menu off %s: %s", candidate, exc)
+        if game.key in c64_codec.WEAPON_RULE_TITLES:
             # `ITEMS` is on side 1, not on the disk that carries the icons.
             items_disk = self._find_disk(load_item_types, pattern, game)
             if items_disk is not None:
