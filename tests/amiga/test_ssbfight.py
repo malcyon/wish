@@ -1192,8 +1192,13 @@ def test_verdict_without_a_member_compares_the_save_with_the_party_after_the_fig
     after = _petrified_party()
     same = _saved_manifest_read(after)
     assert ssbfight.verdict(same, _manifest(), [], after) == []
-    for field, value in (("status", 0), ("hit_points", 5)):
+    for field, value in (("status", 0), ("hit_points", 5), ("side", 1)):
         moved = _saved_manifest_read(after)
         moved["members"][1][field] = value
         problems = ssbfight.verdict(moved, _manifest(), [], after)
         assert len(problems) == 1 and "PAINE" in problems[0]
+
+
+def test_check_bars_stops_when_nobody_had_a_command_bar():
+    with pytest.raises(RouteError, match="no member having a command bar"):
+        ssbfight.check_bars(_petrified_party(), [])

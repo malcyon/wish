@@ -690,6 +690,7 @@ def check_members(party: list[dict], manifest: dict, members: list[str]) -> dict
 
 def check_bars(party: list[dict], bars: list[dict]) -> dict:
     """Each member who got a command bar holds quickfight 1, whatever became of his status."""
+    require(bool(bars), "the fight ended with no member having a command bar")
     found = {}
     for owner in dict.fromkeys(bar["owner"] for bar in bars):
         rows = [m for m in party if name_key(m["name"]) == name_key(owner)]
@@ -714,7 +715,7 @@ def read_back(disk_path: pathlib.Path, manifest: dict) -> dict:
 
 
 #: What the game held per member after the fight, and what the saved slot must hold again.
-SAVED_ROW = ("status", "hit_points", "control", "quickfight")
+SAVED_ROW = ("status", "hit_points", "control", "side", "quickfight")
 
 
 def verdict(found: dict, manifest: dict, members: list[str],
