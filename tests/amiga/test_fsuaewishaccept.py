@@ -134,8 +134,10 @@ class FakeWish:
         self.rows = rows or (lambda: [])
 
     def open(self):
+        shown = []
         self.window = SimpleNamespace(tabs=SimpleNamespace(
-            setCurrentIndex=lambda index: self.tab_log.append(("tab", index))))
+            setCurrentIndex=lambda index: (self.tab_log.append(("tab", index)), shown.append(index)),
+            currentIndex=lambda: shown[-1]))
         self.events.append("open")
 
     def close(self):
@@ -271,6 +273,31 @@ def test_each_checkpoint_shows_the_map_tab_again_before_its_grab(tmp_path, monke
     refresh = [("tab", EDITOR_TAB), ("tab", MAP_TAB)]
     assert wish.tab_log == [*refresh, ("grab", "wish-loaded.png"),
                             *refresh, ("grab", "wish-reopened.png")]
+
+
+def test_the_map_tab_refresh_stops_when_a_tab_does_not_take(tmp_path, monkeypatch):
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    wish.open()
+    wish.window.tabs.currentIndex = lambda: 1
+    with pytest.raises(winwishaccept.AcceptanceStop, match="did not switch"):
+        controller._map_section()
+
+
+def test_the_map_tab_refresh_stops_when_wish_is_closed(tmp_path, monkeypatch):
+    controller, *_ = _controller(tmp_path, monkeypatch)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="Wish is closed"):
+        controller._map_section()
+
+
+def test_the_map_tab_refresh_does_not_switch_under_a_dialog(tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QApplication
+
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    wish.open()
+    monkeypatch.setattr(QApplication, "activeModalWidget", staticmethod(lambda: object()))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="dialog is open"):
+        controller._map_section()
+    assert wish.tab_log == []
 
 
 def _flag_rows(actions_on):

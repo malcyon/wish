@@ -359,11 +359,17 @@ class FsuaeController(base.Controller):
         """
         window = self.wish.window
         if window is None:
-            return
+            raise AcceptanceStop("Wish is closed; start it before changing tabs")
+        from PyQt6.QtWidgets import QApplication  # noqa: PLC0415
+
         from wish.window import EDITOR_TAB, MAP_TAB  # noqa: PLC0415
 
-        window.tabs.setCurrentIndex(EDITOR_TAB)
-        window.tabs.setCurrentIndex(MAP_TAB)
+        if QApplication.activeModalWidget() is not None:
+            raise AcceptanceStop("a dialog is open in Wish; not changing tabs under it")
+        for index in (EDITOR_TAB, MAP_TAB):
+            window.tabs.setCurrentIndex(index)
+            if window.tabs.currentIndex() != index:
+                raise AcceptanceStop(f"Wish did not switch to tab {index}")
         self.log("map_tab")
 
     def _free_pipe(self) -> str | None:
