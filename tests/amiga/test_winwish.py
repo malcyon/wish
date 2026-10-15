@@ -598,7 +598,7 @@ def test_up_runs_the_steps_in_order(tmp_path, monkeypatch):
     run, lane = FakeRun(), FakeLane()
     winwish.up(winwish.Guest(run), lane, _args(tmp_path, monkeypatch))
     assert lane.log == ["claim", r"drives=C:\Amiga\Disks\a.adf", "start"]
-    assert run.verbs() == ["ps", "put", "ps", "git grep -q", "ps", "lane", "ssh", "ps"]
+    assert run.verbs() == ["ps", "put", "ps", "git grep -q", "git grep -q", "ps", "lane", "ssh", "ps"]
 
 
 def test_up_claims_one_lane(tmp_path, monkeypatch):
@@ -650,6 +650,36 @@ def test_the_build_is_searched_for_the_variable_at_its_sha(tmp_path, monkeypatch
     winwish.up(winwish.Guest(run), FakeLane(), _args(tmp_path, monkeypatch))
     grep = next(c for c in run.calls if c[:2] == ["git", "grep"])
     assert SHA in grep and "WISH_WINUAE_PIPE" in grep
+
+
+def _task_after_up(tmp_path, monkeypatch, rules=()):
+    run = FakeRun(rules)
+    winwish.up(winwish.Guest(run), FakeLane(), _args(tmp_path, monkeypatch))
+    start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+    return run, _task_text(start)
+
+
+def test_a_build_that_reads_the_old_winuae_flag_is_started_with_it(tmp_path, monkeypatch):
+    run, body = _task_after_up(tmp_path, monkeypatch)
+    grep = next(c for c in run.calls if c[:2] == ["git", "grep"] and winwish.OLD_WINUAE_ENV in c)
+    assert SHA in grep
+    assert f"$env:{winwish.OLD_WINUAE_ENV} = '1'" in body
+
+
+def test_a_build_without_the_old_winuae_flag_is_started_without_it(tmp_path, monkeypatch):
+    def old_flag(a):
+        return a[:2] == ["git", "grep"] and winwish.OLD_WINUAE_ENV in a
+    _, body = _task_after_up(tmp_path, monkeypatch, [(old_flag, 1, "")])
+    assert f"$env:{winwish.OLD_WINUAE_ENV}" not in body
+
+
+def test_a_later_start_keeps_the_old_winuae_flag(tmp_path, monkeypatch):
+    guest = winwish.Guest(FakeRun())
+    winwish.up(guest, FakeLane(), _args(tmp_path, monkeypatch))
+    guest.run.calls.clear()
+    winwish.start_wish(guest, "h")
+    start = next(c[2] for c in guest.run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+    assert f"$env:{winwish.OLD_WINUAE_ENV} = '1'" in _task_text(start)
 
 
 def _two_lanes_one_holder(holder):

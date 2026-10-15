@@ -2976,6 +2976,25 @@ def test_unchanged_party_is_read_in_one_batch_at_a_later_checkpoint(tmp_path, mo
     assert [member["raw"] for member in observed] == [m.raw.hex() for m in fresh]
 
 
+def test_the_first_checkpoint_stops_a_wish_that_never_connected(tmp_path, monkeypatch):
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
+    looks = []
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: looks.append(1) or [
+        "ListItem|14:21:03 Waiting to connect...|||", "Button|Heal|||enabled=False"])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="Waiting to connect"):
+        controller._checkpoint("loaded", None, {"raw": "game"})
+    assert len(looks) > 1
+    assert "loaded" not in controller.checkpoints
+
+
+def test_the_first_checkpoint_goes_on_once_wish_connects(tmp_path, monkeypatch):
+    controller = _party_checkpoint_controller(tmp_path, monkeypatch, _PartyMemory(items=1))
+    replies = iter([["ListItem|Waiting to connect...|||"], ["Button|Heal|||enabled=True"]])
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args: next(replies))
+    controller._checkpoint("loaded", None, {"raw": "game"})
+    assert "loaded" in controller.checkpoints
+
+
 def test_changed_party_list_is_read_live_after_the_batch(tmp_path, monkeypatch):
     from automap import amigaparty
 

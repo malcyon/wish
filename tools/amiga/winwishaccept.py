@@ -107,6 +107,11 @@ ORDINARY_MAPPING_COMMANDS = {"ssb": 44, "darkness": 53, "pool": 55}
 CAMP_LOAD_MAPPING_COMMANDS = 43
 #: Seconds to wait for each guarded camp LOAD screen, and for the disk load after the slot.
 CAMP_LOAD_WAIT = 30
+#: Seconds Wish may still show its "Waiting to connect..." line at the first checkpoint, and the
+#: pause between looks; a Wish that never attached would otherwise be driven on to the button check.
+CONNECT_WAIT = 60
+CONNECT_POLL = 5
+WAITING_LINE = "Waiting to connect..."
 CAMP_SLOT_WAIT = 90
 DISCOVERY_SECONDS = 1800
 #: Seconds the Automapper waits between roster reads; the grab after a game restart waits one.
@@ -1196,6 +1201,8 @@ class Controller:
         self.down_done = False
         self.pipe_released = False
         self.wish_closed = False
+        #: Whether Wish has been seen attached to the game at a checkpoint.
+        self.connection_checked = False
         #: The wall time by which the last queued key has landed even on slow emulation;
         #: None when no queued key can still land. WinUAE cannot take one back.
         self.keys_pending_until: float | None = None
@@ -1655,12 +1662,25 @@ class Controller:
             self.log("memory_read", **record)
         return records
 
+    def _await_connection(self, controls: list[str]) -> list[str]:
+        """The controls once Wish no longer waits to connect; stops the run if it still does after `CONNECT_WAIT`."""
+        deadline = self.clock() + CONNECT_WAIT
+        while any(WAITING_LINE in line for line in controls):
+            if self.clock() >= deadline:
+                raise AcceptanceStop(f"Wish still shows '{WAITING_LINE}' {CONNECT_WAIT} s after the first checkpoint")
+            self.sleep(CONNECT_POLL)
+            controls = winwish.ui(self.guest, self.args.holder, "controls")
+        return controls
+
     def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
         """Wish's shot and its controls, of whichever tab is showing."""
         wish_path = self.out / f"wish-{name}.png"
         winwish.shot(self.guest, self.args.holder, "wish", wish_path)
         lap("wish_shot")
         controls = winwish.ui(self.guest, self.args.holder, "controls")
+        if not self.connection_checked:
+            controls = self._await_connection(controls)
+            self.connection_checked = True
         lap("controls")
         controls_path = self.out / f"controls-{name}.txt"
         controls_path.write_text("\n".join(controls) + "\n")

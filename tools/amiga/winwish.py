@@ -76,6 +76,8 @@ WORKFLOW = "release.yml"
 ACTIONS_FLAG = "WISH_EXPERIMENTAL_AMIGA_ACTIONS"
 #: Pinned equal to `wish.winuae.PIPE_ENV` by a test; `wish` is not imported here.
 PIPE_ENV = "WISH_WINUAE_PIPE"
+#: Only a build older than d487b5b0 reads this: it offered the WinUAE row only when the variable was set.
+OLD_WINUAE_ENV = "WISH_EXPERIMENTAL_AMIGA_WINUAE"
 HOLDER = winvmguest.HOLDER
 #: DF0 and DF1 hold a title's game disks; Wish reads its maps from those. DF2 and up
 #: are the save disk and extras, which the game writes and Wish never reads maps from.
@@ -187,12 +189,13 @@ def settings_json(game: str | None = None, folder: str | None = None,
 
 
 def environment(holder: str, features: bool = True,
-                pipe: str | None = None) -> dict[str, str]:
+                pipe: str | None = None, winuae_flag: bool = False) -> dict[str, str]:
     """What `wish.exe` is started with.
 
     With `features` false the action flag is not set, so the map attaches with
     the action controls greyed. `pipe` names the
     WinUAE pipe Wish opens, so it cannot attach to another lane's emulator.
+    `winuae_flag` sets `OLD_WINUAE_ENV`, for a build that still reads it.
     """
     env = {"APPDATA": rf"{run_dir(holder)}\appdata",
            "LOCALAPPDATA": rf"{run_dir(holder)}\local",
@@ -201,6 +204,8 @@ def environment(holder: str, features: bool = True,
         env[ACTIONS_FLAG] = "1"
     if pipe:
         env[PIPE_ENV] = pipe
+    if winuae_flag:
+        env[OLD_WINUAE_ENV] = "1"
     return env
 
 
@@ -1574,6 +1579,8 @@ class Guest:
 
     def __init__(self, run: Callable[[list[str], float], tuple[int, str]] = _run):
         self.run = run
+        #: Whether the staged build reads `OLD_WINUAE_ENV`; set by `up`, used by every later start.
+        self.winuae_flag = False
 
     def winvm(self, *args: str, timeout: float = CALL_SECONDS, step: str = "") -> str:
         rc, out = self.run(["winvm", *args], timeout)
@@ -1878,7 +1885,7 @@ def start_wish(guest: Guest, holder: str, disks: tuple[str, ...] = (),
         raise WinwishError(f"{holder} runs no WinUAE and does not hold every lane, "
                            "so Wish could attach to another holder's emulator")
     try:
-        return guest.ps(start_script(holder, environment(holder, features, pipe), disks=disks,
+        return guest.ps(start_script(holder, environment(holder, features, pipe, guest.winuae_flag), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
                                      travel_targets=travel_targets),
                         timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30, step="start_wish")
@@ -2020,6 +2027,7 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
     with terminating():
         try:
             every = args.keep_lanes or not drives or not _build_reads_pipe(guest, sha)
+            guest.winuae_flag = _build_reads_winuae_flag(guest, sha)
             result["lanes"] = "every" if every else "one"
             if not every:
                 result["claim"] = lane.claim(args.holder, CALL_SECONDS, wait=args.wait_lanes)
@@ -2048,6 +2056,12 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
 def _build_reads_pipe(guest: Guest, sha: str) -> bool:
     """Whether the build at `sha` reads `WISH_WINUAE_PIPE`; a git failure counts as no."""
     rc, _ = guest.run(["git", "grep", "-q", "-F", PIPE_ENV, sha, "--", "wish/winuae.py"], CALL_SECONDS)
+    return rc == 0
+
+
+def _build_reads_winuae_flag(guest: Guest, sha: str) -> bool:
+    """Whether the build at `sha` reads `OLD_WINUAE_ENV`; a git failure counts as no."""
+    rc, _ = guest.run(["git", "grep", "-q", "-F", OLD_WINUAE_ENV, sha, "--", "wish/backends.py"], CALL_SECONDS)
     return rc == 0
 
 
