@@ -2546,9 +2546,37 @@ def test_a_failed_write_says_which_emulator_it_could_not_write_to(
     bar.attach(session.target)
     heal = next(a for a in bar.actions if a.name == "heal")
 
-    def broken(target, **kwargs):
+    def failing_write(addr, data, *args, **kwargs):
         raise error("the write failed")
+    session.target.write = failing_write
+
+    def broken(target, **kwargs):
+        target.write(0x6E11, b"\x00")
     heal.apply = broken
     with pytest.raises(NotConnected):       # still reaches the detach path
         bar.run(heal)
     assert said == [(f"Error: Failed to write to {short}.", True)]
+
+
+def test_a_failed_read_does_not_claim_a_failed_write():
+    from automap.actionbar import ActionBar
+    from automap.target import MonitorBusy, NotConnected
+
+    said = []
+    bar = ActionBar(make_root(),
+                    say=lambda text, detail="", alarm=False: said.append(text))
+    target = MemoryTarget()
+
+    def busy(addr, length):
+        raise MonitorBusy("busy")
+    target.read = busy
+    bar.attach(None)
+    bar.target = target
+    heal = next(a for a in bar.actions if a.name == "heal")
+
+    def reads_first(target, **kwargs):
+        target.read(0x6E11, 1)
+    heal.apply = reads_first
+    with pytest.raises(NotConnected):
+        bar.run(heal)
+    assert said == []

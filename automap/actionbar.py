@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import contextmanager
 
 from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtWidgets import (
@@ -174,6 +175,39 @@ def _usable(widget, ok: bool, tip: str) -> None:
     """Enable `widget` with `tip`, or grey it with no tooltip at all."""
     widget.setEnabled(ok)
     widget.setToolTip(tip if ok else "")
+
+
+@contextmanager
+def _noting_write_failures(target, failed: list):
+    """Within the block, a `NotConnected` out of `target.write` appends to `failed`.
+
+    Patched on the instance rather than proxied because the Amiga actions
+    unwrap a `.target` to reach the machine, which would step round a proxy.
+    """
+    write = getattr(target, "write", None)
+    if write is None:
+        yield
+        return
+    own = vars(target).get("write") if hasattr(target, "__dict__") else None
+
+    def noting(*args, **kwargs):
+        try:
+            return write(*args, **kwargs)
+        except NotConnected:
+            failed.append(True)
+            raise
+    try:
+        target.write = noting
+    except AttributeError:
+        yield
+        return
+    try:
+        yield
+    finally:
+        if own is None:
+            del target.write
+        else:
+            target.write = own
 
 
 class ActionBar(QObject):
@@ -345,14 +379,19 @@ class ActionBar(QObject):
         """Ask if the action wants asking, apply it, and say what happened."""
         if action.confirm and not self.ask(action.confirm):
             return None
+        failed_write = []
         try:
-            outcome = action.apply(self.target, disk=self.disk)
+            with _noting_write_failures(self.target, failed_write):
+                outcome = action.apply(self.target, disk=self.disk)
         except NotConnected:
             # The error is a lost connection, which the poll detaches on; it
-            # goes on up so that handling is unchanged.
-            name = getattr(self.target, "emulator_name", "") or "the emulator"
-            self._report(action.label.lower(), engine.Outcome(
-                False, f"Error: Failed to write to {name}."))
+            # goes on up so that handling is unchanged. Only a failed write is
+            # reported: the action reads first, and a failed read is not this
+            # line's claim.
+            if failed_write:
+                name = getattr(self.target, "emulator_name", "") or "the emulator"
+                self._report(action.label.lower(), engine.Outcome(
+                    False, f"Error: Failed to write to {name}."))
             raise
         self._report(action.label.lower(), outcome)
         return outcome
