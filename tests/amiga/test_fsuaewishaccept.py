@@ -902,3 +902,87 @@ def test_the_measurement_options_turn_the_poll_log_on(tmp_path, monkeypatch):
         assert fsuaewishaccept.main(common + extra) == 2
     assert [args.poll_log for args in seen] == [True, True, True, False]
     assert seen[0].arrival_hold == 120.0 and seen[1].search_area is True
+
+
+def test_idle_loads_the_party_then_sends_no_key_and_no_grab_and_ends_the_run(tmp_path, monkeypatch):
+    from automap import state
+
+    controller, game, wish, _ = _controller(tmp_path, monkeypatch, route=_route(title="darkness"))
+    controller.args.idle, controller.args.poll_log = 30.0, True
+    durations = iter((1.0, 6.0, 2.0, 1.0, 1.0, 1.0, 1.0))
+    mapper = SimpleNamespace(target=SimpleNamespace(), state=SimpleNamespace(), _maps={})
+
+    def poll(_mapper):
+        wish.clock.now += next(durations)
+        return False
+
+    monkeypatch.setattr(state.Automapper, "poll", poll)
+    pump = wish.pump
+    idling = []
+
+    def pumping(seconds):
+        if seconds >= 20:
+            idling.append(seconds)
+            for _ in range(5):
+                state.Automapper.poll(mapper)
+                wish.clock.now += 3.0
+        pump(seconds)
+
+    wish.pump = pumping
+    grabbed, pressed = [], []
+    grab, press = game.grab, game.press
+    game.grab = lambda state_name, raw, crop, timeout: (grabbed.append(wish.clock.now),
+                                                        grab(state_name, raw, crop, timeout))[1]
+    game.press = lambda holder, key, timeout: (pressed.append(key), press(holder, key, timeout))
+    pumped_at = []
+    inner = wish.pump
+    wish.pump = lambda seconds: (pumped_at.append(wish.clock.now) if seconds >= 20 else None,
+                                 inner(seconds))
+    result = controller.run_title()
+
+    assert result["failure"] is None, result["failure"]
+    assert idling, "Wish was never pumped for the idle"
+    assert pressed == ["L"]
+    assert not [at for at in grabbed if at > pumped_at[0]]
+    idle = result["idle"]
+    assert idle["seconds"] == 30.0 and idle["held"] >= 30 and idle["polls"] == 5
+    assert 6 <= idle["longest_poll"] < 7
+    assert 9 <= idle["longest_gap"] < 10
+    assert result["poll_count"] == 5
+    rows = [json.loads(line) for line in (tmp_path / fsuaewishaccept.POLL_LOG).open()]
+    assert [r["poll"] for r in rows] == [1, 2, 3, 4, 5]
+    assert all("started" in r and "duration" in r for r in rows)
+    assert 6 <= rows[1]["duration"] < 7
+    assert not (tmp_path / "connected.png").exists()
+    assert result["completed_sequence"] == ["load"]
+    assert ("stop",) in game.calls
+
+
+@pytest.mark.parametrize("seconds", [0.0, -5.0])
+def test_idle_needs_a_positive_number_of_seconds(tmp_path, seconds):
+    (tmp_path / "prepare.json").write_text(json.dumps({"title": "darkness"}))
+
+    def route_for(title, manifest, **legs):
+        raise AssertionError("the route was built")
+
+    with pytest.raises(winwishaccept.AcceptanceStop, match="--idle needs a positive"):
+        fsuaewishaccept.preflight(_args(tmp_path, title="darkness", idle=seconds),
+                                  game=FakeGame(tmp_path), route_for=route_for)
+
+
+def test_idle_is_not_combined_with_a_curse_measurement_leg(tmp_path):
+    (tmp_path / "prepare.json").write_text(json.dumps({"title": "curse"}))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="its own leg"):
+        fsuaewishaccept.preflight(_args(tmp_path, title="curse", idle=30.0, arrival_hold=60.0),
+                                  game=FakeGame(tmp_path), route_for=lambda *a, **k: None)
+
+
+def test_idle_turns_the_poll_log_on(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(fsuaewishaccept, "preflight",
+                        lambda args, **kwargs: seen.append(args) or (_ for _ in ()).throw(
+                            winwishaccept.AcceptanceStop("stop")))
+    common = ["--title", "darkness", "--manifest", str(tmp_path / "m.json"), "--holder", "h",
+              "--out", str(tmp_path)]
+    assert fsuaewishaccept.main(common + ["--idle", "300"]) == 2
+    assert seen[0].idle == 300.0 and seen[0].poll_log is True

@@ -201,6 +201,12 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     search = bool(getattr(args, "search_area", False))
     if (hold is not None or search) and args.title != "curse":
         raise AcceptanceStop("--arrival-hold and --search-area are Curse legs")
+    idle = getattr(args, "idle", None)
+    if idle is not None:
+        if not idle > 0:
+            raise AcceptanceStop("--idle needs a positive number of seconds")
+        if hold is not None or search:
+            raise AcceptanceStop("--idle is its own leg, not combined with --arrival-hold or --search-area")
     if search:
         args.manifest = stage_search_area(args.manifest, pathlib.Path(args.out) / "staged-search")
     manifest = json.loads(pathlib.Path(args.manifest).read_text())
@@ -264,8 +270,11 @@ class PollLog:
     def __init__(self, path: pathlib.Path, elapsed: Any):
         self.path, self.elapsed = pathlib.Path(path), elapsed
         self.polls = 0
+        self.starts: list[float] = []
+        self.durations: list[float] = []
         self.failure: str | None = None
         self._fix: Any = None
+        self._began: float | None = None
         self._saved: tuple[Any, Any] | None = None
 
     def install(self) -> None:
@@ -282,6 +291,7 @@ class PollLog:
 
         def poll(mapper: Any) -> bool:
             log._fix = None
+            log._began = log.elapsed()
             changed = original_poll(mapper)
             log.record(mapper, changed)
             return changed
@@ -302,9 +312,22 @@ class PollLog:
         return {key: getattr(fix, key, None) for key in
                 ("x", "y", "facing", "source", "world_map", "world_node", "outdoors")}
 
+    def spans(self, since: int) -> dict[str, Any]:
+        """The polls after the first `since`: how many, the longest gap between two starts, the longest poll."""
+        starts, durations = self.starts[since:], self.durations[since:]
+        gaps = [later - earlier for earlier, later in zip(starts, starts[1:])]
+        return {"polls": len(starts),
+                "longest_gap": round(max(gaps), 3) if gaps else None,
+                "longest_poll": round(max(durations), 3) if durations else None}
+
     def record(self, mapper: Any, changed: bool) -> None:
         self.polls += 1
-        row: dict[str, Any] = {"poll": self.polls, "elapsed": round(self.elapsed(), 3),
+        now = self.elapsed()
+        began = now if self._began is None else self._began
+        self.starts.append(began)
+        self.durations.append(now - began)
+        row: dict[str, Any] = {"poll": self.polls, "elapsed": round(now, 3),
+                               "started": round(began, 3), "duration": round(now - began, 3),
                                "wall": round(time.time(), 3), "changed": bool(changed),
                                "fix": self._fix_fields(self._fix)}
         try:
@@ -686,6 +709,20 @@ class FsuaeController(base.Controller):
                 initial, part = step.state, []
         self.summary["completed_sequence"].append(phase.name)
 
+    def _idle_leg(self) -> None:
+        """No key and no grab for `--idle` seconds with Wish attached, its every poll logged."""
+        seconds = float(self.args.idle)
+        before = self.poll_log.polls if self.poll_log else 0
+        start = self.clock()
+        self.log("idle", seconds=seconds, polls=before)
+        self.sleep(self.left(seconds))
+        held = round(self.clock() - start, 3)
+        spans = self.poll_log.spans(before) if self.poll_log else {}
+        self.log("idle_end", held=held, **spans)
+        self.summary["idle"] = {"seconds": seconds, "held": held, **spans}
+        if held < seconds - HOLD_SLACK:
+            raise AcceptanceStop(f"the idle ended after {held} s of {seconds}")
+
     def _hold(self, phase: Any, step: Any) -> None:
         """Press the step's key, if it has one, then wait `step.seconds` with no grab, Wish
         polling throughout; the next part's first wait checks the screen is `step.state`."""
@@ -924,6 +961,27 @@ class FsuaeController(base.Controller):
         except OSError as exc:
             failures.append(f"event log: {exc}")
 
+    def _finish_route(self) -> None:
+        """Everything after the last phase: the connected picture, the stop and the disconnect pictures."""
+        for action in self.route.actions:
+            if action.enabled:
+                self.summary["actions"][action.kind]["reason"] = (
+                    "pressed only on the persist leg")
+        if self.wish_closed:
+            self._open_wish()
+        connected = self.out / "connected.png"
+        self._wish_shot(connected, "connected")
+        self.summary["cleanup"]["stop"] = self._stop_game(self.left(60))
+        pictures = []
+        for index, delay in enumerate((0, 15, 30)):
+            if delay:
+                self.sleep(self.left(delay))
+            path = self.out / f"disconnect-{index}.png"
+            self._wish_shot(path, f"disconnect-{index}")
+            pictures.append(str(path))
+        self.summary["mapping"]["disconnect"] = row(
+            "awaiting image review", evidence=[str(connected), *pictures])
+
     def run_title(self) -> dict[str, Any]:
         with fsuaegdb.interruptible(lambda **payload: _log_note(self.log, "interrupt", payload)):
             try:
@@ -939,25 +997,12 @@ class FsuaeController(base.Controller):
                     if label in self.summary["mapping"]:
                         self.summary["mapping"][label] = row("awaiting image review")
                     if phase.name == "load":
+                        if getattr(self.args, "idle", None) is not None:
+                            self._idle_leg()
+                            break
                         self.flag_controls()
-                for action in self.route.actions:
-                    if action.enabled:
-                        self.summary["actions"][action.kind]["reason"] = (
-                            "pressed only on the persist leg")
-                if self.wish_closed:
-                    self._open_wish()
-                connected = self.out / "connected.png"
-                self._wish_shot(connected, "connected")
-                self.summary["cleanup"]["stop"] = self._stop_game(self.left(60))
-                pictures = []
-                for index, delay in enumerate((0, 15, 30)):
-                    if delay:
-                        self.sleep(self.left(delay))
-                    path = self.out / f"disconnect-{index}.png"
-                    self._wish_shot(path, f"disconnect-{index}")
-                    pictures.append(str(path))
-                self.summary["mapping"]["disconnect"] = row(
-                    "awaiting image review", evidence=[str(connected), *pictures])
+                else:
+                    self._finish_route()
             except BaseException as exc:
                 self.summary["failure"] = f"{type(exc).__name__}: {exc}"
                 self.log("failure", error=self.summary["failure"])
@@ -990,6 +1035,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--search-area", action="store_true",
                         help="Curse Yulash: stage $4C5B = 1 on a copy of the save disk in the run "
                              "folder and take SEARCH AREA from the world map; implies --poll-log")
+    parser.add_argument("--idle", type=float, metavar="SECONDS",
+                        help="load the party, then send no key and take no grab for this long "
+                             "with Wish attached, and end the run; implies --poll-log")
     parser.add_argument("--poll-log", action="store_true",
                         help=f"write every Automapper poll's fix and resident GEO to {POLL_LOG}")
     return parser
@@ -997,7 +1045,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    args.poll_log = args.poll_log or args.arrival_hold is not None or args.search_area
+    args.poll_log = (args.poll_log or args.arrival_hold is not None or args.search_area
+                     or args.idle is not None)
     from tools.amiga import fsuaesession  # noqa: PLC0415
     from tools.amiga.maproute import route_for  # noqa: PLC0415
 
