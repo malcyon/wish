@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- The WISH_EXPERIMENTAL_AMIGA_FSUAE setting no longer does anything, because the Amiga option on Linux is always offered.
+- Removed the WISH_EXPERIMENTAL_AMIGA_FSUAE feature flag. The patched FS-UAE emulator option is now available in Preferences.
 
 ### Fixed
 
