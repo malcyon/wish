@@ -1480,7 +1480,8 @@ class AutomapBinding(QObject):
         target = self.mapper.target
         amiga_title = getattr(getattr(target, "layout", None), "title", None)
         if not getattr(target, "c64_memory", True) and amiga_title:
-            self._refresh_amiga(target, amiga_title)
+            with amigaparty.one_mode_read():
+                self._refresh_amiga(target, amiga_title)
             return
         self._leave_amiga()
         self.roster.clear_unsupported()

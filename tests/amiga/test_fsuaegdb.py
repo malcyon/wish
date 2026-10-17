@@ -168,6 +168,40 @@ def test_connecting_greets_and_starts_the_machine():
     assert gdb.greeting == GREETING
 
 
+class NoAckGuest(FakeAmiga):
+    def __init__(self, answer="OK", greeting=GREETING):
+        super().__init__()
+        self.answer, self.advertised = answer, greeting
+
+    def reply(self, body):
+        if body.startswith("qSupported"):
+            return self.advertised
+        if body == "QStartNoAckMode":
+            return self.answer
+        return super().reply(body)
+
+
+def test_no_ack_mode_is_asked_for_once_when_offered_and_taken_on_ok():
+    guest = NoAckGuest()
+    gdb = transport(guest, resume=False)
+    assert gdb.start_no_ack() is True
+    assert guest.received == ["qSupported", "QStartNoAckMode"]
+
+
+def test_no_ack_mode_is_not_taken_on_a_reply_other_than_ok():
+    guest = NoAckGuest(answer="E01")
+    gdb = transport(guest, resume=False)
+    assert gdb.start_no_ack() is False
+    assert gdb.ask("m0,1") is not None        # the link still works
+
+
+def test_no_ack_mode_is_not_asked_for_when_the_greeting_does_not_offer_it():
+    guest = NoAckGuest(greeting="PacketSize=512;vContSupported+;")
+    gdb = transport(guest, resume=False)
+    assert gdb.start_no_ack() is False
+    assert guest.received == ["qSupported"]
+
+
 def test_resume_can_be_left_to_the_caller():
     guest = FakeAmiga()
     transport(guest, resume=False)
@@ -434,6 +468,11 @@ def test_the_target_takes_the_transport_s_word_that_nothing_halts():
     tgt = amiga.AmigaTarget(transport(guest), BLADES)
     assert amiga.FsuaeGdb.halts_machine is False
     assert tgt.halts_on_read is False
+
+
+def test_a_target_over_the_gdb_transport_asks_the_party_walk_to_read_wide():
+    tgt = amiga.AmigaTarget(transport(FakeAmiga()), BLADES)
+    assert tgt.covering_reads is True
 
 
 def test_read_blocks_asks_for_the_memory_and_names_no_file():

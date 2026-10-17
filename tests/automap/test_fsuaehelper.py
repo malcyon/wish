@@ -45,6 +45,7 @@ class FakeFork:
 
     def __init__(self, greeting: str = GREETING):
         self.greeting = greeting
+        self.no_ack_answer = "OK"
         self.listener = socket.socket()
         self.listener.bind(("127.0.0.1", 0))
         self.listener.listen(1)
@@ -115,6 +116,8 @@ class FakeFork:
         self.received.append(body)
         if body.startswith("qSupported"):
             conn.sendall(frame(self.greeting))
+        elif body == "QStartNoAckMode":
+            conn.sendall(frame(self.no_ack_answer))
         elif body.startswith("m"):
             addr, _, length = body[1:].partition(",")
             addr, length = int(addr, 16), int(length, 16)
@@ -263,7 +266,7 @@ def test_the_greeting_is_answered_from_the_cache_and_the_resume_is_swallowed(
     assert [p for p in fork.received if p.startswith("qSupported")] == ["qSupported"]
 
 
-ALLOWED = re.compile(r"^(m[0-9a-f]{1,8},[0-9a-f]+|qSupported|vCont;c)$")
+ALLOWED = re.compile(r"^(m[0-9a-f]{1,8},[0-9a-f]+|qSupported|QStartNoAckMode|vCont;c)$")
 
 
 @pytest.mark.parametrize("body", ["k", "D", "s", "S05",
@@ -824,3 +827,45 @@ def test_the_helper_measures_the_regions_once_from_the_emulators_memory_list():
     assert any(base <= 0x200100 < base + size for base, size in first)
     seen = len(asked)
     assert helper._regions() == first and len(asked) == seen
+
+
+def test_the_helper_asks_the_emulator_to_stop_acking_once_before_the_resume(
+        running, fork):
+    assert fork.received[:3] == ["qSupported", "QStartNoAckMode", "vCont;c"]
+    Client(sock_path(running)).ask("m100,2")
+    assert fork.received.count("QStartNoAckMode") == 1
+
+
+def test_a_client_cannot_send_the_no_ack_packet_upstream(running, fork):
+    client = Client(sock_path(running))
+    client.send("QStartNoAckMode")
+    assert client.reply() == ""
+    assert client.ask("m10,4") == memory_at(0x10, 4).hex()
+    assert fork.received.count("QStartNoAckMode") == 1
+
+
+def _serve_once(fork, runtime):
+    helper = fsuaehelper.Helper(fork.port, runtime, upstream_timeout=0.4)
+    assert helper.startup() == 0
+    thread = threading.Thread(target=helper.run)
+    thread.start()
+    try:
+        return Client(sock_path(helper)).ask("m100,2")
+    finally:
+        helper.stopping = True
+        thread.join(5)
+
+
+def test_a_server_that_answers_the_no_ack_packet_with_an_error_is_still_read(
+        fork, runtime):
+    fork.no_ack_answer = "E01"
+    assert _serve_once(fork, runtime) == memory_at(0x100, 2).hex()
+
+
+def test_a_greeting_that_does_not_offer_no_ack_is_not_sent_the_packet(runtime):
+    fork = FakeFork("PacketSize=512;vContSupported+;")
+    try:
+        assert _serve_once(fork, runtime) == memory_at(0x100, 2).hex()
+        assert "QStartNoAckMode" not in fork.received
+    finally:
+        fork.close()

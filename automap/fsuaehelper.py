@@ -368,6 +368,7 @@ class Helper:
                     f"port {self.port} does not look like the patched FS-UAE: "
                     f"its greeting was {self.gdb.greeting!r}")
         try:
+            self.gdb.start_no_ack()
             self.gdb.resume()
         except amiga.FsuaeError as exc:
             staged.close()

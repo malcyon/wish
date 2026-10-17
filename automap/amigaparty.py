@@ -29,6 +29,7 @@ cards, proven by a press in the running game); each row's comments grade every v
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from goldbox import amiga_pod, amiga_por, amiga_port
@@ -442,12 +443,87 @@ def _batch(source):
 
     A source with `read_blocks` is asked for every block of one level in a
     single call, which on WinUAE is one round trip rather than one per node.
+    One that sets `covering_reads` is asked for a wide read around the first
+    node it does not yet hold (`_Covering`).
     """
     many = getattr(source, "read_blocks", None)
     if many is not None:
-        return lambda want: [bytes(b) for b in many(want)]
+        batch = lambda want: [bytes(b) for b in many(want)]  # noqa: E731
+        # A wider read helps only where a block is a packet of its own; a
+        # source that batches or caches blocks itself is asked for what the
+        # walk names.
+        if getattr(source, "covering_reads", False):
+            return _Covering(batch, _memory(source))
+        return batch
     read = getattr(source, "read", source)
     return lambda want: [bytes(read(a, n)) for a, n in want]
+
+
+#: The most one covering read asks for. The party's records, items and effects
+#: measured 0x978, 0x18DE and 0x136 bytes on Pools of Darkness.
+COVER_LIMIT = 0x10000
+
+
+class _Covering:
+    """A batch reader that answers nodes out of one wide read of their region.
+
+    A list is walked a node at a time, and each node costs a packet that waits
+    for an emulator frame, so the first node not yet held is read together
+    with the `COVER_LIMIT` bytes after it, clipped to the memory region it is
+    in because one unreadable byte fails a whole read. Later nodes come out of
+    that read; a node outside it, in another region, or a batch spanning more
+    than the limit is read on its own as before.
+    """
+
+    def __init__(self, read, memory):
+        self.read = read
+        self.memory = memory
+        self.held: list[tuple[int, bytes]] = []
+
+    def _held(self, addr: int, length: int) -> bytes | None:
+        for base, data in self.held:
+            if base <= addr and addr + length <= base + len(data):
+                return data[addr - base:addr - base + length]
+        return None
+
+    def _region_end(self, addr: int) -> int | None:
+        for base, size in self.memory:
+            if base <= addr < base + size:
+                return base + size
+        return None
+
+    def exact(self, want):
+        """The blocks as asked, with no wider read: for a single known address."""
+        return self.read(want)
+
+    def __call__(self, want):
+        out = [self._held(a, n) for a, n in want]
+        missing = sorted((i for i, raw in enumerate(out) if raw is None),
+                         key=lambda i: want[i][0])
+        direct = []
+        while missing:
+            lo = want[missing[0]][0]
+            end = self._region_end(lo)
+            group = [missing.pop(0)]
+            while (missing and end is not None
+                   and want[missing[0]][0] + want[missing[0]][1]
+                   <= min(lo + COVER_LIMIT, end)):
+                group.append(missing.pop(0))
+            if end is None or want[group[0]][0] + want[group[0]][1] > end:
+                direct += group
+                continue
+            span = min(lo + COVER_LIMIT, end) - lo
+            data = self.read([(lo, span)])[0]
+            if len(data) != span:
+                direct += group
+                continue
+            self.held.append((lo, data))
+            for i in group:
+                out[i] = self._held(*want[i])
+        if direct:
+            for i, raw in zip(direct, self.read([want[i] for i in direct])):
+                out[i] = raw
+        return out
 
 
 @dataclass
@@ -518,7 +594,7 @@ def walk(source, row: PartyRow, data_base: int) -> tuple[AmigaMember, ...]:
     when a member's list does not read as one.
     """
     batch = _batch(source)
-    head = _u32(batch([(data_base + row.head, 4)])[0])
+    head = _u32(getattr(batch, "exact", batch)([(data_base + row.head, 4)])[0])
     records = _Chain(f"{row.title}'s party list", row.next_offset,
                      row.record_size, MAX_RECORDS, head)
     memory = _memory(source)
@@ -574,6 +650,38 @@ def row_for(target) -> PartyRow | None:
     return None
 
 
+#: The mode byte per target while `one_mode_read` is open, else None.
+_mode_cache: dict[int, int | None] | None = None
+
+
+@contextmanager
+def one_mode_read():
+    """Within the block, `mode` reads each target's byte once.
+
+    On FS-UAE every read is a packet that waits for a frame, and one party tick
+    asks for the same byte from the action buttons, the quickfight watcher and
+    the cards. Writes are never routed through here, so a byte that a write
+    changes is read afresh outside the block.
+    """
+    global _mode_cache
+    outer = _mode_cache
+    if outer is None:
+        _mode_cache = {}
+    try:
+        yield
+    finally:
+        _mode_cache = outer
+
+
+def _identity(target) -> int:
+    """`id` of the machine under any per-poll wrapper, which has a `_target`."""
+    while True:
+        under = getattr(target, "_target", None)
+        if under is None or under is target:
+            return id(target)
+        target = under
+
+
 def mode(target) -> int | None:
     """The game-mode byte, None while it cannot be read."""
     tgt = _unwrap(target)
@@ -581,10 +689,17 @@ def mode(target) -> int | None:
     base = getattr(tgt, "data_base", None)
     if row is None or base is None:
         return None
+    cache = _mode_cache
+    key = _identity(tgt)
+    if cache is not None and key in cache:
+        return cache[key]
     try:
-        return bytes(tgt.read(base + row.mode, 1))[0]
+        value = bytes(tgt.read(base + row.mode, 1))[0]
     except amiga.NotConnected:
-        return None
+        value = None
+    if cache is not None:
+        cache[key] = value
+    return value
 
 
 def read_party(target) -> tuple[AmigaMember, ...] | None:

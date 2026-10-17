@@ -2088,6 +2088,20 @@ class FsuaeGdb:
             self.close()
             raise
 
+    def start_no_ack(self) -> bool:
+        """Ask the server to stop acknowledging packets; whether it agreed.
+
+        The fork answers a packet with a `+` and then the reply in two sends,
+        and a reply held back behind the ack costs about three frames a packet
+        instead of one. This client never acks and `_packet` drops the server's,
+        so nothing else changes. Nothing is sent to a server whose greeting
+        does not offer `QStartNoAckMode`, and a server that answers anything
+        but `OK` goes on acking.
+        """
+        if "QStartNoAckMode+" not in self.greeting:
+            return False
+        return self.ask("QStartNoAckMode") == "OK"
+
     def close(self) -> None:
         """Drop the connection, which **ends the debugging for this run.**
 
@@ -2769,6 +2783,15 @@ class AmigaTarget:
         if RE_UNKNOWN.search(out):
             raise GuestError("the debugger did not recognise a `W`; the "
                              "batch may have been typed at the game instead")
+
+    @property
+    def covering_reads(self) -> bool:
+        """Whether a block costs a packet of its own, so a walk should read wide.
+
+        True on a transport that answers memory in its reply; the console route
+        batches blocks into one round trip already and dumps each to a file.
+        """
+        return getattr(self.debugger, "read_memory", None) is not None
 
     def read_blocks(self, blocks) -> list[bytes]:
         """Several ranges, in one round trip. This is the design, not a tune.

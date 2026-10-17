@@ -635,6 +635,17 @@ def test_a_refresh_reads_the_mode_byte_once_however_many_actions_ask(measured):
     assert len(amigaparty.ROWS[POOL].confirmed) > 1
 
 
+def test_a_party_tick_reads_the_mode_byte_once(measured):
+    window, target = attached(POOLS_OF_DARKNESS)
+    row = amigaparty.ROWS[POOLS_OF_DARKNESS]
+    # The control: the cards ask for the byte too on a title confirming Level up.
+    assert "level-up" in row.confirmed
+    mode_at = BASE + row.mode
+    target.ram_reads.clear()
+    window._refresh_roster()
+    assert [r for r in target.ram_reads if r[0] == mode_at] == [(mode_at, 1)]
+
+
 # -- Level up on a title whose row confirms it ------------------------------------
 
 POD_NAME, POD_SLOT, POD_NEXT = 0x60, 0xBD, 0x00
