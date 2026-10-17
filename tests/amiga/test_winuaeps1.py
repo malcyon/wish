@@ -840,3 +840,11 @@ def test_no_count_comparison_alone_ends_a_restore_from_below():
     assert "if ($before -eq $snap) {" not in body
     assert "if ($Fresh -and $before -ge $snap)" not in body
     assert "if ($Before -lt $Snap) { return ($After -ge $Snap) }" not in PS1
+
+
+def test_the_run_receipt_paths_are_the_ones_winwish_names():
+    from tools.amiga import winwish
+    paths = _body("Lane-Paths")
+    assert '"$Root\\winuae-run.txt"' in paths and '"$Root\\winuae-run-$n.txt"' in paths
+    assert winwish.run_receipt(1) == r"C:\Amiga\winuae-run.txt"
+    assert winwish.run_receipt(4) == r"C:\Amiga\winuae-run-4.txt"

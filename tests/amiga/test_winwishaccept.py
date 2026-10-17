@@ -101,7 +101,7 @@ def test_unrecognized_walk_stops_later_keys_restores_encounters_and_goes_down(tm
         clock=clock, sleep=clock.sleep)
     calls = []
 
-    def up(keep_lanes=False):
+    def up(restarts_emulator=False):
         controller.booted = True
         game.holder = "test-acw"
 
@@ -157,7 +157,7 @@ def test_controller_executes_transition_before_indoor_stationary(tmp_path, monke
         route=route, zipped=tmp_path / "build.zip", info={"media": {}},
         clock=clock, sleep=clock.sleep)
     events = []
-    monkeypatch.setattr(controller, "_up", lambda keep_lanes=False: (events.append("up"), setattr(controller, "launch", ((), ()))))
+    monkeypatch.setattr(controller, "_up", lambda restarts_emulator=False: (events.append("up"), setattr(controller, "launch", ((), ()))))
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     monkeypatch.setattr(controller, "_map_section", lambda: None)
     monkeypatch.setattr(controller, "_await", lambda *args, **kwargs: {})
@@ -193,7 +193,7 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
         route=route, zipped=tmp_path / "build.zip", info={"media": {}},
         clock=clock, sleep=lambda seconds: (events.append(("sleep", seconds)), clock.sleep(seconds)))
 
-    def up(keep_lanes=False):
+    def up(restarts_emulator=False):
         controller.launch = (("C:/a.adf", "C:/b.adf"), ("nr_floppies=3",))
 
     monkeypatch.setattr(controller, "_up", up)
@@ -226,7 +226,7 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
 
 
 def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ()),
-                           reload_step=None, leg="reconnect", pipe=None):
+                           reload_step=None, leg="reconnect", pipe=None, lanes=None):
     """A controller at the disconnect step, with the real cleanup and everything before it stubbed."""
     route = _route()
     clock = FakeClock()
@@ -242,11 +242,12 @@ def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ())
 
     controller.up_calls = []
 
-    def up(keep_lanes=False):
-        controller.up_calls.append(keep_lanes)
+    def up(restarts_emulator=False):
+        controller.up_calls.append(restarts_emulator)
         controller.booted = True
         controller.launch = launch
         controller.pipe = pipe
+        controller.lanes = lanes
 
     monkeypatch.setattr(controller, "_up", up)
     monkeypatch.setattr(controller, "_game_section", lambda: None)
@@ -379,7 +380,7 @@ def test_up_records_the_floppies_and_settings_the_restart_will_reuse(tmp_path, m
     assert seen[0].df0 == "C:/a.adf" and seen[0].uae_option == ["scale=2"]
 
 
-def test_up_keeps_one_lane_unless_asked_for_every_lane(tmp_path, monkeypatch):
+def test_up_says_whether_the_run_restarts_its_emulator(tmp_path, monkeypatch):
     route = _route()
     route.mounted = ("a",)
     route.amiga_title = SimpleNamespace(wait_limits={}, title_limit=30, interstitials=(), options=())
@@ -393,14 +394,15 @@ def test_up_keeps_one_lane_unless_asked_for_every_lane(tmp_path, monkeypatch):
                         lambda guest, lane, values: seen.append(values) or {"winuae": "ok pid=1 pipe=WinUAE_1"})
 
     controller._up()
-    controller._up(keep_lanes=True)
+    controller._up(restarts_emulator=True)
 
-    assert [values.keep_lanes for values in seen] == [False, True]
+    assert [values.keep_lanes for values in seen] == [False, False]
+    assert [values.restarts_emulator for values in seen] == [False, True]
     assert controller.pipe == "WinUAE_1"
 
 
 @pytest.mark.parametrize("leg", ["mapping", "reconnect"])
-def test_the_disconnect_leg_claims_every_lane_so_its_pipe_name_stays_free(tmp_path, monkeypatch, leg):
+def test_the_disconnect_leg_claims_one_lane_and_says_it_restarts(tmp_path, monkeypatch, leg):
     controller, _ = _disconnect_controller(tmp_path, monkeypatch, leg=leg)
 
     controller.run_title()
@@ -410,13 +412,35 @@ def test_the_disconnect_leg_claims_every_lane_so_its_pipe_name_stays_free(tmp_pa
 
 def test_a_restart_on_another_pipe_stops_with_both_names(tmp_path, monkeypatch):
     controller, events = _disconnect_controller(
-        tmp_path, monkeypatch, pipe="WinUAE",
+        tmp_path, monkeypatch, pipe="WinUAE", lanes="every",
         start=lambda *args, **kwargs: "ok pid=1 session=1 pipe=WinUAE_1")
 
     result = controller.run_title()
 
     assert "WinUAE_1" in result["failure"] and "not Wish's WinUAE" in result["failure"]
     assert result["mapping"]["reconnect"]["status"] != "awaiting image review"
+    assert events[-1] == "down"
+
+
+def test_a_restart_on_another_pipe_is_reconnected_when_wish_follows_the_lane(tmp_path, monkeypatch):
+    controller, _ = _disconnect_controller(
+        tmp_path, monkeypatch, pipe="WinUAE", lanes="one",
+        start=lambda *args, **kwargs: "ok pid=1 session=1 pipe=WinUAE_1")
+
+    result = controller.run_title()
+
+    assert result["failure"] is None
+    assert result["mapping"]["reconnect"]["status"] == "awaiting image review"
+
+
+def test_a_restart_that_names_no_pipe_stops_even_when_wish_follows_the_lane(tmp_path, monkeypatch):
+    controller, events = _disconnect_controller(
+        tmp_path, monkeypatch, pipe="WinUAE", lanes="one",
+        start=lambda *args, **kwargs: "ok pid=1 session=1")
+
+    result = controller.run_title()
+
+    assert "named no pipe" in result["failure"]
     assert events[-1] == "down"
 
 
@@ -1340,7 +1364,7 @@ def _discovery_controller(tmp_path, monkeypatch):
         _discovery_args(tmp_path), guest=object(), lane=lane, game=game,
         guards=lambda state, path: True, route=route, zipped=tmp_path / "artifact.zip",
         info={"media": {m.key: {} for m in route.media}}, clock=clock, sleep=clock.sleep)
-    monkeypatch.setattr(controller, "_up", lambda keep_lanes=False: (setattr(controller, "booted", True),
+    monkeypatch.setattr(controller, "_up", lambda restarts_emulator=False: (setattr(controller, "booted", True),
                                                     controller.remotes.update({"df0": "a", "df1": "b"})))
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     state = {"on": False, "rows": []}
@@ -4219,7 +4243,7 @@ def test_the_pool_code_wheel_is_answered_before_the_title(tmp_path, monkeypatch)
         tmp_path, "pool", route_pool.POOL.interstitials, "wheel")
     game.press = lambda holder, key, timeout: (game.keys.append(key), screen.update(
         show="title" if (screen["show"], key) == ("wheel", "RET") else screen["show"]))
-    monkeypatch.setattr(controller, "_up", lambda keep_lanes=False: None)
+    monkeypatch.setattr(controller, "_up", lambda restarts_emulator=False: None)
     monkeypatch.setattr(controller, "_game_section", lambda: None)
     monkeypatch.setattr(controller, "_cleanup",
                         lambda: controller.summary["cleanup"].update(errors=[]))

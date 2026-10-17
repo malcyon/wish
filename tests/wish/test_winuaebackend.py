@@ -578,3 +578,69 @@ def test_reads_made_while_a_target_is_built_are_bounded_and_the_target_keeps_the
     target = locator.target(transport.read_memory, transport, factory=factory)
     assert given[-1] == locator.PIECE_TIMEOUT
     assert target.debugger is transport
+
+
+def _receipt(tmp_path, monkeypatch, text, *, name="winuae-run.txt"):
+    path = tmp_path / name
+    path.write_bytes(text.encode())
+    monkeypatch.setenv(winuae.RUN_ENV, str(path))
+    return path
+
+
+_RECEIPT = "args=x\r\nholder=h\r\npid=7\r\npipe=WinUAE_2\r\nstarted=t\r\n"
+
+
+def _connect_by_receipt(names=("WinUAE", "WinUAE_1", "WinUAE_2"), alive=lambda pid: True):
+    asked = []
+
+    def factory(pipe):
+        asked.append(pipe)
+        return FakeTransport(pipe, loaded())
+
+    winuae.connect(pipes=lambda: list(names), factory=factory, alive=alive)
+    return asked
+
+
+def test_the_lane_receipt_switch_opens_the_pipe_its_receipt_names(tmp_path, monkeypatch):
+    _receipt(tmp_path, monkeypatch, _RECEIPT)
+    assert _connect_by_receipt() == ["WinUAE_2"]
+
+
+def test_the_lane_receipt_switch_wins_over_the_pipe_switch(tmp_path, monkeypatch):
+    _receipt(tmp_path, monkeypatch, _RECEIPT)
+    monkeypatch.setenv(winuae.PIPE_ENV, "WinUAE_1")
+    assert _connect_by_receipt() == ["WinUAE_2"]
+
+
+def test_no_lane_receipt_opens_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv(winuae.RUN_ENV, str(tmp_path / "missing.txt"))
+    with pytest.raises(amiga.PipeError) as caught:
+        _connect_by_receipt()
+    assert str(caught.value) == "There is no WinUAE pipe."
+
+
+@pytest.mark.parametrize("text,alive", [
+    ("args=x\r\nholder=h\r\npid=7\r\nstarted=t\r\n", True),
+    (_RECEIPT, False),
+    (_RECEIPT.rstrip("\r\n"), True),
+    (_RECEIPT.replace("WinUAE_2", "pipe\\\\other"), True),
+    (_RECEIPT.replace("pid=7", "pid=x"), True),
+    (_RECEIPT.replace("started=t\r\n", ""), True),
+], ids=["no-pipe", "dead-pid", "no-line-ending", "bad-name", "bad-pid", "no-started"])
+def test_a_lane_receipt_that_names_no_live_emulator_opens_nothing(tmp_path, monkeypatch, text, alive):
+    _receipt(tmp_path, monkeypatch, text)
+    with pytest.raises(amiga.PipeError, match="There is no WinUAE pipe."):
+        _connect_by_receipt(alive=lambda pid: alive)
+
+
+def test_a_lane_receipt_naming_an_unlisted_pipe_opens_nothing(tmp_path, monkeypatch):
+    _receipt(tmp_path, monkeypatch, _RECEIPT)
+    with pytest.raises(amiga.PipeError, match="no WinUAE pipe called WinUAE_2"):
+        _connect_by_receipt(names=("WinUAE",))
+
+
+@pytest.mark.parametrize("value", ["", "  "])
+def test_a_blank_lane_receipt_switch_changes_nothing(monkeypatch, value):
+    monkeypatch.setenv(winuae.RUN_ENV, value)
+    monkeypatch.delenv(winuae.PIPE_ENV, raising=False)
+    assert _connect_by_receipt() == ["WinUAE"]

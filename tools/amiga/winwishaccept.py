@@ -1278,8 +1278,10 @@ class Controller:
         self.restart_stop_error: str | None = None
         #: The floppy images and WinUAE settings `_up` started the game with, for a restart.
         self.launch: tuple[tuple[str, ...], tuple[str, ...]] | None = None
-        #: The pipe name Wish was pinned to when the game started; a restart must reuse it.
+        #: The pipe name Wish was pinned to when the game started; a build that follows the name needs a restart to reuse it.
         self.pipe: str | None = None
+        #: `every` or `one`: how many lanes `up` claimed; `one` means Wish follows the lane's run receipt.
+        self.lanes: str | None = None
         self.down_done = False
         self.pipe_released = False
         self.wish_closed = False
@@ -3514,7 +3516,7 @@ class Controller:
             self.remotes[medium.key] = remote
             self.info["media"][medium.key]["guest"] = remote
 
-    def _up(self, keep_lanes: bool = False) -> None:
+    def _up(self, restarts_emulator: bool = False) -> None:
         self._stage_media()
         values = {"sha": self.args.sha, "holder": self.args.holder,
                   "mute_proof": self.args.mute_proof,
@@ -3524,7 +3526,8 @@ class Controller:
                   "uae_option": list(self.route.amiga_title.options),
                   "travel_targets": [], "map_only": self.discovery,
                   "clear_quickfight": bool(getattr(self.args, "watch", False)),
-                  "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": keep_lanes}
+                  "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": False,
+                  "restarts_emulator": restarts_emulator}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]
         drives = winwish.floppy_paths(argparse.Namespace(**values))
@@ -3532,6 +3535,7 @@ class Controller:
                                        *winwish.uae_options(values["uae_option"])))
         receipt = winwish.up(self.guest, self.lane, argparse.Namespace(**values))
         self.pipe = _pipe_name(receipt.get("winuae") if isinstance(receipt, dict) else None)
+        self.lanes = receipt.get("lanes") if isinstance(receipt, dict) else None
         if values["wait_lanes"]:
             # Waiting for a free lane is not route time.
             self._set_deadlines()
@@ -3952,9 +3956,9 @@ class Controller:
 
     def run_title(self) -> dict[str, Any]:
         try:
-            # Every lane stays claimed so no other run's emulator can take this one's pipe name
-            # while the game is stopped.
-            self._up(keep_lanes=True)
+            # A build that follows the lane's run receipt needs only this lane; an older one
+            # gets every lane so no other run's emulator can take its pipe name while the game is stopped.
+            self._up(restarts_emulator=True)
             self._game_section()
             title = self._await_title()
             self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
@@ -4004,7 +4008,10 @@ class Controller:
                                       timeout=self.left(winwish.START_SECONDS + 30), options=options)
             self.restarted = True
             reopened = _pipe_name(started)
-            if self.pipe is not None and reopened != self.pipe:
+            if self.lanes == "one":
+                if reopened is None:
+                    raise AcceptanceStop("the restarted game named no pipe")
+            elif self.pipe is not None and reopened != self.pipe:
                 raise AcceptanceStop(
                     f"the restarted game opened pipe {reopened}, not Wish's {self.pipe}")
             self._reload_party()

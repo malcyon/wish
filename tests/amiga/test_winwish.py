@@ -748,6 +748,33 @@ def test_the_pipe_variable_name_matches_wishs_and_is_cleared():
     from wish import winuae as wish_winuae
     assert winwish.PIPE_ENV == wish_winuae.PIPE_ENV
     assert winwish.PIPE_ENV in winwish.CLEARED
+    assert winwish.RUN_ENV == wish_winuae.RUN_ENV
+    assert winwish.RUN_ENV in winwish.CLEARED
+
+
+@pytest.mark.parametrize("lane,path", [(1, r"C:\Amiga\winuae-run.txt"), (3, r"C:\Amiga\winuae-run-3.txt")])
+def test_start_wish_names_the_lanes_run_receipt(lane, path):
+    run = FakeRun([(lambda a: a[1] == "ssh", 0, f"ok lane={lane} pid=1 started=t pipe=WinUAE_1")])
+    winwish.start_wish(winwish.Guest(run), "h")
+    start = next(c[2] for c in run.calls if c[1] == "ps")
+    assert f"$env:WISH_WINUAE_LANE_RECEIPT = '{path}'" in _task_text(start)
+
+
+def test_up_for_a_restarting_run_claims_one_lane_when_the_build_follows_the_receipt(tmp_path, monkeypatch):
+    lane = FakeLane()
+    args = _args(tmp_path, monkeypatch)
+    args.restarts_emulator = True
+    result = winwish.up(winwish.Guest(FakeRun()), lane, args)
+    assert lane.exclusive is False and result["lanes"] == "one"
+
+
+def test_up_for_a_restarting_run_claims_every_lane_when_the_build_ignores_the_receipt(tmp_path, monkeypatch):
+    lane = FakeLane()
+    run = FakeRun([(lambda a: a[0] == "git" and "WISH_WINUAE_LANE_RECEIPT" in a, 1, "")])
+    args = _args(tmp_path, monkeypatch)
+    args.restarts_emulator = True
+    result = winwish.up(winwish.Guest(run), lane, args)
+    assert lane.exclusive is True and result["lanes"] == "every"
 
 
 def test_claim_every_lane_polls_until_the_guest_says_ok(monkeypatch):

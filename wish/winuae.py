@@ -62,20 +62,62 @@ def reset() -> None:
 #: feature flag; its value is a pipe name, so the truthiness rule does not apply.
 PIPE_ENV = "WISH_WINUAE_PIPE"
 
+#: Names the run receipt of the lane whose emulator Wish follows, so a restart that
+#: takes another pipe name is still found and another run's emulator never is. A
+#: permanent test switch like `PIPE_ENV`, and it wins over it; its value is a path.
+RUN_ENV = "WISH_WINUAE_LANE_RECEIPT"
+
+
+def _lane_pipe(path: str, alive) -> str | None:
+    """The pipe a lane's run receipt names, or None while it names no live emulator.
+
+    The receipt is written in two steps and deleted on stop, so a missing file, a
+    final line without its line ending, no `pipe`, or a dead `pid` all mean the
+    emulator is not there yet or any more.
+    """
+    try:
+        with open(path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError):
+        return None
+    lines = text.split("\n")
+    lines.pop()  # whatever follows the last line ending is a write in progress
+    fields = {}
+    for line in lines:
+        key, found, value = line.rstrip("\r").partition("=")
+        if found:
+            fields[key] = value
+    pid, pipe = fields.get("pid", ""), fields.get("pipe", "")
+    if not pid.isdecimal() or "started" not in fields:
+        return None
+    if not winuae._NAME.fullmatch(pipe) or not alive(int(pid)):
+        return None
+    return pipe
+
 
 def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
-            locator: Locator | None = None) -> WinuaeTarget:
+            locator: Locator | None = None, alive=None) -> WinuaeTarget:
     """A target on the running Amiga, or a `NotConnected` saying what is missing.
 
-    Uses the first pipe WinUAE created, or the one `WISH_WINUAE_PIPE` names. Raises `amiga.PipeError` when there is
+    Uses the first pipe WinUAE created, the one `WISH_WINUAE_PIPE` names, or the one the run receipt named by
+    `WISH_WINUAE_LANE_RECEIPT` records, which wins. Raises `amiga.PipeError` when there is
     none, when WinUAE does not answer, and when no known title is loaded yet.
     """
     global _transport
     names = pipes()
     if not names:
         raise amiga.PipeError("There is no WinUAE pipe.")
+    receipt = os.environ.get(RUN_ENV, "").strip()
     name = os.environ.get(PIPE_ENV, "").strip()
-    if name:
+    if receipt:
+        if alive is None:
+            from automap.amigatrip import _windows_alive as alive
+        name = _lane_pipe(receipt, alive)
+        if name is None:
+            raise amiga.PipeError("There is no WinUAE pipe.")
+        if name not in names:
+            raise amiga.PipeError(f"There is no WinUAE pipe called {name}.")
+    elif name:
         if not winuae._NAME.fullmatch(name) or name not in names:
             raise amiga.PipeError(f"There is no WinUAE pipe called {name}.")
     else:
