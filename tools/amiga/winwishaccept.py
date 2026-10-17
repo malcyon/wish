@@ -349,6 +349,17 @@ class AcceptanceStop(RuntimeError):
 
 
 @dataclasses.dataclass(frozen=True)
+class _LevelupOffsets:
+    """Where a title keeps the experience and hit points Level up changes, and its thresholds."""
+
+    experience: int
+    hp_rolled: int
+    hp_max: int
+    hp_current: int
+    threshold: Any
+
+
+@dataclasses.dataclass(frozen=True)
 class FightPlan:
     """How the fight leg reaches one title's fight and answers it."""
 
@@ -2210,27 +2221,73 @@ class Controller:
                 "raw": member.raw.hex(), "items": [
                     [node.address, node.raw.hex()] for node in member.item_nodes]}
 
-    def _next_fighter_threshold(self, member: Any) -> int | None:
-        """Experience that makes the member's fighter ready, or None when it cannot."""
+    @staticmethod
+    def _levelup_offsets(game_key: str) -> _LevelupOffsets:
+        """The title's experience and hit-point offsets and its experience threshold."""
+        from automap import amigalevelup as lv  # noqa: PLC0415
+
+        table = {
+            lv.POOL_OF_RADIANCE: _LevelupOffsets(
+                lv._POR_EXPERIENCE, lv._POR_HP_ROLLED, lv._POR_HP_MAX, lv._POR_HP_CURRENT,
+                lv.por_threshold),
+            lv.CURSE: _LevelupOffsets(
+                lv._CU_EXPERIENCE, lv._CU_HP_ROLLED, lv._CU_HP_MAX, lv._CU_HP_CURRENT,
+                lv.curse_threshold),
+            lv.SILVER_BLADES: _LevelupOffsets(
+                lv._SB_EXPERIENCE, lv._SB_HP_ROLLED, lv._SB_HP_MAX, lv._SB_HP_CURRENT,
+                lv.ssb_threshold),
+            lv.POOLS_OF_DARKNESS: _LevelupOffsets(
+                lv._POD_EXPERIENCE, lv._POD_HP_ROLLED, lv._POD_HP_MAX, lv._POD_HP_CURRENT,
+                lv.pod_threshold),
+        }
+        if game_key not in table:
+            raise AcceptanceStop(f"no Level up offsets are known for {game_key}")
+        return table[game_key]
+
+    def _levelup_pressable(self, member: Any) -> bool:
+        """Whether one press can be verified: it asks for no spell and adds no effect node.
+
+        Pool and Curse add int((die + bonus) / classes) to the maximum, which the verifier
+        cannot split back into a roll and a bonus, so only a one-class member qualifies there.
+        """
+        import random  # noqa: PLC0415
+
         from automap import amigalevelup  # noqa: PLC0415
 
-        if self.route.game_key != amigalevelup.POOLS_OF_DARKNESS:
-            return None
+        key = self.route.game_key
+        if key in (amigalevelup.POOL_OF_RADIANCE, amigalevelup.CURSE):
+            if sum(1 for level in amigalevelup.summary(member.raw, key)["levels"] if level) != 1:
+                return False
+        try:
+            plan = amigalevelup.plan_member(member, key, rng=random.Random(0))
+        except amigalevelup.CannotLevel:
+            return False
+        return not plan.added_effects
+
+    def _next_threshold(self, member: Any) -> int | None:
+        """Experience that makes the one-class member's class ready, or None when it cannot."""
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from automap import amigalevelup  # noqa: PLC0415
+
+        offsets = self._levelup_offsets(self.route.game_key)
         levels = amigalevelup.summary(member.raw, self.route.game_key)["levels"]
-        fighter = amigalevelup.POD_SLOTS.index("fighter")
-        if levels[fighter] <= 0:
+        held = [slot for slot, level in enumerate(levels) if level > 0]
+        if len(held) != 1:
             return None
-        threshold = amigalevelup.pod_threshold(fighter, levels[fighter] + 1)
+        slot = held[0]
+        threshold = offsets.threshold(slot, levels[slot] + 1)
         staged = bytearray(member.raw)
-        staged[amigalevelup._POD_EXPERIENCE:amigalevelup._POD_EXPERIENCE + 4] = (
-            threshold.to_bytes(4, "big"))
-        if "fighter" not in amigalevelup.ready_classes(staged, self.route.game_key):
+        staged[offsets.experience:offsets.experience + 4] = threshold.to_bytes(4, "big", signed=True)
+        if not amigalevelup.ready_classes(bytes(staged), self.route.game_key):
             return None
-        return threshold
+        after = SimpleNamespace(raw=bytes(staged), item_nodes=member.item_nodes,
+                                effect_nodes=member.effect_nodes)
+        return threshold if self._levelup_pressable(after) else None
 
     def _stageable_levelup_member(self, party: Any) -> Any:
         for member in sorted(party, key=lambda item: item.slot):
-            if self._next_fighter_threshold(member) is not None:
+            if self._next_threshold(member) is not None:
                 return member
         raise AcceptanceStop("No member is ready for Level up and none can be staged")
 
@@ -2252,8 +2309,9 @@ class Controller:
                 elif action.selector == "controlled" and (member.row.control is None or
                         not member.row.control.value(member.raw)):
                     choice = member
-                elif action.selector == "levelup" and amigalevelup.ready_classes(
-                        member.raw, self.route.game_key):
+                elif (action.selector == "levelup"
+                        and amigalevelup.ready_classes(member.raw, self.route.game_key)
+                        and self._levelup_pressable(member)):
                     choice = member
                 if choice is not None:
                     break
@@ -2286,15 +2344,14 @@ class Controller:
                 target.write(choice.address + spot.offset, bytes([1]))
                 context["staged"] = {"quickfight": 1}
             elif action.kind == "levelup":
-                if self.route.title != "darkness":
-                    raise AcceptanceStop("Level up is observed without a press on this title")
+                offsets = self._levelup_offsets(self.route.game_key)
                 if amigalevelup.ready_classes(choice.raw, self.route.game_key):
                     # Already eligible: nothing is staged, the record is the baseline.
                     threshold = amigalevelup.summary(choice.raw, self.route.game_key)["experience"]
                 else:
-                    threshold = self._next_fighter_threshold(choice)
-                    target.write(choice.address + amigalevelup._POD_EXPERIENCE,
-                                 threshold.to_bytes(4, "big"))
+                    threshold = self._next_threshold(choice)
+                    target.write(choice.address + offsets.experience,
+                                 threshold.to_bytes(4, "big", signed=True))
                 context["staged"] = {"experience": threshold}
             staged_party = amigaparty.read_party(target)
             if not staged_party:
@@ -2316,8 +2373,6 @@ class Controller:
         return slots
 
     def _verify_staging(self, kind: str, context: dict[str, Any], party: Any) -> None:
-        from automap import amigalevelup  # noqa: PLC0415
-
         original = self._party_by_slot(context["before"])
         staged = self._party_by_slot(context["baseline"])
         if original.keys() != staged.keys():
@@ -2338,8 +2393,9 @@ class Controller:
                 elif kind == "quickfight":
                     raw[member.row.quickfight.offset] = 1
                 elif kind == "levelup":
-                    offset = amigalevelup._POD_EXPERIENCE
-                    raw[offset:offset + 4] = context["staged"]["experience"].to_bytes(4, "big")
+                    offset = self._levelup_offsets(self.route.game_key).experience
+                    raw[offset:offset + 4] = context["staged"]["experience"].to_bytes(
+                        4, "big", signed=True)
             if new["raw"] != raw.hex() or new["items"] != items or new["name"] != old["name"]:
                 raise AcceptanceStop(f"staging changed an unexpected byte for {member.name}")
 
@@ -2403,9 +2459,9 @@ class Controller:
                     ready = amigalevelup.ready_classes(raw, self.route.game_key)
                     if fixed.classes != ready or fixed.added_effects:
                         raise AcceptanceStop("Level up classes or effect-node writes cannot be verified")
-                    hp_rolled = amigalevelup._POD_HP_ROLLED
-                    hp_max = amigalevelup._POD_HP_MAX
-                    hp_current = amigalevelup._POD_HP_CURRENT
+                    offsets = self._levelup_offsets(self.route.game_key)
+                    hp_rolled, hp_max, hp_current = (
+                        offsets.hp_rolled, offsets.hp_max, offsets.hp_current)
                     observed = bytes.fromhex(new["raw"])
                     rolled = (observed[hp_rolled] - raw[hp_rolled]) & 0xff
                     low = (amigalevelup.apply_to(raw, minimum)[hp_rolled] - raw[hp_rolled]) & 0xff

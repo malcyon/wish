@@ -94,10 +94,11 @@ def test_every_title_with_a_measured_source_is_ready_and_the_tilverton_curse_sav
     assert [action.kind for action in route.actions] == [
         "heal", "spells", "identify", "quickfight", "levelup"]
     assert {action.kind for action in route.actions if action.enabled} == (
-        set() if title == "pool" else {"heal", "identify"} | EXTRA_ENABLED[title])
+        {"heal", "identify"} | EXTRA_ENABLED[title])
 
 
-EXTRA_ENABLED = {"ssb": {"quickfight"}, "curse": {"quickfight"}, "darkness": {"spells"}}
+EXTRA_ENABLED = {"pool": {"quickfight", "levelup"}, "ssb": {"quickfight", "levelup"},
+                 "curse": {"quickfight", "levelup"}, "darkness": {"spells", "levelup"}}
 
 
 def _enabled(title: str, tmp_path: Path) -> dict[str, maproute.Action]:
@@ -105,26 +106,27 @@ def _enabled(title: str, tmp_path: Path) -> dict[str, maproute.Action]:
     return {action.kind: action for action in route.actions if action.enabled}
 
 
-@pytest.mark.parametrize("title", ("ssb", "darkness", "curse"))
+@pytest.mark.parametrize("title", ("pool", "ssb", "darkness", "curse"))
 def test_heal_and_identify_carry_the_measured_camp_routes(title: str, tmp_path: Path):
     actions = _enabled(title, tmp_path)
+    sheet = "camp_sheet_items" if title == "pool" else "camp_sheet"
 
     heal, identify = actions["heal"], actions["identify"]
     assert [(s.kind, s.state, s.key) for s in heal.show.steps] == [
-        ("key", "camp", "E"), ("select", "camp", None), ("key", "camp_sheet", "V")]
+        ("key", "camp", "E"), ("select", "camp", None), ("key", sheet, "V")]
     assert (heal.show.initial_state, heal.show.steps[-1].checkpoint) == ("world", "heal_sheet")
     assert [(s.state, s.key) for s in heal.back.steps] == [("camp", "E"), ("world", "E")]
-    assert heal.back.initial_state == "camp_sheet"
+    assert heal.back.initial_state == sheet
     assert [(s.kind, s.state, s.key) for s in identify.show.steps] == [
-        ("key", "camp", "E"), ("select", "camp", None), ("key", "camp_sheet", "V"),
+        ("key", "camp", "E"), ("select", "camp", None), ("key", sheet, "V"),
         ("key", "camp_items", "I")]
     assert identify.show.steps[-1].checkpoint == "identify_items"
     assert identify.back.initial_state == "camp_items"
     assert [(s.state, s.key) for s in identify.back.steps] == [
-        ("camp_sheet", "E"), ("camp", "E"), ("world", "E")]
+        (sheet, "E"), ("camp", "E"), ("world", "E")]
 
 
-@pytest.mark.parametrize("title", ("ssb", "curse"))
+@pytest.mark.parametrize("title", ("pool", "ssb", "curse"))
 def test_quickfight_off_visits_the_sheet_as_heal_does(title: str, tmp_path: Path):
     heal, qf = (_enabled(title, tmp_path)[k] for k in ("heal", "quickfight"))
 
@@ -133,6 +135,30 @@ def test_quickfight_off_visits_the_sheet_as_heal_does(title: str, tmp_path: Path
         assert [(s.kind, s.state, s.key) for s in mine.steps] == [
             (s.kind, s.state, s.key) for s in theirs.steps]
     assert qf.selector == "controlled"
+
+
+@pytest.mark.parametrize("title", ("pool", "ssb", "darkness", "curse"))
+def test_levelup_visits_the_sheet_as_heal_does(title: str, tmp_path: Path):
+    heal, levelup = (_enabled(title, tmp_path)[k] for k in ("heal", "levelup"))
+
+    for mine, theirs in ((levelup.show, heal.show), (levelup.back, heal.back)):
+        assert mine.initial_state == theirs.initial_state
+        assert [(s.kind, s.state, s.key) for s in mine.steps] == [
+            (s.kind, s.state, s.key) for s in theirs.steps]
+    assert levelup.show.steps[-1].checkpoint == "levelup_sheet"
+    assert levelup.selector == "levelup"
+
+
+def test_pool_spells_and_quickfight_visit_the_sheet(tmp_path: Path):
+    routes = maproute._camp_actions("pool", True)
+    heal = routes["heal"]
+
+    for kind in ("spells", "quickfight"):
+        for mine, theirs in zip(routes[kind], heal):
+            assert mine.initial_state == theirs.initial_state
+            assert [(s.kind, s.state, s.key) for s in mine.steps] == [
+                (s.kind, s.state, s.key) for s in theirs.steps]
+    assert "spells" not in maproute._camp_actions("pool")
 
 
 def test_pools_of_darkness_quickfight_stays_off_between_fights(tmp_path: Path):
@@ -154,7 +180,7 @@ def test_pools_of_darkness_spells_visit_the_cast_list(tmp_path: Path):
         ("camp_magic", "E"), ("camp", "E"), ("world", "E")]
 
 
-@pytest.mark.parametrize("title", ("ssb", "darkness", "curse"))
+@pytest.mark.parametrize("title", ("pool", "ssb", "darkness", "curse"))
 def test_the_enabled_actions_wait_only_for_screens_the_title_guards(title: str, tmp_path: Path):
     actions = _enabled(title, tmp_path)
     route = maproute.route_for(title, _manifest(title, tmp_path))
@@ -168,16 +194,14 @@ def test_the_enabled_actions_wait_only_for_screens_the_title_guards(title: str, 
 
 
 @pytest.mark.parametrize("title", ("pool", "curse", "ssb", "darkness"))
-def test_the_actions_without_a_measured_route_stay_off_and_pool_has_no_camp_route(
+def test_the_actions_without_a_measured_route_stay_off(
         title: str, tmp_path: Path):
     route = maproute.route_for(title, _manifest(title, tmp_path))
     by_kind = {action.kind: action for action in route.actions}
-    off = {"spells", "quickfight", "levelup"} - EXTRA_ENABLED.get(title, set())
+    off = {"spells", "quickfight"} - EXTRA_ENABLED.get(title, set())
 
     assert not any(by_kind[k].enabled for k in off)
     assert all(by_kind[k].show is None for k in off)
-    if title == "pool":
-        assert not any(action.enabled for action in route.actions)
 
 
 def test_the_tilverton_curse_save_keeps_its_observe_only_outdoor_phase(tmp_path: Path):

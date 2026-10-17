@@ -1116,6 +1116,159 @@ def test_levelup_stops_when_a_member_other_than_the_selected_one_changes(tmp_pat
         controller._verify_action("levelup", context, after)
 
 
+_TITLES = {  # route title, game key, the title's threshold, experience offset
+    "pool": ("pool-of-radiance", "por_threshold", "_POR_EXPERIENCE"),
+    "curse": ("curse-of-the-azure-bonds", "curse_threshold", "_CU_EXPERIENCE"),
+    "ssb": ("secret-of-the-silver-blades", "ssb_threshold", "_SB_EXPERIENCE"),
+}
+
+
+def _title_fighter(title, *, extra_class=None, ready=False):
+    """A synthetic level-1 fighter record of the title, with 10/10 hit points and CON 16."""
+    from automap import amigalevelup as lv
+    from automap import amigaparty
+
+    key = _TITLES[title][0]
+    levels_at, con, hp_max, hp_current, cls, slots = {
+        "pool": (lv._POR_LEVELS, lv._POR_CONSTITUTION, lv._POR_HP_MAX, lv._POR_HP_CURRENT,
+                 lv._POR_CLASS, lv.POR_SLOTS),
+        "curse": (lv._CU_LEVELS, lv._CU_CONSTITUTION, lv._CU_HP_MAX, lv._CU_HP_CURRENT,
+                  lv._CU_CLASS, lv.CURSE_SLOTS),
+        "ssb": (lv._SB_LEVELS, lv._SB_CONSTITUTION, lv._SB_HP_MAX, lv._SB_HP_CURRENT,
+                None, lv.SSB_SLOTS),
+    }[title]
+    threshold = getattr(lv, _TITLES[title][1])
+    experience = getattr(lv, _TITLES[title][2])
+    raw = bytearray(amigaparty.ROWS[key].record_size)
+    fighter = slots.index("fighter")
+    raw[levels_at + fighter] = 1
+    held = [fighter]
+    if extra_class is not None:
+        raw[levels_at + slots.index(extra_class)] = 1
+        held.append(slots.index(extra_class))
+    raw[con], raw[hp_max], raw[hp_current] = 16, 10, 10
+    if cls is not None:
+        raw[cls] = 2
+    if ready:
+        need = max(threshold(slot, 2) for slot in held)
+        raw[experience:experience + 4] = need.to_bytes(4, "big")
+    return raw, fighter
+
+
+def _title_party(title, specs):
+    """Members from (extra_class, ready) pairs, one per slot."""
+    from automap import amigaparty
+
+    key = _TITLES[title][0]
+    row = amigaparty.ROWS[key]
+    members = []
+    for slot, (extra, ready) in enumerate(specs):
+        raw, _ = _title_fighter(title, extra_class=extra, ready=ready)
+        raw[row.slot] = slot
+        raw[row.name:row.name + 2] = b"M" + bytes([ord("0") + slot])
+        members.append(amigaparty.AmigaMember(row, slot, 0x1000 + 0x200 * slot, bytes(raw)))
+    return members
+
+
+def _title_controller(tmp_path, monkeypatch, title, members):
+    controller, writes = _levelup_controller(tmp_path, monkeypatch, members)
+    controller.route.title, controller.route.game_key = title, _TITLES[title][0]
+    return controller, writes
+
+
+@pytest.mark.parametrize("title", sorted(_TITLES))
+def test_levelup_stages_the_title_threshold_when_none_is_eligible(title, tmp_path, monkeypatch):
+    from automap import amigalevelup as lv
+
+    members = _title_party(title, [(None, False)] * 2)
+    controller, writes = _title_controller(tmp_path, monkeypatch, title, members)
+    context = controller._action_input(SimpleNamespace(kind="levelup", selector="levelup"))
+    threshold = getattr(lv, _TITLES[title][1])
+    fighter = _title_fighter(title)[1]
+    assert context["slot"] == 0
+    assert writes == [(members[0].address + getattr(lv, _TITLES[title][2]),
+                       threshold(fighter, 2).to_bytes(4, "big"))]
+
+
+@pytest.mark.parametrize("title", ["pool", "curse", "ssb", "darkness"])
+def test_levelup_verifies_hit_point_arithmetic_on_every_title(title, tmp_path):
+    from automap import amigalevelup as levelup
+    from automap import amigaparty
+
+    key = levelup.POOLS_OF_DARKNESS if title == "darkness" else _TITLES[title][0]
+    route = _route()
+    route.title, route.game_key = title, key
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=route, zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    row = amigaparty.ROWS[key]
+    if title == "darkness":
+        raw = bytearray(row.record_size)
+        raw[0x58], raw[0x79], raw[0x9D + 2] = 5, 18, 8
+        raw[0x44:0x48] = levelup.pod_threshold(2, 9).to_bytes(4, "big")
+        raw[0x81], raw[0x191] = 80, 50
+    else:
+        raw, _ = _title_fighter(title, ready=True)
+    offsets = controller._levelup_offsets(key)
+    item = [[900, bytes(row.items.size).hex()]]
+    baseline = {"slot": 0, "name": "A", "address": 100, "raw": raw.hex(), "items": item}
+    context = {"slot": 0, "baseline": [baseline], "levelup_effects": []}
+
+    class Dice:
+        def randint(self, low, high):
+            return 9
+
+    trained = bytearray(levelup.apply_to(
+        bytes(raw), levelup.plan(bytes(raw), key, rng=Dice(), items=[bytes.fromhex(item[0][1])])))
+    assert trained[offsets.hp_max] != raw[offsets.hp_max]
+    valid = {**baseline, "raw": trained.hex()}
+    controller._verify_action("levelup", context, [valid])
+    unrelated = bytearray(trained)
+    unrelated[0x10] ^= 1
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, [{**valid, "raw": unrelated.hex()}])
+    wrong_hp = bytearray(trained)
+    wrong_hp[offsets.hp_max] += 1
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, [{**valid, "raw": wrong_hp.hex()}])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("levelup", context, [{**valid, "items": []}])
+
+
+def test_levelup_skips_a_member_whose_press_asks_for_a_spell(tmp_path, monkeypatch):
+    from automap import amigalevelup as levelup
+
+    members = _pod_party({0, 1}, tmp_path)
+    controller, writes = _levelup_controller(tmp_path, monkeypatch, members)
+    real = levelup.plan_member
+
+    def plan_member(member, key, **kwargs):
+        if member.slot == 0:
+            raise levelup.NeedsSpell([1])
+        return real(member, key, **kwargs)
+
+    monkeypatch.setattr(levelup, "plan_member", plan_member)
+    context = controller._action_input(SimpleNamespace(kind="levelup", selector="levelup"))
+    assert context["slot"] == 1 and writes == []
+
+
+@pytest.mark.parametrize("title,chosen", [("pool", 1), ("curse", 1), ("ssb", 0)])
+def test_levelup_skips_a_multiclass_member_on_pool_and_curse(title, chosen, tmp_path, monkeypatch):
+    members = _title_party(title, [("cleric", True), (None, True)])
+    controller, _ = _title_controller(tmp_path, monkeypatch, title, members)
+    context = controller._action_input(SimpleNamespace(kind="levelup", selector="levelup"))
+    assert context["slot"] == chosen
+
+
+def test_pool_persist_preflight_accepts_every_action(tmp_path):
+    from tools.amiga import maproute
+
+    route = maproute.route_for("pool", test_maproute._manifest("pool", tmp_path))
+    for kind in ("heal", "identify", "quickfight", "levelup"):
+        actions = winwishaccept._check_persist(SimpleNamespace(action=[kind]), route)
+        assert [action.kind for action in actions] == [kind]
+
+
 def _packed_map(raw):
     """Encode a synthetic DAX block with literal runs in reverse read order."""
     bits = []
@@ -3429,7 +3582,8 @@ def test_discovery_and_opening_press_no_action_on_a_route_with_enabled_actions(
         controller, game, _, _, _ = _opening_controller(tmp_path, monkeypatch)
     else:
         controller, game, _, _, _ = _discovery_controller(tmp_path, monkeypatch)
-    assert {a.kind for a in controller.route.actions if a.enabled} == {"heal", "identify", "quickfight"}
+    assert {a.kind for a in controller.route.actions if a.enabled} == {
+        "heal", "identify", "quickfight", "levelup"}
     before = json.loads(json.dumps(controller.summary["actions"]))
     result = (controller.run_opening_first() if mode == "opening"
               else controller.run_discovery())
@@ -5269,7 +5423,7 @@ def test_an_action_the_run_does_not_select_is_not_staged(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("wanted,message", [(["levelup"], "is not an action"),
-                                            (["quickfight"], "is not enabled")])
+                                            (["spells"], "is not enabled")])
 def test_an_unknown_or_disabled_action_stops_the_persist_leg_before_a_lane(
         tmp_path, wanted, message):
     from tools.amiga import maproute

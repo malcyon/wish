@@ -311,28 +311,35 @@ def _camp_actions(title: str, spells_party: bool = False) -> dict[str, tuple[Pha
 
     Every visit selects the member again, because the game keeps the last highlighted one.
     """
-    if title == "pool":
-        return {}
+    # Pool's player-character sheet bar is a different screen from the other titles' sheet.
+    sheet = "camp_sheet_items" if title == "pool" else "camp_sheet"
     heal_show = _phase("heal_show", "world", Step("key", "camp", key="E"),
                        Step("select", "camp"),
-                       Step("key", "camp_sheet", key="V", checkpoint="heal_sheet"))
-    heal_back = _phase("heal_back", "camp_sheet", Step("key", "camp", key="E"),
+                       Step("key", sheet, key="V", checkpoint="heal_sheet"))
+    heal_back = _phase("heal_back", sheet, Step("key", "camp", key="E"),
                        Step("key", "world", key="E"))
     identify_show = _phase(
         "identify_show", "world", Step("key", "camp", key="E"), Step("select", "camp"),
-        Step("key", "camp_sheet", key="V"),
+        Step("key", sheet, key="V"),
         Step("key", "camp_items", key="I", checkpoint="identify_items"))
     identify_back = _phase(
-        "identify_back", "camp_items", Step("key", "camp_sheet", key="E"),
+        "identify_back", "camp_items", Step("key", sheet, key="E"),
         Step("key", "camp", key="E"), Step("key", "world", key="E"))
     routes = {"heal": (heal_show, heal_back), "identify": (identify_show, identify_back)}
-    if title in ("ssb", "curse"):
+    # Level up reads the member's record after the press, off the same sheet visit as Heal.
+    routes["levelup"] = (
+        _phase("levelup_show", "world", Step("key", "camp", key="E"),
+               Step("select", "camp"),
+               Step("key", sheet, key="V", checkpoint="levelup_sheet")),
+        _phase("levelup_back", sheet, Step("key", "camp", key="E"),
+               Step("key", "world", key="E")))
+    if title in ("ssb", "curse", "pool"):
         # The Quickfight byte is read off the member's sheet, so the visit is Heal's.
         routes["quickfight"] = (
             _phase("quickfight_show", "world", Step("key", "camp", key="E"),
                    Step("select", "camp"),
-                   Step("key", "camp_sheet", key="V", checkpoint="quickfight_sheet")),
-            _phase("quickfight_back", "camp_sheet", Step("key", "camp", key="E"),
+                   Step("key", sheet, key="V", checkpoint="quickfight_sheet")),
+            _phase("quickfight_back", sheet, Step("key", "camp", key="E"),
                    Step("key", "world", key="E")))
     if title == "darkness":
         routes["spells"] = (
@@ -350,14 +357,13 @@ def _camp_actions(title: str, spells_party: bool = False) -> dict[str, tuple[Pha
                    Step("key", "camp_cast", key="C", checkpoint="spells_cast")),
             _phase("spells_back", "camp_cast", Step("key", "camp_magic", key="E"),
                    Step("key", "camp", key="E"), Step("key", "world", key="E")))
-    if spells_party and title == "ssb":
-        # Silver Blades has no guarded Cast list, and the party's one spell leaves nothing to
-        # list once cleared, so the visit is the sheet's.
+    if spells_party and title in ("ssb", "pool"):
+        # Silver Blades and Pool have no guarded Cast list, so the visit is the sheet's.
         routes["spells"] = (
             _phase("spells_show", "world", Step("key", "camp", key="E"),
                    Step("select", "camp"),
-                   Step("key", "camp_sheet", key="V", checkpoint="spells_sheet")),
-            _phase("spells_back", "camp_sheet", Step("key", "camp", key="E"),
+                   Step("key", sheet, key="V", checkpoint="spells_sheet")),
+            _phase("spells_back", sheet, Step("key", "camp", key="E"),
                    Step("key", "world", key="E")))
     return routes
 
