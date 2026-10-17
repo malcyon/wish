@@ -548,6 +548,7 @@ class FsuaeController(base.Controller):
                 press=lambda key: self.game.press(self.args.holder, key, self.left(30)),
                 now=lambda: round(self.clock() - self.started, 1))
         super()._switch(enabled)
+        self._let_wish_read("encounter switch")
 
     def _answer_journal(self) -> None:
         if self.route.title != "ssb":
@@ -559,6 +560,7 @@ class FsuaeController(base.Controller):
         self.log("journal_answer", answered=bool(answered))
         if not answered:
             raise AcceptanceStop("journal was not answered")
+        self._let_wish_read("journal")
         self.summary["interstitial_keys"] = self.summary.get("interstitial_keys", 0) + 1
 
     def _answer_wheel(self, screen: str) -> None:

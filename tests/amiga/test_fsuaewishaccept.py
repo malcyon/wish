@@ -300,7 +300,7 @@ def test_a_key_with_wish_closed_does_not_wait_for_reads(tmp_path, monkeypatch):
     controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
     pumped = []
     monkeypatch.setattr(wish, "pump", lambda seconds: pumped.append(seconds))
-    controller._press("L")
+    controller._let_wish_read("L")
     assert pumped == []
 
 
@@ -396,8 +396,9 @@ def test_the_journal_step_answers_the_question_on_the_guests_own_frame(tmp_path,
     except SystemExit as exc:
         pytest.skip(f"needs the private journal reader and a Silver Blades disk: {exc}")
     media = (SimpleNamespace(key="df0", path=disk, sha256=""),)
-    controller, game, _wish, _ = _controller(tmp_path, monkeypatch,
-                                             route=_route(media=media, mounted=("df0",)))
+    controller, game, wish, _ = _controller(tmp_path, monkeypatch,
+                                            route=_route(media=media, mounted=("df0",)))
+    wish.open()
     game.shot = lambda path, timeout=30.0: pathlib.Path(path).write_bytes(frame.read_bytes())
     keys = []
     monkeypatch.setattr(fsuaewishaccept.fsuaegdb, "press",
@@ -411,6 +412,7 @@ def test_the_journal_step_answers_the_question_on_the_guests_own_frame(tmp_path,
     typed_a_word_then_return = len(keys) > 1 and keys[-1] == "Return"
     assert typed_a_word_then_return
     assert controller.summary["interstitial_keys"] == 1
+    assert _events(tmp_path)[-1]["event"] == "wish_reads"
 
 
 def test_the_code_wheel_stops_the_run_naming_the_screen(tmp_path, monkeypatch):
@@ -433,6 +435,16 @@ def test_the_snapshot_step_switches_encounters_off_first(tmp_path, monkeypatch):
     order = [call[0] for call in game.calls if call[0] in ("off", "snapshot")]
     assert order == ["off", "snapshot"]
     assert controller.encounters_on is False
+
+
+def test_the_encounter_switch_waits_for_wish_to_read(tmp_path, monkeypatch):
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    wish.open()
+    controller.encounters = SimpleNamespace(
+        on=lambda: {}, off=lambda: {},
+        state=SimpleNamespace(load=lambda: {"on": False, "rows": []}))
+    controller._switch(False)
+    assert _events(tmp_path)[-1]["event"] == "wish_reads"
 
 
 @pytest.mark.parametrize("extra, message", [
