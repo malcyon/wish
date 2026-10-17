@@ -2786,12 +2786,14 @@ class AmigaTarget:
 
     @property
     def covering_reads(self) -> bool:
-        """Whether a block costs a packet of its own, so a walk should read wide.
+        """Whether a block costs a request of its own, so a walk should read wide.
 
-        True only over GDB-remote to FS-UAE. The WinUAE routes dump each block to
-        a file, and what a 64 KB dump costs there has not been measured.
+        True over GDB-remote to FS-UAE and over the WinUAE local pipe, where a
+        64 KB dump costs about the same as a 4-byte one and a block costs a
+        request. Not the test-rig `WinuaePipe`, which batches its reads.
         """
-        return isinstance(self.debugger, FsuaeGdb)
+        from .winuae import WinuaeLocalPipe
+        return isinstance(self.debugger, (FsuaeGdb, WinuaeLocalPipe))
 
     def read_blocks(self, blocks) -> list[bytes]:
         """Several ranges, in one round trip. This is the design, not a tune.

@@ -227,3 +227,44 @@ def test_nodes_differing_between_levels_are_each_served_by_a_window_or_a_read():
     assert [len(m.item_nodes) for m in party] == [5, 1, 0, 3, 2, 4]
     assert [len(m.effect_nodes) for m in party] == [0, 2, 1, 0, 3, 1]
     assert len(target.blocks) < len(other.blocks)
+
+
+class _Pipe:
+    """A `WinuaeLocalPipe` that serves memory from `ram` and counts requests."""
+
+    def __init__(self, ram, wide_raises=False):
+        from automap import winuae
+        self.__class__ = type("FakePipe", (winuae.WinuaeLocalPipe,), {
+            "read_memory": self.read_memory})
+        self.ram = ram
+        self.requests = []
+        self.wide_raises = wide_raises
+
+    def read_memory(self, addr, length, timeout=None):
+        self.requests.append((addr, length))
+        if self.wide_raises and length > 0x1000:
+            raise amiga.GuestError("E01")
+        return bytes(self.ram[addr - SLOW:addr - SLOW + length])
+
+
+def _winuae_target(pipe):
+    return amiga.AmigaTarget(pipe, amiga.MACHINES[KEY], data_base=BASE,
+                             memory=((SLOW, 0x80000),))
+
+
+def test_a_winuae_pipe_party_read_is_a_few_wide_requests_and_the_same_party():
+    reference = Counting()
+    lay(reference)
+    pipe = _Pipe(reference.ram)
+    party = amigaparty.read_party(_winuae_target(pipe))
+    assert len(pipe.requests) <= 4, len(pipe.requests)
+    assert tuple(m for m in per_node(reference) if m.in_party) == party
+
+
+def test_a_winuae_pipe_wide_read_that_raises_is_replaced_by_node_reads():
+    reference = Counting()
+    lay(reference)
+    pipe = _Pipe(reference.ram, wide_raises=True)
+    party = amigaparty.read_party(_winuae_target(pipe))
+    assert tuple(m for m in per_node(reference) if m.in_party) == party
+    assert len(pipe.requests) > 100
