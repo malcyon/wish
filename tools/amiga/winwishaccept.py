@@ -947,6 +947,11 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         raise AcceptanceStop("--watch-dip runs only on Curse of the Azure Bonds")
     if getattr(args, "press_quickfight_off", False) and args.title != "darkness":
         raise AcceptanceStop("--press-quickfight-off runs only on Pools of Darkness")
+    if getattr(args, "quickfight_control", False) and not (
+            leg == "persist" and args.title in ("curse", "ssb")
+            and getattr(args, "action", None) == ["quickfight"]):
+        raise AcceptanceStop("--quickfight-control runs only on --leg persist, Curse or Silver "
+                             "Blades, with --action quickfight alone")
     wait_lanes = getattr(args, "wait_lanes", 0)
     if not 0 <= wait_lanes <= MAX_WAIT_LANES:
         raise AcceptanceStop(f"--wait-lanes must be from 0 to {MAX_WAIT_LANES} seconds")
@@ -1228,6 +1233,8 @@ class Controller:
         self.edge_done = False
         self.watch = bool(getattr(args, "watch", False))
         self.press_off = bool(getattr(args, "press_quickfight_off", False))
+        #: The persist leg's control: Quickfight off is not pressed, so the saved byte stays 1.
+        self.quickfight_control = bool(getattr(args, "quickfight_control", False))
         self.dip: dict[str, Any] | None = None
         self.pod: dict[str, Any] = {}
         self.key_sent = 0.0
@@ -1288,6 +1295,10 @@ class Controller:
             "failure": None, "cleanup": {}}
         if self.persist:
             self.summary["persistence"] = row()
+        if self.quickfight_control:
+            self.summary["quickfight_control"] = row(expected=(
+                "the game keeps the in-memory quickfight 1 at the camp readback, in the persist "
+                "slot on the fetched disk, and after the reload"))
         if self.fight is not None:
             self.summary["fight"] = {"modes": [], "interventions": [], "walk": None,
                                      "found": {}, "outcome": None, "after": None}
@@ -2335,7 +2346,7 @@ class Controller:
                     data[row_.hidden.offset] &= ~row_.hidden.mask & 0xff
                     node[1] = data.hex()
             elif kind == "quickfight":
-                if row_.control is None or not row_.control.value(raw) & 0x80:
+                if step != "control" and (row_.control is None or not row_.control.value(raw) & 0x80):
                     raw[row_.quickfight.offset] = 0
             elif kind == "spells":
                 if step == "cleared" and slot == context["slot"]:
@@ -2485,14 +2496,22 @@ class Controller:
                     self._unique_action("Restore spells", context=context)
                 elif action.kind == "levelup":
                     self._unique_action(automation_id=f"card_{context['slot']}_level_up", context=context)
+                elif action.kind == "quickfight" and self.quickfight_control:
+                    self.log("quickfight_control_not_pressed")
                 else:
                     self._unique_action(labels[action.kind], context=context)
                 self._game_section()
                 context["after"] = self._action_readback()
-                self._verify_action(action.kind, context, context["after"])
+                control = action.kind == "quickfight" and self.quickfight_control
+                self._verify_action(action.kind, context, context["after"],
+                                    step="control" if control else "action")
                 self._action_visit(action, context, "after")
-                result["status"] = "awaiting image review"
                 result["expected"] = context.get("staged")
+                if control:
+                    # Not "awaiting image review", so the persistence check does not expect the byte cleared.
+                    result["reason"] = "control run: Quickfight off not pressed"
+                else:
+                    result["status"] = "awaiting image review"
             except AcceptanceStop as exc:
                 result["reason"] = str(exc)
                 raise
@@ -2817,6 +2836,59 @@ class Controller:
             fail("unproven", f"slot {self.persist['letter']} on the fetched disk lists {names}, "
                              f"the reloaded party {wanted}")
 
+    def _verify_quickfight_control(self) -> None:
+        """The staged member's quickfight byte at camp, on the fetched disk and after the reload."""
+        if not self.quickfight_control:
+            return
+        from automap import amigaparty  # noqa: PLC0415
+        from goldbox import amiga_adf, amiga_savegame  # noqa: PLC0415
+
+        result = self.summary["quickfight_control"]
+        result["status"] = "unproven"
+        context = self.summary["actions"].get("quickfight", {}).get("observed") or {}
+        name = str(context.get("member", "")).strip().upper()
+        spot = amigaparty.ROWS[self.route.game_key].quickfight
+
+        def read(records: list[dict[str, Any]] | None) -> int | None:
+            for record in records or ():
+                if str(record["name"]).strip().upper() == name:
+                    return spot.value(bytes.fromhex(record["raw"]))
+            return None
+
+        persistence = self.summary["persistence"]
+        camp, reloaded = read(persistence.get("persist_before")), read(persistence.get("persist_after"))
+        disk = None
+        copied = self.info["media"].get(self.route.amiga_title.save_disk, {}).get("guest_working_copy")
+        reason = None
+        if not copied:
+            reason = "the working save disk was not fetched"
+        else:
+            try:
+                saved = amiga_savegame.read_slot(amiga_adf.AmigaDisk.open(copied), self.persist["letter"])
+                disk = next((spot.value(character.raw) for character in saved.characters
+                             if str(character.name).strip().upper() == name), None)
+            except Exception as exc:  # noqa: BLE001
+                reason = f"the working save disk could not be read: {type(exc).__name__}: {exc}"
+            else:
+                if disk is None:
+                    reason = f"{name} is not in slot {self.persist['letter']} on the fetched disk"
+        reads = {"camp": camp, "disk": disk, "reloaded": reloaded}
+        result["observed"] = reads
+        offset = f"+0x{spot.offset:02X}"
+        if camp != 1:
+            result["reason"] = f"the quickfight byte {offset} read {camp} at camp, not the staged 1"
+        elif disk == 0:
+            result.update(status="failed", reason=(
+                f"the game does not save the quickfight byte {offset}: slot "
+                f"{self.persist['letter']} on the disk holds 0, so the persistence passes that "
+                "pressed Quickfight off cannot be counted"))
+        elif reason:
+            result["reason"] = reason
+        elif disk == 1 and reloaded == 1:
+            result["status"] = "passed"
+        else:
+            result["reason"] = f"the reads at camp, on the disk and after the reload were {reads}"
+
     def run_persist(self) -> dict[str, Any]:
         """Load, press the selected actions, save to a letter the disk lacks, load it again, compare."""
         from tools.amiga import maproute  # noqa: PLC0415
@@ -2850,6 +2922,7 @@ class Controller:
         finally:
             self._cleanup()
             self._verify_disk_slot()
+            self._verify_quickfight_control()
             (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
         return self.summary
 
@@ -3973,6 +4046,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--press-quickfight-off", action="store_true",
                         help="fight leg, Pools of Darkness only: press Quickfight off at a second "
                              "member's bar and replay from before it without")
+    parser.add_argument("--quickfight-control", action="store_true",
+                        help="persist leg, Curse or Silver Blades, with --action quickfight alone: "
+                             "stage quickfight 1, do not press Quickfight off, save and reload, "
+                             "and read the byte back")
     parser.add_argument("--action", action="append", choices=ACTION_KINDS,
                         help="run only this enabled action; repeat for several (--leg persist only)")
     parser.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",

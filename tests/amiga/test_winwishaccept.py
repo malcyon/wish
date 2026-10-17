@@ -5600,3 +5600,112 @@ def test_the_page_cap_counts_the_whole_camp_load_not_each_wait(tmp_path, monkeyp
         controller._reload_original_by_screen(last)
 
     assert game.keys.count("RET") == pages
+
+
+def _control_args(extra):
+    args = winwishaccept._parser().parse_args([
+        "--manifest", "m", "--sha", SHA, "--holder", "h", "--mute-proof", "p", "--out", "o",
+        "--quickfight-control", *extra])
+    args.deadline = 1500
+    return args
+
+
+@pytest.mark.parametrize("extra", [
+    ["--title", "ssb", "--leg", "fight"],
+    ["--title", "darkness", "--leg", "persist", "--action", "quickfight"],
+    ["--title", "pool", "--leg", "persist", "--action", "quickfight"],
+    ["--title", "ssb", "--leg", "persist", "--action", "heal"],
+    ["--title", "ssb", "--leg", "persist", "--action", "quickfight", "--action", "heal"],
+    ["--title", "curse", "--leg", "persist"]])
+def test_quickfight_control_needs_the_persist_leg_curse_or_ssb_and_quickfight_alone(extra):
+    with pytest.raises(winwishaccept.AcceptanceStop, match="--quickfight-control runs only"):
+        winwishaccept.preflight(_control_args(extra), guest=object(), route_for=None)
+
+
+def _quickfight_record(row, value, name="A"):
+    raw = bytearray(row.record_size)
+    raw[row.quickfight.offset] = value
+    return {"slot": 0, "name": name, "address": 1000, "raw": raw.hex(), "items": []}
+
+
+def test_quickfight_control_stages_one_and_never_clicks_quickfight_off(tmp_path, monkeypatch):
+    from automap import amigaparty
+
+    controller, _game = _action_controller(tmp_path, monkeypatch)
+    controller.quickfight_control = True
+    controller.route.actions[0].kind = "quickfight"
+    controller.summary["actions"]["quickfight"] = controller.summary["actions"].pop("heal")
+    row = amigaparty.ROWS[controller.route.game_key]
+    staged = [_quickfight_record(row, 1)]
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "before": [], "baseline": staged, "staged": {"quickfight": 1}})
+    monkeypatch.setattr(controller, "_action_readback", lambda: staged)
+    clicks = []
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda *args, **kwargs: (
+        clicks.append(args[3]) if args[2] == "click" else None) or [])
+
+    controller.run_actions()
+
+    entry = controller.summary["actions"]["quickfight"]
+    assert clicks == []
+    assert entry["status"] == "unproven"
+    assert entry["reason"] == "control run: Quickfight off not pressed"
+    assert entry["observed"]["after"] == staged
+
+
+def _control_rig(tmp_path, monkeypatch, *, camp=1, reloaded=1, disk=1, copied="working.adf"):
+    from automap import amigaparty
+
+    controller, _, _ = _persist_rig(tmp_path, monkeypatch, {})
+    monkeypatch.undo()
+    row = amigaparty.ROWS[controller.route.game_key]
+    controller.quickfight_control = True
+    controller.summary["quickfight_control"] = winwishaccept.row()
+    controller.summary["actions"] = {"quickfight": {"status": "unproven", "observed": {"member": "Ann"}}}
+    controller.summary["persistence"].update(
+        persist_before=[_quickfight_record(row, camp, "ANN ")],
+        persist_after=[_quickfight_record(row, reloaded, "ANN ")])
+    controller.route.amiga_title = SimpleNamespace(save_disk="df0")
+    controller.info["media"] = {"df0": {"guest_working_copy": copied}}
+    saved = SimpleNamespace(characters=[
+        SimpleNamespace(name="Ann", raw=bytes.fromhex(_quickfight_record(row, disk)["raw"]))])
+    monkeypatch.setattr("goldbox.amiga_adf.AmigaDisk.open", classmethod(lambda cls, path: object()))
+    monkeypatch.setattr("goldbox.amiga_savegame.read_slot", lambda disk_, letter: saved)
+    return controller
+
+
+def test_quickfight_control_passes_when_camp_disk_and_reload_read_one(tmp_path, monkeypatch):
+    controller = _control_rig(tmp_path, monkeypatch)
+
+    controller._verify_quickfight_control()
+
+    assert controller.summary["quickfight_control"]["status"] == "passed"
+    assert controller.summary["quickfight_control"]["observed"] == {"camp": 1, "disk": 1, "reloaded": 1}
+
+
+def test_quickfight_control_fails_when_the_saved_slot_holds_zero(tmp_path, monkeypatch):
+    controller = _control_rig(tmp_path, monkeypatch, disk=0, reloaded=0)
+
+    controller._verify_quickfight_control()
+
+    entry = controller.summary["quickfight_control"]
+    assert entry["status"] == "failed"
+    assert "cannot be counted" in entry["reason"]
+
+
+def test_quickfight_control_unproven_without_a_fetched_disk_or_a_camp_one(tmp_path, monkeypatch):
+    controller = _control_rig(tmp_path, monkeypatch, copied=None)
+    controller._verify_quickfight_control()
+    assert controller.summary["quickfight_control"]["status"] == "unproven"
+
+    controller = _control_rig(tmp_path, monkeypatch, camp=0, disk=0)
+    controller._verify_quickfight_control()
+    assert controller.summary["quickfight_control"]["status"] == "unproven"
+
+
+def test_a_run_without_the_control_option_has_no_control_row(tmp_path, monkeypatch):
+    controller, _, _ = _persist_rig(tmp_path, monkeypatch, {})
+
+    controller._verify_quickfight_control()
+
+    assert "quickfight_control" not in controller.summary
