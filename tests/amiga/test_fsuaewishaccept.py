@@ -862,6 +862,35 @@ def test_a_poll_log_row_keeps_the_error_and_the_poll_goes_on(tmp_path, monkeypat
     assert row["error"] == "OSError: gone" and row["fix"] is None
 
 
+def test_a_poll_log_write_failure_is_kept_and_logging_stops(tmp_path, monkeypatch):
+    from automap import state
+
+    monkeypatch.setattr(state.Automapper, "poll", lambda mapper: True)
+    log = fsuaewishaccept.PollLog(tmp_path / "missing" / "polls.jsonl", lambda: 1.0)
+    log.install()
+    try:
+        assert state.Automapper.poll(SimpleNamespace(target=SimpleNamespace())) is True
+        assert state.Automapper.poll(SimpleNamespace(target=SimpleNamespace())) is True
+    finally:
+        log.remove()
+    assert log.polls == 2 and log.failure.startswith("FileNotFoundError")
+
+
+def test_an_arrival_hold_of_zero_reaches_the_route_check(tmp_path):
+    seen = []
+
+    def route_for(title, manifest, **legs):
+        seen.append(legs)
+        raise winwishaccept.RouteError("stop here")
+
+    (tmp_path / "prepare.json").write_text(json.dumps({"title": "curse"}))
+    with pytest.raises(winwishaccept.AcceptanceStop):
+        fsuaewishaccept.preflight(_args(tmp_path, title="curse", arrival_hold=0.0,
+                                        search_area=False),
+                                  game=FakeGame(tmp_path), route_for=route_for)
+    assert seen == [{"arrival_hold": 0.0}]
+
+
 def test_the_measurement_options_turn_the_poll_log_on(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(fsuaewishaccept, "preflight",

@@ -204,7 +204,8 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     if search:
         args.manifest = stage_search_area(args.manifest, pathlib.Path(args.out) / "staged-search")
     manifest = json.loads(pathlib.Path(args.manifest).read_text())
-    legs = {key: value for key, value in (("arrival_hold", hold), ("search_area", search)) if value}
+    legs = {key: value for key, value in (("arrival_hold", hold), ("search_area", search))
+            if value is not None and value is not False}
     try:
         route = route_for(args.title, manifest, **legs)
     except RouteError as exc:
@@ -263,6 +264,7 @@ class PollLog:
     def __init__(self, path: pathlib.Path, elapsed: Any):
         self.path, self.elapsed = pathlib.Path(path), elapsed
         self.polls = 0
+        self.failure: str | None = None
         self._fix: Any = None
         self._saved: tuple[Any, Any] | None = None
 
@@ -326,8 +328,13 @@ class PollLog:
             row["verdict"] = getattr(mapper, "_verdict", None)
         except Exception as exc:  # noqa: BLE001 -- the row is evidence; Wish's poll goes on
             row["error"] = f"{type(exc).__name__}: {exc}"
-        with self.path.open("a") as stream:
-            stream.write(json.dumps(row, default=str) + "\n")
+        if self.failure is not None:
+            return
+        try:
+            with self.path.open("a") as stream:
+                stream.write(json.dumps(row, default=str) + "\n")
+        except Exception as exc:  # noqa: BLE001 -- a full disk must not end Wish's poll
+            self.failure = f"{type(exc).__name__}: {exc}"
 
 
 class _NotingGuards:
@@ -909,6 +916,8 @@ class FsuaeController(base.Controller):
         if self.poll_log is not None:
             self.poll_log.remove()
             self.summary["poll_count"] = self.poll_log.polls
+            if self.poll_log.failure is not None:
+                self.summary["poll_log_failure"] = self.poll_log.failure
         cleanup["errors"] = failures
         try:
             self.log("cleanup", errors=failures)
