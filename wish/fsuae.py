@@ -343,7 +343,7 @@ def connect(port: int | None = None, opener=None,
     return target
 
 
-#: The row `wish.backends._amiga_fsuae()` offers behind its flag. The probe reads
+#: The row `wish.backends._amiga_fsuae()` offers on Linux only. The probe reads
 #: the kernel's socket table and the opener is the cached `connect`, so neither
 #: opens a second socket on the emulator's only debugging door. A poll of about
 #: 20 ms is served from the running machine's frame handler, hence `disturbs`
