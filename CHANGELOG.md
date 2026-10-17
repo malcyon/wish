@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - On Windows, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in WinUAE, drawing each square as the party walks, with no setting to switch on.
+- On Linux, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in the patched FS-UAE.
 - On Windows, Fast Travel and Return now work in the Amiga games for trips that have been confirmed, with no setting to switch on.
 - On Windows, Wish names Pools of Darkness from its Amiga disks and offers its game folder in Preferences.
+- On Linux, Wish reads Pools of Darkness data from its Amiga disks and offers its game folder in Preferences.
 - The Automapper shows the Amiga Pool of Radiance quest log from the running game.
 - The Automapper shows the Amiga Pool of Radiance travel grid position the way the game prints it.
 
@@ -20,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Curse of the Azure Bonds character converted to the C64 gets the THAC0 and missile bonus his readied weapon gives, as Pool of Radiance already did, with dexterity up to 25.
 - A Curse of the Azure Bonds character converted to the C64 gets his movement as the game rebuilds it, so a converted zombie's sheet shows his living movement before his first fight.
 - A Curse of the Azure Bonds or Secret of the Silver Blades companion who joined on the C64 keeps his portrait, former class and combat figure when converted to DOS or the Amiga, and one converted into the C64 gets what the C64 game gives that companion on joining.
+
+### Removed
+
+- The WISH_EXPERIMENTAL_AMIGA_FSUAE setting no longer does anything, because the Amiga option on Linux is always offered.
 
 ### Fixed
 
