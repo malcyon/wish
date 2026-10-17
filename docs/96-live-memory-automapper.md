@@ -77,8 +77,7 @@ have no usable interface, and a real C64 would need a resident stub or a DMA
 cartridge — a lot of fragility for very few users.
 
 **There is a third now, for a different machine**: an Amiga under WinUAE or a
-patched FS-UAE, in `automap/amiga.py`. The window offers WinUAE on Windows, with no variable, and FS-UAE (Linux) only behind
-`WISH_EXPERIMENTAL_AMIGA_FSUAE` — see
+patched FS-UAE, in `automap/amiga.py`. The window offers WinUAE on Windows and FS-UAE on Linux, with no variable — see
 "[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
 does, what it cost to make the shared code take it, and what is left.
 
@@ -509,6 +508,33 @@ and a poll costs seconds. Over the FS-UAE socket it costs one frame's wait.
 | one poll, position only | 10-22 s | about 10-20 ms |
 | a poll that also re-reads the resident map | 31-50 s | one more packet |
 | 512K of memory, searched on this side | 13-22 s | one packet, but the emulated machine misses a frame |
+
+**The Amiga party is read in one covering read per level on FS-UAE.** Every
+FS-UAE packet costs a frame of emulated time, and the party is one head, a record
+per member, and a list of item nodes and of effect nodes per member: 129 packets
+on a six-member Pools of Darkness party, 7.4 s with the fork's acknowledgements
+on. `automap.fsuaehelper` therefore sends `QStartNoAckMode` after the greeting
+(`FsuaeGdb.start_no_ack`), which brings a packet from about 60 ms to one frame,
+and `amigaparty` reads each level (records, items, effects) as one wide read of
+at most `COVER_LIMIT` bytes and slices the nodes out of it. A wide read that
+fails, or a node outside it, falls back to the node's own read, because one
+unreadable byte fails a whole read. The mode byte is read once a tick. A party
+tick then costs a handful of packets and the window's longest gap with the game
+idle was 0.59 s over 300 s on Pools of Darkness, Curse and Silver Blades.
+`AmigaTarget.covering_reads` is true over FS-UAE only: WinUAE keeps one read
+per node, and what a wide dump costs there has not been measured.
+
+**The Amiga position is believed only once the party is placed.** A load or a
+scripted arrival leaves the engine's square from the last area, or an unstarted
+party's, until the engine rewrites its wall-ahead and square-attribute bytes.
+`AmigaTarget.placement_matches` compares both bytes with the resident map's at
+the engine's square and facing, and `AutomapState` records no square until they
+agree. A newly named area forgets the old position, so the first placed square is
+believed and not held as a jump from the previous area's coordinates. That first
+square also gets one resident-map check when the poll has not already made it.
+The town arrival allowance, which lets a party standing on its landing square
+after a return from the world map or the travel grid be believed, is the Amiga's
+alone: the C64 reads the new area's block before its first indoor poll.
 
 So `read_blocks` matters over the console for a reason that has nothing to do
 with VICE's -- several ranges in one round trip is one `ssh` rather than
@@ -1083,19 +1109,16 @@ opening text appears and that the came-from word reads 1.
 
 ### The flags, the fork and the maps
 
-**The window offers it only behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`.** With the
-variable set to `1`, `true`, `yes` or `on`, `wish/backends.py` lists a row named
-"FS-UAE (Amiga)" whose probe is `wish.fsuae.listening` and whose opener is the
-cached `wish.fsuae.connect`; anything else, including `0`, `off` and an empty
-string, leaves the list as it was, with no probe and no import of `wish.fsuae`.
-The row is not `disturbs` (a poll measured about 20 ms, served from the running
-machine's frame handler) and polls every 200 ms, like VICE. Its removal
-condition is written beside the flag's name in `wish/backends.py`.
+**The window offers it on Linux only.** There `wish/backends.py` lists a row
+named "FS-UAE (Amiga)" whose probe is `wish.fsuae.listening` and whose opener is
+the cached `wish.fsuae.connect`; on Windows and macOS there is no row, no probe
+and no import of `wish.fsuae`. The row is not `disturbs` (a poll measured about 20 ms, served from the running
+machine's frame handler) and polls every 200 ms, like VICE.
 
-**The FS-UAE flag, or running on Windows, decides whether Wish names Pools of
+**Running on Windows or Linux decides whether Wish names Pools of
 Darkness from its Amiga disks and looks up its folder.** Pools of Darkness never shipped on the
 Commodore 64, so no C64 container describes it. Its row in Preferences is always
-there, but with `WISH_EXPERIMENTAL_AMIGA_FSUAE` on or on Windows
+there, but on Windows or Linux
 (`backends.amiga_only_titles`),
 `automap.maps.AMIGA_ONLY_TITLES` (Pools of Darkness) also joins the titles the
 Wish window's folder lookup tries, and the map loader names a disk whose
