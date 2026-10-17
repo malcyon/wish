@@ -306,7 +306,7 @@ def _legacy_title(base: AmigaTitle, load: Phase) -> AmigaTitle:
     )
 
 
-def _camp_actions(title: str) -> dict[str, tuple[Phase, Phase]]:
+def _camp_actions(title: str, spells_party: bool = False) -> dict[str, tuple[Phase, Phase]]:
     """The show and back visits measured live for Heal and Identify on the three Amiga camps.
 
     Every visit selects the member again, because the game keeps the last highlighted one.
@@ -341,12 +341,30 @@ def _camp_actions(title: str) -> dict[str, tuple[Phase, Phase]]:
                    Step("key", "camp_cast_5", key="C", checkpoint="spells_cast")),
             _phase("spells_back", "camp_cast_5", Step("key", "camp_magic", key="E"),
                    Step("key", "camp", key="E"), Step("key", "world", key="E")))
+    if spells_party and title == "curse":
+        # Curse's Cast list bar is camp_cast; the party holds Find Traps twice, so the cleared
+        # visit still opens a list with one line.
+        routes["spells"] = (
+            _phase("spells_show", "world", Step("key", "camp", key="E"),
+                   Step("select", "camp"), Step("key", "camp_magic", key="M"),
+                   Step("key", "camp_cast", key="C", checkpoint="spells_cast")),
+            _phase("spells_back", "camp_cast", Step("key", "camp_magic", key="E"),
+                   Step("key", "camp", key="E"), Step("key", "world", key="E")))
+    if spells_party and title == "ssb":
+        # Silver Blades has no guarded Cast list, and the party's one spell leaves nothing to
+        # list once cleared, so the visit is the sheet's.
+        routes["spells"] = (
+            _phase("spells_show", "world", Step("key", "camp", key="E"),
+                   Step("select", "camp"),
+                   Step("key", "camp_sheet", key="V", checkpoint="spells_sheet")),
+            _phase("spells_back", "camp_sheet", Step("key", "camp", key="E"),
+                   Step("key", "world", key="E")))
     return routes
 
 
-def _actions(title: str) -> tuple[Action, ...]:
+def _actions(title: str, spells_party: bool = False) -> tuple[Action, ...]:
     """Press only the actions whose camp route was measured; the rest stay off."""
-    measured = _camp_actions(title)
+    measured = _camp_actions(title, spells_party)
 
     def action(kind: str, selector: str | None) -> Action:
         show, back = measured.get(kind, (None, None))
@@ -1014,13 +1032,13 @@ def route_for(title: str, manifest: Mapping[str, object], *,
         *(phase.reason for phase in phases if not phase.ready and phase.reason),
         *(("Game-sheet routes and readbacks for the Wish action presses are not measured.",)
           if any(action.enabled and (action.show is None or action.back is None)
-                 for action in _actions(title)) else ()),
+                 for action in _actions(title, spells is not None)) else ()),
     )
     guard_path = pathlib.Path(__file__).resolve().with_name(_GUARD_NAMES[title])
     return MappingRoute(
         title, _GAME_KEYS[title], _legacy_title(base, load), guard_path, media,
         tuple(key for key in base.mounted if key is not None), slot, phases,
-        _actions(title), provenance, unresolved,
+        _actions(title, spells is not None), provenance, unresolved,
     )
 
 

@@ -854,11 +854,50 @@ def test_the_spells_party_passes_the_persist_leg_and_never_the_mapping_leg(
         winwishaccept._phase_map(route)
     actions = winwishaccept._check_persist(SimpleNamespace(action=["heal"]), route)
     assert [action.kind for action in actions] == ["heal"]
+    spells = winwishaccept._check_persist(SimpleNamespace(action=["spells"]), route)
+    assert [action.kind for action in spells] == ["spells"]
     saved, rest = maproute.persist_phases(route, letter)
     assert saved.steps[0].checkpoint == "persist_saved"
     assert ("exit_game", letter) in _keys(rest)
     assert set(route.unresolved) == {maproute._PERSIST_ONLY}
     assert route.provenance["spells_party"].endswith(f"slot {maproute.SPELLS_PARTIES[title].letter}")
+
+
+def test_curse_spells_party_visits_the_cast_list(tmp_path: Path):
+    route = maproute.route_for("curse", _spells_manifest("curse", tmp_path))
+    spells = {a.kind: a for a in route.actions if a.enabled}["spells"]
+
+    assert spells.show.initial_state == "world"
+    assert [(s.kind, s.state, s.key) for s in spells.show.steps] == [
+        ("key", "camp", "E"), ("select", "camp", None), ("key", "camp_magic", "M"),
+        ("key", "camp_cast", "C")]
+    assert spells.show.steps[-1].checkpoint == "spells_cast"
+    assert spells.back.initial_state == "camp_cast"
+    assert [(s.state, s.key) for s in spells.back.steps] == [
+        ("camp_magic", "E"), ("camp", "E"), ("world", "E")]
+
+
+def test_ssb_spells_party_visits_the_sheet_as_heal_does(tmp_path: Path):
+    route = maproute.route_for("ssb", _spells_manifest("ssb", tmp_path))
+    by_kind = {a.kind: a for a in route.actions if a.enabled}
+    spells, heal = by_kind["spells"], by_kind["heal"]
+
+    for mine, theirs in ((spells.show, heal.show), (spells.back, heal.back)):
+        assert mine.initial_state == theirs.initial_state
+        assert [(s.kind, s.state, s.key) for s in mine.steps] == [
+            (s.kind, s.state, s.key) for s in theirs.steps]
+    assert spells.show.steps[-1].checkpoint == "spells_sheet"
+
+
+@pytest.mark.parametrize("title", ("curse", "ssb"))
+def test_the_spells_party_actions_wait_only_for_screens_the_title_guards(
+        title: str, tmp_path: Path):
+    route = maproute.route_for(title, _spells_manifest(title, tmp_path))
+    guards = json.loads(route.guard_path.read_text())["guards"]
+    phases = [p for a in route.actions if a.enabled for p in (a.show, a.back)]
+    states = {p.initial_state for p in phases} | {s.state for p in phases for s in p.steps}
+
+    assert states <= guards.keys()
 
 
 def test_the_curse_spells_party_loads_and_reloads_on_its_own_square(tmp_path: Path):
