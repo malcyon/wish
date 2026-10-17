@@ -273,3 +273,88 @@ def test_the_area_is_shown_while_the_entry_message_still_holds_the_script_id(
     assert not state.world_map
     assert (state.area, state.x, state.y, state.facing) == ("GEO03", 0, 0, 2)
     assert (8, 8) not in state.exploration
+
+
+def arrive_from_the_world_map(tmp_path, monkeypatch, then):
+    """A town landing at (0,8) facing west, then the fixes *then* follow."""
+    mapper = mapper_in_the_sewers(tmp_path, monkeypatch, [
+        Fix(0, 6, 3, "memory"), WORLD_MAP, Fix(0, 8, 3, "memory"), *then])
+    for _ in range(3):
+        mapper.poll()
+    return mapper
+
+
+def where(mapper):
+    return mapper.state.x, mapper.state.y, mapper.state.facing
+
+
+def test_a_town_arrival_moved_after_landing_is_believed_without_a_step(
+        tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch, [Fix(0, 6, 1, "memory")] * 3)
+    assert where(mapper) == (0, 8, 3)
+    for _ in range(3):
+        mapper.poll()
+    assert where(mapper) == (0, 6, 1)
+
+
+def test_a_jump_after_the_first_step_from_an_arrival_is_held(tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch,
+        [Fix(0, 7, 3, "memory")] + [Fix(0, 5, 3, "memory")] * 3)
+    for _ in range(4):
+        mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (0, 7)
+
+
+def test_an_arrival_jump_is_held_while_the_block_is_unknown(tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch, [Fix(0, 6, 1, "memory")] * 3)
+    sewers = mapper.target._memory[RESIDENT_GEO]
+    mapper.poll()
+    mapper.target._memory[RESIDENT_GEO] = bytes(len(sewers))
+    mapper.poll()
+    mapper.target._memory[RESIDENT_GEO] = sewers
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (0, 8)
+
+
+def test_a_turn_on_the_arrival_square_ends_the_allowance(tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch,
+        [Fix(0, 8, 1, "memory")] + [Fix(0, 6, 1, "memory")] * 3)
+    for _ in range(4):
+        mapper.poll()
+    assert where(mapper) == (0, 8, 1)
+
+
+def test_a_step_from_the_arrival_square_ends_the_allowance(tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch,
+        [Fix(0, 7, 3, "memory")] + [Fix(0, 3, 1, "memory")] * 3)
+    for _ in range(4):
+        mapper.poll()
+    assert where(mapper) == (0, 7, 3)
+
+
+def test_a_believed_arrival_jump_ends_the_allowance(tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch,
+        [Fix(0, 6, 1, "memory")] * 3 + [Fix(0, 2, 1, "memory")] * 3)
+    for _ in range(2):
+        mapper.poll()
+    assert where(mapper) == (0, 8, 3)
+    mapper.poll()
+    assert where(mapper) == (0, 6, 1)
+    for _ in range(3):
+        mapper.poll()
+    assert where(mapper) == (0, 6, 1)
+
+
+def test_standing_on_the_arrival_square_keeps_the_allowance(tmp_path, monkeypatch):
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch,
+        [Fix(0, 8, 3, "memory")] * 20 + [Fix(0, 6, 1, "memory")] * 3)
+    for _ in range(23):
+        mapper.poll()
+    assert where(mapper) == (0, 6, 1)

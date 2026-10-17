@@ -471,6 +471,11 @@ class Automapper:
         self._started = False       # no "last position" to be adjacent to yet
         self._last: Fix | None = None       # the previous fix, for _blocked_step
         self._resumed = False       # polling has just started again after a gap
+        #: A return from the world map or the travel grid; a held jump may
+        #: settle without a step until the first believed fix that differs
+        #: from the landing square or facing. The arrival bar waits for a key
+        #: with no limit, so no poll count could end it.
+        self._arriving = False
         #: The target the rest of this state belongs to. A strong reference on
         #: purpose: `is` against an object that has been freed could be true of
         #: a different object allocated at the same address, and holding it
@@ -661,6 +666,7 @@ class Automapper:
             self.state.window = None
             self.state.heading = None
             self.state.printed_x = None
+            self._arriving = True
             changed_area = self._check_resident()
 
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
@@ -735,6 +741,8 @@ class Automapper:
                 self.set_area(self.state.candidates.best)
                 changed = True
 
+        if not returning and (moved or fix.facing != self.state.facing):
+            self._arriving = False      # a step, a turn or a believed jump
         self.state.x, self.state.y = fix.x, fix.y
         self.state.facing, self.state.source = fix.facing, fix.source
         self._started = True
@@ -791,6 +799,7 @@ class Automapper:
                    or (fix.world_node, fix.world_leg)
                    != (self.state.world_node, self.state.world_leg))
         self.state.world_map = True
+        self._arriving = False
         self.state.world_node = fix.world_node
         self.state.world_leg = fix.world_leg
         self._started = False
@@ -838,6 +847,7 @@ class Automapper:
             self.state.outdoors = True
             self.state.x, self.state.y = fix.x, fix.y
             self.state.source = fix.source
+            self._arriving = False
             self._started = False
             self._stale_line = None
             self._last = None
@@ -924,6 +934,7 @@ class Automapper:
         self._drop_hold()
         self._last = None
         self._resumed = False
+        self._arriving = False
         self.title_check = UNKNOWN
         self._contradictions = 0
         self._contradicting = None
@@ -999,16 +1010,20 @@ class Automapper:
         takes the jump path, which names the area before anything is recorded.
         """
         self._resumed = True
+        self._arriving = False
         self._drop_hold()
         self._last = None
 
     def _settled_after_gap(self, fix: Fix) -> bool:
-        """Is *fix* a memory jump read often enough, over our map, since a gap?
+        """Is *fix* a memory jump read often enough, over our map, since a gap
+        or a return from the world map?
 
         The conditions of `_stepped_from_pending`, with one more read of the
-        same square in place of a passable step.
+        same square in place of a passable step. A return opens the same
+        allowance as a gap, until the first believed fix that differs from the
+        landing in square or facing.
         """
-        return (self._resumed
+        return ((self._resumed or self._arriving)
                 and fix.source == "memory"
                 and self._pending_source == "memory"
                 and self._pending == (fix.x, fix.y)
@@ -1025,8 +1040,9 @@ class Automapper:
         reads for as long as a jump is held: a load shows an unknown block for
         a moment where an in-area move keeps its map. A held status-line jump
         is never taken this way, so a garbled line cannot mark its square
-        explored; the source check is defence in depth. The Amiga has no
-        `$0400`, reads no verdict, and so keeps the dwell and source checks only.
+        explored; the source check is defence in depth. The Amiga reads its
+        verdict through `ResidentGeo.address_now`, which asks
+        `AmigaTarget.resident_geo_address`.
         """
         geo = self.state.geo
         if (self._pending is None or geo is None or fix.source != "memory"
