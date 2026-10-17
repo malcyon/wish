@@ -2077,3 +2077,20 @@ def test_pools_of_darkness_ticks_are_filed_under_its_own_key(app, tmp_path, monk
     win.set_fast_travel_targets([33])
     assert win.settings.fast_travel_targets == {"pools-of-darkness": [33]}
     assert win.map_game() is titles.POOLS_OF_DARKNESS
+
+
+def test_ticking_clear_quickfight_enables_the_map_watcher(app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert not win.settings.clear_quickfight
+        assert not win.map.actions_bar.watcher.enabled
+        dialog.watch_box.setChecked(True)
+        assert win.settings.clear_quickfight is True
+        assert win.map.actions_bar.watcher.enabled is True
+        dialog.watch_box.setChecked(False)
+        assert win.settings.clear_quickfight is False
+        assert win.map.actions_bar.watcher.enabled is False
+    finally:
+        win.close()

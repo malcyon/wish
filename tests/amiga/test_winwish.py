@@ -1375,6 +1375,27 @@ def test_up_seeds_the_staged_travel_targets_into_the_start_script(tmp_path, monk
     assert _seeded_settings(start)["fast_travel_targets"] == {"pool-of-radiance": [20]}
 
 
+def test_clear_quickfight_reaches_the_settings_wish_reads(tmp_path, monkeypatch):
+    from automap import config  # noqa: PLC0415
+    monkeypatch.setattr(config, "config_dir", lambda: tmp_path)
+    (tmp_path / config.FILE).write_text(winwish.settings_json(clear_quickfight=True), encoding="utf-8")
+    assert config.Settings.load().clear_quickfight is True
+    assert "clear_quickfight" not in json.loads(winwish.settings_json())
+
+
+def test_up_seeds_clear_quickfight_only_when_asked(tmp_path, monkeypatch):
+    seeded = []
+    for asked in (False, True):
+        run = FakeRun()
+        args = _args(tmp_path, monkeypatch)
+        if asked:
+            args.clear_quickfight = True
+        winwish.up(winwish.Guest(run), FakeLane(), args)
+        start = next(c[2] for c in run.calls if c[1] == "ps" and "Register-ScheduledTask -TaskName $task" in c[2])
+        seeded.append(_seeded_settings(start).get("clear_quickfight"))
+    assert seeded == [None, True]
+
+
 @pytest.mark.parametrize("spec", ["pool-of-radiance", "pool-of-radiance=", "Pool=20", "pool=x",
                                   "pool-of-radiance=-1", "pool-of-radiance=20,-3"])
 def test_a_malformed_travel_target_is_an_error(spec):

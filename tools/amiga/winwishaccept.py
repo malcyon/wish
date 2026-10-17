@@ -53,6 +53,13 @@ FIGHT_COMMANDS = 200
 FIGHT_WALK_STEPS = 40
 FIGHT_RESTORES = 2
 FIGHT_WALK_SNAPSHOT = "fight_walk"
+#: The snapshots taken at CONTINUE BATTLE (the clear-quickfight edge) and at the Pools of Darkness
+#: command bar where Quickfight off is pressed.
+FIGHT_EDGE_SNAPSHOT = "fight_edge"
+POD_QF_SNAPSHOT = "pod_qf"
+#: The fight leg's extra rows, by the flag that adds them.
+WATCH_ROWS = {"watch": ("watch_control_b", "watch_a"), "watch_dip": ("watch_dip",),
+              "press_quickfight_off": ("qf_press_a", "qf_press_b")}
 #: Seconds after a walk key before its screen is looked at.
 FIGHT_STEP_SETTLE = 6.0
 #: The Automapper's action buttons, by label, and the action name `PartyRow.combat_legal` uses.
@@ -607,13 +614,7 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                               "elapsed": round(controller.clock() - controller.started, 3)})
             return seen, crop
 
-        def press(self, key: str, on: str) -> None:
-            curseadd.require(key in self.allowed.get(on, ()),
-                             f"{key} is not a key this driver sends on {on}")
-            if on == "combat_bar" and not controller.greyed_done:
-                controller._fight_bar(memory)
-            controller._count(action=True)
-            self.guest.press(self.holder, key, timeout=self.left(30))
+        def note(self, key: str, on: str) -> None:
             self.events.append({"from": on, "key": key})
             controller.log("key", key=key, screen=on)
             if modes and modes[-1]["screen"] == on and "key" not in modes[-1]:
@@ -621,6 +622,33 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
             else:
                 modes.append({"screen": on, "key": key, "mode": self._mode(),
                               "elapsed": round(controller.clock() - controller.started, 3)})
+
+        def press(self, key: str, on: str) -> None:
+            curseadd.require(key in self.allowed.get(on, ()),
+                             f"{key} is not a key this driver sends on {on}")
+            if on == "combat_bar":
+                if not controller.greyed_done:
+                    controller._fight_bar(memory)
+                bars = controller.summary["fight"]["found"].get("bars") or []
+                if controller.press_off and not controller.pod and bars:
+                    controller._press_quickfight_off(bars)
+            controller._count(action=True)
+            if (on == "continue_battle" and controller.watch and not controller.edge_done
+                    and controller._watch_edge(key)):
+                # The edge queued the key itself, once on each branch.
+                self.note(key, on)
+                return
+            self.guest.press(self.holder, key, timeout=self.left(30))
+            self.note(key, on)
+
+        def press_queued(self, key: str, on: str) -> dict[str, Any]:
+            """The key queued in the emulator with the Automapper showing before it lands."""
+            curseadd.require(key in self.allowed.get(on, ()),
+                             f"{key} is not a key this driver sends on {on}")
+            controller._count(action=True)
+            schedule = controller._scheduled_key(key, show_map=True)
+            self.note(key, on)
+            return schedule
 
     return FightScreens()
 
@@ -910,6 +938,15 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         raise AcceptanceStop("--leg fight is not a discovery mode")
     if leg in ("mapping", "fight") and getattr(args, "action", None):
         raise AcceptanceStop("--action needs --leg persist")
+    flags = [name for name in WATCH_ROWS if getattr(args, name, False)]
+    if flags and leg != "fight":
+        raise AcceptanceStop(f"--{flags[0].replace('_', '-')} needs --leg fight")
+    if getattr(args, "watch_dip", False) and not getattr(args, "watch", False):
+        raise AcceptanceStop("--watch-dip needs --watch")
+    if getattr(args, "watch_dip", False) and args.title != "curse":
+        raise AcceptanceStop("--watch-dip runs only on Curse of the Azure Bonds")
+    if getattr(args, "press_quickfight_off", False) and args.title != "darkness":
+        raise AcceptanceStop("--press-quickfight-off runs only on Pools of Darkness")
     wait_lanes = getattr(args, "wait_lanes", 0)
     if not 0 <= wait_lanes <= MAX_WAIT_LANES:
         raise AcceptanceStop(f"--wait-lanes must be from 0 to {MAX_WAIT_LANES} seconds")
@@ -1186,6 +1223,14 @@ class Controller:
         self.fight: dict[str, Any] | None = info.get("fight") if self.leg == "fight" else None
         #: Whether the fight leg's greyed check has run, at the first command bar.
         self.greyed_done = False
+        #: Whether the clear-quickfight edge at CONTINUE BATTLE has run, and the member the dip
+        #: check staged QUICK on, and what the Pools of Darkness Quickfight off press recorded.
+        self.edge_done = False
+        self.watch = bool(getattr(args, "watch", False))
+        self.press_off = bool(getattr(args, "press_quickfight_off", False))
+        self.dip: dict[str, Any] | None = None
+        self.pod: dict[str, Any] = {}
+        self.key_sent = 0.0
         self._set_deadlines()
         self.mapping_commands = self.action_commands = 0
         #: The reload after the game restarts has its own key budget, so it neither
@@ -1248,6 +1293,14 @@ class Controller:
                                      "found": {}, "outcome": None, "after": None}
             self.summary["fight_greyed"] = row()
             self.summary["fight_no_write"] = row()
+            for flag, names in WATCH_ROWS.items():
+                if getattr(args, flag, False):
+                    for name in names:
+                        self.summary[name] = row()
+            if getattr(args, "watch_dip", False):
+                self.summary["watch_dip"]["expected"] = (
+                    "evidence only, not a pass condition: no read shows that a poll landed "
+                    "inside the fight start's mode dip")
 
     def _set_deadlines(self) -> None:
         """Start the route clock now; `_up` starts it again once a lane wait has ended."""
@@ -1981,6 +2034,45 @@ class Controller:
         self.summary["completed_sequence"].append(
             f"{namespace}.{phase.name}" if namespace else phase.name)
 
+    def _scheduled_key(self, key: str, *, show_map: bool, index: int | None = None) -> dict[str, Any]:
+        """Queue `key` in the emulator, optionally with the Automapper showing before it can
+        land, and wait until it has landed and Wish has polled for `WALK_SETTLE`.
+
+        With `show_map` false the tab is left as it is, so a key can be sent with the Character
+        Editor showing on the same lead and wait as the Automapper one. Returns the schedule."""
+        before = self.clock()
+        earliest = before + WALK_LEAD_FRAMES / AMIGA_FRAMES_PER_SECOND
+        # The key may be queued in the emulator before the call raises, so cleanup waits from here.
+        self.keys_pending_until = _latest_landing(before, MIN_EMULATION_SPEED)
+        reply = self.game.schedule_key(self.args.holder, key, WALK_LEAD_FRAMES, self.left(60))
+        sent = self.clock()
+        latest = _latest_landing(sent, MIN_EMULATION_SPEED)
+        self.keys_pending_until = latest
+        self.key_sent = sent
+        self.log("walk_key_queued", key=key, index=index, lead_frames=WALK_LEAD_FRAMES,
+                 reply=reply)
+        shown = None
+        if show_map:
+            self._map_section()
+            shown = self.clock()
+        schedule = {"key": key, "index": index, "lead_frames": WALK_LEAD_FRAMES,
+                    "min_emulation_speed": MIN_EMULATION_SPEED,
+                    "tab_shown_s": None if shown is None else round(shown - before, 3),
+                    "key_earliest_s": round(earliest - before, 3),
+                    "key_latest_s": round(latest - before, 3)}
+        self.log("map_walk", **schedule)
+        if shown is not None and shown > earliest - WALK_TAB_MARGIN:
+            raise AcceptanceStop(f"the Automapper showed {shown - before:.1f} s after walk key "
+                                 f"{key} was queued, within {WALK_TAB_MARGIN:.0f} s of its "
+                                 f"earliest landing at {earliest - before:.0f} s")
+        self.sleep(self.left(max(1.0, latest + WALK_SETTLE - self.clock())))
+        if self.clock() < latest + WALK_SETTLE:
+            raise AcceptanceStop(f"the route time ran out before walk key {key} could have "
+                                 "landed and settled; no Wish shot was taken")
+        self.keys_pending_until = None
+        schedule["shot_s"] = round(self.clock() - before, 3)
+        return schedule
+
     def _map_walk_key(self, step: Any, before_state: str, index: int) -> dict[str, Any]:
         """One walk key with the Automapper showing from before it lands until Wish's shot
         after it; returns the game frame taken after the shot.
@@ -2008,34 +2100,8 @@ class Controller:
                     or result.get("pressed") != [step.key] or collected != [step.key]):
                 raise AcceptanceStop(f"encounter switch before walk key {step.key}: {result}")
             self.log("encounters_applied", before=step.key, readback=result)
-        before = self.clock()
-        earliest = before + WALK_LEAD_FRAMES / AMIGA_FRAMES_PER_SECOND
-        # The key may be queued in the emulator before the call raises, so cleanup waits from here.
-        self.keys_pending_until = _latest_landing(before, MIN_EMULATION_SPEED)
-        reply = self.game.schedule_key(self.args.holder, step.key, WALK_LEAD_FRAMES, self.left(60))
-        sent = self.clock()
-        latest = _latest_landing(sent, MIN_EMULATION_SPEED)
-        self.keys_pending_until = latest
-        self.log("walk_key_queued", key=step.key, index=index, lead_frames=WALK_LEAD_FRAMES,
-                 reply=reply)
-        self._map_section()
-        shown = self.clock()
-        schedule = {"key": step.key, "index": index, "lead_frames": WALK_LEAD_FRAMES,
-                    "min_emulation_speed": MIN_EMULATION_SPEED,
-                    "tab_shown_s": round(shown - before, 3),
-                    "key_earliest_s": round(earliest - before, 3),
-                    "key_latest_s": round(latest - before, 3)}
-        self.log("map_walk", **schedule)
-        if shown > earliest - WALK_TAB_MARGIN:
-            raise AcceptanceStop(f"the Automapper showed {shown - before:.1f} s after walk key "
-                                 f"{step.key} was queued, within {WALK_TAB_MARGIN:.0f} s of its "
-                                 f"earliest landing at {earliest - before:.0f} s")
-        self.sleep(self.left(max(1.0, latest + WALK_SETTLE - self.clock())))
-        if self.clock() < latest + WALK_SETTLE:
-            raise AcceptanceStop(f"the route time ran out before walk key {step.key} could have "
-                                 "landed and settled; no Wish shot was taken")
-        self.keys_pending_until = None
-        schedule["shot_s"] = round(self.clock() - before, 3)
+        schedule = self._scheduled_key(step.key, show_map=True, index=index)
+        sent = self.key_sent
         name = step.checkpoint or f"walk_key_{index:02d}"
         timings: dict[str, float] = {}
         lap = self._lap(timings)
@@ -2835,6 +2901,8 @@ class Controller:
         observed["owner"] = owner()
         observed["mode"] = self._read_mode()
         before = self._action_readback()
+        if self.dip is not None:
+            self._dip_at_first_bar(row_, before)
         self._checkpoint("fight_bar", None, frame, reads=(maproute.Read("mode", "base", row_.mode, 1),))
         listing_path = pathlib.Path(self.checkpoints["fight_bar"]["controls"])
         result["evidence"] = ["fight_bar", str(listing_path)]
@@ -2899,6 +2967,229 @@ class Controller:
                           reason=f"the click on {label} found no greyed button: {click['error']}")
         else:
             result["status"] = "awaiting image review"
+
+    @staticmethod
+    def _member_bytes(row_: Any, record: dict[str, Any]) -> tuple[int, int]:
+        """The control bit 7 and the quickfight byte of one read-back record."""
+        raw = bytes.fromhex(record["raw"])
+        control = row_.control.value(raw) if row_.control is not None else 0
+        return control, row_.quickfight.value(raw)
+
+    def _stage_dip(self) -> None:
+        """Write QUICK to the first member the computer does not already play, and read it back."""
+        from automap import amiga, amigaparty  # noqa: PLC0415
+        from tools.amiga import amigatarget  # noqa: PLC0415
+
+        row_ = amigaparty.ROWS[self.route.game_key]
+        target = amigatarget.connect_pipe(self.args.holder, amiga.MACHINES[self.route.game_key])
+        try:
+            party = amigaparty.read_party(target) or ()
+            member = next((m for m in party
+                           if not (row_.control.value(m.raw) if row_.control is not None else 0)), None)
+            if member is None:
+                raise AcceptanceStop("no member without a companion control byte to stage QUICK on")
+            target.write(member.address + row_.quickfight.offset, b"\x01")
+            again = amigaparty.read_party(target) or ()
+            back = next((m for m in again if m.slot == member.slot), None)
+            if back is None or row_.quickfight.value(back.raw) != 1:
+                raise AcceptanceStop(f"the QUICK write to {member.name} did not read back")
+        finally:
+            target.close()
+            self.game._pipe = None
+        self.dip = {"slot": member.slot, "name": member.name, "address": member.address,
+                    "before": row_.quickfight.value(member.raw)}
+        self.log("watch_dip_staged", **self.dip)
+
+    def _dip_at_first_bar(self, row_: Any, readback: list[dict[str, Any]]) -> None:
+        """The staged member's QUICK byte at the first bar: 1 means Wish did not clear it while
+        the mode dipped on the way into the fight."""
+        record = next((r for r in readback if r["slot"] == self.dip["slot"]), None)
+        value = None if record is None else self._member_bytes(row_, record)[1]
+        result = self.summary["watch_dip"]
+        result["observed"] = {**self.dip, "at_first_bar": value}
+        if value == 1:
+            result["status"] = "awaiting image review"
+        elif value == 0:
+            result.update(status="failed", reason=f"{self.dip['name']} reads QUICK 0 at the first bar")
+        else:
+            result["reason"] = f"{self.dip['name']} could not be read at the first bar"
+
+    def _watch_edge(self, key: str) -> bool:
+        """The clear-quickfight edge, taken on CONTINUE BATTLE, which nothing has yet left.
+
+        The key is queued twice from one snapshot: with the Character Editor showing, where Wish
+        does not poll, so the game alone decides what the quickfight bytes hold; then, after the
+        snapshot is restored, with the Automapper showing. Returns whether it sent the key."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        row_ = amigaparty.ROWS[self.route.game_key]
+        holder = self.args.holder
+        control_row, wish_row = self.summary["watch_control_b"], self.summary["watch_a"]
+        self.edge_done = True
+        self._game_section()
+        self._await("continue_battle", limit=30)
+        mode = self._read_mode()
+        if mode != row_.combat_value:
+            raise AcceptanceStop(f"CONTINUE BATTLE reads mode {mode}, not {row_.combat_value}")
+        self.game.snapshot(FIGHT_EDGE_SNAPSHOT, holder)
+        edge_before = self._action_readback()
+        chosen = [r["slot"] for r in edge_before if self._member_bytes(row_, r) == (0, 1)]
+        if not chosen:
+            for result in (control_row, wish_row):
+                result["reason"] = "no member was on QUICK and played by the party at CONTINUE BATTLE"
+            return False
+        by_slot = {r["slot"]: r for r in edge_before}
+        companions = [slot for slot, r in by_slot.items() if self._member_bytes(row_, r)[0]]
+
+        def quickfight(readback: list[dict[str, Any]], slot: int) -> int | None:
+            record = next((r for r in readback if r["slot"] == slot), None)
+            return None if record is None else self._member_bytes(row_, record)[1]
+
+        schedule = self._scheduled_key(key, show_map=False)
+        frame = self._await("party_won", limit=60)
+        after = self._action_readback()
+        mode_b = self._read_mode()
+        problems = []
+        if mode_b != row_.after_fight_value:
+            problems.append(f"the mode reads {mode_b}, not {row_.after_fight_value}")
+        cleared = [by_slot[slot]["name"] for slot in chosen if quickfight(after, slot) != 1]
+        if cleared:
+            problems.append("the game itself cleared QUICK on " + ", ".join(cleared))
+        control_row.update(
+            status="failed" if problems else "awaiting image review",
+            reason="; ".join(problems) or None, evidence=[frame.get("raw")],
+            observed={"set": chosen, "mode": mode_b, "schedule": schedule})
+        self.game.restore(FIGHT_EDGE_SNAPSHOT, holder)
+        self._await("continue_battle", limit=60)
+        mode_r = self._read_mode()
+        changed = self._record_differences(edge_before, self._action_readback())
+        if mode_r != row_.combat_value or changed:
+            why = (f"the restored game reads mode {mode_r}, not {row_.combat_value}"
+                   if mode_r != row_.combat_value else "party bytes differ after the restore: "
+                   + ", ".join(changed))
+            for result in (control_row, wish_row):
+                result.update(status="unproven", reason=why)
+            raise AcceptanceStop(f"fight_edge restore: {why}")
+        self._count(action=True)
+        schedule = self._scheduled_key(key, show_map=True)
+        timings: dict[str, float] = {}
+        wish_path, controls_path = self._wish_pair("watch_a", self._lap(timings))
+        self._game_section()
+        frame = self._await("party_won", limit=60)
+        after = self._action_readback()
+        mode_a = self._read_mode()
+        problems = []
+        if mode_a != row_.after_fight_value:
+            problems.append(f"the mode reads {mode_a}, not {row_.after_fight_value}")
+        kept = [by_slot[slot]["name"] for slot in chosen if quickfight(after, slot) != 0]
+        if kept:
+            problems.append("QUICK still set on " + ", ".join(kept))
+        moved = [by_slot[slot]["name"] for slot in companions
+                 if quickfight(after, slot) != quickfight(edge_before, slot)]
+        if moved:
+            problems.append("a companion's QUICK byte changed on " + ", ".join(moved))
+        suffix = f" +0x{row_.quickfight.offset:02X}"
+        other = [d for d in self._record_differences(edge_before, after) if not d.endswith(suffix)]
+        if other:
+            problems.append("bytes other than QUICK changed: " + ", ".join(other))
+        wish_row.update(
+            status="failed" if problems else "awaiting image review",
+            reason="; ".join(problems) or None,
+            evidence=[str(wish_path), str(controls_path), frame.get("raw")],
+            observed={"set": chosen, "companions": companions, "mode": mode_a,
+                      "schedule": schedule, "timings": timings})
+        return True
+
+    def _press_quickfight_off(self, bars: list[dict[str, Any]]) -> None:
+        """At the first bar of a member other than the first bar's, press Quickfight off in Wish.
+
+        X is the first bar's member and Y the one whose bar this is. The state is snapshotted
+        first, so the same turn can be replayed without the click."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        x, y = bars[0], bars[-1]
+        if y["address"] == x["address"]:
+            return
+        row_ = amigaparty.ROWS[self.route.game_key]
+        holder = self.args.holder
+        rows = (self.summary["qf_press_a"], self.summary["qf_press_b"])
+        self.pod = {"x": x, "y": y, "y_index": len(bars) - 1, "snapshot": None}
+        self._game_section()
+        self.game.snapshot(POD_QF_SNAPSHOT, holder)
+        before = self._action_readback()
+        record = next((r for r in before if r["address"] == x["address"]), None)
+        if record is None or self._member_bytes(row_, record)[1] != 1:
+            for result in rows:
+                result["reason"] = f"{x['name']} was not on QUICK at {y['name']}'s bar"
+            return
+        self.pod.update(snapshot=POD_QF_SNAPSHOT, before=before)
+        self._map_section()
+        try:
+            reply = winwish.ui(self.guest, holder, "click", ("Quickfight off",))
+        except Exception as exc:  # noqa: BLE001 - the error is the record
+            rows[0].update(status="unproven", reason=f"Quickfight off returned no acknowledgement: {exc}")
+            raise AcceptanceStop(rows[0]["reason"]) from exc
+        self.log("quickfight_off_click", reply=reply)
+        self._game_section()
+        after = self._action_readback()
+        problems = []
+        if self._member_bytes(row_, next(r for r in after if r["address"] == x["address"]))[1] != 0:
+            problems.append(f"{x['name']} still reads QUICK 1")
+        free = {f"{r['name']} +0x{row_.quickfight.offset:02X}" for r in before
+                if not self._member_bytes(row_, r)[0]}
+        other = [d for d in self._record_differences(before, after) if d not in free]
+        if other:
+            problems.append("bytes other than QUICK changed: " + ", ".join(other))
+        if problems:
+            rows[0].update(status="failed", reason="; ".join(problems))
+            raise AcceptanceStop("Quickfight off: " + rows[0]["reason"])
+
+    def _pod_replay(self, plan: FightPlan, screens: Any, memory: Any) -> None:
+        """Judge the click's run, then play the same turn again from the snapshot without it."""
+        from tools.amiga import curseadd, cursefight  # noqa: PLC0415
+
+        result = self.summary["fight"]
+        click_row, control_row = self.summary["qf_press_a"], self.summary["qf_press_b"]
+        pod = self.pod
+        if not pod:
+            for item in (click_row, control_row):
+                item["reason"] = "the fight ended before a second member's command bar"
+            return
+        if pod["snapshot"] is None:
+            return
+        x, y = pod["x"], pod["y"]
+        later = [bar for bar in (result["found"].get("bars") or [])[pod["y_index"] + 1:]
+                 if bar["address"] == x["address"]]
+        if click_row["status"] == "unproven":
+            if later:
+                click_row.update(status="awaiting image review",
+                                 evidence=[bar["shot"] for bar in later],
+                                 observed={"x": x["name"], "bars": len(later)})
+            else:
+                click_row["reason"] = f"the fight ended before {x['name']}'s next turn"
+        self._game_section()
+        self.game.restore(POD_QF_SNAPSHOT, self.args.holder)
+        self._await("combat_bar", limit=60)
+        owner = curseadd.bounded(lambda _h: memory.owner(), memory.holder,
+                                 self.left(cursefight.READ_LIMIT))
+        changed = self._record_differences(pod["before"], self._action_readback())
+        if (owner or {}).get("address") != y["address"] or changed:
+            why = (f"the restored bar belongs to {(owner or {}).get('name')}, not {y['name']}"
+                   if (owner or {}).get("address") != y["address"]
+                   else "party bytes differ after the restore: " + ", ".join(changed))
+            control_row.update(status="unproven", reason=why)
+            raise AcceptanceStop(f"pod_qf restore: {why}")
+        found_b: dict[str, Any] = {}
+        result["found_b"] = found_b
+        outcome = cursefight.fight(screens, memory, [], plan.rules, found=found_b)
+        result["outcome_b"] = outcome["outcome"]
+        bad = [bar for bar in found_b.get("bars", []) if bar["address"] == x["address"]]
+        if bad:
+            control_row.update(status="failed", evidence=[bar["shot"] for bar in bad],
+                               reason=f"{x['name']} got a command bar without the click")
+        else:
+            control_row.update(status="awaiting image review",
+                               observed={"bars": len(found_b.get("bars", []))})
 
     def _survive(self) -> None:
         """Raise every member's hit points and maximum to one value the field holds unsigned and
@@ -2997,7 +3288,14 @@ class Controller:
         if plan.entry == "tavern":
             steps = cursefight.walk(screens, memory, walk["place"], walk["route"])
             cursefight.reach_tavern(screens)
-            screens.press("P", "tavern")
+            if getattr(self.args, "watch_dip", False):
+                self._game_section()
+                self._stage_dip()
+                # Wish polls through the fight start's mode changes, then the pipe is freed.
+                screens.press_queued("P", "tavern")
+                self._game_section()
+            else:
+                screens.press("P", "tavern")
             screens.sleep(cursefight.AFTER_KEY)
             return {"steps": steps}
         if plan.entry == "wander":
@@ -3032,6 +3330,8 @@ class Controller:
             result["outcome"] = outcome["outcome"]
             if not self.greyed_done:
                 raise AcceptanceStop("the fight ended before a command bar showed")
+            if self.press_off:
+                self._pod_replay(plan, screens, memory)
             self._game_section()
             result["after"] = self._action_readback()
             if self.summary["fight_greyed"]["status"] == "failed":
@@ -3042,6 +3342,11 @@ class Controller:
             greyed = self.summary["fight_greyed"]
             if greyed["status"] == "unproven" and not greyed.get("reason"):
                 greyed["reason"] = self.summary["failure"]
+            for names in WATCH_ROWS.values():
+                for name in names:
+                    held = self.summary.get(name)
+                    if held is not None and held["status"] == "unproven" and not held["reason"]:
+                        held["reason"] = self.summary["failure"]
         finally:
             self._cleanup()
             self._verify_no_write()
@@ -3104,6 +3409,7 @@ class Controller:
                   "zip_sha256": self.info.get("release_artifact", {}).get("sha256"),
                   "uae_option": list(self.route.amiga_title.options),
                   "travel_targets": [], "map_only": self.discovery,
+                  "clear_quickfight": bool(getattr(self.args, "watch", False)),
                   "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": keep_lanes}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]
@@ -3641,6 +3947,15 @@ def _parser() -> argparse.ArgumentParser:
                              "reloads; fight loads a pinned fight specimen, walks into a fight, "
                              "checks the action buttons are greyed at the first command bar and "
                              "plays the fight on QUICK, logging the game's mode on each screen")
+    parser.add_argument("--watch", action="store_true",
+                        help="fight leg: start Wish with the clear-quickfight preference ticked "
+                             "and take the Automapper and Character Editor branches at CONTINUE BATTLE")
+    parser.add_argument("--watch-dip", action="store_true",
+                        help="with --watch, Curse only: stage QUICK on one member and start the "
+                             "fight with the Automapper showing")
+    parser.add_argument("--press-quickfight-off", action="store_true",
+                        help="fight leg, Pools of Darkness only: press Quickfight off at a second "
+                             "member's bar and replay from before it without")
     parser.add_argument("--action", action="append", choices=ACTION_KINDS,
                         help="run only this enabled action; repeat for several (--leg persist only)")
     parser.add_argument("--wait-lanes", type=int, default=0, metavar="SECONDS",

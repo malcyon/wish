@@ -173,8 +173,10 @@ def parse_travel_targets(specs: list[str] | None) -> dict[str, list[int]]:
 
 
 def settings_json(game: str | None = None, folder: str | None = None,
-                  travel_targets: dict[str, list[int]] | None = None) -> str:
-    """The settings file Wish starts with: the log on, a game folder and Fast Travel destinations when given.
+                  travel_targets: dict[str, list[int]] | None = None,
+                  clear_quickfight: bool = False) -> str:
+    """The settings file Wish starts with: the log on, a game folder, Fast Travel destinations
+    and the clear-quickfight preference when given.
 
     `game` is a `game_folders` key (`c64_port.GAMES[i].key` or an Amiga-only title's)
     and `folder` the guest folder holding that title's ADFs; without them Wish says
@@ -185,6 +187,8 @@ def settings_json(game: str | None = None, folder: str | None = None,
         values["game_folders"] = {game: folder}
     if travel_targets:
         values["fast_travel_targets"] = travel_targets
+    if clear_quickfight:
+        values["clear_quickfight"] = True
     return json.dumps(values, indent=1) + "\n"
 
 
@@ -340,7 +344,8 @@ def window_probe(out: str, build: str) -> str:
 def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
                  disks: tuple[str, ...] = (), game: str | None = None,
                  reseed: bool = True, open_path: str | None = None,
-                 travel_targets: dict[str, list[int]] | None = None) -> str:
+                 travel_targets: dict[str, list[int]] | None = None,
+                 clear_quickfight: bool = False) -> str:
     """Seed the private settings, start `wish.exe` in session 1, wait for its window.
 
     The reply is `ok pid=N session=S window=H` or `fail ...`.  Session 0 is a
@@ -392,7 +397,7 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         # json block the file, which falls back to defaults and no log.
         *copy_disks,
         "$settings = \"$run\\appdata\\wish\\automap.json\"",
-        f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder), travel_targets))}, (New-Object Text.UTF8Encoding $false)){tail}",
+        f"{guard}[IO.File]::WriteAllText($settings, {q(settings_json(game if disks else None, disks_dir(holder), travel_targets, clear_quickfight))}, (New-Object Text.UTF8Encoding $false)){tail}",
         "$p = New-ScheduledTaskPrincipal -UserId \"$env:COMPUTERNAME\\$env:USERNAME\" -LogonType Interactive",
         "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
         write_file(task_file, _task_body(env, build, open_path)),
@@ -1876,7 +1881,7 @@ def start_wish(guest: Guest, holder: str, disks: tuple[str, ...] = (),
                game: str | None = None, reseed: bool = False,
                open_path: str | None = None,
                travel_targets: dict[str, list[int]] | None = None,
-               features: bool = True) -> str:
+               features: bool = True, clear_quickfight: bool = False) -> str:
     held = guest.holds_lane(holder)
     pipe = guest.lane_pipe(holder)
     if pipe is None and not _holds_every_lane(held, holder):
@@ -1885,7 +1890,8 @@ def start_wish(guest: Guest, holder: str, disks: tuple[str, ...] = (),
     try:
         return guest.ps(start_script(holder, environment(holder, features, pipe, _read_winuae_flag(holder)), disks=disks,
                                      game=game, reseed=reseed, open_path=open_path,
-                                     travel_targets=travel_targets),
+                                     travel_targets=travel_targets,
+                                     clear_quickfight=clear_quickfight),
                         timeout=START_SECONDS + PROBE_REPORT_SECONDS + 30, step="start_wish")
     except WinwishError:
         _quietly(guest.ps, probe_close_script(holder))
@@ -2045,7 +2051,8 @@ def up(guest: Guest, lane: Any, args: argparse.Namespace) -> dict[str, str]:
             wish_tried = True
             result["wish"] = start_wish(guest, args.holder,
                                         tuple(drives[:GAME_DISKS]), args.game, reseed=True,
-                                        travel_targets=targets, features=not args.map_only)
+                                        travel_targets=targets, features=not args.map_only,
+                                        clear_quickfight=bool(getattr(args, "clear_quickfight", False)))
             done = True
         finally:
             if not done:
