@@ -220,6 +220,17 @@ def square(x, y, doubled, layout=SSB, wall=0):
             BASE + layout.party_facing: bytes([doubled, wall])}
 
 
+def placed(x, y, doubled, block=None, layout=SSB):
+    """The bytes of a party the engine has placed on the resident map: a step
+    or a turn writes the wall ahead and the square's attribute from the block,
+    and the automapper believes no memory fix without them."""
+    from goldbox.geo import Geo
+    geo = Geo(_map_block() if block is None else block)
+    return {**square(x, y, doubled, layout=layout),
+            BASE + layout.party_facing: bytes([
+                doubled, geo.wall(x, y, doubled // 2), geo.attributes(x, y)])}
+
+
 @pytest.mark.parametrize("doubled,facing", [(0, 0), (2, 1), (4, 2), (6, 3)])
 def test_the_facing_is_halved_because_the_engine_stores_it_doubled(doubled,
                                                                    facing):
@@ -528,9 +539,11 @@ def test_a_fresh_curse_mapper_names_the_area_facing_a_wall():
     """A window opened with the party at a wall has no earlier fix to fall
     back on: the wall byte after the facing must not hide the position."""
     from automap.area import OURS
-    t, _ = _resident(layout=CURSE,
-                     extra=square(3, 11, 0, layout=CURSE, wall=12))
-    mapper = _mapper(t, title="Curse of the Azure Bonds")
+    block = bytearray(_map_block())
+    block[16 * 11 + 3] = (block[16 * 11 + 3] & 0x0F) | 0xC0   # north wall 12
+    t, _ = _resident(block=bytes(block), layout=CURSE,
+                     extra=placed(3, 11, 0, bytes(block), layout=CURSE))
+    mapper = _mapper(t, block=bytes(block), title="Curse of the Azure Bonds")
     assert mapper.poll() is True
     assert mapper.title_check is OURS
     assert (mapper.state.x, mapper.state.y, mapper.state.facing) == (3, 11, 0)
@@ -581,7 +594,8 @@ def test_a_stranger_s_map_is_not_drawn_as_ours(tmp_path):
     x, y = next((x, y) for y in range(16) for x in range(15)
                 if open_somewhere(x, y) and open_somewhere(x + 1, y)
                 and not ours.is_passable(x, y, EAST))
-    t, guest = _resident(block=ours.to_bytes(), extra=square(x, y, 2))
+    t, guest = _resident(block=ours.to_bytes(),
+                         extra=placed(x, y, 2, ours.to_bytes()))
     mapper = _mapper(t, block=ours.to_bytes())
     mapper.poll()
     assert mapper.title_check is OURS
@@ -590,7 +604,7 @@ def test_a_stranger_s_map_is_not_drawn_as_ours(tmp_path):
 
     guest.memory[GEO_AT] = theirs.to_bytes()
     for _ in range(2 * mapper.RESIDENT_EVERY):
-        guest.memory.update(square(x + 1, y, 2))
+        guest.memory.update(placed(x + 1, y, 2, ours.to_bytes()))
         mapper.poll()
     assert mapper.title_check is NOT_OURS
     assert mapper.state.area == area
@@ -762,8 +776,8 @@ def test_the_automap_command_drives_the_shipped_mapper_and_draws_it(tmp_path,
     from automap import state as mapstate
     from tools.amiga import amigatarget
     image = _map_disk("secret-of-the-silver-blades", tmp_path)
-    t, guest = _resident(block=amiga.load_maps(image)["GEO10"].to_bytes(),
-                         extra=square(6, 9, 2))
+    block = amiga.load_maps(image)["GEO10"].to_bytes()
+    t, guest = _resident(block=block, extra=placed(6, 9, 2, block))
     # `draw` rebinds this so a run never writes into the player's own notes.
     # Recording it with monkeypatch is what puts it back for the rest of the
     # worker -- `#428` is the incident where a tool's rebinding leaked.

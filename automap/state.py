@@ -691,6 +691,14 @@ class Automapper:
             # and the step is not believed while the block is in doubt.
             self._hold_unsafe = True
             self._pending_polls = 0
+        if (fix.source == "memory"
+                and not getattr(self.target, "c64_memory", True)
+                and not self._placed(fix)):
+            # The engine's square is the last area's or an unstarted party's
+            # until its wall and attribute bytes agree with the map that is
+            # loaded; the next poll asks again. Ahead of the jump hold so the
+            # arrival allowance cannot let such a fix through.
+            return changed_area
         if changed_area and fix.source == "status":
             engine = self._engine_square()
             if engine is not None and engine != (fix.x, fix.y, fix.facing):
@@ -755,6 +763,15 @@ class Automapper:
         self._last = fix
         self._visit(fix.x, fix.y)
         return changed
+
+    def _placed(self, fix: Fix) -> bool:
+        """Has the engine put the party on the loaded map at *fix*?
+
+        A target without the check believes its fix, as the fakes in the
+        tests and any backend that cannot read the two bytes do.
+        """
+        check = getattr(self.target, "placement_matches", None)
+        return True if check is None else check(fix)
 
     def _visit(self, x: int, y: int) -> None:
         """Record the party at `(x, y)`, and save at once if that saw new squares.

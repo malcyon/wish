@@ -3164,6 +3164,35 @@ class AmigaTarget:
             return None
         return addr
 
+    def placement_matches(self, fix: Fix) -> bool:
+        """Do the engine's wall-ahead and square-attribute bytes describe *fix*
+        on the map the game has loaded?
+
+        A step or a turn rewrites both bytes from the resident block; a load
+        or a scripted arrival recomputes the attribute and not the wall byte,
+        and the engine recomputes the attribute against whatever block is
+        resident, so the attribute alone is not enough. Both must equal the
+        resident block's at the engine's square and facing. The block is read
+        from memory because it is not always the disk file. A title that names
+        no such bytes is not checked; with no map resident the answer is no.
+        """
+        wall_at = self.layout.notes.get("wall_ahead")
+        attr_at = self.layout.notes.get("square_attribute")
+        if wall_at is None or attr_at is None:
+            return True
+        block = self.geo()
+        if block is None:
+            return False
+        lo = min(wall_at, attr_at)
+        raw = self.read(self._at(lo), abs(attr_at - wall_at) + 1)
+        wall, attribute = raw[wall_at - lo], raw[attr_at - lo]
+        geo = Geo(block)
+        try:
+            return (wall == geo.wall(fix.x, fix.y, fix.facing)
+                    and attribute == geo.attributes(fix.x, fix.y))
+        except IndexError:
+            return False
+
     def geo(self) -> bytes | None:
         """The resident map itself, 1024 bytes, or None if none is loaded."""
         addr = self.resident_geo_address()
