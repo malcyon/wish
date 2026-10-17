@@ -256,3 +256,36 @@ def test_after_a_camp_reload_names_the_old_map_the_next_placed_square_is_believe
     assert mapper.state.area == "GEO10"
     assert (mapper.state.x, mapper.state.y) == (3, 3)
     assert not {(11, 2), (7, 13)} & mapper.state.exploration.seen
+
+
+def test_a_mapper_with_no_resident_check_records_the_first_placed_fix():
+    """Without disk maps `_running` never admits an Amiga memory fix, so this
+    drops the check from a mapper already proved: the gate must not wait on a
+    verdict that cannot come."""
+    mapper, guest = _setup(SSB, ONE, GEO10=ONE)
+    _set(guest, SSB, 3, 3, 4, ONE)
+    mapper.poll()
+    mapper.resident = None
+    mapper._started = False
+    _set(guest, SSB, 3, 4, 4, ONE)
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (3, 4)
+
+
+def test_a_poll_that_comes_back_indoors_reads_the_block_once():
+    # Open at the landing square, so the solid-square area check does not
+    # read the block a second time on its own.
+    one = bytearray(ONE)
+    one[0x300 + 16 * 2 + 1] = 0x55
+    one = bytes(one)
+    mapper, guest = _setup(POD, one, GEO21=one)
+    _set(guest, POD, 1, 2, 2, one)
+    mapper.poll()
+    guest.memory[0xC30000 + POD.overland_flag] = b"\x01"
+    mapper.poll()
+    guest.memory[0xC30000 + POD.overland_flag] = b"\x00"
+    target, reads = mapper.target, []
+    real = target.read
+    target.read = lambda addr, n: (reads.append(n), real(addr, n))[1]
+    mapper.poll()
+    assert reads.count(0x400) == 1

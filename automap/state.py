@@ -703,12 +703,16 @@ class Automapper:
                 if changed_area:
                     self._started = False
                 return changed_area
-            if not changed_area and not self._started:
+            if (not changed_area and not self._started
+                    and self.resident is not None):
                 # Placement passed against the block now resident, but the
                 # area may have been named from the block before it: a first
                 # fix has no jump to trigger the area check, and recording
-                # into the old area's map puts this square on it.
-                changed_area = self._check_resident()
+                # into the old area's map puts this square on it. A poll that
+                # already read the block (the verdict is reset at the top of
+                # each poll) keeps that verdict.
+                if self._verdict is None:
+                    changed_area = self._check_resident()
                 if self._contradicting is not None or self._verdict is not OURS:
                     return changed_area
         if changed_area and fix.source == "status":
