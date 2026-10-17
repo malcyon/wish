@@ -215,7 +215,7 @@ def environment(holder: str, features: bool = True,
 
 #: Cleared in the task whatever the holder's own session has, so the window can
 #: reach no other backend.
-CLEARED = ("WISH_EXPERIMENTAL_AMIGA_FSUAE", ACTIONS_FLAG, PIPE_ENV, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
+CLEARED = (ACTIONS_FLAG, PIPE_ENV, "POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE",
            "POR_ULTIMATE", "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
 
 

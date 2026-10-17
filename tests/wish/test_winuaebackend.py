@@ -42,10 +42,9 @@ def test_the_winuae_row_is_offered_on_windows_with_no_variable_set(monkeypatch):
 
 @pytest.mark.parametrize("platform", ["linux", "darwin"])
 def test_the_winuae_row_is_absent_off_windows(monkeypatch, platform):
-    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
     _platform(monkeypatch, platform)
-    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
+    assert "WinUAE (Amiga)" not in [b.name for b in bk.backends()]
 
 
 def test_the_winuae_row_is_the_approved_one():
@@ -60,30 +59,30 @@ def test_the_winuae_row_is_the_approved_one():
 
 def test_each_platforms_rows_are_grouped_with_the_c64_ones_first(
         monkeypatch):
-    for env in (bk.AMIGA_FSUAE_ENV, bk.ULTIMATE_ENV):
-        monkeypatch.setenv(env, "1")
+    monkeypatch.setenv(bk.ULTIMATE_ENV, "1")
     _platform(monkeypatch, "win32")
     assert [b.name for b in bk.backends()] == [
-        "VICE (C64)", "C64 Ultimate", "WinUAE (Amiga)", "FS-UAE (Amiga)"]
+        "VICE (C64)", "C64 Ultimate", "WinUAE (Amiga)"]
+    _platform(monkeypatch, "linux")
+    assert [b.name for b in bk.backends()] == [
+        "VICE (C64)", "C64 Ultimate", "FS-UAE (Amiga)"]
 
 
 def test_the_pools_of_darkness_folder_is_offered_on_windows_without_a_variable(
         monkeypatch):
-    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="win32"))
     assert bk.amiga_enabled() is True
     assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
 
 
-def test_the_pools_of_darkness_folder_is_absent_elsewhere_without_the_fsuae_flag(
+def test_the_pools_of_darkness_folder_is_offered_on_linux_and_absent_on_macos(
         monkeypatch):
-    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
-    for platform in ("linux", "darwin"):
-        monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform=platform))
-        assert bk.amiga_enabled() is False
-        assert bk.amiga_only_titles() == ()
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+    _platform(monkeypatch, "linux")
     assert bk.amiga_enabled() is True
+    assert bk.amiga_only_titles() == AMIGA_ONLY_TITLES
+    _platform(monkeypatch, "darwin")
+    assert bk.amiga_enabled() is False
+    assert bk.amiga_only_titles() == ()
 
 
 # -- the probe -----------------------------------------------------------------

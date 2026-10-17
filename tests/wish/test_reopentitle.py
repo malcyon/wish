@@ -53,13 +53,7 @@ AREA = "GEO10"
 @pytest.fixture(autouse=True)
 def _clean_environment(monkeypatch):
     monkeypatch.delenv("POR_DISKS", raising=False)
-    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
     monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
-
-
-@pytest.fixture
-def amiga_on(monkeypatch):
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
 
 
 @pytest.fixture
@@ -180,7 +174,7 @@ def open_close_open(app, settings, game, geo):
 
 @pytest.mark.parametrize("game", [SILVER, CURSE], ids=lambda g: g.key)
 def test_a_reopened_window_over_a_running_amiga_title_maps_that_title(
-        app, tmp_path, monkeypatch, amiga_on, game):
+        app, tmp_path, monkeypatch, game):
     nowhere(tmp_path, monkeypatch)
     geo = walled_geo(art=5, rooms=3)
     folder = amiga_folder(tmp_path / "disks", game, geo)
@@ -197,7 +191,7 @@ def test_a_reopened_window_over_a_running_amiga_title_maps_that_title(
 
 
 def test_a_reopened_window_over_pools_of_darkness_maps_pools_of_darkness(
-        app, tmp_path, monkeypatch, amiga_on):
+        app, tmp_path, monkeypatch):
     """The Amiga-only title, which the window already named from its folder.
     It has no C64 descriptor, so the test machine here cannot place the party
     and only the title is asserted."""
@@ -216,7 +210,7 @@ def test_a_reopened_window_over_pools_of_darkness_maps_pools_of_darkness(
 
 
 def test_the_reopened_silver_blades_map_is_named_new_verdigris(
-        app, tmp_path, monkeypatch, amiga_on):
+        app, tmp_path, monkeypatch):
     """The issue's own observation: `area_label` read The Lizardman Keep,
     Pool of Radiance's name for the same file stem."""
     nowhere(tmp_path, monkeypatch)
@@ -233,7 +227,7 @@ def test_the_reopened_silver_blades_map_is_named_new_verdigris(
 
 
 def test_a_window_switched_by_the_machine_keeps_the_title_after_a_reopen(
-        app, tmp_path, monkeypatch, amiga_on):
+        app, tmp_path, monkeypatch):
     """The live run's own sequence: its first window opened labelled Pool of
     Radiance and was switched to Silver Blades by the machine ("Now mapping
     Secret of the Silver Blades."), so the squares were saved under Silver
@@ -282,7 +276,7 @@ def test_a_reopened_window_over_a_running_c64_title_maps_that_title(
 # --- the paths the folder's title leaves alone --------------------------------
 
 def test_an_open_save_names_the_title_over_the_folder(
-        app, tmp_path, monkeypatch, amiga_on):
+        app, tmp_path, monkeypatch):
     """A save is the player's choice: a Curse save open beside Silver Blades'
     folder labels the map Curse, not Silver Blades."""
     from gamedata import synthetic_save
@@ -305,7 +299,7 @@ def test_an_open_save_names_the_title_over_the_folder(
 
 
 def test_with_no_folder_set_the_window_is_pool_of_radiance(
-        app, tmp_path, monkeypatch, amiga_on):
+        app, tmp_path, monkeypatch):
     """No save, no folder, no disks anywhere: the default title, as before."""
     nowhere(tmp_path, monkeypatch)
     win = window(app, Settings())
@@ -317,7 +311,7 @@ def test_with_no_folder_set_the_window_is_pool_of_radiance(
 
 
 def test_with_two_folders_set_the_first_in_games_order_names_the_title(
-        app, tmp_path, monkeypatch, amiga_on):
+        app, tmp_path, monkeypatch):
     """Silver Blades' and Curse's folders both set: Curse comes first in
     `c64_port.GAMES`, so its folder and title answer, and `reload_disks`
     agrees with the window it was built in."""

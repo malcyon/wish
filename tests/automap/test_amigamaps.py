@@ -222,45 +222,36 @@ def pod_folder(tmp_path):
     return tmp_path
 
 
-@pytest.fixture
-def not_windows(monkeypatch):
-    """Off Windows only the FS-UAE flag names Pools of Darkness from Amiga disks."""
+def _on_platform(monkeypatch, name):
     from wish import backends
-    monkeypatch.setattr(backends, "sys", types.SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(backends, "sys", types.SimpleNamespace(platform=name))
 
 
-def test_the_wish_loader_names_nothing_without_the_flag(
-        pod_folder, monkeypatch, not_windows):
+def test_the_wish_loader_names_nothing_off_linux_and_windows(
+        pod_folder, monkeypatch):
     from wish.window import load_maps_titled as wish_load
-    monkeypatch.delenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", raising=False)
+    _on_platform(monkeypatch, "darwin")
     assert wish_load(str(pod_folder)) == ({}, None)
 
 
-@pytest.mark.parametrize("value", ["0", "off", ""])
-def test_a_forgotten_flag_value_does_not_name_pools_of_darkness(
-        pod_folder, monkeypatch, not_windows, value):
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_the_wish_loader_names_pools_of_darkness_by_default(
+        pod_folder, monkeypatch, platform):
     from wish.window import load_maps_titled as wish_load
-    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", value)
-    assert wish_load(str(pod_folder)) == ({}, None)
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_the_flag_names_pools_of_darkness(pod_folder, monkeypatch, value):
-    from wish.window import load_maps_titled as wish_load
-    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", value)
+    _on_platform(monkeypatch, platform)
     maps, game = wish_load(str(pod_folder))
     assert len(maps) == 3 and game is titles.POOLS_OF_DARKNESS
 
 
-def test_the_command_line_draws_a_pods_map_only_with_the_flag(
-        pod_folder, tmp_path_factory, monkeypatch, not_windows, capsys):
+def test_the_command_line_draws_a_pods_map_where_amiga_is_offered(
+        pod_folder, tmp_path_factory, monkeypatch, capsys):
     from wish.__main__ import main
     out = tmp_path_factory.mktemp("svg") / "out.svg"
     name = sorted(load_maps_titled(str(pod_folder), amiga_only=True)[0])[0]
-    monkeypatch.delenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", raising=False)
+    _on_platform(monkeypatch, "darwin")
     assert main(["--disks", str(pod_folder), "--svg", name, str(out)]) == 1
     assert not out.exists()
-    monkeypatch.setenv("WISH_EXPERIMENTAL_AMIGA_FSUAE", "1")
+    _on_platform(monkeypatch, "linux")
     assert main(["--disks", str(pod_folder), "--svg", name, str(out)]) == 0
     assert out.exists()
 

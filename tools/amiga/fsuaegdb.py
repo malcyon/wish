@@ -1811,8 +1811,7 @@ WISH_UNSET = ("POR_MONITOR", "WISH_EXPERIMENTAL_C64_ULTIMATE", "POR_ULTIMATE",
               "WISH_ULTIMATE", "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE_PASSWORD")
 
 #: What the `wish` command sets for the window and puts back afterwards.
-WISH_FLAG = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
-WISH_ENV = (*WISH_UNSET, WISH_FLAG,
+WISH_ENV = (*WISH_UNSET,
             "XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA", "XDG_RUNTIME_DIR",
             # Set by `mapmarker._offscreen`, which this process calls.
             "QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "XDG_SESSION_TYPE",
@@ -2215,7 +2214,6 @@ def wish(args) -> int:
     try:
         for name in WISH_UNSET:
             os.environ.pop(name, None)
-        os.environ[WISH_FLAG] = "1"
         # `wish.fsuae.listening` and `connect` read this at call time, so the
         # window finds the slot's port without a change to the product.
         amiga.FSUAE_PORT = args.port

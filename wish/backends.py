@@ -35,10 +35,10 @@ application behaves as though the device is not there at all. This does not
 touch `tools/c64/c64u*.py`, which are how the hang itself gets investigated and
 stay unaffected by the flag.
 
-**The Amiga backend is behind `WISH_EXPERIMENTAL_AMIGA_FSUAE`**, and with it
-unset it is absent in the same way: no entry, no probe, no import of
-`wish.fsuae`. `docs/96-live-memory-automapper.md` says what it reads and what
-the fork needs.
+**The FS-UAE backend is offered on Linux and absent elsewhere**: off Linux
+there is no entry, no probe and no import of `wish.fsuae`. It needs no
+variable. `docs/96-live-memory-automapper.md` says what it reads and what the
+fork needs.
 
 **The WinUAE backend is offered on Windows and absent elsewhere**, with
 `wish.winuae.AMIGA_WINUAE` as its row; it needs no variable.
@@ -63,23 +63,6 @@ ULTIMATE_ENV = "WISH_EXPERIMENTAL_C64_ULTIMATE"
 #: `wish/debugmode.py`. A variable somebody exported once and forgot must not
 #: put a backend that hangs the game in front of them.
 TRUE = ("1", "true", "yes", "on")
-
-
-#: `WISH_EXPERIMENTAL_AMIGA_FSUAE`: the Amiga row that reads a patched FS-UAE.
-#: Same truthiness rule as `TRUE` above.
-#:
-#: **Comes off when closing Wish no longer costs the player their game -- the
-#: fork shuts its listening socket when a client disconnects, so a background
-#: helper (`automap.fsuaehelper`) holds the connection and Wish reads through it
-#: -- and when a party
-#: has been walked under the window on each title that has a row in
-#: `automap.amiga.MACHINES`, which is the check `#34 (Validate the live
-#: automapper tab per title)` asks for.** `#37 (Automap the Amiga version, not
-#: just the C64)` is where that gets settled.
-#:
-#: The flag also decides whether Wish names Pools of Darkness from its Amiga
-#: disks and offers its folder row.
-AMIGA_FSUAE_ENV = "WISH_EXPERIMENTAL_AMIGA_FSUAE"
 
 
 def ultimate_enabled() -> bool:
@@ -144,19 +127,14 @@ def _ultimate() -> list[Backend]:
 def amiga_enabled() -> bool:
     """Does Wish name Pools of Darkness from Amiga disks?
 
-    On Windows WinUAE needs no variable; elsewhere only the FS-UAE flag turns it on.
+    True on Windows, where WinUAE is offered, and on Linux, where FS-UAE is.
     """
-    return amiga_fsuae_enabled() or sys.platform == "win32"
-
-
-def amiga_fsuae_enabled() -> bool:
-    """Is the Amiga backend offered in this run?"""
-    return os.environ.get(AMIGA_FSUAE_ENV, "").strip().lower() in TRUE
+    return sys.platform == "win32" or sys.platform.startswith("linux")
 
 
 def amiga_only_titles() -> tuple:
-    """The titles that have Amiga disks and no C64 container, while an Amiga
-    backend is on; nothing otherwise, so the flags off change no lookup.
+    """The titles that have Amiga disks and no C64 container, on a platform
+    that offers an Amiga backend; nothing otherwise.
 
     The automapper reads these titles' maps off Amiga disks, so its folder
     lookup tries their rows only then.
@@ -168,13 +146,12 @@ def amiga_only_titles() -> tuple:
 
 
 def _amiga_fsuae() -> list[Backend]:
-    """The patched FS-UAE, if `WISH_EXPERIMENTAL_AMIGA_FSUAE` says so and its
-    module imports.
+    """The patched FS-UAE, on Linux only, if its module imports.
 
-    Kept behind a function for the same reason as `_ultimate()`: the flag being
-    off must cost nothing, and a broken module must not stop VICE being offered.
+    Kept behind a function for the same reason as `_ultimate()`: a broken
+    module must not stop VICE being offered.
     """
-    if not amiga_fsuae_enabled():
+    if not sys.platform.startswith("linux"):
         return []
     try:
         from .fsuae import AMIGA_FSUAE

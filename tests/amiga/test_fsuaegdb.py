@@ -27,6 +27,7 @@ import pathlib
 import re
 import socket
 import sys
+import types
 
 import pytest
 
@@ -2237,7 +2238,7 @@ def wished(monkeypatch, tmp_path):
     from wish import fsuae
 
     seen = {"windows": [], "keys": [], "grabs": [], "resets": 0, "forgets": 0,
-            "port": [], "flag": [], "shots": []}
+            "port": [], "shots": []}
     runtime = tmp_path / "runtime"
     runtime.mkdir()
     monkeypatch.setattr(fsuaehelper, "runtime_dir", lambda environ=None: runtime)
@@ -2252,7 +2253,6 @@ def wished(monkeypatch, tmp_path):
         window = FakeWindow()
         seen["windows"].append(window)
         seen["port"].append(fsuaegdb.amiga.FSUAE_PORT)
-        seen["flag"].append(os.environ.get(fsuaegdb.WISH_FLAG))
         return FakeApp(), window
 
     monkeypatch.setattr(fsuaegdb, "open_wish", open_wish)
@@ -2358,16 +2358,14 @@ def test_wish_closed_starts_without_a_window(wished, tmp_path):
     assert wished["windows"] == []
 
 
-def test_wish_sets_the_port_and_the_flag_for_the_window_and_puts_them_back(
+def test_wish_sets_the_port_for_the_window_and_puts_it_back(
         wished, tmp_path, monkeypatch):
-    monkeypatch.setenv(fsuaegdb.WISH_FLAG, "off")
     monkeypatch.setenv("XDG_CONFIG_HOME", "/somewhere")
     monkeypatch.setenv("APPDATA", "/roaming")
     before = fsuaegdb.amiga.FSUAE_PORT
     run_wish(tmp_path, [])
-    assert wished["port"] == [6531] and wished["flag"] == ["1"]
+    assert wished["port"] == [6531]
     assert fsuaegdb.amiga.FSUAE_PORT == before
-    assert os.environ[fsuaegdb.WISH_FLAG] == "off"
     assert os.environ["XDG_CONFIG_HOME"] == "/somewhere"
     assert os.environ["APPDATA"] == "/roaming"
     assert "XDG_DATA_HOME" not in os.environ
@@ -2434,7 +2432,6 @@ def test_wish_puts_the_port_back_when_the_window_will_not_open(
     with pytest.raises(RuntimeError):
         run_wish(tmp_path, [])
     assert fsuaegdb.amiga.FSUAE_PORT == before
-    assert fsuaegdb.WISH_FLAG not in os.environ
 
 
 def test_wish_writes_the_title_folder_where_preferences_keeps_it(
@@ -2721,9 +2718,11 @@ def test_a_real_window_opens_no_debugger_connection(tmp_path, monkeypatch):
         dialled.append(address)
         raise ConnectionRefusedError(address)
 
+    from wish import backends
+
+    monkeypatch.setattr(backends, "sys", types.SimpleNamespace(platform="linux"))
     monkeypatch.setattr(fsuaegdb.amiga, "FsuaeGdb", block)
     monkeypatch.setattr(socket, "create_connection", failing_socket)
-    monkeypatch.setenv(fsuaegdb.WISH_FLAG, "1")
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "rt"))
     monkeypatch.setattr(fsuaegdb.amiga, "FSUAE_PORT", 6598)
     # `private_settings` writes `os.environ` directly; setting each name first

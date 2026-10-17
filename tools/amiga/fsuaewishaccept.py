@@ -830,7 +830,6 @@ class FsuaeController(base.Controller):
         self.saved_port = amiga.FSUAE_PORT
         for name in fsuaegdb.WISH_UNSET:
             os.environ.pop(name, None)
-        os.environ[fsuaegdb.WISH_FLAG] = "1"
         os.environ[ACTIONS_FLAG] = "1"
         amiga.FSUAE_PORT = self.game.slot.port
         runtime = self.out / "runtime"

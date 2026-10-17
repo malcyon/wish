@@ -595,36 +595,26 @@ def test_a_title_with_no_c64_version_is_never_handed_c64_addresses(
     assert window.roster.levelling is False
 
 
-# -- the row, behind WISH_EXPERIMENTAL_AMIGA_FSUAE ----------------------------
+# -- the row, offered on Linux ------------------------------------------------
 
-def test_the_amiga_row_is_absent_by_default(monkeypatch):
-    """Unset is the shipped state: no entry in the list, not merely one that
-    cannot connect."""
-    monkeypatch.delenv(bk.AMIGA_FSUAE_ENV, raising=False)
-    assert bk.amiga_fsuae_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
-
-
-@pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
-def test_a_forgotten_setting_does_not_turn_the_amiga_row_on(monkeypatch, value):
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
-    assert bk.amiga_fsuae_enabled() is False
-    assert [b.name for b in bk.backends()] == ["VICE (C64)"]
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_the_amiga_row_appears_when_the_flag_is_set(monkeypatch, value):
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, value)
-    assert bk.amiga_fsuae_enabled() is True
+def test_the_amiga_row_is_offered_on_linux_with_no_variable_set(monkeypatch):
+    for name in os.environ:
+        if name.startswith("WISH_EXPERIMENTAL_"):
+            monkeypatch.delenv(name)
     row, = [b for b in bk.backends() if b.name != "VICE (C64)"]
     assert row.name == "FS-UAE (Amiga)"
     assert row.setup_hint == ("Run the game in grahambates' fork of FS-UAE, "
                               "not stock FS-UAE.")
 
 
-def test_the_amiga_row_probes_without_connecting_and_opens_the_cached_socket(
-        monkeypatch):
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+@pytest.mark.parametrize("platform", ["win32", "darwin"])
+def test_the_amiga_row_is_absent_off_linux(monkeypatch, platform):
+    monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform=platform))
+    assert "FS-UAE (Amiga)" not in [b.name for b in bk.backends()]
+
+
+def test_the_amiga_row_probes_without_connecting_and_opens_the_cached_socket():
     row = bk.backends()[-1]
     assert row.probe is fsuae.listening
     assert row.connect is fsuae.connect
@@ -632,8 +622,7 @@ def test_the_amiga_row_probes_without_connecting_and_opens_the_cached_socket(
     assert row.verified is True
 
 
-def test_the_two_flags_are_independent(monkeypatch):
-    monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+def test_the_ultimate_flag_adds_its_row_before_the_amiga_one(monkeypatch):
     monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
     assert [b.name for b in bk.backends()] == ["VICE (C64)", "FS-UAE (Amiga)"]
     monkeypatch.setenv(bk.ULTIMATE_ENV, "1")

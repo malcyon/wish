@@ -248,6 +248,7 @@ def test_the_ultimate_is_absent_by_default(monkeypatch):
     """`WISH_EXPERIMENTAL_C64_ULTIMATE` unset is the shipped state: the
     backend it hangs the game on is not in the list at all, not merely
     unable to connect."""
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="darwin"))
     monkeypatch.delenv(bk.ULTIMATE_ENV, raising=False)
     names = [b.name for b in bk.backends()]
     assert names == ["VICE (C64)"]
@@ -256,6 +257,7 @@ def test_the_ultimate_is_absent_by_default(monkeypatch):
 
 @pytest.mark.parametrize("value", ["0", "off", "false", "no", "", "junk"])
 def test_a_forgotten_setting_does_not_turn_the_ultimate_on(monkeypatch, value):
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="darwin"))
     monkeypatch.setenv(bk.ULTIMATE_ENV, value)
     assert bk.ultimate_enabled() is False
     assert [b.name for b in bk.backends()] == ["VICE (C64)"]
@@ -263,6 +265,7 @@ def test_a_forgotten_setting_does_not_turn_the_ultimate_on(monkeypatch, value):
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
 def test_the_ultimate_appears_when_the_flag_is_set(monkeypatch, value):
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="darwin"))
     monkeypatch.setenv(bk.ULTIMATE_ENV, value)
     assert bk.ultimate_enabled() is True
     names = [b.name for b in bk.backends()]

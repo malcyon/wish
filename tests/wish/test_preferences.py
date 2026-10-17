@@ -56,9 +56,9 @@ def app():
 def _no_disks_env(monkeypatch):
     """$POR_DISKS and $POR_ULTIMATE are the player's, not this file's."""
     for name in ("POR_DISKS", "POR_GAME_DISK", "POR_ULTIMATE",
-                 "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE", bk.AMIGA_FSUAE_ENV):
+                 "POR_ULTIMATE_PASSWORD", "WISH_ULTIMATE"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="darwin"))
     preferences._scan.cache_clear()
 
 
@@ -257,8 +257,8 @@ def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
 # shared folder above does. Pool of Radiance, Curse of the Azure Bonds and
 # Secret of the Silver Blades only -- the three titles `goldbox.c64_port.GAMES`
 # gives a real C64 `disk_glob` for. Pools of Darkness has no C64 version, so its
-# row is not among them; `tests/wish/test_poolsfolder.py` has it, behind
-# `WISH_EXPERIMENTAL_AMIGA_FSUAE`.
+# row is not among them; `tests/wish/test_poolsfolder.py` has it, where an
+# Amiga backend is offered.
 
 SILVER_BLADES = c64_port.SECRET_OF_THE_SILVER_BLADES
 
@@ -1331,14 +1331,14 @@ def test_there_is_a_tab_for_every_title_with_an_area_table(
     """One tab per title `goldbox.areas.TABLES` has rows for, labelled with the
     title's own name -- the string the Game disks tab uses for the same title --
     in `TABLES` order. A new table fails this until it has a page in
-    `preferences.ui`; a title with no C64 version has its page only while an
-    Amiga backend flag is on."""
+    `preferences.ui`; a title with no C64 version has its page only where an
+    Amiga backend is offered."""
     from automap import maps
     from goldbox import areas
 
     nowhere(tmp_path, monkeypatch)
     if amiga:
-        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+        monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
     dialog = PreferencesDialog(window(app))
     tabs = dialog.travel_tabs
     with_tables = [t for t in areas.TABLES if areas.areas_for_title(t)]
@@ -1441,7 +1441,7 @@ def test_the_tab_bar_fits_and_the_table_keeps_its_rows_at_larger_fonts(
 
     nowhere(tmp_path, monkeypatch)
     if amiga:
-        monkeypatch.setenv(bk.AMIGA_FSUAE_ENV, "1")
+        monkeypatch.setattr(bk, "sys", types.SimpleNamespace(platform="linux"))
     base = app.font()
     try:
         for extra in (0, 6, 10):
