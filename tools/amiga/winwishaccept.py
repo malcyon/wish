@@ -79,7 +79,8 @@ FIGHT_PINS: dict[str, dict[str, Any]] = {
               "load": "B", "place": {"area": 1, "x": 4, "y": 4, "facing": 0}},
     "ssb": {"source_sha256": "e4f231fe86f30bfc31e32fa7b1262157a67fdcb85663ed4935fc7d70e62ccb20",
             "load": "D", "place": {"area": 16, "x": 3, "y": 7, "facing": 2}},
-    "darkness": {"substitute_sha256": "ab19a53ebc43f87c5bbab53d7f1b41254e0207d51fa333be194b0cb12ab0fa67",
+    "darkness": {"loaded": {"world_map": True},
+                 "substitute_sha256": "ab19a53ebc43f87c5bbab53d7f1b41254e0207d51fa333be194b0cb12ab0fa67",
                  "substitute_letter": "D", "load": "B",
                  "place": {"area": 0, "x": 4, "y": 7, "facing": 1}},
 }
@@ -383,6 +384,14 @@ class FightPlan:
         return {self.map_state if state == "world" else state for state in self.named()}
 
 
+#: Pool's treasure bar cut short of TAKE and SHARE (an encounter that left nothing), which reads
+#: VIEW POOL EXIT; the exported rule is the long bar. Measured on the same box of the won
+#: fight's treasure screen in `~/.cache/wish/acceptance/WISH-359/fight/pool/watch1/fight/098-fight.png`.
+POOL_TREASURE_SHORT = {
+    "box": [54, 418, 460, 432],
+    "sha256": "772c3ec8bfe073937ddeaec782ebcf86f68a5dbfe4a822583de16176ed61721b"}
+
+
 def fight_plan(title: str) -> FightPlan:
     """The fight leg's plan for one title."""
     from tools.amiga import cursefight, ssbfight  # noqa: PLC0415
@@ -396,6 +405,7 @@ def fight_plan(title: str) -> FightPlan:
             "ssb", "wander", ssbfight.SSB_FIGHT, "world", dict(ssbfight.ALLOWED_KEYS),
             extra_guards={"treasure_bar": [ssbfight.TREASURE_SHORT]}))
     fields = ("control", "quickfight", "hit_points")
+    extra: dict[str, Any] = {}
     if title == "pool":
         # COMBAT on the encounter menu and RETURN on YOU ARE SURPRISED (`route_pool._SURPRISED`);
         # the end-of-fight guards are 827e2d5d's.
@@ -407,6 +417,7 @@ def fight_plan(title: str) -> FightPlan:
         walk = {"continue": "RET"}
         opens: tuple[str, ...] = ("encounter", "surprised", "combat_bar")
         entry, map_state = "grid_walk", "grid"
+        extra = {"treasure": [POOL_TREASURE_SHORT]}
     elif title == "darkness":
         # ATTACK on the encounter menu (af62c3ab); the won page also matches `continue` and
         # the treasure question `yes_no`, so both come first.
@@ -424,7 +435,8 @@ def fight_plan(title: str) -> FightPlan:
     allowed = {"world": frozenset({"NP8", "NP4"}),
                **{state: frozenset({key}) for state, key in answers.items()},
                **{state: frozenset({key}) for state, key in walk.items()}}
-    return _walk_keys_only(FightPlan(title, entry, rules, map_state, allowed, walk, opens))
+    return _walk_keys_only(FightPlan(title, entry, rules, map_state, allowed, walk, opens,
+                                     extra_guards=extra))
 
 
 #: Keys the map may receive in a fight leg: moves and turns, never camp's E.
@@ -471,7 +483,7 @@ def _fight_specimen(title: str, manifest: dict[str, Any], route: Any) -> dict[st
             problems.append("its fight stage has no street pair")
     if problems:
         raise AcceptanceStop(f"the {title} fight needs its pinned specimen: " + "; ".join(problems))
-    return {"place": dict(pin["place"]), "pin": pin}
+    return {"place": dict(pin["place"]), "pin": pin, "loaded": pin.get("loaded")}
 
 
 def _staged_gate(path: pathlib.Path, letter: str) -> int:
@@ -527,14 +539,17 @@ def _check_fight(route: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     return specimen
 
 
-def _fight_load(route: Any, place: dict[str, int] | None) -> Any:
-    """The route's load phase, its `loaded` checkpoint expecting the fight specimen's square."""
+def _fight_load(route: Any, place: dict[str, int] | None,
+                loaded: dict[str, Any] | None = None) -> Any:
+    """The route's load phase, its `loaded` checkpoint expecting the fight specimen's square, or
+    `loaded` when the pin gives one (Pools of Darkness' slot loads onto the overland)."""
     load = route.phases[0]
     if place is None:
         return load
     from tools.amiga import maproute  # noqa: PLC0415
 
-    expected = maproute.Expected(engine={k: place[k] for k in ("x", "y", "facing")})
+    expected = maproute.Expected(
+        engine=dict(loaded) if loaded else {k: place[k] for k in ("x", "y", "facing")})
     steps = tuple(dataclasses.replace(step, expected=expected) if step.checkpoint == "loaded"
                   else step for step in load.steps)
     return dataclasses.replace(load, steps=steps)
@@ -1115,6 +1130,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         info["leg"] = "fight"
         info["fight"] = {"entry": plan.entry, "survive": plan.survive,
                          "place": fight_specimen["place"], "pin": fight_specimen["pin"],
+                         "loaded": fight_specimen.get("loaded"),
                          "stage": fight_stage,
                          "walk": ({k: manifest["fight"].get(k)
                                    for k in ("place", "route", "square", "facing", "names")}
@@ -3135,7 +3151,9 @@ class Controller:
         control_row.update(
             status="failed" if problems else "awaiting image review",
             reason="; ".join(problems) or None, evidence=[frame.get("raw")],
-            observed={"set": chosen, "mode": mode_b, "schedule": schedule})
+            observed={"set": chosen, "mode": mode_b, "schedule": schedule,
+                      "party_after": after})
+        control_after = after
         self.game.restore(FIGHT_EDGE_SNAPSHOT, holder)
         self._await("continue_battle", limit=60)
         mode_r = self._read_mode()
@@ -3166,7 +3184,9 @@ class Controller:
         if moved:
             problems.append("a companion's QUICK byte changed on " + ", ".join(moved))
         suffix = f" +0x{row_.quickfight.offset:02X}"
-        other = [d for d in self._record_differences(edge_before, after) if not d.endswith(suffix)]
+        # The control run takes the same journey, so the experience and fight teardown the game
+        # itself writes are in its bytes too; only what Wish writes differs.
+        other = [d for d in self._record_differences(control_after, after) if not d.endswith(suffix)]
         if other:
             problems.append("bytes other than QUICK changed: " + ", ".join(other))
         wish_row.update(
@@ -3412,7 +3432,7 @@ class Controller:
             self._game_section()
             title = self._await_title()
             self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
-            self.run_phase(_fight_load(self.route, self.fight.get("place")))
+            self.run_phase(_fight_load(self.route, self.fight.get("place"), self.fight.get("loaded")))
             self.summary["mapping"]["load"] = row("awaiting image review")
             plan = fight_plan(self.route.title)
             memory = _fight_memory(self.args.holder, self.route)

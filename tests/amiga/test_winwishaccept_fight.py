@@ -386,6 +386,48 @@ def test_the_fight_load_expects_the_specimens_own_square():
     assert winwishaccept._fight_load(route, None) is load
 
 
+def test_the_darkness_pin_loads_onto_the_overland_where_the_square_is_zero(tmp_path):
+    from tools.amiga import maproute
+
+    pin = winwishaccept.FIGHT_PINS["darkness"]
+    manifest = {"state_a": pin["place"],
+                "substitute": {"sha256": pin["substitute_sha256"], "letter": "D"}}
+    route = SimpleNamespace(title="darkness", loaded_slot="B", phases=(maproute._load("darkness", "B"),))
+    specimen = winwishaccept._fight_specimen("darkness", manifest, route)
+    assert specimen["loaded"] == {"world_map": True}
+    phase = winwishaccept._fight_load(route, specimen["place"], specimen["loaded"])
+    loaded = next(step for step in phase.steps if step.checkpoint == "loaded")
+    assert dict(loaded.expected.engine) == {"world_map": True}
+    controller = _controller(tmp_path)
+    overland = {"fix": {"x": 0, "y": 0, "facing": None, "outdoors": False, "world_map": True}}
+    assert controller._compare_checkpoint("loaded", loaded.expected, overland)["status"] == (
+        "awaiting image review")
+    indoors = {"fix": {"x": 4, "y": 7, "facing": 1, "outdoors": False, "world_map": False}}
+    assert controller._compare_checkpoint("loaded", loaded.expected, indoors)["status"] == "failed"
+
+
+def test_only_darkness_pins_a_load_other_than_its_square():
+    assert [t for t, pin in winwishaccept.FIGHT_PINS.items() if "loaded" in pin] == ["darkness"]
+
+
+def test_pool_answers_the_short_treasure_bar_as_a_second_treasure_guard(tmp_path):
+    plan = winwishaccept.fight_plan("pool")
+    assert plan.extra_guards["treasure"] == [{
+        "box": [54, 418, 460, 432],
+        "sha256": "772c3ec8bfe073937ddeaec782ebcf86f68a5dbfe4a822583de16176ed61721b"}]
+    assert plan.rules.answers["treasure"] == "E"
+    exported = tmp_path / "guards.json"
+    base = pathlib.Path(winwishaccept.__file__).with_name("guards_pool.json")
+    exported.write_text(json.dumps(json.loads(base.read_text())["guards"]))
+    long_bar = json.loads(exported.read_text())["treasure"]
+    winwishaccept._merge_guards(exported, plan.extra_guards)
+    merged = json.loads(exported.read_text())["treasure"]
+    assert merged == [*(long_bar if isinstance(long_bar, list) else [long_bar]),
+                      *plan.extra_guards["treasure"]]
+    assert all(not winwishaccept.fight_plan(t).extra_guards.get("treasure")
+               for t in ("darkness",))
+
+
 def test_each_fight_plan_names_only_states_its_title_guards():
     for title, guards in (("pool", "guards_pool.json"), ("darkness", "guards_darkness.json")):
         plan = winwishaccept.fight_plan(title)
@@ -439,13 +481,14 @@ class World(ScriptGame):
 
     def __init__(self, members, *, wish_clears=True, game_clears=False, companions_cleared=False,
                  land_mode=6, land_screen="party_won", restore_mode=5, restore_shift=False,
-                 other_changes=False):
+                 other_changes=False, award=False):
         super().__init__(["world"])
         self.members = members
         self.options = dict(wish_clears=wish_clears, game_clears=game_clears,
                             companions_cleared=companions_cleared, land_mode=land_mode,
                             land_screen=land_screen, restore_mode=restore_mode,
-                            restore_shift=restore_shift, other_changes=other_changes)
+                            restore_shift=restore_shift, other_changes=other_changes,
+                            award=award)
         self.tab, self.mode, self.screen = "editor", 5, "continue_battle"
         self.pending = None
         self.events = []
@@ -463,6 +506,10 @@ class World(ScriptGame):
         opts = self.options
         self.mode, self.screen = opts["land_mode"], opts["land_screen"]
         wish = self.tab == "map"
+        if opts["award"]:
+            # What the game writes itself (experience, fight teardown) lands in both branches.
+            for member in self.members:
+                member[2] += 1
         for member in self.members:
             if member[1] == 1 and (
                     (wish and opts["wish_clears"] and (member[0] == 0 or opts["companions_cleared"]))
@@ -569,6 +616,8 @@ def test_watch_branches_require_mode_6_on_party_won(tmp_path, monkeypatch, fight
 
 @pytest.mark.parametrize("options,reason", [
     ({}, None),
+    ({"award": True}, None),
+    ({"award": True, "other_changes": True}, "bytes other than QUICK changed: M0 +0x02"),
     ({"wish_clears": False}, "QUICK still set on M0"),
     ({"companions_cleared": True}, "a companion's QUICK byte changed on M1"),
     ({"other_changes": True}, "bytes other than QUICK changed: M0 +0x02")])
