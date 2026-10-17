@@ -7,6 +7,7 @@ FS-UAE poll held, over synthetic maps.
 """
 from __future__ import annotations
 
+import pytest
 from gamedata import synthetic_geo
 from support.amigatarget import BASE, SSB, target
 
@@ -213,3 +214,45 @@ def test_every_facing_reads_the_wall_the_map_calls_that_facing():
         _set(guest, SSB, 7, 13, doubled, ONE,
              wall=(Geo(ONE).wall(7, 13, doubled // 2) + 1) & 0x0F)
         assert not t.placement_matches(t.fix()), doubled
+
+
+@pytest.mark.parametrize("x,y", [(0, 3), (5, 7)])
+def test_a_new_areas_square_is_not_recorded_on_the_old_map_when_the_block_lands_late(x, y):
+    """Mulmaster and the village: the overland return sees the old block, the
+    next poll sees the new one, and the area is named from neither."""
+    # The old map is open at the arrival square, so the area check that a solid
+    # square would trigger on its own does not run.
+    one = bytearray(ONE)
+    one[0x300 + 16 * y + x] = 0x55
+    one = bytes(one)
+    mapper, guest = _setup(POD, one, GEO21=one, GEO13=TWO)
+    _set(guest, POD, 1, 2, 2, one)
+    mapper.poll()
+    guest.memory[0xC30000 + POD.overland_flag] = b"\x01"
+    mapper.poll()
+    guest.memory[0xC30000 + POD.overland_flag] = b"\x00"
+    _set(guest, POD, x, y, 2, TWO)
+    mapper.poll()                        # fails against ONE
+    aerie = mapper.state.exploration
+    kept = set(aerie.seen)
+    guest.memory[BLOCK] = TWO
+    mapper.poll()
+    assert mapper.state.area == "GEO13"
+    assert (x, y) in mapper.state.exploration.seen
+    assert aerie.seen == kept and (x, y) not in kept
+
+
+def test_after_a_camp_reload_names_the_old_map_the_next_placed_square_is_believed_at_once():
+    mapper, guest = _setup(SSB, TWO, GEO20=TWO, GEO10=ONE)
+    _set(guest, SSB, 11, 2, 2, TWO)
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (11, 2)
+    _set(guest, SSB, 7, 13, 0, wall=0, attribute=0)
+    mapper.poll()
+    guest.memory[BLOCK] = ONE
+    mapper.poll()
+    _set(guest, SSB, 3, 3, 4, ONE)
+    mapper.poll()
+    assert mapper.state.area == "GEO10"
+    assert (mapper.state.x, mapper.state.y) == (3, 3)
+    assert not {(11, 2), (7, 13)} & mapper.state.exploration.seen

@@ -691,14 +691,26 @@ class Automapper:
             # and the step is not believed while the block is in doubt.
             self._hold_unsafe = True
             self._pending_polls = 0
-        if (fix.source == "memory"
-                and not getattr(self.target, "c64_memory", True)
-                and not self._placed(fix)):
-            # The engine's square is the last area's or an unstarted party's
-            # until its wall and attribute bytes agree with the map that is
-            # loaded; the next poll asks again. Ahead of the jump hold so the
-            # arrival allowance cannot let such a fix through.
-            return changed_area
+        if fix.source == "memory" and not getattr(self.target, "c64_memory", True):
+            if not self._placed(fix):
+                # The engine's square is the last area's or an unstarted
+                # party's until its wall and attribute bytes agree with the
+                # map that is loaded; the next poll asks again. Ahead of the
+                # jump hold so the arrival allowance cannot let such a fix
+                # through. A newly named area forgets the old position, so the
+                # first placed square is believed and not held as a jump from
+                # the previous area's coordinates.
+                if changed_area:
+                    self._started = False
+                return changed_area
+            if not changed_area and not self._started:
+                # Placement passed against the block now resident, but the
+                # area may have been named from the block before it: a first
+                # fix has no jump to trigger the area check, and recording
+                # into the old area's map puts this square on it.
+                changed_area = self._check_resident()
+                if self._contradicting is not None or self._verdict is not OURS:
+                    return changed_area
         if changed_area and fix.source == "status":
             engine = self._engine_square()
             if engine is not None and engine != (fix.x, fix.y, fix.facing):
