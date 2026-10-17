@@ -1208,6 +1208,8 @@ class Controller:
         self.restart_stop_error: str | None = None
         #: The floppy images and WinUAE settings `_up` started the game with, for a restart.
         self.launch: tuple[tuple[str, ...], tuple[str, ...]] | None = None
+        #: The pipe name Wish was pinned to when the game started; a restart must reuse it.
+        self.pipe: str | None = None
         self.down_done = False
         self.pipe_released = False
         self.wish_closed = False
@@ -3093,7 +3095,7 @@ class Controller:
             self.remotes[medium.key] = remote
             self.info["media"][medium.key]["guest"] = remote
 
-    def _up(self) -> None:
+    def _up(self, keep_lanes: bool = False) -> None:
         self._stage_media()
         values = {"sha": self.args.sha, "holder": self.args.holder,
                   "mute_proof": self.args.mute_proof,
@@ -3102,13 +3104,14 @@ class Controller:
                   "zip_sha256": self.info.get("release_artifact", {}).get("sha256"),
                   "uae_option": list(self.route.amiga_title.options),
                   "travel_targets": [], "map_only": self.discovery,
-                  "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": False}
+                  "wait_lanes": getattr(self.args, "wait_lanes", 0), "keep_lanes": keep_lanes}
         for index, key in enumerate(self.route.mounted):
             values[f"df{index}"] = self.remotes[key]
         drives = winwish.floppy_paths(argparse.Namespace(**values))
         self.launch = (tuple(drives), (*winwish.floppy_options(len(drives)),
                                        *winwish.uae_options(values["uae_option"])))
         receipt = winwish.up(self.guest, self.lane, argparse.Namespace(**values))
+        self.pipe = _pipe_name(receipt.get("winuae") if isinstance(receipt, dict) else None)
         if values["wait_lanes"]:
             # Waiting for a free lane is not route time.
             self._set_deadlines()
@@ -3529,7 +3532,9 @@ class Controller:
 
     def run_title(self) -> dict[str, Any]:
         try:
-            self._up()
+            # Every lane stays claimed so no other run's emulator can take this one's pipe name
+            # while the game is stopped.
+            self._up(keep_lanes=True)
             self._game_section()
             title = self._await_title()
             self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
@@ -3575,9 +3580,13 @@ class Controller:
                 return self.summary
             # The same lane and the same Wish window: only the game comes back.
             drives, options = self.launch
-            self.lane.start(self.args.holder, *drives,
-                            timeout=self.left(winwish.START_SECONDS + 30), options=options)
+            started = self.lane.start(self.args.holder, *drives,
+                                      timeout=self.left(winwish.START_SECONDS + 30), options=options)
             self.restarted = True
+            reopened = _pipe_name(started)
+            if self.pipe is not None and reopened != self.pipe:
+                raise AcceptanceStop(
+                    f"the restarted game opened pipe {reopened}, not Wish's {self.pipe}")
             self._reload_party()
             self.sleep(self.left(ROSTER_SECONDS))
             back = self.out / "reconnected.png"
@@ -3604,6 +3613,12 @@ class Controller:
             self._cleanup()
             (self.out / "summary.json").write_text(json.dumps(self.summary, indent=2, default=str) + "\n")
         return self.summary
+
+
+def _pipe_name(receipt: object) -> str | None:
+    """The `pipe=` value of a lane start receipt, or None when it has none."""
+    found = re.search(r"\bpipe=(\S+)", receipt) if isinstance(receipt, str) else None
+    return found.group(1) if found else None
 
 
 def _parser() -> argparse.ArgumentParser:
