@@ -509,11 +509,17 @@ class _Covering:
                    and want[missing[0]][0] + want[missing[0]][1]
                    <= min(lo + COVER_LIMIT, end)):
                 group.append(missing.pop(0))
-            if end is None or want[group[0]][0] + want[group[0]][1] > end:
+            reach = None if end is None else min(lo + COVER_LIMIT, end)
+            if reach is None or want[group[0]][0] + want[group[0]][1] > reach:
                 direct += group
                 continue
-            span = min(lo + COVER_LIMIT, end) - lo
-            data = self.read([(lo, span)])[0]
+            span = reach - lo
+            # One unreadable byte fails a whole read, so a wide read that
+            # fails is given up for the nodes' own reads, which may not.
+            try:
+                data = self.read([(lo, span)])[0]
+            except amiga.NotConnected:
+                data = b""
             if len(data) != span:
                 direct += group
                 continue

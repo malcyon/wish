@@ -2788,10 +2788,10 @@ class AmigaTarget:
     def covering_reads(self) -> bool:
         """Whether a block costs a packet of its own, so a walk should read wide.
 
-        True on a transport that answers memory in its reply; the console route
-        batches blocks into one round trip already and dumps each to a file.
+        True only over GDB-remote to FS-UAE. The WinUAE routes dump each block to
+        a file, and what a 64 KB dump costs there has not been measured.
         """
-        return getattr(self.debugger, "read_memory", None) is not None
+        return isinstance(self.debugger, FsuaeGdb)
 
     def read_blocks(self, blocks) -> list[bytes]:
         """Several ranges, in one round trip. This is the design, not a tune.

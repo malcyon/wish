@@ -475,6 +475,13 @@ def test_a_target_over_the_gdb_transport_asks_the_party_walk_to_read_wide():
     assert tgt.covering_reads is True
 
 
+def test_a_target_over_the_winuae_local_pipe_keeps_per_node_reads():
+    from automap import winuae
+
+    pipe = object.__new__(winuae.WinuaeLocalPipe)
+    assert amiga.AmigaTarget(pipe, BLADES).covering_reads is False
+
+
 def test_read_blocks_asks_for_the_memory_and_names_no_file():
     """The difference in form: GDB-remote answers memory in the reply.
 

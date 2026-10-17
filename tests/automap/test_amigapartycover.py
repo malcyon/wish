@@ -180,3 +180,50 @@ def test_a_source_that_does_not_ask_for_wide_reads_is_read_a_level_at_a_time():
     assert [len(m.item_nodes) for m in party] == ITEM_COUNTS
     assert len(target.blocks) > 4
     assert not any(n > 0x1000 for _, n in target.blocks)
+
+
+def test_a_wide_read_that_raises_is_replaced_by_node_reads():
+    class Raising(Counting):
+        def read(self, addr, length):
+            if length > 0x1000:
+                raise amiga.GuestError("E01")
+            return super().read(addr, length)
+
+    target = Raising()
+    lay(target)
+    party = amigaparty.read_party(target)
+    other = Counting()
+    other.ram = target.ram
+    assert tuple(m for m in per_node(other) if m.in_party) == party
+    assert [len(m.item_nodes) for m in party] == ITEM_COUNTS
+
+
+def test_a_lost_connection_still_ends_the_party_read():
+    class Gone(Counting):
+        def read(self, addr, length):
+            raise amiga.NotConnected("gone")
+
+    assert amigaparty.read_party(Gone()) is None
+
+
+def test_a_node_longer_than_the_cap_is_read_on_its_own():
+    reader = amigaparty._Covering(lambda want: [bytes(n) for _, n in want],
+                                  amiga.MEMORY)
+    out = reader([(SLOW + 0x100, amigaparty.COVER_LIMIT + 8)])
+    assert [len(raw) for raw in out] == [amigaparty.COVER_LIMIT + 8]
+
+
+def test_nodes_differing_between_levels_are_each_served_by_a_window_or_a_read():
+    # Members with unequal list lengths drop out of later levels, and member 5's
+    # first item lies below the window the others opened.
+    target = Counting()
+    lay(target, items=[5, 1, 0, 3, 2, 4], effects=[0, 2, 1, 0, 3, 1],
+        item_at=[ITEMS + 0x300, ITEMS + 0x600, 0, ITEMS + 0x900, ITEMS,
+                 ITEMS + 0xC00])
+    party = amigaparty.read_party(target)
+    other = Counting()
+    other.ram = target.ram
+    assert tuple(m for m in per_node(other) if m.in_party) == party
+    assert [len(m.item_nodes) for m in party] == [5, 1, 0, 3, 2, 4]
+    assert [len(m.effect_nodes) for m in party] == [0, 2, 1, 0, 3, 1]
+    assert len(target.blocks) < len(other.blocks)
