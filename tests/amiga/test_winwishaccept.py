@@ -5709,3 +5709,24 @@ def test_a_run_without_the_control_option_has_no_control_row(tmp_path, monkeypat
     controller._verify_quickfight_control()
 
     assert "quickfight_control" not in controller.summary
+
+
+def _pod_party(row, prefix_text, hidden=0x07):
+    node = bytearray(row.items.size)
+    node[:len(prefix_text)] = prefix_text
+    node[0x36] = hidden
+    return [{"slot": 0, "name": "A", "raw": bytes(row.record_size).hex(),
+             "items": [[100, node.hex()]]}]
+
+
+def test_pools_of_darkness_reload_ignores_item_bytes_the_save_does_not_write():
+    from automap import amigaparty
+
+    row = amigaparty.ROWS["pools-of-darkness"]
+    named = _pod_party(row, b"Plate Mail +3 ")
+    bare = _pod_party(row, b"")
+    assert (winwishaccept.Controller._without_addresses(named, row)
+            == winwishaccept.Controller._without_addresses(bare, row))
+    changed = _pod_party(row, b"", hidden=0x05)
+    assert (winwishaccept.Controller._without_addresses(bare, row)
+            != winwishaccept.Controller._without_addresses(changed, row))

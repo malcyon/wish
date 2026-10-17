@@ -85,6 +85,8 @@ FIGHT_PINS: dict[str, dict[str, Any]] = {
 }
 #: The longest `--wait-lanes`, in seconds: the lane pool's own claim wait.
 MAX_WAIT_LANES = 1800
+#: Item-node bytes a title's save does not write, keyed by `PartyRow.title`; no load restores them.
+UNSAVED_ITEM_PREFIX = {"Pools of Darkness": 0x2E}
 #: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
 #: L, Y, slot, B, E and N; Pools of Darkness' L, Y, P, slot and B.
 PERSIST_RELOAD_KEYS = 6
@@ -2527,6 +2529,8 @@ class Controller:
             for _, value in record["items"]:
                 node = bytearray.fromhex(value)
                 node[row_.items.link:row_.items.link + 4] = b"\x00" * 4
+                unsaved = UNSAVED_ITEM_PREFIX.get(row_.title, 0)
+                node[:unsaved] = bytes(min(unsaved, len(node)))
                 items.append(node.hex())
             normalized.append({"slot": record["slot"], "name": record["name"],
                                "raw": raw.hex(), "items": items})
