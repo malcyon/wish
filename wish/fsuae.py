@@ -351,6 +351,7 @@ def connect(port: int | None = None, opener=None,
 #: out of the hint.
 AMIGA_FSUAE = Backend(
     name="FS-UAE (Amiga)",
+    short_name="FS-UAE",
     probe=listening,
     connect=connect,
     setup_hint="Run the game in grahambates' fork of FS-UAE, not stock FS-UAE.",

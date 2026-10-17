@@ -2514,3 +2514,41 @@ def test_leg_writes_follow_the_arrival_writes():
     last_arrival = max(names.index(at) for dest, at, _ in addr.arrival_writes
                        if dest == 0x33)
     assert last_arrival < names.index(0x4C88) < names.index(addr.disk)
+
+
+# --- a failed write names the emulator -----------------------------------------
+
+@pytest.mark.parametrize("backend_attr, short, error_attr", [
+    ("wish.winuae.AMIGA_WINUAE", "WinUAE", "PipeError"),
+    ("wish.fsuae.AMIGA_FSUAE", "FS-UAE", "FsuaeError"),
+    ("wish.backends.VICE", "VICE", "NotConnected"),
+    ("wish.ultimate.ULTIMATE", "Ultimate", "NotConnected"),
+])
+def test_a_failed_write_says_which_emulator_it_could_not_write_to(
+        backend_attr, short, error_attr):
+    import importlib
+
+    from automap import amiga
+    from automap.actionbar import ActionBar
+    from automap.target import NotConnected
+    from wish.session import Session
+
+    module, attr = backend_attr.rsplit(".", 1)
+    backend = getattr(importlib.import_module(module), attr)
+    error = getattr(amiga, error_attr, None) or NotConnected
+    session = Session(find=lambda pref=None: dataclasses.replace(
+        backend, connect=lambda: MemoryTarget()))
+    assert session.attach()
+
+    said = []
+    bar = ActionBar(make_root(),
+                    say=lambda text, detail="", alarm=False: said.append((text, alarm)))
+    bar.attach(session.target)
+    heal = next(a for a in bar.actions if a.name == "heal")
+
+    def broken(target, **kwargs):
+        raise error("the write failed")
+    heal.apply = broken
+    with pytest.raises(NotConnected):       # still reaches the detach path
+        bar.run(heal)
+    assert said == [(f"Error: Failed to write to {short}.", True)]

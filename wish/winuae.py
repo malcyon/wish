@@ -104,6 +104,7 @@ def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
 #: (`#37 (Automap the Amiga version, not just the C64)`).
 AMIGA_WINUAE = Backend(
     name="WinUAE (Amiga)",
+    short_name="WinUAE",
     probe=present,
     connect=connect,
     setup_hint="Run the game in WinUAE on this computer.",

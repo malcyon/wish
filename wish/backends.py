@@ -84,6 +84,8 @@ class Backend:
     # resume; the interval is therefore a speed dial and not just a cost.
     disturbs: bool = True
     verified: bool = True
+    #: The emulator's own name, for the one message that names it.
+    short_name: str = ""
 
     def present(self) -> bool:
         """`probe()`, with anything it throws treated as "not there"."""
@@ -99,6 +101,7 @@ class Backend:
 
 VICE = Backend(
     name="VICE (C64)",
+    short_name="VICE",
     probe=monitor_listening,
     connect=ViceTarget,
     setup_hint="Start VICE with its binary monitor turned on.",

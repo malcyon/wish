@@ -240,6 +240,7 @@ def present(timeout: float = 0.5) -> bool:
 
 ULTIMATE = Backend(
     name="C64 Ultimate",
+    short_name="Ultimate",
     probe=present,
     connect=UltimateTarget,
     setup_hint=("Enter the device's address in Ultimate host below. "

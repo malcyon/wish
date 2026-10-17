@@ -108,6 +108,11 @@ class Session(QObject):
             return False
         try:
             self.target = backend.connect()
+            # The action bar names the emulator in its write-failure line.
+            try:
+                self.target.emulator_name = getattr(backend, "short_name", "")
+            except AttributeError:
+                pass
         except MonitorBusy as exc:
             self.busy = True
             debuglog.note("%s: monitor busy (%s)", backend.name, exc)

@@ -345,7 +345,15 @@ class ActionBar(QObject):
         """Ask if the action wants asking, apply it, and say what happened."""
         if action.confirm and not self.ask(action.confirm):
             return None
-        outcome = action.apply(self.target, disk=self.disk)
+        try:
+            outcome = action.apply(self.target, disk=self.disk)
+        except NotConnected:
+            # The error is a lost connection, which the poll detaches on; it
+            # goes on up so that handling is unchanged.
+            name = getattr(self.target, "emulator_name", "") or "the emulator"
+            self._report(action.label.lower(), engine.Outcome(
+                False, f"Error: Failed to write to {name}."))
+            raise
         self._report(action.label.lower(), outcome)
         return outcome
 
