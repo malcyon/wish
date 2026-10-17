@@ -1080,6 +1080,7 @@ def test_a_backend_saved_under_its_old_name_is_still_the_chosen_one(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     monkeypatch.setenv(backends.ULTIMATE_ENV, "1")
+    monkeypatch.setattr(backends.sys, "platform", "linux")
     settings = Settings()
     settings.backend = old
     settings.save()
