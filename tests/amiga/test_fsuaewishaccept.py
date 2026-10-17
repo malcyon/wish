@@ -639,3 +639,237 @@ def test_an_interrupt_note_reaches_the_controller_log():
     log = _controller_log(events)
     fsuaewishaccept._log_note(log, "interrupt", {"event": "crash", "error": "stop"})
     assert events == [{"event": "interrupt", "note_event": "crash", "error": "stop"}]
+
+
+def _hold_route(seconds=120.0, **step_fields):
+    from tools.amiga import maproute
+
+    hold = maproute.Phase("stationary", "world", (
+        maproute.Step("key", "question", key="E"),
+        maproute.Step("hold", "question", seconds=seconds, **step_fields),
+        maproute.Step("key", "world", key="S")))
+    route = _route(title="darkness")
+    route.phases = tuple(hold if phase.name == "stationary" else phase for phase in route.phases)
+    return route
+
+
+def test_a_hold_step_waits_on_its_screen_with_no_key_and_wish_polling(tmp_path, monkeypatch):
+    controller, game, wish, _ = _controller(tmp_path, monkeypatch, route=_hold_route())
+    pumped = []
+    pump = wish.pump
+    wish.pump = lambda seconds: (pumped.append((round(wish.clock.now, 2), seconds)), pump(seconds))
+    pressed_at = []
+    press = game.press
+    game.press = lambda holder, key, timeout: (pressed_at.append((key, wish.clock.now)),
+                                               press(holder, key, timeout))
+    result = controller.run_title()
+
+    assert result["failure"] is None, result["failure"]
+    keys = dict((key, at) for key, at in pressed_at if key in ("E", "S"))
+    assert keys["S"] - keys["E"] >= 120
+    assert [entry["held"] >= 120 for entry in result["holds"]] == [True]
+    assert result["holds"][0]["state"] == "question"
+    assert max(seconds for _at, seconds in pumped) >= 119
+    assert result["completed_sequence"].count("stationary") == 1
+    events = [json.loads(line)["event"] for line in (tmp_path / "events.jsonl").open()]
+    assert events.index("hold") < events.index("hold_end")
+
+
+def test_a_hold_cut_short_by_the_route_time_stops_the_run(tmp_path, monkeypatch):
+    controller, *_ = _controller(tmp_path, monkeypatch, route=_hold_route(seconds=3000))
+    result = controller.run_title()
+    assert "hold on question ended after" in result["failure"]
+
+
+@pytest.mark.parametrize("step,message", [
+    ({"seconds": None}, "positive number of seconds"),
+    ({"seconds": 5, "checkpoint": "held"}, "no checkpoint"),
+    ({"seconds": 5, "state": "world"}, "follows a step that reached question"),
+])
+def test_a_hold_step_without_a_key_must_wait_on_the_screen_before_it(step, message):
+    from tools.amiga import maproute
+
+    fields = {"seconds": None, "checkpoint": None, "state": "question", **step}
+    route = _route()
+    route.phases = (maproute.Phase("outdoor", "world", (
+        maproute.Step("key", "question", key="E"),
+        maproute.Step("hold", fields["state"], seconds=fields["seconds"],
+                      checkpoint=fields["checkpoint"]))),)
+    with pytest.raises(winwishaccept.AcceptanceStop, match=message):
+        fsuaewishaccept.check_holds(route)
+
+
+def test_a_hold_with_a_key_presses_it_then_waits_with_no_grab(tmp_path, monkeypatch):
+    from tools.amiga import maproute
+
+    route = _hold_route()
+    route.phases = tuple(maproute.Phase("stationary", "world", (
+        maproute.Step("key", "question", key="E"),
+        maproute.Step("hold", "world", key="S", seconds=60.0))) if phase.name == "stationary"
+        else phase for phase in route.phases)
+    fsuaewishaccept.check_holds(route)
+    controller, game, wish, _ = _controller(tmp_path, monkeypatch, route=route)
+    grabs, pressed = [], []
+    grab, press = game.grab, game.press
+    game.grab = lambda state, raw, crop, timeout: (grabs.append(wish.clock.now),
+                                                   grab(state, raw, crop, timeout))[1]
+    game.press = lambda holder, key, timeout: (pressed.append((key, wish.clock.now)),
+                                               press(holder, key, timeout))
+    result = controller.run_title()
+
+    assert result["failure"] is None, result["failure"]
+    at = dict(pressed)["S"]
+    later = [when for when in grabs if when > at]
+    assert later and min(later) - at >= 60
+    assert result["holds"][0]["held"] >= 60
+
+
+def test_the_arrival_hold_leg_passes_the_hold_check(tmp_path):
+    from tools.amiga import maproute
+
+    manifest = {"title": "curse", "loaded_letter": "B",
+                "disks": {key: {"path": str(tmp_path / f"{key}.adf"), "sha256": "a" * 64}
+                          for key in ("save", "diskb")},
+                "substitute": {"letter": "C", "sha256": maproute._CURSE_YULASH_SHA256},
+                "state_a": {"area": 16, "x": 2, "y": 6, "facing": 1}}
+    fsuaewishaccept.check_holds(maproute.route_for("curse", manifest, arrival_hold=120))
+
+
+def test_preflight_passes_the_measurement_legs_to_the_route_and_only_for_curse(tmp_path):
+    seen = []
+
+    def route_for(title, manifest, **legs):
+        seen.append(legs)
+        raise winwishaccept.RouteError("stop here")
+
+    (tmp_path / "prepare.json").write_text(json.dumps({"title": "curse"}))
+    game = FakeGame(tmp_path)
+    args = _args(tmp_path, title="curse", arrival_hold=120.0, search_area=False)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="stop here"):
+        fsuaewishaccept.preflight(args, game=game, route_for=route_for)
+    assert seen == [{"arrival_hold": 120.0}]
+    with pytest.raises(winwishaccept.AcceptanceStop, match="Curse legs"):
+        fsuaewishaccept.preflight(_args(tmp_path, title="ssb", arrival_hold=120.0),
+                                  game=game, route_for=route_for)
+
+
+def _curse_save_manifest(tmp_path):
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank("Save")
+    disk.make_dir("/SAVE")
+    disk.write_file(amiga_savegame.slot_path(amiga_savegame.CURSE, "B"), bytes(6000))
+    save = tmp_path / "source" / "save.adf"
+    save.parent.mkdir()
+    disk.save(save)
+    manifest = tmp_path / "source" / "prepare.json"
+    manifest.write_text(json.dumps({
+        "title": "curse", "loaded_letter": "B",
+        "disks": {"save": {"path": str(save), "sha256": winwishaccept.digest(save)},
+                  "diskb": {"path": "/b.adf", "sha256": "b" * 64}}}))
+    return manifest, save
+
+
+def test_search_area_staging_sets_the_flag_on_a_copy_and_names_the_copy(tmp_path):
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+    from tools.amiga import maproute
+
+    manifest, save = _curse_save_manifest(tmp_path)
+    before = winwishaccept.digest(save)
+    staged = fsuaewishaccept.stage_search_area(manifest, tmp_path / "run" / "staged-search")
+
+    written = json.loads(staged.read_text())
+    copy = pathlib.Path(written["disks"]["save"]["path"])
+    assert copy.parent == tmp_path / "run" / "staged-search"
+    assert written["disks"]["save"]["sha256"] == winwishaccept.digest(copy) != before
+    assert winwishaccept.digest(save) == before
+    data = AmigaDisk.open(copy).read_file(amiga_savegame.slot_path(amiga_savegame.CURSE, "B"))
+    assert amiga_savegame.word(data, 0x4A5B, amiga_savegame.CURSE) == 1
+    assert {k: written["staged_word"][k] for k in ("word", "before", "after")} == {
+        "word": "$4C5B", "before": 0, "after": 1}
+    media = (maproute.Media("save", copy, written["disks"]["save"]["sha256"]),)
+    assert maproute.search_flag(media, "B") == 1
+    with pytest.raises(winwishaccept.AcceptanceStop, match="already exists"):
+        fsuaewishaccept.stage_search_area(manifest, tmp_path / "run" / "staged-search")
+
+
+class _PollTarget:
+    def __init__(self, geo):
+        self.geo_bytes = geo
+
+    def resident_geo_address(self):
+        return 0x20000
+
+    def read(self, address, length):
+        assert (address, length) == (0x20000, 0x400)
+        return self.geo_bytes
+
+
+def test_the_poll_log_records_each_polls_own_fix_and_the_resident_map(tmp_path, monkeypatch):
+    from automap import state
+    from goldbox.geo import Geo
+
+    block = bytes(range(256)) * 4
+    fix = SimpleNamespace(x=0, y=8, facing=3, source="memory", world_map=False,
+                          world_node=None, outdoors=False)
+    reads = []
+
+    def read_fix(target, game=None):
+        reads.append(target)
+        return fix
+
+    def poll(mapper):
+        state.read_fix(mapper.target, None)
+        return True
+
+    monkeypatch.setattr(state, "read_fix", read_fix)
+    monkeypatch.setattr(state.Automapper, "poll", poll)
+    mapper = SimpleNamespace(
+        target=_PollTarget(block), _maps={"GEO10": Geo(block), "GEO11": Geo(bytes(1024))},
+        state=SimpleNamespace(x=2, y=6, facing=1, area="GEO10", world_map=False, outdoors=False),
+        _pending=(0, 8), _verdict="ours")
+    log = fsuaewishaccept.PollLog(tmp_path / "polls.jsonl", lambda: 12.5)
+    log.install()
+    try:
+        assert state.Automapper.poll(mapper) is True
+    finally:
+        log.remove()
+
+    assert state.Automapper.poll is poll and state.read_fix is read_fix
+    row = json.loads((tmp_path / "polls.jsonl").read_text())
+    assert reads == [mapper.target]
+    assert row["poll"] == 1 and row["elapsed"] == 12.5 and row["changed"] is True
+    assert row["fix"] == {"x": 0, "y": 8, "facing": 3, "source": "memory", "world_map": False,
+                          "world_node": None, "outdoors": False}
+    assert (row["geo_address"], row["geo_name"]) == ("0x20000", "GEO10")
+    assert row["believed"]["x"] == 2 and row["pending"] == [0, 8] and row["verdict"] == "ours"
+
+
+def test_a_poll_log_row_keeps_the_error_and_the_poll_goes_on(tmp_path, monkeypatch):
+    from automap import state
+
+    monkeypatch.setattr(state.Automapper, "poll", lambda mapper: False)
+    broken = SimpleNamespace(resident_geo_address=lambda: (_ for _ in ()).throw(OSError("gone")))
+    log = fsuaewishaccept.PollLog(tmp_path / "polls.jsonl", lambda: 1.0)
+    log.install()
+    try:
+        assert state.Automapper.poll(SimpleNamespace(target=broken)) is False
+    finally:
+        log.remove()
+    row = json.loads((tmp_path / "polls.jsonl").read_text())
+    assert row["error"] == "OSError: gone" and row["fix"] is None
+
+
+def test_the_measurement_options_turn_the_poll_log_on(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(fsuaewishaccept, "preflight",
+                        lambda args, **kwargs: seen.append(args) or (_ for _ in ()).throw(
+                            winwishaccept.AcceptanceStop("stop")))
+    common = ["--title", "curse", "--manifest", str(tmp_path / "m.json"), "--holder", "h",
+              "--out", str(tmp_path)]
+    for extra in (["--arrival-hold", "120"], ["--search-area"], ["--poll-log"], []):
+        assert fsuaewishaccept.main(common + extra) == 2
+    assert [args.poll_log for args in seen] == [True, True, True, False]
+    assert seen[0].arrival_hold == 120.0 and seen[1].search_area is True

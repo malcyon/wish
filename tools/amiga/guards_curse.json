@@ -236,6 +236,17 @@
       "example": "amiga-grab-crops/wish1-cccap1__29-t_NP8_3.png",
       "sha256": "987eec3b3b8bb5e999ef33998b6710625d5458f74e154dcc6da9bb272335e60d"
     },
+    "dalelands_search": {
+      "also": [],
+      "box": [
+        72,
+        404,
+        686,
+        426
+      ],
+      "example": "amiga-grab-crops/wish415-legB__089-dalelands_search.png",
+      "sha256": "834e8d67099d94970c6d48166b2ce41630283559ddb55ada480a19c0197d7319"
+    },
     "exit_game": {
       "also": [],
       "box": [
@@ -625,6 +636,33 @@
     ],
     "amiga-grab-crops/wish1-cccap1__41-stop3.png": [
       "reboot"
+    ],
+    "amiga-grab-crops/wish415-legB__088-dalelands_unbarred.png": [
+      "dalelands_unbarred"
+    ],
+    "amiga-grab-crops/wish415-legB__089-dalelands_search.png": [
+      "dalelands_search"
+    ],
+    "amiga-grab-crops/wish415-legB__090-continue.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish415-legB__091-continue.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish415-legB__092-continue.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish415-legB__093-continue.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish415-legB__094-continue.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish415-legB__095-continue.png": [
+      "continue"
+    ],
+    "amiga-grab-crops/wish415-legB__096-world.png": [
+      "world"
     ]
   }
 }

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
+import hashlib
 import inspect
 import json
 import os
@@ -48,6 +50,10 @@ HELPER_END_WAIT = 10.0
 #: Route step kinds and the guest call each needs; a guest's `supports(kind)`, where it has one,
 #: says whether that call is built rather than a placeholder that raises.
 STEP_CALLS = {"insert": "insert", "snapshot": "snapshot", "restore": "restore", "reset": "reset"}
+#: The per-poll log `PollLog` writes in the run folder.
+POLL_LOG = "polls.jsonl"
+#: Seconds a hold may end early, from the clock's own granularity, before it stops the run.
+HOLD_SLACK = 0.5
 
 
 def _git(*argv: str) -> str:
@@ -85,6 +91,63 @@ def guest_gaps(game: Any, route: Any) -> list[str]:
         elif call and supports is not None and not supports(kind):
             gaps.append(f"the route has a {kind} step and the FS-UAE guest's {call} is not built yet")
     return gaps
+
+
+def check_holds(route: Any) -> None:
+    """A hold step waits some seconds with no screen grab and no checkpoint. Without a key it
+    waits on the screen the step before it reached. With one, it presses the key on that
+    screen first, and `state` is the screen the wait after the hold must find."""
+    for phase in route.phases:
+        before = phase.initial_state
+        for step in phase.steps:
+            if step.kind == "hold":
+                seconds = getattr(step, "seconds", None)
+                if not isinstance(seconds, (int, float)) or not seconds > 0:
+                    raise AcceptanceStop(f"{phase.name}: a hold step needs a positive number of seconds")
+                if step.checkpoint:
+                    raise AcceptanceStop(f"{phase.name}: a hold step has no checkpoint")
+                if step.key is None and step.state != before:
+                    raise AcceptanceStop(f"{phase.name}: a hold on {step.state} follows a step "
+                                         f"that reached {before}")
+            before = step.state
+
+
+def stage_search_area(manifest_path: pathlib.Path, out: pathlib.Path) -> pathlib.Path:
+    """Copy the prepared Curse save disk into `out` with `maproute.SEARCH_FLAG` set to 1 in the
+    loaded slot, and write `out/prepare.json` naming the copy. The prepared disk is not written.
+
+    Returns the new manifest's path; the manifest records the word's file offset, before and after."""
+    from goldbox import amiga_adf, amiga_savegame  # noqa: PLC0415
+    from tools.amiga import cursefight, maproute  # noqa: PLC0415
+
+    manifest = json.loads(pathlib.Path(manifest_path).read_text())
+    if manifest.get("title") != "curse":
+        raise AcceptanceStop("SEARCH AREA staging needs a Curse manifest")
+    source = manifest.get("disks", {}).get("save")
+    if not isinstance(source, dict) or digest(pathlib.Path(source["path"])) != source["sha256"]:
+        raise AcceptanceStop("the prepared save disk is missing or changed")
+    slot = maproute._slot_from(manifest)
+    if out.exists():
+        raise AcceptanceStop(f"the staging folder already exists: {out}")
+    out.mkdir(parents=True)
+    local = out / "save.adf"
+    shutil.copyfile(source["path"], local)
+    path = amiga_savegame.slot_path(amiga_savegame.CURSE, slot)
+    data = amiga_adf.AmigaDisk.open(local).read_file(path)
+    pool_address = maproute.SEARCH_FLAG - 0x200
+    at = amiga_savegame.CURSE.vm_offset(pool_address)
+    before = amiga_savegame.word(data, pool_address, amiga_savegame.CURSE)
+    staged = data[:at] + (1).to_bytes(2, "big") + data[at + 2:]
+    disk = cursefight.stage_slot(local, slot, staged)
+    staged_manifest = {
+        **manifest, "disks": {**manifest["disks"], "save": disk},
+        "prepared_from": {"path": str(pathlib.Path(manifest_path).resolve()),
+                          "save_sha256": source["sha256"]},
+        "staged_word": {"word": f"${maproute.SEARCH_FLAG:04X}", "slot": slot, "file": path,
+                        "file_offset": at, "before": before, "after": 1}}
+    written = out / "prepare.json"
+    written.write_text(json.dumps(staged_manifest, indent=2, sort_keys=True) + "\n")
+    return written
 
 
 def _export_guards(args: argparse.Namespace, route: Any) -> tuple[Any, dict[str, Any]]:
@@ -134,9 +197,20 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
                              f"and at most {base.MAX_SECONDS}")
     if not pathlib.Path(args.manifest).is_file():
         raise AcceptanceStop("the prepared manifest is missing")
+    hold = getattr(args, "arrival_hold", None)
+    search = bool(getattr(args, "search_area", False))
+    if (hold is not None or search) and args.title != "curse":
+        raise AcceptanceStop("--arrival-hold and --search-area are Curse legs")
+    if search:
+        args.manifest = stage_search_area(args.manifest, pathlib.Path(args.out) / "staged-search")
     manifest = json.loads(pathlib.Path(args.manifest).read_text())
-    route = route_for(args.title, manifest)
+    legs = {key: value for key, value in (("arrival_hold", hold), ("search_area", search)) if value}
+    try:
+        route = route_for(args.title, manifest, **legs)
+    except RouteError as exc:
+        raise AcceptanceStop(str(exc)) from exc
     base._phase_map(route)
+    check_holds(route)
     gaps = guest_gaps(game, route)
     if gaps:
         raise AcceptanceStop("; ".join(gaps))
@@ -175,6 +249,85 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
             "media": {key: {"source": str(item.path), "source_sha256": item.sha256}
                       for key, item in media.items()}}
     return route, guards, info
+
+
+class PollLog:
+    """Every Automapper poll in this process, one JSON row each in `path`.
+
+    While installed, `automap.state.Automapper.poll` and the `read_fix` it calls are wrapped,
+    so the row's fix is the one that poll read. After the poll the row adds the resident GEO
+    pointer (`resident_geo_address`), the map `ResidentGeo.identify` names there, a sha1
+    prefix of that block, and what Wish then believes. Its own reads come after the poll's.
+    """
+
+    def __init__(self, path: pathlib.Path, elapsed: Any):
+        self.path, self.elapsed = pathlib.Path(path), elapsed
+        self.polls = 0
+        self._fix: Any = None
+        self._saved: tuple[Any, Any] | None = None
+
+    def install(self) -> None:
+        from automap import state  # noqa: PLC0415
+
+        if self._saved is not None:
+            return
+        self._saved = original_poll, original_read = state.Automapper.poll, state.read_fix
+        log = self
+
+        def read_fix(target: Any, game: Any = None) -> Any:
+            log._fix = original_read(target, game)
+            return log._fix
+
+        def poll(mapper: Any) -> bool:
+            log._fix = None
+            changed = original_poll(mapper)
+            log.record(mapper, changed)
+            return changed
+
+        state.read_fix, state.Automapper.poll = read_fix, poll
+
+    def remove(self) -> None:
+        from automap import state  # noqa: PLC0415
+
+        if self._saved is not None:
+            state.Automapper.poll, state.read_fix = self._saved
+            self._saved = None
+
+    @staticmethod
+    def _fix_fields(fix: Any) -> dict[str, Any] | None:
+        if fix is None:
+            return None
+        return {key: getattr(fix, key, None) for key in
+                ("x", "y", "facing", "source", "world_map", "world_node", "outdoors")}
+
+    def record(self, mapper: Any, changed: bool) -> None:
+        self.polls += 1
+        row: dict[str, Any] = {"poll": self.polls, "elapsed": round(self.elapsed(), 3),
+                               "wall": round(time.time(), 3), "changed": bool(changed),
+                               "fix": self._fix_fields(self._fix)}
+        try:
+            target = mapper.target
+            address = (target.resident_geo_address()
+                       if callable(getattr(target, "resident_geo_address", None)) else None)
+            row["geo_address"] = None if address is None else hex(address)
+            name = block = None
+            if address is not None:
+                from automap.area import ResidentGeo  # noqa: PLC0415
+
+                resident = ResidentGeo(target, address)
+                name = resident.identify(getattr(mapper, "_maps", None) or {})
+                block = resident.block
+            row["geo_name"] = name
+            row["geo_sha1"] = None if block is None else hashlib.sha1(block).hexdigest()[:8]
+            believed = mapper.state
+            row["believed"] = {key: getattr(believed, key, None) for key in
+                               ("x", "y", "facing", "area", "world_map", "outdoors")}
+            row["pending"] = getattr(mapper, "_pending", None)
+            row["verdict"] = getattr(mapper, "_verdict", None)
+        except Exception as exc:  # noqa: BLE001 -- the row is evidence; Wish's poll goes on
+            row["error"] = f"{type(exc).__name__}: {exc}"
+        with self.path.open("a") as stream:
+            stream.write(json.dumps(row, default=str) + "\n")
 
 
 class _NotingGuards:
@@ -326,6 +479,7 @@ class FsuaeController(base.Controller):
         self.cleaning = False
         self.saved_env: dict[str, str | None] | None = None
         self.saved_port: Any = None
+        self.poll_log: PollLog | None = None
         super().__init__(args, guest=None, lane=game, game=game,
                          guards=_NotingGuards(guards, game.note_recognised)
                          if callable(getattr(game, "note_recognised", None)) else guards,
@@ -499,6 +653,49 @@ class FsuaeController(base.Controller):
             else:
                 os.environ[ACTIONS_FLAG] = before
 
+    # -- the route ------------------------------------------------------------------
+
+    def run_phase(self, phase: Any, action_context: Any = None,
+                  namespace: str | None = None) -> None:
+        """The WinUAE controller's phase, with `hold` steps run here between its parts.
+
+        Each run of steps between holds is one phase of the controller's own, starting on the
+        screen the hold waited on; the phase is recorded as completed once."""
+        if not phase.ready or not any(step.kind == "hold" for step in phase.steps):
+            return super().run_phase(phase, action_context, namespace)
+        if action_context is not None or namespace:
+            raise AcceptanceStop(f"{phase.name}: a hold step runs only in a mapping phase")
+        initial, part = phase.initial_state, []
+        for step in (*phase.steps, None):
+            if step is not None and step.kind != "hold":
+                part.append(step)
+                continue
+            # With no steps, the part is only its wait for the screen the hold is on.
+            super().run_phase(dataclasses.replace(phase, initial_state=initial,
+                                                  steps=tuple(part)))
+            self.summary["completed_sequence"].pop()
+            if step is not None:
+                self._hold(phase, step)
+                initial, part = step.state, []
+        self.summary["completed_sequence"].append(phase.name)
+
+    def _hold(self, phase: Any, step: Any) -> None:
+        """Press the step's key, if it has one, then wait `step.seconds` with no grab, Wish
+        polling throughout; the next part's first wait checks the screen is `step.state`."""
+        if step.key is not None:
+            self._press(step.key)
+        start = self.clock()
+        self.log("hold", phase=phase.name, state=step.state, seconds=step.seconds,
+                 key=step.key, polls=self.poll_log.polls if self.poll_log else None)
+        self.sleep(self.left(step.seconds))
+        held = round(self.clock() - start, 3)
+        self.log("hold_end", phase=phase.name, state=step.state, held=held,
+                 polls=self.poll_log.polls if self.poll_log else None)
+        self.summary.setdefault("holds", []).append(
+            {"phase": phase.name, "state": step.state, "seconds": step.seconds, "held": held})
+        if held < step.seconds - HOLD_SLACK:
+            raise AcceptanceStop(f"the hold on {step.state} ended after {held} s of {step.seconds}")
+
     # -- the game -------------------------------------------------------------------
 
     def _machine(self) -> tuple[Any, Any, Any]:
@@ -632,6 +829,10 @@ class FsuaeController(base.Controller):
         self.game.holder = holder
         self.log("up", receipt=receipt, silence=self.summary["silence"])
         self._enter_environment()
+        if getattr(self.args, "poll_log", False):
+            self.poll_log = PollLog(self.out / POLL_LOG, lambda: self.clock() - self.started)
+            self.poll_log.install()
+            self.summary["poll_log"] = str(self.out / POLL_LOG)
         if self.wish is None:
             self.wish = fsuaegdb.WishRun(argparse.Namespace(
                 port=self.game.slot.port, display=self.game.slot.display, observe_wait=0.0),
@@ -705,6 +906,9 @@ class FsuaeController(base.Controller):
             self._leave_environment()
         except Exception as exc:  # noqa: BLE001
             failures.append(f"environment: {exc}")
+        if self.poll_log is not None:
+            self.poll_log.remove()
+            self.summary["poll_count"] = self.poll_log.polls
         cleanup["errors"] = failures
         try:
             self.log("cleanup", errors=failures)
@@ -771,11 +975,20 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--leg", choices=base.LEGS, default="mapping",
                         help="only mapping runs on FS-UAE; persist and reconnect stop "
                              "before a slot is claimed")
+    parser.add_argument("--arrival-hold", type=float, metavar="SECONDS",
+                        help="Curse Yulash: hold the arrival question this long before SNEAK IN; "
+                             "implies --poll-log")
+    parser.add_argument("--search-area", action="store_true",
+                        help="Curse Yulash: stage $4C5B = 1 on a copy of the save disk in the run "
+                             "folder and take SEARCH AREA from the world map; implies --poll-log")
+    parser.add_argument("--poll-log", action="store_true",
+                        help=f"write every Automapper poll's fix and resident GEO to {POLL_LOG}")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    args.poll_log = args.poll_log or args.arrival_hold is not None or args.search_area
     from tools.amiga import fsuaesession  # noqa: PLC0415
     from tools.amiga.maproute import route_for  # noqa: PLC0415
 

@@ -49,7 +49,7 @@ class Read:
 class Step:
     kind: Literal[
         "key", "turn", "move", "insert", "answer", "snapshot", "restore",
-        "encounters", "select", "observe", "type", "reset",
+        "encounters", "select", "observe", "type", "reset", "hold",
     ]
     state: str
     key: str | None = None
@@ -68,6 +68,8 @@ class Step:
     relaunch: bool = False
     #: Read-only bytes recorded with the step's checkpoint.
     reads: tuple[Read, ...] = ()
+    #: A `hold` step's wait in seconds, with no key, on `state`, which the step before it reached.
+    seconds: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -647,10 +649,68 @@ def _square(party: SpellsParty) -> dict[str, int]:
     return {key: party.place[key] for key in ("x", "y", "facing")}
 
 
-def _curse_phases() -> tuple[Phase, ...]:
+#: Seconds the Yulash measurement legs watch the town with no key and no screen grab after it
+#: is reached, before the checkpoint.
+AFTER_ARRIVAL_HOLD = 30.0
+#: Curse's world-map SEARCH AREA flag at Yulash, in Curse's own numbering. ECL51 sends a party
+#: with it set to NEWECL #17, area $11 on GEO11.
+SEARCH_FLAG = 0x4C5B
+#: Seconds the SEARCH AREA leg watches, with no key, from the RETURN that leaves the world map
+#: through the load of GEO11, so Wish polls the whole change with no screen grab between.
+SEARCH_LOAD_HOLD = 20.0
+#: Seconds after a RETURN on a continue page before the next, whose guard the old page matches.
+PAGE_SETTLE = 3.0
+
+
+def _curse_outdoor(arrival_hold: float | None, search_area: bool) -> Phase:
+    """From the Dalelands bar back into a town: the mapping route's ENTER CITY and SNEAK IN,
+    or one of the WISH-415 measurement legs.
+
+    `arrival_hold` holds the arrival question that many seconds before SNEAK IN. `search_area`
+    takes SEARCH AREA instead, into area $11. The key that leaves the question or the world
+    map starts a hold, so Wish polls the change with no screen grab between, and either leg
+    watches the town for `AFTER_ARRIVAL_HOLD` seconds in all before its checkpoint."""
+    if search_area:
+        # S prints YOU ENTER THE PIT over the map; its RETURN loads GEO11 and lands the party
+        # on 0,0 facing east under five more continue pages, the last three answered as pages.
+        return _phase(
+            "outdoor", "dalelands_search",
+            Step("key", "continue", key="S"),
+            Step("hold", "continue", key="RET", seconds=SEARCH_LOAD_HOLD),
+            Step("key", "continue", key="RET"),
+            Step("hold", "continue", seconds=PAGE_SETTLE),
+            Step("key", "continue", key="RET"),
+            Step("hold", "continue", seconds=PAGE_SETTLE),
+            Step("observe", "world"),
+            Step("hold", "world", seconds=AFTER_ARRIVAL_HOLD),
+            Step("observe", "world", checkpoint="curse_search_arrival",
+                 expected=Expected(engine={"x": 0, "y": 0, "facing": 1},
+                                   compare_to="curse_world", relation="view_changed")),
+            pages=("continue",),
+        )
+    if arrival_hold is None:
+        return _phase(
+            "outdoor", "dalelands",
+            Step("key", "yulash_arrival", key="E"),
+            Step("key", "world", key="S", checkpoint="curse_yulash_again",
+                 expected=_at(16, 0, 6, 1, "curse_world", "view_changed")),
+        )
+    return _phase(
+        "outdoor", "dalelands",
+        Step("key", "yulash_arrival", key="E"),
+        Step("hold", "yulash_arrival", seconds=arrival_hold),
+        Step("hold", "world", key="S", seconds=AFTER_ARRIVAL_HOLD),
+        Step("observe", "world", checkpoint="curse_yulash_again",
+             expected=_at(16, 0, 6, 1, "curse_world", "view_changed")),
+    )
+
+
+def _curse_phases(arrival_hold: float | None = None, search_area: bool = False
+                  ) -> tuple[Phase, ...]:
     """The Yulash save at 2,6 facing east: turns, a walk west and back through the
     checkpoint square, out to the world map, ENTER CITY and SNEAK IN, then a save to F, the
-    game's exit, a soft reset and slot B loaded again."""
+    game's exit, a soft reset and slot B loaded again. `_curse_outdoor` describes the two
+    measurement legs' way back in."""
     yulash = {"area": 16, "y": 6}
     stationary = _turns("curse", "loaded", {**yulash, "x": 2}, (0, 3, 0, 1))
     walk = _phase(
@@ -682,17 +742,14 @@ def _curse_phases() -> tuple[Phase, ...]:
         Step("move", "world", key="NP8", checkpoint="curse_exit_square",
              expected=_at(16, 0, 6, 3, "curse_walk_end", "moved")),
         Step("encounters", "world", encounters=False),
-        Step("move", "dalelands", key="NP8", checkpoint="curse_world",
+        Step("move", "dalelands_search" if search_area else "dalelands", key="NP8",
+             checkpoint="curse_world",
              expected=Expected(engine={"world_map": True, "world_node": 10},
                                compare_to="curse_exit_square", relation="view_changed")),
     )
-    outdoor = _phase(
-        "outdoor", "dalelands",
-        Step("key", "yulash_arrival", key="E"),
-        Step("key", "world", key="S", checkpoint="curse_yulash_again",
-             expected=_at(16, 0, 6, 1, "curse_world", "view_changed")),
-    )
-    reload = _curse_reload(_at(16, 2, 6, 1, "curse_yulash_again", "moved"))
+    outdoor = _curse_outdoor(arrival_hold, search_area)
+    reload = _curse_reload(_at(16, 2, 6, 1, "curse_search_arrival", "area_changed")
+                           if search_area else _at(16, 2, 6, 1, "curse_yulash_again", "moved"))
     reopen = _phase(
         "reopen_step", "world",
         Step("encounters", "world", encounters=True),
@@ -784,12 +841,13 @@ def _darkness_phases() -> tuple[Phase, ...]:
     return stationary, walk, transition, reload, reopen, village
 
 
-def _phases(title: str, load: Phase, slot: str, curse_yulash: bool = False
+def _phases(title: str, load: Phase, slot: str, curse_yulash: bool = False,
+            arrival_hold: float | None = None, search_area: bool = False
             ) -> tuple[Phase, ...]:
     if title == "pool":
         return (load, *_pool_phases())
     if title == "curse" and curse_yulash:
-        return (load, *_curse_phases())
+        return (load, *_curse_phases(arrival_hold, search_area))
     if title == "darkness":
         return (load, *_darkness_phases())
     if title == "ssb":
@@ -861,8 +919,40 @@ def _specimen_gaps(title: str, manifest: Mapping[str, object],
     return ()
 
 
-def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
-    """Describe the measured part of one prepared title, and block unmeasured phases."""
+def search_flag(media: tuple[Media, ...], slot: str) -> int:
+    """Curse's `SEARCH_FLAG` word in the prepared save disk's slot `slot`."""
+    from goldbox import amiga_savegame  # noqa: PLC0415
+
+    held = next((item for item in media if item.key == "save"), None)
+    if held is None:
+        raise RouteError("Prepared manifest has no save disk")
+    data = amiga_adf.AmigaDisk.open(held.path).read_file(
+        amiga_savegame.slot_path(amiga_savegame.CURSE, slot))
+    # `amiga_savegame.word` takes Pool's numbering, $200 below Curse's.
+    return amiga_savegame.word(data, SEARCH_FLAG - 0x200, amiga_savegame.CURSE)
+
+
+def _check_measurement(title: str, curse_yulash: bool, media: tuple[Media, ...], slot: str,
+                       arrival_hold: float | None, search_area: bool) -> None:
+    if arrival_hold is None and not search_area:
+        return
+    if title != "curse" or not curse_yulash:
+        raise RouteError("The arrival hold and SEARCH AREA legs need the Curse Yulash slot B")
+    if arrival_hold is not None and search_area:
+        raise RouteError("The arrival hold and SEARCH AREA are separate legs")
+    if arrival_hold is not None and not arrival_hold > 0:
+        raise RouteError("The arrival hold needs a positive number of seconds")
+    if search_area and search_flag(media, slot) != 1:
+        raise RouteError(f"SEARCH AREA needs ${SEARCH_FLAG:04X} = 1 in slot {slot} of the "
+                         "prepared save disk")
+
+
+def route_for(title: str, manifest: Mapping[str, object], *,
+              arrival_hold: float | None = None, search_area: bool = False) -> MappingRoute:
+    """Describe the measured part of one prepared title, and block unmeasured phases.
+
+    `arrival_hold` and `search_area` choose a WISH-415 measurement leg for the Curse Yulash
+    party; see `_curse_outdoor`."""
     if title not in _GAME_KEYS:
         raise RouteError(f"Unknown Amiga mapping title {title!r}")
     if not isinstance(manifest, Mapping) or manifest.get("title") != title:
@@ -873,11 +963,12 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
     media = _media_for(title, manifest, base)
     source = _source_provenance(manifest)
     curse_yulash = title == "curse" and _curse_yulash(manifest, source, slot)
+    _check_measurement(title, curse_yulash, media, slot, arrival_hold, search_area)
     spells = _spells_party(title, manifest, source, slot)
     load = _load(title, slot, opening_scene, curse_yulash,
                  _square(spells) if spells is not None and title == "curse" else None)
     phases = (_spells_phases(title, load, slot, spells) if spells is not None
-              else _phases(title, load, slot, curse_yulash))
+              else _phases(title, load, slot, curse_yulash, arrival_hold, search_area))
     specimen_gaps = _specimen_gaps(title, manifest, source, media, slot)
     provenance: dict[str, object] = {
         "prepared_slot": slot,
@@ -906,6 +997,12 @@ def route_for(title: str, manifest: Mapping[str, object]) -> MappingRoute:
                          "WinUAE boot."),
         }[title],
     }
+    if arrival_hold is not None:
+        provenance["measurement"] = {"leg": "arrival_hold", "seconds": arrival_hold,
+                                     "after_arrival_hold": AFTER_ARRIVAL_HOLD}
+    if search_area:
+        provenance["measurement"] = {"leg": "search_area", "flag": f"${SEARCH_FLAG:04X}",
+                                     "after_arrival_hold": AFTER_ARRIVAL_HOLD}
     if spells is not None:
         provenance["spells_party"] = f"WISH-SPEC-{spells.specimen}/{spells.file} slot {spells.letter}"
         provenance["confidence"] = (

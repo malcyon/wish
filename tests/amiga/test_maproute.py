@@ -933,3 +933,92 @@ def test_the_pinned_spells_party_holds_a_ready_spell_for_the_selector_to_clear(
     # Curse's Cast list for a member with no spell left shows no list at all, so its party
     # keeps one after the clear.
     assert len(ready) >= (2 if title == "curse" else 1)
+
+
+def _outdoor(route):
+    phase = next(p for p in route.phases if p.name == "outdoor")
+    return phase, [(s.kind, s.state, s.key, s.seconds, s.checkpoint) for s in phase.steps]
+
+
+def test_the_mapping_route_enters_yulash_with_no_hold(tmp_path: Path):
+    _phase, steps = _outdoor(maproute.route_for("curse", _yulash_manifest(tmp_path)))
+    assert steps == [("key", "yulash_arrival", "E", None, None),
+                     ("key", "world", "S", None, "curse_yulash_again")]
+
+
+def test_the_arrival_hold_leg_holds_the_question_then_watches_yulash(tmp_path: Path):
+    route = maproute.route_for("curse", _yulash_manifest(tmp_path), arrival_hold=120)
+    _phase, steps = _outdoor(route)
+
+    after = maproute.AFTER_ARRIVAL_HOLD
+    assert steps == [("key", "yulash_arrival", "E", None, None),
+                     ("hold", "yulash_arrival", None, 120, None),
+                     ("hold", "world", "S", after, None),
+                     ("observe", "world", None, None, "curse_yulash_again")]
+    assert route.provenance["measurement"]["leg"] == "arrival_hold"
+    assert route.unresolved == ()
+
+
+def test_the_search_area_leg_takes_search_area_into_area_17(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(maproute, "search_flag", lambda media, slot: 1)
+    route = maproute.route_for("curse", _yulash_manifest(tmp_path), search_area=True)
+    phase, steps = _outdoor(route)
+
+    assert phase.initial_state == "dalelands_search" and phase.pages == ("continue",)
+    assert steps == [("key", "continue", "S", None, None),
+                     ("hold", "continue", "RET", maproute.SEARCH_LOAD_HOLD, None),
+                     ("key", "continue", "RET", None, None),
+                     ("hold", "continue", None, maproute.PAGE_SETTLE, None),
+                     ("key", "continue", "RET", None, None),
+                     ("hold", "continue", None, maproute.PAGE_SETTLE, None),
+                     ("observe", "world", None, None, None),
+                     ("hold", "world", None, maproute.AFTER_ARRIVAL_HOLD, None),
+                     ("observe", "world", None, None, "curse_search_arrival")]
+    world = next(s for p in route.phases for s in p.steps if s.checkpoint == "curse_world")
+    assert world.state == "dalelands_search"
+    reload = next(s for p in route.phases for s in p.steps if s.checkpoint == "curse_reloaded")
+    assert (reload.expected.compare_to, reload.expected.relation) == (
+        "curse_search_arrival", "area_changed")
+    guards = json.loads(route.guard_path.read_text())["guards"]
+    states = {p.initial_state for p in route.phases} | {
+        s.state for p in route.phases for s in p.steps}
+    assert states <= guards.keys()
+
+
+def test_the_search_area_leg_needs_the_staged_flag(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(maproute, "search_flag", lambda media, slot: 0)
+    with pytest.raises(RouteError, match=r"\$4C5B = 1"):
+        maproute.route_for("curse", _yulash_manifest(tmp_path), search_area=True)
+
+
+@pytest.mark.parametrize("title,legs", [
+    ("curse", {"arrival_hold": 120}), ("ssb", {"arrival_hold": 120}),
+    ("curse", {"search_area": True}),
+])
+def test_the_measurement_legs_need_the_yulash_party(title, legs, tmp_path: Path):
+    with pytest.raises(RouteError, match="Yulash"):
+        maproute.route_for(title, _manifest(title, tmp_path), **legs)
+
+
+def test_the_two_measurement_legs_are_separate_and_a_hold_has_seconds(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(maproute, "search_flag", lambda media, slot: 1)
+    with pytest.raises(RouteError, match="separate"):
+        maproute.route_for("curse", _yulash_manifest(tmp_path), arrival_hold=5, search_area=True)
+    with pytest.raises(RouteError, match="positive"):
+        maproute.route_for("curse", _yulash_manifest(tmp_path), arrival_hold=0)
+
+
+def test_the_search_flag_is_read_from_the_save_disks_slot_in_curses_numbering(tmp_path: Path):
+    from goldbox import amiga_savegame
+    from goldbox.amiga_adf import AmigaDisk
+
+    data = bytearray(6000)
+    at = amiga_savegame.CURSE.vm_offset(maproute.SEARCH_FLAG - 0x200)
+    data[at:at + 2] = (1).to_bytes(2, "big")
+    disk = AmigaDisk.blank("Save")
+    disk.make_dir("/SAVE")
+    disk.write_file(amiga_savegame.slot_path(amiga_savegame.CURSE, "B"), bytes(data))
+    disk.save(tmp_path / "save.adf")
+    media = (maproute.Media("save", tmp_path / "save.adf", "a" * 64),)
+
+    assert maproute.search_flag(media, "B") == 1
