@@ -831,6 +831,8 @@ def test_the_helper_measures_the_regions_once_from_the_emulators_memory_list():
 
 def test_the_helper_asks_the_emulator_to_stop_acking_once_before_the_resume(
         running, fork):
+    # The resume gets no reply, so startup returns before the fake has read it.
+    wait_for(lambda: len(fork.received) >= 3)
     assert fork.received[:3] == ["qSupported", "QStartNoAckMode", "vCont;c"]
     Client(sock_path(running)).ask("m100,2")
     assert fork.received.count("QStartNoAckMode") == 1
