@@ -91,7 +91,7 @@ import uuid
 from collections.abc import Collection
 from dataclasses import dataclass, field
 
-from goldbox.geo import GEO_SIZE, Geo
+from goldbox.geo import ATTRIBUTES, GEO_SIZE, WALLS_NORTH_EAST, WALLS_SOUTH_WEST, Geo
 from goldbox.world import WINDOW_STEP
 
 from .target import WINDOW_H, WINDOW_W, Fix, NotConnected
@@ -2693,6 +2693,9 @@ class AmigaTarget:
                  anchor_base: int | None = None, clock=time.monotonic,
                  memory=MEMORY):
         self._clock = clock
+        #: Where the GEO pointer led at the last placement check, so the next
+        #: one can read the block's bytes in the same batch as the pointer.
+        self._geo_address: int | None = None
         #: The `(base, size)` regions the machine has, as `memory_regions`
         #: measured them; every range check below is against these.
         self.memory = tuple(memory)
@@ -3157,12 +3160,17 @@ class AmigaTarget:
         # and zero is *inside* chip memory -- it is the 68000's exception
         # vector table, which is never a map. So it is blocked by name rather
         # than by the range test below.
-        if addr == 0 or not any(base <= addr and addr + 0x400 <= base + length
-                                for base, length in self.memory):
+        if not self._holds_a_block(addr):
             _log.debug("the GEO pointer holds %#x, which is in no memory this "
                        "machine has", addr)
             return None
         return addr
+
+    def _holds_a_block(self, addr: int) -> bool:
+        """Is *addr* a place a 1024-byte block can be? Zero never is: it is
+        the 68000's exception vector table."""
+        return addr != 0 and any(base <= addr and addr + 0x400 <= base + length
+                                 for base, length in self.memory)
 
     def placement_matches(self, fix: Fix) -> bool:
         """Do the engine's wall-ahead and square-attribute bytes describe *fix*
@@ -3175,23 +3183,46 @@ class AmigaTarget:
         resident block's at the engine's square and facing. The block is read
         from memory because it is not always the disk file. A title that names
         no such bytes is not checked; with no map resident the answer is no.
+
+        **One round trip in the steady state.** The GEO pointer, the engine's
+        two bytes and the two block bytes at the address the pointer held last
+        time go in one batch; only a pointer that moved costs a second read.
+        Two bytes of the block are read, not its 1024, because nothing else of
+        it is compared.
         """
         wall_at = self.layout.notes.get("wall_ahead")
         attr_at = self.layout.notes.get("square_attribute")
         if wall_at is None or attr_at is None:
             return True
-        block = self.geo()
-        if block is None:
-            return False
         lo = min(wall_at, attr_at)
-        raw = self.read(self._at(lo), abs(attr_at - wall_at) + 1)
-        wall, attribute = raw[wall_at - lo], raw[attr_at - lo]
-        geo = Geo(block)
-        try:
-            return (wall == geo.wall(fix.x, fix.y, fix.facing)
-                    and attribute == geo.attributes(fix.x, fix.y))
-        except IndexError:
+        index = 16 * fix.y + fix.x
+        plane = WALLS_NORTH_EAST if fix.facing < 2 else WALLS_SOUTH_WEST
+
+        def block_bytes(address):
+            return [(address + plane + index, 1),
+                    (address + ATTRIBUTES + index, 1)]
+
+        guess = self._geo_address
+        reads = [(self._at(self.layout.geo_pointer), 4),
+                 (self._at(lo), abs(attr_at - wall_at) + 1)]
+        if guess is not None:
+            reads += block_bytes(guess)
+        got = self.read_blocks(reads)
+        address = int.from_bytes(got[0], "big")
+        if not self._holds_a_block(address):
+            self._geo_address = None
             return False
+        if address == guess:
+            walls, attribute = got[2], got[3]
+        else:
+            self._geo_address = address
+            walls, attribute = self.read_blocks(block_bytes(address))
+        pair = got[1]
+        # The nibble the engine stores for this facing: north and south are
+        # the high one, east and west the low one (`Geo.wall`).
+        nibble = walls[0] >> 4 if fix.facing % 2 == 0 else walls[0] & 0x0F
+        return (pair[wall_at - lo] == nibble
+                and pair[attr_at - lo] == attribute[0])
 
     def geo(self) -> bytes | None:
         """The resident map itself, 1024 bytes, or None if none is loaded."""

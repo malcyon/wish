@@ -164,3 +164,52 @@ def test_a_target_that_is_a_c64s_memory_is_not_asked():
         mapper.poll()
     assert Asked.asked == 0
     assert (mapper.state.x, mapper.state.y) == (2, 2)
+
+
+def test_a_steady_poll_costs_one_round_trip_for_the_check():
+    _mapper, guest = _setup(SSB, ONE, GEO10=ONE)
+    t = _mapper.target
+    _set(guest, SSB, 3, 3, 4, ONE)
+    fix = t.fix()
+    assert t.placement_matches(fix)          # the first asks twice: no address yet
+    before = len(guest.calls)
+    for _ in range(3):
+        assert t.placement_matches(fix)
+    assert len(guest.calls) - before == 3
+
+
+def test_a_pointer_that_moved_is_followed_in_a_second_round_trip():
+    mapper, guest = _setup(SSB, ONE, GEO10=ONE)
+    t = mapper.target
+    _set(guest, SSB, 3, 3, 4, ONE)
+    fix = t.fix()
+    assert t.placement_matches(fix)
+    guest.memory[BASE + SSB.geo_pointer] = (BLOCK + 0x1000).to_bytes(4, "big")
+    guest.memory[BLOCK + 0x1000] = ONE
+    before = len(guest.calls)
+    assert t.placement_matches(fix)
+    assert len(guest.calls) - before == 2
+    before = len(guest.calls)
+    assert t.placement_matches(fix)
+    assert len(guest.calls) - before == 1
+
+
+def test_a_null_pointer_is_not_a_placement():
+    mapper, guest = _setup(SSB, ONE, GEO10=ONE)
+    t = mapper.target
+    _set(guest, SSB, 3, 3, 4, ONE)
+    fix = t.fix()
+    assert t.placement_matches(fix)
+    guest.memory[BASE + SSB.geo_pointer] = bytes(4)
+    assert not t.placement_matches(fix)
+
+
+def test_every_facing_reads_the_wall_the_map_calls_that_facing():
+    mapper, guest = _setup(SSB, ONE, GEO10=ONE)
+    t = mapper.target
+    for doubled in (0, 2, 4, 6):
+        _set(guest, SSB, 7, 13, doubled, ONE)
+        assert t.placement_matches(t.fix()), doubled
+        _set(guest, SSB, 7, 13, doubled, ONE,
+             wall=(Geo(ONE).wall(7, 13, doubled // 2) + 1) & 0x0F)
+        assert not t.placement_matches(t.fix()), doubled
