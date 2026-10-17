@@ -684,8 +684,10 @@ def _pod(tmp_path, monkeypatch, fight_row, bars, *, x_after=0, press=True):
     return controller, order, row_
 
 
-X_BAR = {"owner": "X", "address": 0xA0, "name": "X", "shot": "x1.png"}
-Y_BAR = {"owner": "Y", "address": 0xB0, "name": "Y", "shot": "y1.png"}
+X_BAR = {"owner": "X", "address": 0xA0, "control": 0, "quickfight": 1, "hit_points": 9,
+         "shot": "x1.png", "number": 1}
+Y_BAR = {"owner": "Y", "address": 0xB0, "control": 0, "quickfight": 1, "hit_points": 9,
+         "shot": "y1.png", "number": 2}
 
 
 def test_quickfight_off_press_triggers_at_the_first_bar_of_another_member(
@@ -762,3 +764,18 @@ def test_quickfight_off_unproven_when_the_fight_ends_before_x_turn(tmp_path, mon
     _replay(controller, monkeypatch, [X_BAR, Y_BAR], [Y_BAR])
     assert controller.summary["qf_press_a"]["status"] == "unproven"
     assert "ended before X's next turn" in controller.summary["qf_press_a"]["reason"]
+
+
+@pytest.mark.parametrize("seen,status", [([4, 5, 5], "awaiting image review"),
+                                         ([4, 5, 3, 5], "unproven")])
+def test_watch_rows_need_every_mode_after_the_first_bar_to_be_2_4_or_5(
+        tmp_path, monkeypatch, fight_row, seen, status):
+    controller, _world = _edge(tmp_path, monkeypatch, fight_row, _members((0, 1, 7)))
+    # A 3 before the first bar does not count.
+    controller.summary["fight"]["modes"][:] = (
+        [{"screen": "world", "mode": 3}, {"screen": "combat_bar", "mode": seen[0]}]
+        + [{"screen": "encounter", "mode": mode} for mode in seen[1:]])
+    controller._watch_edge("N")
+    for name in ("watch_control_b", "watch_a"):
+        assert controller.summary[name]["status"] == status
+        assert (controller.summary[name]["reason"] is None) == (status != "unproven")

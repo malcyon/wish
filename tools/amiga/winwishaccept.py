@@ -3098,7 +3098,24 @@ class Controller:
             evidence=[str(wish_path), str(controls_path), frame.get("raw")],
             observed={"set": chosen, "companions": companions, "mode": mode_a,
                       "schedule": schedule, "timings": timings})
+        odd = self._odd_modes()
+        if odd:
+            # Another mode value would disarm Wish's watcher, so a missing clear proves nothing.
+            for result in (control_row, wish_row):
+                if result["status"] == "awaiting image review":
+                    result.update(status="unproven", reason=odd)
         return True
+
+    def _odd_modes(self) -> str | None:
+        """Why the modes table cannot back the edge: a mode other than 2, 4 or 5 between the
+        first command bar and CONTINUE BATTLE."""
+        table = self.summary["fight"]["modes"]
+        first = next((at for at, entry in enumerate(table) if entry["screen"] == "combat_bar"), None)
+        if first is None:
+            return None
+        odd = [(entry["screen"], entry["mode"]) for entry in table[first:]
+               if entry["mode"] not in (2, 4, 5)]
+        return f"the mode read {odd} between the first bar and CONTINUE BATTLE" if odd else None
 
     def _press_quickfight_off(self, bars: list[dict[str, Any]]) -> None:
         """At the first bar of a member other than the first bar's, press Quickfight off in Wish.
@@ -3120,7 +3137,7 @@ class Controller:
         record = next((r for r in before if r["address"] == x["address"]), None)
         if record is None or self._member_bytes(row_, record)[1] != 1:
             for result in rows:
-                result["reason"] = f"{x['name']} was not on QUICK at {y['name']}'s bar"
+                result["reason"] = f"{x['owner']} was not on QUICK at {y['owner']}'s bar"
             return
         self.pod.update(snapshot=POD_QF_SNAPSHOT, before=before)
         self._map_section()
@@ -3134,7 +3151,7 @@ class Controller:
         after = self._action_readback()
         problems = []
         if self._member_bytes(row_, next(r for r in after if r["address"] == x["address"]))[1] != 0:
-            problems.append(f"{x['name']} still reads QUICK 1")
+            problems.append(f"{x['owner']} still reads QUICK 1")
         free = {f"{r['name']} +0x{row_.quickfight.offset:02X}" for r in before
                 if not self._member_bytes(row_, r)[0]}
         other = [d for d in self._record_differences(before, after) if d not in free]
@@ -3164,9 +3181,9 @@ class Controller:
             if later:
                 click_row.update(status="awaiting image review",
                                  evidence=[bar["shot"] for bar in later],
-                                 observed={"x": x["name"], "bars": len(later)})
+                                 observed={"x": x["owner"], "bars": len(later)})
             else:
-                click_row["reason"] = f"the fight ended before {x['name']}'s next turn"
+                click_row["reason"] = f"the fight ended before {x['owner']}'s next turn"
         self._game_section()
         self.game.restore(POD_QF_SNAPSHOT, self.args.holder)
         self._await("combat_bar", limit=60)
@@ -3174,7 +3191,7 @@ class Controller:
                                  self.left(cursefight.READ_LIMIT))
         changed = self._record_differences(pod["before"], self._action_readback())
         if (owner or {}).get("address") != y["address"] or changed:
-            why = (f"the restored bar belongs to {(owner or {}).get('name')}, not {y['name']}"
+            why = (f"the restored bar belongs to {(owner or {}).get('name')}, not {y['owner']}"
                    if (owner or {}).get("address") != y["address"]
                    else "party bytes differ after the restore: " + ", ".join(changed))
             control_row.update(status="unproven", reason=why)
@@ -3186,7 +3203,7 @@ class Controller:
         bad = [bar for bar in found_b.get("bars", []) if bar["address"] == x["address"]]
         if bad:
             control_row.update(status="failed", evidence=[bar["shot"] for bar in bad],
-                               reason=f"{x['name']} got a command bar without the click")
+                               reason=f"{x['owner']} got a command bar without the click")
         else:
             control_row.update(status="awaiting image review",
                                observed={"bars": len(found_b.get("bars", []))})
