@@ -131,13 +131,14 @@ class FakeWish:
         self.window = None
         self.events = []
         self.tab_log = []
+        self.reads_per_pump = 1
         self.rows = rows or (lambda: [])
 
     def open(self):
         shown = []
         self.window = SimpleNamespace(tabs=SimpleNamespace(
             setCurrentIndex=lambda index: (self.tab_log.append(("tab", index)), shown.append(index)),
-            currentIndex=lambda: shown[-1]))
+            currentIndex=lambda: shown[-1]), mapper=SimpleNamespace(_ticks=0))
         self.events.append("open")
 
     def close(self):
@@ -146,6 +147,8 @@ class FakeWish:
 
     def pump(self, seconds):
         self.clock.now += seconds
+        if self.window is not None:
+            self.window.mapper._ticks += self.reads_per_pump
 
     def wait_connected(self, seconds):
         return {"connected": True, "seconds": 1.0, "helper": {"alive": True, "pid": 7}}
@@ -258,46 +261,47 @@ def test_start_asks_for_no_debugger_of_its_own(tmp_path, monkeypatch):
     assert "SDL_AUDIODRIVER=dummy" in controller.summary["silence"]["environ"]
 
 
-def test_each_checkpoint_shows_the_map_tab_again_before_its_grab(tmp_path, monkeypatch):
-    from wish.window import EDITOR_TAB, MAP_TAB
-
+def test_the_map_tab_is_never_left_during_a_route(tmp_path, monkeypatch):
     controller, _game, wish, _ = _controller(tmp_path, monkeypatch, route=_route(title="darkness"))
-    shoot = controller._shoot_window
-    monkeypatch.setattr(controller, "_shoot_window",
-                        lambda path: (path.name.startswith("wish-")
-                                      and wish.tab_log.append(("grab", path.name))) or shoot(path))
     controller.run_title()
 
-    # Wish holds a jump of more than one square until the map tab is shown again, so each grab
-    # follows a trip away from the map tab and back.
-    refresh = [("tab", EDITOR_TAB), ("tab", MAP_TAB)]
-    assert wish.tab_log == [*refresh, ("grab", "wish-loaded.png"),
-                            *refresh, ("grab", "wish-reopened.png")]
-
-
-def test_the_map_tab_refresh_stops_when_a_tab_does_not_take(tmp_path, monkeypatch):
-    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
-    wish.open()
-    wish.window.tabs.currentIndex = lambda: 1
-    with pytest.raises(winwishaccept.AcceptanceStop, match="did not switch"):
-        controller._map_section()
-
-
-def test_the_map_tab_refresh_stops_when_wish_is_closed(tmp_path, monkeypatch):
-    controller, *_ = _controller(tmp_path, monkeypatch)
-    with pytest.raises(winwishaccept.AcceptanceStop, match="Wish is closed"):
-        controller._map_section()
-
-
-def test_the_map_tab_refresh_does_not_switch_under_a_dialog(tmp_path, monkeypatch):
-    from PyQt6.QtWidgets import QApplication
-
-    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
-    wish.open()
-    monkeypatch.setattr(QApplication, "activeModalWidget", staticmethod(lambda: object()))
-    with pytest.raises(winwishaccept.AcceptanceStop, match="dialog is open"):
-        controller._map_section()
+    # A tab switch resumes the mapper, which is not what a player who keeps the map showing sees.
     assert wish.tab_log == []
+    assert "map_tab" not in {e["event"] for e in _events(tmp_path)}
+
+
+def _events(tmp_path):
+    return [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+
+
+def test_each_key_waits_for_two_wish_reads(tmp_path, monkeypatch):
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch, route=_route(title="darkness"))
+    controller.run_title()
+
+    wanted = ("key", "wish_reads", "wish_closed")
+    events = [e for e in _events(tmp_path) if e["event"] in wanted]
+    reads = [e for e in events if e["event"] == "wish_reads"]
+    assert reads and all(e["reads"] >= 2 for e in reads)
+    # While Wish is open, no key is followed by another key before Wish has read.
+    for first, second in zip(events, events[1:]):
+        if first["event"] == "key":
+            assert second["event"] in ("wish_reads", "wish_closed")
+
+
+def test_a_key_wish_never_reads_after_stops_the_run(tmp_path, monkeypatch):
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    wish.open()
+    wish.reads_per_pump = 0
+    with pytest.raises(winwishaccept.AcceptanceStop, match="Wish read the game"):
+        controller._press("L")
+
+
+def test_a_key_with_wish_closed_does_not_wait_for_reads(tmp_path, monkeypatch):
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    pumped = []
+    monkeypatch.setattr(wish, "pump", lambda seconds: pumped.append(seconds))
+    controller._press("L")
+    assert pumped == []
 
 
 def _flag_rows(actions_on):

@@ -306,6 +306,12 @@ def _reads_through(connect: Any):
         amigatarget.connect_pipe = saved
 
 
+# A step needs about a second to land; Wish must then read twice, and its slowest measured poll is 14.3 s.
+KEY_LAND_SECONDS = 1.0
+WISH_READS_PER_KEY = 2
+KEY_READ_LIMIT = 20.0
+
+
 class FsuaeController(base.Controller):
     """One bounded FS-UAE boot. One `FsuaeGuest` is both the lane and the game."""
 
@@ -352,25 +358,34 @@ class FsuaeController(base.Controller):
         """Keys go through X, so the Automapper never gives way to another tab."""
 
     def _map_section(self) -> None:
-        """Show the map tab again, which is what releases Wish's hold on a jump of more than one square.
+        """Keys go through X, so the map tab is never left, as it is never left for a player.
 
-        The WinUAE controller's `_checkpoint` calls this before each grab; the tab never gives way here,
-        so the window is sent to the editor tab and back, and the tab's own handler resumes the mapper.
-        """
+        A tab switch calls the mapper's `resume()`, which changes which positions Wish believes."""
+
+    def _press(self, key: str, *, action: bool = False) -> None:
+        super()._press(key, action=action)
+        self._let_wish_read(key)
+
+    def _let_wish_read(self, key: str) -> None:
+        """Pump Wish's events until it has read the game again, so no key lands between two reads.
+
+        A player's Wish runs its own event loop; here it reads only while the runner pumps. A
+        starved window stops the run instead of grading Wish on a marker it had no chance to move."""
         window = self.wish.window
         if window is None:
-            raise AcceptanceStop("Wish is closed; start it before changing tabs")
-        from PyQt6.QtWidgets import QApplication  # noqa: PLC0415
-
-        from wish.window import EDITOR_TAB, MAP_TAB  # noqa: PLC0415
-
-        if QApplication.activeModalWidget() is not None:
-            raise AcceptanceStop("a dialog is open in Wish; not changing tabs under it")
-        for index in (EDITOR_TAB, MAP_TAB):
-            window.tabs.setCurrentIndex(index)
-            if window.tabs.currentIndex() != index:
-                raise AcceptanceStop(f"Wish did not switch to tab {index}")
-        self.log("map_tab")
+            return
+        begin = self.clock()
+        mapper = window.mapper
+        before = mapper._ticks
+        self.wish.pump(KEY_LAND_SECONDS)
+        while mapper._ticks - before < WISH_READS_PER_KEY:
+            if self.clock() - begin >= KEY_READ_LIMIT:
+                raise AcceptanceStop(
+                    f"Wish read the game {mapper._ticks - before} times in "
+                    f"{self.clock() - begin:.1f} s after key {key}")
+            self.wish.pump(0.25)
+        self.log("wish_reads", key=key, reads=mapper._ticks - before,
+                 seconds=round(self.clock() - begin, 3))
 
     def _free_pipe(self) -> str | None:
         return None
