@@ -495,6 +495,27 @@ def test_a_long_write_goes_sixteen_bytes_a_line(rig):
     assert api.memory[0x200:0x228] == bytes(range(40))
 
 
+@pytest.mark.parametrize("size, pieces", [(64, [64]), (65, [64, 1]),
+                                           (141, [64, 64, 13])])
+def test_a_write_over_64_bytes_goes_in_checked_pieces(rig, size, pieces):
+    pipe, api, *_ = rig
+    data = bytes((i * 7 + 1) & 0xFF for i in range(size))
+    pipe.write_memory(0x200, data)
+    assert api.memory[0x200:0x200 + size] == data
+    reads = [int(m.rstrip(b"\0").split()[-1], 16) for m in api.written
+             if m.startswith(b"DBG S")]
+    assert reads == pieces
+
+
+def test_a_failed_piece_stops_a_long_write(rig):
+    pipe, api, *_ = rig
+    # The first piece (four lines) holds; the second piece's first line fails.
+    api.write_receipts = [None] * 4 + ["Wrote A4 (164) at 00000240.B\n"]
+    with pytest.raises(amiga.PipeError, match="64 of 141 bytes"):
+        pipe.write_memory(0x200, bytes(141))
+    assert sum(m.startswith(b"DBG W") for m in api.written) == 5
+
+
 def test_a_receipt_for_another_byte_is_an_error(rig):
     pipe, api, *_ = rig
     api.write_receipt = "Wrote A4 (164) at 00000100.B\n"
@@ -779,7 +800,7 @@ def test_a_broken_pipe_while_a_reply_is_owed_still_closes_the_handle(rig):
 
 
 @pytest.mark.parametrize("addr, size", [
-    (0x100, 0), (0x100, 65), (0x80000 - 1, 2), (0x80000, 1),
+    (0x100, 0), (0x80000 - 1, 2), (0x80000, 1),
     (0xBFFFFF, 1), (0xC80000, 1), (0x1000000, 1), (0xC7FFFF, 2)])
 def test_a_write_outside_the_bounds_sends_nothing(rig, addr, size):
     pipe, api, *_ = rig

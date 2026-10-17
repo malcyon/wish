@@ -377,9 +377,11 @@ class WinuaeLocalPipe:
         """Write `data` at `addr` with `W`, then read it back to confirm.
 
         The reply to `W` is a receipt of what the debugger parsed, not of what
-        memory holds, so the read-back is the check. One to `MAX_WRITE` bytes
-        inside one of the machine's memory regions as `memory_regions` measures
-        them, or chip and slow memory when none could be measured.
+        memory holds, so the read-back is the check. Data longer than
+        `MAX_WRITE` goes out as pieces of that size, each read back in turn.
+        The range must lie inside one of the machine's memory regions as
+        `memory_regions` measures them, or chip and slow memory when none
+        could be measured.
 
         `timeout` is the budget for the whole call, receipts and read-back
         together. **The write is not atomic:** a range goes out as lines of
@@ -398,32 +400,44 @@ class WinuaeLocalPipe:
         handle and the reply stream have no lock.
         """
         data = bytes(data)
-        if not 1 <= len(data) <= MAX_WRITE:
-            raise ValueError(f"A write of {len(data)} bytes is not between 1 "
-                             f"and {MAX_WRITE}.")
+        if not data:
+            raise ValueError("A write of 0 bytes is not a write.")
         end = self._clock() + (self.TIMEOUT if timeout is None else timeout)
         if not _in_memory(addr, len(data),
                           self._regions(addr, len(data), end)):
             raise ValueError(f"A write of {len(data)} bytes at {addr:#x} is "
                              "outside the machine's memory.")
-        for i in range(0, len(data), WRITE_LINE):
-            chunk = data[i:i + WRITE_LINE]
+        for start in range(0, len(data), MAX_WRITE):
+            self._write_piece(addr, data, start, end, verify)
+
+    def _write_piece(self, addr: int, data: bytes, start: int, end: float,
+                     verify: bool) -> None:
+        """Send and check `data[start:start + MAX_WRITE]`, naming bytes of `data`.
+
+        Each piece is read back on its own, so a long write stops at the first
+        piece that does not hold and the error counts the pieces before it.
+        """
+        piece = data[start:start + MAX_WRITE]
+        base = addr + start
+        for i in range(0, len(piece), WRITE_LINE):
+            chunk = piece[i:i + WRITE_LINE]
             try:
                 reply = self._request(
-                    f"DBG W {addr + i:x} " + " ".join(f"{b:02x}" for b in chunk),
+                    f"DBG W {base + i:x} " + " ".join(f"{b:02x}" for b in chunk),
                     self._left(end))
-                _check_write_receipt(reply, addr + i, chunk)
+                _check_write_receipt(reply, base + i, chunk)
             except PipeError as exc:
-                raise _partial(exc, i, len(data), "before this line") from exc
+                raise _partial(exc, start + i, len(data),
+                               "before this line") from exc
         if not verify:
             return
         try:
-            held = self.read_memory(addr, len(data), self._left(end))
+            held = self.read_memory(base, len(piece), self._left(end))
         except PipeError as exc:
-            raise _partial(exc, len(data), len(data),
+            raise _partial(exc, start + len(piece), len(data),
                            "and not checked") from exc
-        if held != data:
-            raise PipeError(f"The memory at {addr:#x} differs from the bytes "
+        if held != piece:
+            raise PipeError(f"The memory at {base:#x} differs from the bytes "
                             "written when read back.")
 
     def _regions(self, addr: int, length: int, end: float):

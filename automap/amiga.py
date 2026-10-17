@@ -2737,8 +2737,8 @@ class AmigaTarget:
         """Write `data` into the running machine, by the transport's own route.
 
         A transport with a `write_memory` (`FsuaeGdb` with an `M` packet,
-        `WinuaeLocalPipe` with `W` lines) is used first. One to 64 bytes per
-        call on WinUAE; `FsuaeGdb` splits longer data. Otherwise the console
+        `WinuaeLocalPipe` with `W` lines) is used first, and both split
+        long data into pieces. Otherwise the console
         route sends `W <addr> <bytes>` in hex, in lines of sixteen so a long
         write does not become a console line nothing can type.
 
