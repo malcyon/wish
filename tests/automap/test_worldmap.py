@@ -275,10 +275,16 @@ def test_the_area_is_shown_while_the_entry_message_still_holds_the_script_id(
     assert (8, 8) not in state.exploration
 
 
-def arrive_from_the_world_map(tmp_path, monkeypatch, then):
-    """A town landing at (0,8) facing west, then the fixes *then* follow."""
+def arrive_from_the_world_map(tmp_path, monkeypatch, then, amiga=True):
+    """A town landing at (0,8) facing west, then the fixes *then* follow.
+
+    A target that does not set `c64_memory` is read as a C64's, as the
+    automapper reads every real target.
+    """
     mapper = mapper_in_the_sewers(tmp_path, monkeypatch, [
         Fix(0, 6, 3, "memory"), WORLD_MAP, Fix(0, 8, 3, "memory"), *then])
+    if amiga:
+        mapper.target.c64_memory = False
     for _ in range(3):
         mapper.poll()
     return mapper
@@ -309,7 +315,8 @@ def test_a_jump_after_the_first_step_from_an_arrival_is_held(tmp_path, monkeypat
 
 def test_an_arrival_jump_is_held_while_the_block_is_unknown(tmp_path, monkeypatch):
     mapper = arrive_from_the_world_map(
-        tmp_path, monkeypatch, [Fix(0, 6, 1, "memory")] * 3)
+        tmp_path, monkeypatch,
+        [Fix(0, 6, 1, "memory")] * 3 + [Fix(0, 5, 1, "memory")] * 3)
     sewers = mapper.target._memory[RESIDENT_GEO]
     mapper.poll()
     mapper.target._memory[RESIDENT_GEO] = bytes(len(sewers))
@@ -317,6 +324,11 @@ def test_an_arrival_jump_is_held_while_the_block_is_unknown(tmp_path, monkeypatc
     mapper.target._memory[RESIDENT_GEO] = sewers
     mapper.poll()
     assert (mapper.state.x, mapper.state.y) == (0, 8)
+    # A square read while the block was in doubt stays held; a new square,
+    # read three times over our block, is believed.
+    for _ in range(3):
+        mapper.poll()
+    assert where(mapper) == (0, 5, 1)
 
 
 def test_a_turn_on_the_arrival_square_ends_the_allowance(tmp_path, monkeypatch):
@@ -358,3 +370,14 @@ def test_standing_on_the_arrival_square_keeps_the_allowance(tmp_path, monkeypatc
     for _ in range(23):
         mapper.poll()
     assert where(mapper) == (0, 6, 1)
+
+
+def test_a_c64_party_that_lands_and_stands_still_does_not_believe_a_load(
+        tmp_path, monkeypatch):
+    """`$C04B` shows the next area's square before `$0400` changes."""
+    mapper = arrive_from_the_world_map(
+        tmp_path, monkeypatch,
+        [Fix(0, 8, 3, "memory")] * 3 + [Fix(9, 9, 1, "memory")] * 3, amiga=False)
+    for _ in range(6):
+        mapper.poll()
+    assert where(mapper) == (0, 8, 3)

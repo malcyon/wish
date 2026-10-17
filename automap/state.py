@@ -471,7 +471,7 @@ class Automapper:
         self._started = False       # no "last position" to be adjacent to yet
         self._last: Fix | None = None       # the previous fix, for _blocked_step
         self._resumed = False       # polling has just started again after a gap
-        #: A return from the world map or the travel grid; a held jump may
+        #: An Amiga return from the world map or the travel grid; a held jump may
         #: settle without a step until the first believed fix that differs
         #: from the landing square or facing. The arrival bar waits for a key
         #: with no limit, so no poll count could end it.
@@ -666,7 +666,12 @@ class Automapper:
             self.state.window = None
             self.state.heading = None
             self.state.printed_x = None
-            self._arriving = True
+            # The C64 reads the new area's block before its first indoor
+            # poll and believes a status-line move on the second read, so a
+            # party standing on the landing would only gain the leak this
+            # allowance is for: `$C04B` shows a load's square before `$0400`
+            # changes.
+            self._arriving = not getattr(self.target, "c64_memory", True)
             changed_area = self._check_resident()
 
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
