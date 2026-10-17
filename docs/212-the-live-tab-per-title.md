@@ -266,8 +266,8 @@ specimen tree, so the run does not depend on anything in scratch:
 ## 7. The same tab on the Amiga
 
 The four Amiga titles under WinUAE (Windows) and FS-UAE (Linux); FS-UAE on
-Windows or macOS is not supported. The mechanism is [`96`](96-live-memory-automapper.md) and the
-buttons' gate is [`102`](102-live-actions.md#on-the-amiga). Each cell below is
+Windows or macOS is not supported. The mechanism is
+[`96`](96-live-memory-automapper.md) and the buttons' gate is [`102`](102-live-actions.md#on-the-amiga). Each cell below is
 what the code does at this commit; a cell with a result is graded by how it was
 seen. Action and Level up availability below requires
 `WISH_EXPERIMENTAL_AMIGA_ACTIONS`, a matching attached title and a readable

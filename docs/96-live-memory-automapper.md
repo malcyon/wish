@@ -77,7 +77,8 @@ have no usable interface, and a real C64 would need a resident stub or a DMA
 cartridge — a lot of fragility for very few users.
 
 **There is a third now, for a different machine**: an Amiga under WinUAE or a
-patched FS-UAE, in `automap/amiga.py`. The window offers WinUAE on Windows and FS-UAE on Linux, with no variable — see
+patched FS-UAE, in `automap/amiga.py`. The window offers WinUAE on Windows and
+FS-UAE on Linux, with no variable — see
 "[A third machine: the Amiga](#a-third-machine-the-amiga)" below for what it
 does, what it cost to make the shared code take it, and what is left.
 
@@ -529,12 +530,15 @@ scripted arrival leaves the engine's square from the last area, or an unstarted
 party's, until the engine rewrites its wall-ahead and square-attribute bytes.
 `AmigaTarget.placement_matches` compares both bytes with the resident map's at
 the engine's square and facing, and `AutomapState` records no square until they
-agree. A newly named area forgets the old position, so the first placed square is
+agree; a status-line fix bypasses the check, and so does any fix not read from
+memory. A newly named area forgets the old position, so the first placed square is
 believed and not held as a jump from the previous area's coordinates. That first
 square also gets one resident-map check when the poll has not already made it.
-The town arrival allowance, which lets a party standing on its landing square
-after a return from the world map or the travel grid be believed, is the Amiga's
-alone: the C64 reads the new area's block before its first indoor poll.
+After a return from the world map or the travel grid, the town arrival
+allowance believes the square the arrival script moves the party to once three
+reads agree over a block that is ours. It ends at the first step, turn or
+believed jump. It is the Amiga's alone: the C64 reads the new area's block
+before its first indoor poll.
 
 So `read_blocks` matters over the console for a reason that has nothing to do
 with VICE's -- several ranges in one round trip is one `ssh` rather than
