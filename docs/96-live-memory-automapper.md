@@ -1256,6 +1256,9 @@ directory and opens nothing, because WinUAE serves one client at a time.
   Pools of Darkness folder.
 * **`WISH_WINUAE_PIPE` names the pipe Wish opens,** for test runs where another
   lane's emulator may own the lowest name.
+* **`WISH_WINUAE_LANE_RECEIPT` names a lane's run receipt, and it wins over the pipe name.** Wish opens the pipe
+  the receipt records while its process is alive and began at the recorded start time, so a restart that takes
+  another pipe name is followed, and no pipe is opened between the stop and the restart.
 * **The restart and note-saving behaviour has been run on Pool of Radiance
   only.** On WinUAE 6.0.3 Wish's own window followed the party through a turn
   and two steps with the right marker. After a restart of Wish the explored

@@ -13,7 +13,9 @@ because the next read opens the pipe again.
 
 from __future__ import annotations
 
+import datetime
 import os
+import re
 
 from automap import amiga, winuae
 
@@ -68,12 +70,49 @@ PIPE_ENV = "WISH_WINUAE_PIPE"
 RUN_ENV = "WISH_WINUAE_LANE_RECEIPT"
 
 
-def _lane_pipe(path: str, alive) -> str | None:
+def _windows_started(pid: int) -> datetime.datetime | None:
+    """When process `pid` began, or None when it cannot be read."""
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.windll.kernel32
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        created, exited, kernel, user = (wintypes.FILETIME() for _ in range(4))
+        if not kernel32.GetProcessTimes(handle, *map(ctypes.byref, (created, exited, kernel, user))):
+            return None
+        ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime
+        return (datetime.datetime(1601, 1, 1, tzinfo=datetime.timezone.utc)
+                + datetime.timedelta(microseconds=ticks // 10))
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+_ISO_TIME = re.compile(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)")
+
+
+def _receipt_time(text: str) -> datetime.datetime | None:
+    """The round-trip time `winuae.ps1` records as `started`, or None when it is not one."""
+    found = _ISO_TIME.fullmatch(text)
+    if not found:
+        return None
+    base, fraction, zone = found.groups()
+    stamp = f"{base}.{(fraction or '0')[:6].ljust(6, '0')}{'+00:00' if zone == 'Z' else zone}"
+    return datetime.datetime.fromisoformat(stamp)
+
+
+def _lane_pipe(path: str, alive, started_of) -> str | None:
     """The pipe a lane's run receipt names, or None while it names no live emulator.
 
     The receipt is written in two steps and deleted on stop, so a missing file, a
-    final line without its line ending, no `pipe`, or a dead `pid` all mean the
-    emulator is not there yet or any more.
+    final line without its line ending, no `pipe`, a dead `pid`, or a live `pid`
+    whose process began at another time than `started` (a reused pid) all mean the
+    emulator is not there yet or any more. A check that fails is no receipt.
     """
     try:
         with open(path, encoding="utf-8", newline="") as handle:
@@ -88,15 +127,22 @@ def _lane_pipe(path: str, alive) -> str | None:
         if found:
             fields[key] = value
     pid, pipe = fields.get("pid", ""), fields.get("pipe", "")
-    if not pid.isdecimal() or "started" not in fields:
+    recorded = _receipt_time(fields.get("started", ""))
+    if not pid.isdecimal() or recorded is None or not winuae._NAME.fullmatch(pipe):
         return None
-    if not winuae._NAME.fullmatch(pipe) or not alive(int(pid)):
+    try:
+        if not alive(int(pid)):
+            return None
+        actual = started_of(int(pid))
+    except Exception:
+        return None
+    if actual is None or abs((actual - recorded).total_seconds()) > 1:
         return None
     return pipe
 
 
 def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
-            locator: Locator | None = None, alive=None) -> WinuaeTarget:
+            locator: Locator | None = None, alive=None, started_of=None) -> WinuaeTarget:
     """A target on the running Amiga, or a `NotConnected` saying what is missing.
 
     Uses the first pipe WinUAE created, the one `WISH_WINUAE_PIPE` names, or the one the run receipt named by
@@ -112,7 +158,7 @@ def connect(pipes=winuae.winuae_pipes, factory=winuae.WinuaeLocalPipe,
     if receipt:
         if alive is None:
             from automap.amigatrip import _windows_alive as alive
-        name = _lane_pipe(receipt, alive)
+        name = _lane_pipe(receipt, alive, started_of or _windows_started)
         if name is None:
             raise amiga.PipeError("There is no WinUAE pipe.")
         if name not in names:

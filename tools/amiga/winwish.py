@@ -2209,7 +2209,9 @@ def _parser() -> argparse.ArgumentParser:
                    "every lane (default: claim once and fail)")
     p.add_argument("--keep-lanes", action="store_true",
                    help="claim every lane and keep them until `down`, for a run that uses "
-                   "`display --set`, which changes the whole desktop")
+                   "`display --set`, which changes the whole desktop, and for a run that restarts "
+                   "its emulator by hand on a build that does not read WISH_WINUAE_LANE_RECEIPT: "
+                   "the restart takes the lowest free pipe name")
 
     p = sub.add_parser("stage-save", help="copy a save to the guest and check its hash there")
     holder(p)

@@ -3,6 +3,7 @@ only while a target is attached. No emulator and no Windows are involved."""
 
 from __future__ import annotations
 
+import datetime
 import os
 import re
 import types
@@ -587,17 +588,21 @@ def _receipt(tmp_path, monkeypatch, text, *, name="winuae-run.txt"):
     return path
 
 
-_RECEIPT = "args=x\r\nholder=h\r\npid=7\r\npipe=WinUAE_2\r\nstarted=t\r\n"
+_RECEIPT = "args=x\r\nholder=h\r\npid=7\r\npipe=WinUAE_2\r\nstarted=2026-10-17T03:05:35.1783860-05:00\r\n"
 
 
-def _connect_by_receipt(names=("WinUAE", "WinUAE_1", "WinUAE_2"), alive=lambda pid: True):
+_STARTED = datetime.datetime(2026, 10, 17, 8, 5, 35, 178386, tzinfo=datetime.timezone.utc)
+
+
+def _connect_by_receipt(names=("WinUAE", "WinUAE_1", "WinUAE_2"), alive=lambda pid: True,
+                        started_of=lambda pid: _STARTED):
     asked = []
 
     def factory(pipe):
         asked.append(pipe)
         return FakeTransport(pipe, loaded())
 
-    winuae.connect(pipes=lambda: list(names), factory=factory, alive=alive)
+    winuae.connect(pipes=lambda: list(names), factory=factory, alive=alive, started_of=started_of)
     return asked
 
 
@@ -620,12 +625,12 @@ def test_no_lane_receipt_opens_nothing(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("text,alive", [
-    ("args=x\r\nholder=h\r\npid=7\r\nstarted=t\r\n", True),
+    ("args=x\r\nholder=h\r\npid=7\r\nstarted=2026-10-17T03:05:35.1783860-05:00\r\n", True),
     (_RECEIPT, False),
     (_RECEIPT.rstrip("\r\n"), True),
     (_RECEIPT.replace("WinUAE_2", "pipe\\\\other"), True),
     (_RECEIPT.replace("pid=7", "pid=x"), True),
-    (_RECEIPT.replace("started=t\r\n", ""), True),
+    (_RECEIPT.replace("started=2026-10-17T03:05:35.1783860-05:00\r\n", ""), True),
 ], ids=["no-pipe", "dead-pid", "no-line-ending", "bad-name", "bad-pid", "no-started"])
 def test_a_lane_receipt_that_names_no_live_emulator_opens_nothing(tmp_path, monkeypatch, text, alive):
     _receipt(tmp_path, monkeypatch, text)
@@ -644,3 +649,27 @@ def test_a_blank_lane_receipt_switch_changes_nothing(monkeypatch, value):
     monkeypatch.setenv(winuae.RUN_ENV, value)
     monkeypatch.delenv(winuae.PIPE_ENV, raising=False)
     assert _connect_by_receipt() == ["WinUAE"]
+
+
+def test_a_live_pid_that_began_at_another_time_opens_nothing(tmp_path, monkeypatch):
+    _receipt(tmp_path, monkeypatch, _RECEIPT)
+    later = _STARTED + datetime.timedelta(minutes=5)
+    with pytest.raises(amiga.PipeError, match="There is no WinUAE pipe."):
+        _connect_by_receipt(started_of=lambda pid: later)
+
+
+@pytest.mark.parametrize("which", ["alive", "started_of"])
+def test_a_failing_process_check_is_no_receipt(tmp_path, monkeypatch, which):
+    _receipt(tmp_path, monkeypatch, _RECEIPT)
+
+    def broken(pid):
+        raise OSError("no access")
+
+    with pytest.raises(amiga.PipeError, match="There is no WinUAE pipe."):
+        _connect_by_receipt(**{which: broken})
+
+
+def test_a_process_whose_start_time_cannot_be_read_is_no_receipt(tmp_path, monkeypatch):
+    _receipt(tmp_path, monkeypatch, _RECEIPT)
+    with pytest.raises(amiga.PipeError, match="There is no WinUAE pipe."):
+        _connect_by_receipt(started_of=lambda pid: None)

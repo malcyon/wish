@@ -4067,6 +4067,12 @@ class Controller:
             if self.lanes == "one":
                 if reopened is None:
                     raise AcceptanceStop("the restarted game named no pipe")
+                # Wish follows this holder's run receipt, so the pipe it will open is the one the guest records now.
+                running = self.guest.lane_run(self.args.holder)
+                if running is None or running[1] != reopened:
+                    raise AcceptanceStop(
+                        f"the restarted game opened pipe {reopened}, but the holder's run receipt names "
+                        f"{running[1] if running else 'none'}")
             elif self.pipe is not None and reopened != self.pipe:
                 raise AcceptanceStop(
                     f"the restarted game opened pipe {reopened}, not Wish's {self.pipe}")

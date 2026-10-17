@@ -226,7 +226,7 @@ def test_the_disconnect_step_restarts_the_game_on_the_same_lane_and_regrabs_wish
 
 
 def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ()),
-                           reload_step=None, leg="reconnect", pipe=None, lanes=None):
+                           reload_step=None, leg="reconnect", pipe=None, lanes=None, running=None):
     """A controller at the disconnect step, with the real cleanup and everything before it stubbed."""
     route = _route()
     clock = FakeClock()
@@ -236,7 +236,7 @@ def _disconnect_controller(tmp_path, monkeypatch, *, start=None, launch=((), ())
         start=start or (lambda *args, **kwargs: events.append("lane-start")),
         status=lambda timeout: "no claims")
     controller = winwishaccept.Controller(
-        _args(tmp_path, leg=leg), guest=object(), lane=lane, game=FakeGame(),
+        _args(tmp_path, leg=leg), guest=SimpleNamespace(lane_run=lambda holder: running), lane=lane, game=FakeGame(),
         guards=object(), route=route, zipped=tmp_path / "build.zip", info={"media": {}},
         clock=clock, sleep=clock.sleep)
 
@@ -424,13 +424,26 @@ def test_a_restart_on_another_pipe_stops_with_both_names(tmp_path, monkeypatch):
 
 def test_a_restart_on_another_pipe_is_reconnected_when_wish_follows_the_lane(tmp_path, monkeypatch):
     controller, _ = _disconnect_controller(
-        tmp_path, monkeypatch, pipe="WinUAE", lanes="one",
+        tmp_path, monkeypatch, pipe="WinUAE", lanes="one", running=(2, "WinUAE_1"),
         start=lambda *args, **kwargs: "ok pid=1 session=1 pipe=WinUAE_1")
 
     result = controller.run_title()
 
     assert result["failure"] is None
     assert result["mapping"]["reconnect"]["status"] == "awaiting image review"
+
+
+@pytest.mark.parametrize("running", [(2, "WinUAE_2"), None])
+def test_a_restart_whose_run_receipt_differs_from_the_reopened_pipe_stops(tmp_path, monkeypatch, running):
+    controller, events = _disconnect_controller(
+        tmp_path, monkeypatch, pipe="WinUAE", lanes="one", running=running,
+        start=lambda *args, **kwargs: "ok pid=1 session=1 pipe=WinUAE_1")
+
+    result = controller.run_title()
+
+    assert "run receipt names" in result["failure"]
+    assert result["mapping"]["reconnect"]["status"] != "awaiting image review"
+    assert events[-1] == "down"
 
 
 def test_a_restart_that_names_no_pipe_stops_even_when_wish_follows_the_lane(tmp_path, monkeypatch):
