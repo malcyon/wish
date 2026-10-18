@@ -7,8 +7,10 @@ instance-pool slot, started without the driver's own debugger connection, and
 the real Wish window runs offscreen in this process, so its connection helper
 is the emulator's one client. Keys go through X, so the Automapper stays up
 while the party walks, and the driver reads memory through a client of that
-helper. The mapping and persist legs run here; discovery modes, `--leg reconnect`,
-`--leg fight` and `--quickfight-control` stop before a slot is claimed.
+helper. The mapping, persist and fight legs run here. The fight leg takes no control
+branch, because the shipped FS-UAE cannot restore an exact picture; every write Wish's own
+session makes is logged instead. Discovery modes, `--leg reconnect`, `--watch-dip` and
+`--quickfight-control` stop before a slot is claimed.
 
 A person must review the paired game and Wish images before a mapping row can
 be accepted.
@@ -53,6 +55,8 @@ HELPER_END_WAIT = 10.0
 STEP_CALLS = {"insert": "insert", "snapshot": "snapshot", "restore": "restore", "reset": "reset"}
 #: The per-poll log `PollLog` writes in the run folder.
 POLL_LOG = "polls.jsonl"
+#: The log `WishWriteLog` writes in the run folder: one row per write Wish's session made.
+WRITE_LOG = "writes.jsonl"
 #: Seconds a hold may end early, from the clock's own granularity, before it stops the run.
 HOLD_SLACK = 0.5
 
@@ -191,11 +195,12 @@ def stage_search_area(manifest_path: pathlib.Path, out: pathlib.Path) -> pathlib
     return written
 
 
-def _export_guards(args: argparse.Namespace, route: Any,
-                   states: set[str] | None = None) -> tuple[Any, dict[str, Any]]:
+def _export_guards(args: argparse.Namespace, route: Any, states: set[str] | None = None,
+                   *, extra: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
     """The measured guards exported into the run folder, renamed into place only once complete.
 
-    `states` are the screens the leg needs a guard for; the mapping route's own when None."""
+    `states` are the screens the leg needs a guard for; the mapping route's own when None.
+    `extra` is the fight plan's own guards, merged into the export before the check."""
     final = pathlib.Path(args.out) / "guards-export"
     if final.exists():
         raise AcceptanceStop(f"guard export directory already exists: {final}")
@@ -212,6 +217,8 @@ def _export_guards(args: argparse.Namespace, route: Any,
             raise AcceptanceStop(f"guard export failed: {exc}") from exc
         if rc:
             raise AcceptanceStop(f"guard export failed with exit {rc}")
+        if extra:
+            base._merge_guards(made / "guards.json", extra)
         guards = screens.PixelGuards(made / "guards.json")
         missing = (base._states(route, actions=False) if states is None else states) - guards.rules.keys()
         if missing:
@@ -234,10 +241,13 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     if getattr(args, "discover", None):
         raise AcceptanceStop("discovery modes are not run on FS-UAE")
     leg = getattr(args, "leg", "mapping")
-    if leg not in ("mapping", "persist"):
+    if leg not in ("mapping", "persist", "fight"):
         raise AcceptanceStop(f"--leg {leg} is not run on FS-UAE")
     if getattr(args, "quickfight_control", False):
         raise AcceptanceStop("--quickfight-control is not run on FS-UAE")
+    if getattr(args, "watch_dip", False):
+        raise AcceptanceStop("--watch-dip is not run on FS-UAE: no key can wait in the "
+                             "emulator while Wish does not read the game")
     base.check_leg_flags(args)
     if args.deadline > base.MAX_SECONDS or args.deadline <= base.CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {base.CLEANUP_SECONDS} "
@@ -257,6 +267,8 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     if search:
         args.manifest = stage_search_area(args.manifest, pathlib.Path(args.out) / "staged-search")
     manifest = json.loads(pathlib.Path(args.manifest).read_text())
+    if leg != "fight" and isinstance(manifest, dict) and "fight" in manifest:
+        raise AcceptanceStop("a fight stage runs only with --leg fight")
     legs = {key: value for key, value in (("arrival_hold", hold), ("search_area", search))
             if value is not None and value is not False}
     try:
@@ -296,7 +308,9 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
         rom = pathlib.Path((kickstart or fsuaesession._kickstart)())
     except RouteError as exc:
         raise AcceptanceStop(str(exc)) from exc
-    guards, guard_info = export(args, route, *(() if checked["states"] is None else (checked["states"],)))
+    plan = checked["plan"]
+    guards, guard_info = export(args, route, *(() if checked["states"] is None else (checked["states"],)),
+                                **({} if plan is None else {"extra": plan.extra_guards}))
     info = {"emulator": "fsuae", "driver": driver(),
             "fs_uae": {"path": str(emulator), "sha256": digest(emulator)},
             "kickstart": {"path": str(rom), "sha256": digest(rom)},
@@ -307,6 +321,9 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     if checked["persist"]:
         info["leg"] = "persist"
         info["persist"] = checked["persist"]
+    if plan is not None:
+        info["leg"] = "fight"
+        info["fight"] = base.fight_info(checked, manifest)
     return route, guards, info
 
 
@@ -410,6 +427,119 @@ class PollLog:
                 stream.write(json.dumps(row, default=str) + "\n")
         except Exception as exc:  # noqa: BLE001 -- a full disk must not end Wish's poll
             self.failure = f"{type(exc).__name__}: {exc}"
+
+
+class WishWriteLog:
+    """Every write Wish's own session makes to the game, one JSON row each in `path`.
+
+    While installed, `automap.amiga.AmigaTarget.write` is wrapped for the whole class, the one
+    method every Amiga action, Level up and the automatic Quickfight clear writes through. A call
+    is recorded only when its target is `wish_target()` at that moment, so the driver's own
+    helper client, which is an `AmigaTarget` too, is not. A write that raised is recorded with
+    its error, since part of it may have landed.
+    """
+
+    def __init__(self, path: pathlib.Path, elapsed: Any, wish_target: Any):
+        self.path, self.elapsed, self.wish_target = pathlib.Path(path), elapsed, wish_target
+        #: `(address, bytes)` of each recorded write, oldest first.
+        self.made: list[tuple[int, bytes]] = []
+        self.failure: str | None = None
+        self._saved: Any = None
+
+    def install(self) -> None:
+        from automap import amiga  # noqa: PLC0415
+
+        if self._saved is not None:
+            return
+        self._saved = original = amiga.AmigaTarget.write
+        log = self
+
+        def write(target: Any, addr: int, data: bytes, *args: Any, **kwargs: Any) -> Any:
+            wished = log.wish_target()
+            if wished is None or target is not wished:
+                return original(target, addr, data, *args, **kwargs)
+            error = None
+            try:
+                return original(target, addr, data, *args, **kwargs)
+            except BaseException as exc:
+                error = f"{type(exc).__name__}: {exc}"
+                raise
+            finally:
+                log.record(addr, bytes(data), error)
+
+        amiga.AmigaTarget.write = write
+
+    def remove(self) -> None:
+        from automap import amiga  # noqa: PLC0415
+
+        if self._saved is not None:
+            amiga.AmigaTarget.write = self._saved
+            self._saved = None
+
+    def record(self, address: int, data: bytes, error: str | None) -> None:
+        self.made.append((address, data))
+        if self.failure is not None:
+            return
+        row = {"write": len(self.made), "elapsed": round(self.elapsed(), 3),
+               "wall": round(time.time(), 3), "address": f"0x{address:X}",
+               "length": len(data), "data": data.hex(), "error": error}
+        try:
+            with self.path.open("a") as stream:
+                stream.write(json.dumps(row) + "\n")
+        except Exception as exc:  # noqa: BLE001 -- a full disk must not end Wish's write
+            self.failure = f"{type(exc).__name__}: {exc}"
+
+
+def helper_memory(memory: Any, open_client: Any) -> Any:
+    """Point a fight driver's `Memory` at a client of the connection helper of its own.
+
+    `cursefight.Memory.target()` opens WinUAE's pipe. Here it returns `cursefight.Serial` over
+    the target `open_client()` gives, under the memory's own lock, and opens a new client when
+    that one is lost. A client of its own keeps a read a timed-out worker is still making off the
+    driver's client. `memory.close_client()` closes it. Returns `memory`."""
+    from automap import amiga  # noqa: PLC0415
+    from tools.amiga import cursefight  # noqa: PLC0415
+
+    held: dict[str, Any] = {"gdb": None}
+
+    def close_client() -> None:
+        with memory._lock:
+            gdb, held["gdb"], memory._target = held["gdb"], None, None
+            if gdb is not None:
+                gdb.close()
+
+    def target() -> Any:
+        with memory._lock:
+            gdb = held["gdb"]
+            if (memory._target is None or gdb is None or getattr(gdb, "lost", False)
+                    or getattr(gdb, "sock", True) is None):
+                with contextlib.suppress(Exception):
+                    close_client()
+                gdb, found, layout = open_client()
+                want = amiga.MACHINES[memory.title].title
+                if getattr(layout, "title", None) != want:
+                    gdb.close()
+                    raise AcceptanceStop(f"the helper's game is {getattr(layout, 'title', None)}, "
+                                         f"not {want}")
+                held["gdb"] = gdb
+                memory._target = cursefight.Serial(found, memory._lock)
+            return memory._target
+
+    memory.target = target
+    memory.close_client = close_client
+    return memory
+
+
+@contextlib.contextmanager
+def _fight_memory_from(build: Any):
+    """`winwishaccept._fight_memory` answered by `build(original, holder, route)` for
+    `run_fight`, which looks it up at call time."""
+    saved = base._fight_memory
+    base._fight_memory = lambda holder, route: build(saved, holder, route)
+    try:
+        yield
+    finally:
+        base._fight_memory = saved
 
 
 class _NotingGuards:
@@ -585,6 +715,9 @@ class FsuaeController(base.Controller):
         self.saved_env: dict[str, str | None] | None = None
         self.saved_port: Any = None
         self.poll_log: PollLog | None = None
+        self.write_log: WishWriteLog | None = None
+        #: The fight drivers' memories, each with a helper client of its own to close.
+        self.fight_memories: list[Any] = []
         self.saved_hooks: tuple[Any, ...] | None = None
         super().__init__(args, guest=None, lane=game, game=game,
                          guards=_NotingGuards(guards, game.note_recognised)
@@ -625,6 +758,49 @@ class FsuaeController(base.Controller):
     def _press(self, key: str, *, action: bool = False) -> None:
         super()._press(key, action=action)
         self._let_wish_read(key)
+
+    def _send_key(self, key: str) -> None:
+        """One key now, through the encounter switch while it is on; the caller counts it."""
+        if self.encounters_on:
+            result = self.encounters.keys([key])
+            if result.get("stopped") or result.get("error") or result.get("pressed") != [key]:
+                raise AcceptanceStop(f"encounter-controlled key {key}: {result}")
+        else:
+            self.game.press(self.args.holder, key, self.left(30))
+        self.log("key", key=key)
+
+    def _scheduled_key(self, key: str, *, show_map: bool, index: int | None = None) -> dict[str, Any]:
+        """WinUAE's queued key, on FS-UAE: the emulator queues nothing, so the key is pressed now.
+
+        The Automapper is never left here, so it is showing before the key lands. Wish is pumped
+        until it has read the game twice, then for `WALK_SETTLE` more. The schedule has the
+        WinUAE fields, with no lead. A key with Wish not reading cannot be sent: that is the
+        control branch, which FS-UAE does not run."""
+        if not show_map:
+            raise AcceptanceStop(f"{key}: FS-UAE cannot send a key while Wish does not read the game")
+        before = self.clock()
+        self._send_key(key)
+        sent = self.key_sent = self.clock()
+        self._let_wish_read(key)
+        read = self.clock()
+        self.sleep(self.left(base.WALK_SETTLE))
+        schedule = {"key": key, "index": index, "lead_frames": 0, "min_emulation_speed": None,
+                    "tab_shown_s": 0.0, "key_earliest_s": round(sent - before, 3),
+                    "key_latest_s": round(sent - before, 3),
+                    "shot_s": round(self.clock() - before, 3)}
+        self.log("map_walk", **schedule)
+        if self.clock() < read + base.WALK_SETTLE:
+            raise AcceptanceStop(f"the route time ran out before Wish had read for "
+                                 f"{base.WALK_SETTLE:.0f} s after key {key}")
+        return schedule
+
+    def _fight_memory(self, make: Any, holder: str, route: Any) -> Any:
+        """The fight driver's memory from `make`, reading through a helper client of its own."""
+        memory = helper_memory(make(holder, route),
+                               lambda: self.machine_factory(self.game.slot.port))
+        self.fight_memories.append(memory)
+        self.log("fight_memory", title=memory.title)
+        return memory
 
     def _let_wish_read(self, key: str) -> None:
         """Pump Wish's events until it has read the game again, so no key lands between two reads.
@@ -726,6 +902,15 @@ class FsuaeController(base.Controller):
         from wish import debuglog  # noqa: PLC0415
 
         return wish_log_blocks(debuglog.log_dir())
+
+    def _wish_target(self) -> Any:
+        """The target Wish's session reads and writes through now; None while it is not attached."""
+        window = getattr(self.wish, "window", None)
+        return getattr(getattr(window, "session", None), "target", None)
+
+    def _wish_writes(self) -> list[tuple[int, bytes]] | None:
+        """Every write Wish's session has made since the fight leg began; None with no log kept."""
+        return None if self.write_log is None else list(self.write_log.made)
 
     def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
         wish_path = self.out / f"wish-{name}.png"
@@ -994,6 +1179,12 @@ class FsuaeController(base.Controller):
             self.poll_log = PollLog(self.out / POLL_LOG, lambda: self.clock() - self.started)
             self.poll_log.install()
             self.summary["poll_log"] = str(self.out / POLL_LOG)
+        if self.leg == "fight":
+            self.write_log = WishWriteLog(self.out / WRITE_LOG, lambda: self.clock() - self.started,
+                                          self._wish_target)
+            self.write_log.install()
+            self.summary["wish_writes"] = {"log": str(self.out / WRITE_LOG), "writes": 0,
+                                           "failure": None}
         if self.wish is None:
             self.wish = fsuaegdb.WishRun(argparse.Namespace(
                 port=self.game.slot.port, display=self.game.slot.display, observe_wait=0.0),
@@ -1015,6 +1206,11 @@ class FsuaeController(base.Controller):
                 self.encounters.close()
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"encounters close: {exc}")
+        for memory in self.fight_memories:
+            try:
+                memory.close_client()
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"fight memory client: {exc}")
         self._drop_machine()
         if self.wish is not None and getattr(self.wish, "window", None) is not None:
             try:
@@ -1072,6 +1268,10 @@ class FsuaeController(base.Controller):
             self.summary["poll_count"] = self.poll_log.polls
             if self.poll_log.failure is not None:
                 self.summary["poll_log_failure"] = self.poll_log.failure
+        if self.write_log is not None:
+            self.write_log.remove()
+            self.summary["wish_writes"].update(writes=len(self.write_log.made),
+                                               failure=self.write_log.failure)
         cleanup["errors"] = failures
         try:
             self.log("cleanup", errors=failures)
@@ -1102,6 +1302,9 @@ class FsuaeController(base.Controller):
     def run_title(self) -> dict[str, Any]:
         with fsuaegdb.interruptible(lambda **payload: _log_note(self.log, "interrupt", payload)):
             with _reads_through(self._connect):
+                if self.leg == "fight":
+                    with _fight_memory_from(self._fight_memory):
+                        return self.run_fight()
                 return self.run_persist() if self.leg == "persist" else self._run_mapping()
 
     def _run_mapping(self) -> dict[str, Any]:
@@ -1148,10 +1351,20 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--discover", choices=(*base.LEAVE_MODES, *base.OPENING_MODES),
                         help="not run on FS-UAE; the run stops before a slot is claimed")
     parser.add_argument("--leg", choices=base.LEGS, default="mapping",
-                        help="mapping and persist run on FS-UAE; reconnect and fight stop "
-                             "before a slot is claimed")
+                        help="mapping, persist and fight run on FS-UAE; reconnect stops before "
+                             "a slot is claimed")
     parser.add_argument("--action", action="append", choices=base.ACTION_KINDS,
                         help="run only this enabled action; repeat for several (--leg persist only)")
+    parser.add_argument("--watch", action="store_true",
+                        help="fight leg: start Wish with the clear-quickfight preference ticked "
+                             "and take the Automapper branch at CONTINUE BATTLE, judged from "
+                             f"Wish's writes in {WRITE_LOG}")
+    parser.add_argument("--watch-map", action="store_true",
+                        help="fight leg, with --watch: keep the Automapper showing from the last Q "
+                             "to CONTINUE BATTLE, glancing at the game now and then")
+    parser.add_argument("--press-quickfight-off", action="store_true",
+                        help="fight leg, Pools of Darkness only: press Quickfight off at a second "
+                             "member's bar, with no replay")
     parser.add_argument("--arrival-hold", type=float, metavar="SECONDS",
                         help="Curse Yulash: hold the arrival question this long before SNEAK IN; "
                              "implies --poll-log")

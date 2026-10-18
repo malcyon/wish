@@ -1151,7 +1151,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         if not item.path.is_file() or digest(item.path) != item.sha256:
             raise AcceptanceStop(f"prepared medium {item.key} is missing or changed")
     persist = checked["persist"]
-    plan, fight_specimen, fight_stage = checked["plan"], checked["specimen"], checked["stage"]
+    plan = checked["plan"]
     expected_source = f"guards_{guardmaps.FILES[route.title]}.json"
     if route.guard_path.name != expected_source or not route.guard_path.is_file():
         raise AcceptanceStop(f"the measured guard source must be {expected_source}")
@@ -1230,14 +1230,19 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         info["persist"] = persist
     if plan is not None:
         info["leg"] = "fight"
-        info["fight"] = {"entry": plan.entry, "survive": plan.survive,
-                         "place": fight_specimen["place"], "pin": fight_specimen["pin"],
-                         "loaded": fight_specimen.get("loaded"),
-                         "stage": fight_stage,
-                         "walk": ({k: manifest["fight"].get(k)
-                                   for k in ("place", "route", "square", "facing", "names")}
-                                  if "fight" in manifest else None)}
+        info["fight"] = fight_info(checked, manifest)
     return route, guards, zipped, info
+
+
+def fight_info(checked: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any]:
+    """The fight leg's run plan from `leg_preflight`'s result: entry, survival, place, pin and walk."""
+    plan, specimen = checked["plan"], checked["specimen"]
+    return {"entry": plan.entry, "survive": plan.survive,
+            "place": specimen["place"], "pin": specimen["pin"],
+            "loaded": specimen.get("loaded"), "stage": checked["stage"],
+            "walk": ({k: manifest["fight"].get(k)
+                      for k in ("place", "route", "square", "facing", "names")}
+                     if "fight" in manifest else None)}
 
 
 def _party_spans(blocks: list[tuple[int, int]],

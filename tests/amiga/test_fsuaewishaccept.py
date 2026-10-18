@@ -452,7 +452,7 @@ def test_the_encounter_switch_waits_for_wish_to_read(tmp_path, monkeypatch):
 @pytest.mark.parametrize("extra, message", [
     ({"discover": "ssb-leave"}, "discovery modes"),
     ({"quickfight_control": True}, "--quickfight-control"),
-    ({"leg": "fight"}, "--leg fight"),
+    ({"leg": "fight", "watch": True, "watch_dip": True}, "--watch-dip"),
     ({"leg": "reconnect"}, "--leg reconnect"),
 ])
 def test_the_modes_left_out_stop_before_the_claim(tmp_path, extra, message):
@@ -1207,3 +1207,332 @@ def test_the_level_up_card_check_reads_the_real_window_listing(tmp_path, monkeyp
     assert clicks == ["card_0_level_up"]
     with pytest.raises(winwishaccept.AcceptanceStop, match="does not name"):
         controller._unique_action(automation_id="card_0_level_up", context=context("OTHER"))
+
+
+# -- the fight leg: Wish's write log, the fight memory and the key ----------------------------
+
+
+class FakeDebugger:
+    """A transport `AmigaTarget.write` hands its bytes to, as `FsuaeGdb.write_memory` takes them."""
+
+    halts_machine = False
+
+    def __init__(self, fail=False):
+        self.written, self.fail = [], fail
+
+    def write_memory(self, addr, data, verify=True):
+        if self.fail:
+            raise amiga.GuestError("the emulator answered 'E01'")
+        self.written.append((addr, bytes(data)))
+
+
+def _amiga_target(fail=False):
+    return amiga.AmigaTarget(FakeDebugger(fail), amiga.MACHINES[GAME_KEY])
+
+
+@pytest.fixture
+def write_log(tmp_path):
+    """A `WishWriteLog` over a Wish target the test can change, removed again after the test."""
+    seen = {"target": _amiga_target()}
+    log = fsuaewishaccept.WishWriteLog(tmp_path / "writes.jsonl", lambda: 1.5,
+                                       lambda: seen["target"])
+    original = amiga.AmigaTarget.write
+    log.install()
+    try:
+        yield log, seen
+    finally:
+        log.remove()
+        assert amiga.AmigaTarget.write is original
+
+
+def test_every_route_wish_writes_through_reaches_the_write_log(write_log):
+    from automap import actionbar, amigalevelup
+    from automap import actions as engine
+
+    log, seen = write_log
+    wish = seen["target"]
+    engine._write_all(wish, [(0x40000, b"\x00")])               # the five actions and the watcher
+    amigalevelup.WriteLog(wish).write(0x40010, b"\x01\x02")     # Level up's write_plan
+    with actionbar._noting_write_failures(wish, []):            # the action bar's click
+        wish.write(0x40020, b"\x03")
+    assert log.made == [(0x40000, b"\x00"), (0x40010, b"\x01\x02"), (0x40020, b"\x03")]
+    assert wish.debugger.written == log.made
+    rows = [json.loads(line) for line in log.path.read_text().splitlines()]
+    assert [(r["write"], r["address"], r["data"], r["error"]) for r in rows] == [
+        (1, "0x40000", "00", None), (2, "0x40010", "0102", None), (3, "0x40020", "03", None)]
+
+
+def test_a_write_by_another_target_is_not_wishs_and_is_not_logged(write_log):
+    log, seen = write_log
+    driver = _amiga_target()
+    driver.write(0x40000, b"\x01")
+    seen["target"] = None                    # Wish detached: nothing it could write
+    _amiga_target().write(0x40001, b"\x02")
+    assert log.made == [] and not log.path.exists()
+    assert driver.debugger.written == [(0x40000, b"\x01")]
+
+
+def test_a_write_that_raised_is_logged_with_its_error_and_still_raises(write_log):
+    log, seen = write_log
+    seen["target"] = _amiga_target(fail=True)
+    with pytest.raises(amiga.GuestError):
+        seen["target"].write(0x40000, b"\x00")
+    row = json.loads(log.path.read_text())
+    assert log.made == [(0x40000, b"\x00")] and row["error"].startswith("GuestError")
+
+
+def _fight_args(tmp_path, **extra):
+    return _args(tmp_path, leg="fight", **extra)
+
+
+def _fight_controller(tmp_path, monkeypatch, *, title="darkness", layout=GAME_KEY, **flags):
+    clock, game = FakeClock(), FakeGame(tmp_path)
+    wish = FakeWish(clock)
+    made = []
+
+    def machine(port):
+        made.append((FakeGdb(), FakeTarget(), amiga.MACHINES[layout]))
+        return made[-1]
+
+    info = {"media": {}, "fight": {"entry": "walk", "survive": False, "place": None,
+                                   "pin": None, "loaded": None, "stage": None, "walk": None}}
+    controller = fsuaewishaccept.FsuaeController(
+        _fight_args(tmp_path, **flags), game=game, guards=lambda state, crop: True,
+        route=_route(title=title), info=info, wish_run=wish, machine=machine, clock=clock)
+    monkeypatch.setattr(fsuaewishaccept.fsuaegdb, "helper_row",
+                        lambda port: {"alive": False, "pid": None})
+    monkeypatch.setattr(controller, "_enter_environment", lambda: None)
+    monkeypatch.setattr(controller, "_leave_environment", lambda: None)
+    monkeypatch.setattr(controller, "_shoot_window", lambda path: path.write_bytes(b"png"))
+    return controller, game, wish, made
+
+
+def test_the_fight_leg_installs_the_write_log_and_cleanup_removes_it(tmp_path, monkeypatch):
+    original = amiga.AmigaTarget.write
+    controller, _game, wish, _made = _fight_controller(tmp_path, monkeypatch)
+    controller._up()
+    try:
+        assert amiga.AmigaTarget.write is not original
+        wish.window.session = SimpleNamespace(target=_amiga_target())
+        wish.window.session.target.write(0x40000, b"\x00")
+        assert controller._wish_writes() == [(0x40000, b"\x00")]
+    finally:
+        controller._cleanup()
+    assert amiga.AmigaTarget.write is original
+    assert controller.summary["wish_writes"] == {
+        "log": str(tmp_path / fsuaewishaccept.WRITE_LOG), "writes": 1, "failure": None}
+
+
+def test_the_mapping_leg_keeps_no_write_log(tmp_path, monkeypatch):
+    controller, _game, _wish, _made = _controller(tmp_path, monkeypatch)
+    assert controller._wish_writes() is None
+
+
+def test_the_queued_key_is_pressed_at_once_with_wish_reading_and_no_lead(tmp_path, monkeypatch):
+    controller, game, wish, _made = _fight_controller(tmp_path, monkeypatch)
+    wish.open()
+    began, counted = wish.clock.now, controller.action_commands
+    schedule = controller._scheduled_key("N", show_map=True)
+    assert [call for call in game.calls if call[0] == "press"] == [("press", "N")]
+    assert schedule["lead_frames"] == 0 and schedule["tab_shown_s"] == 0.0
+    assert wish.clock.now - began >= winwishaccept.WALK_SETTLE
+    assert wish.window.mapper._ticks >= fsuaewishaccept.WISH_READS_PER_KEY
+    # The caller counts the key, as it does for WinUAE's queued one.
+    assert controller.action_commands == counted
+    with pytest.raises(winwishaccept.AcceptanceStop, match="while Wish does not read"):
+        controller._scheduled_key("N", show_map=False)
+
+
+def test_the_fight_memory_reads_through_a_helper_client_of_its_own(tmp_path, monkeypatch):
+    from tools.amiga import cursefight, ssbfight
+
+    monkeypatch.setattr(amiga, "WinuaePipe", lambda **kw: pytest.fail("WinUAE pipe opened"))
+    controller, _game, _wish, made = _fight_controller(tmp_path, monkeypatch, title="ssb")
+    memory = controller._fight_memory(lambda holder, route: ssbfight.Memory(holder), "h",
+                                      controller.route)
+    target = memory.target()
+    assert isinstance(target, cursefight.Serial)
+    assert target._inner is made[0][1] and target._lock is memory._lock
+    assert memory.target() is target and len(made) == 1
+    made[0][0].lost = True                       # the client went: a new one is opened
+    assert memory.target() is not target and len(made) == 2 and made[0][0].closed
+    controller._cleanup()
+    assert made[1][0].closed
+
+
+def test_the_fight_memory_stops_on_another_titles_helper(tmp_path, monkeypatch):
+    from tools.amiga import cursefight
+
+    controller, _game, _wish, made = _fight_controller(tmp_path, monkeypatch, title="curse")
+    memory = controller._fight_memory(lambda holder, route: cursefight.Memory(holder), "h",
+                                      controller.route)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="helper's game"):
+        memory.target()
+    assert made[0][0].closed
+
+
+def test_the_fight_leg_runs_with_the_helper_reads_and_the_helper_fight_memory(tmp_path, monkeypatch):
+    from automap import amigaparty
+    from tools.amiga import amigatarget, cursefight
+
+    controller, _game, _wish, made = _fight_controller(tmp_path, monkeypatch)
+    route = SimpleNamespace(title="darkness", game_key=GAME_KEY)
+    monkeypatch.setitem(amigaparty.ROWS, GAME_KEY, SimpleNamespace(
+        current=0x10, control=amigaparty.Spot(0), quickfight=amigaparty.Spot(1),
+        hp=amigaparty.Spot(2), record_size=8, name=4))
+    original = winwishaccept._fight_memory
+    seen = {}
+
+    def run_fight():
+        seen["connect"] = amigatarget.connect_pipe
+        seen["target"] = winwishaccept._fight_memory("h", route).target()
+        return {"ok": True}
+
+    monkeypatch.setattr(controller, "run_fight", run_fight)
+    assert controller.run_title() == {"ok": True}
+    assert seen["connect"] == controller._connect
+    assert isinstance(seen["target"], cursefight.Serial) and seen["target"]._inner is made[0][1]
+    assert winwishaccept._fight_memory is original
+
+
+class _EdgeWish(FakeWish):
+    """Wish's watcher: once the key has landed, its session target clears QUICK on each chosen
+    member through `AmigaTarget.write`, and the game reaches the after-fight mode."""
+
+    def __init__(self, clock, world, game):
+        super().__init__(clock)
+        self.world, self.game = world, game
+
+    def pump(self, seconds):
+        super().pump(seconds)
+        world = self.world
+        if ("press", "N") in self.game.calls and world["mode"] != 6:
+            world["mode"] = 6
+            for member in world["members"]:
+                if member["raw"][1] == 1 and not member["raw"][0] & 0x80:
+                    member["raw"][1] = 0
+                    self.window.session.target.write(member["address"] + 1, b"\x00")
+            for address, data in world["extra"]:
+                self.window.session.target.write(address, data)
+
+
+def _fs_edge(tmp_path, monkeypatch, *, extra=(), removed=True):
+    from automap import amigaparty
+
+    monkeypatch.setitem(amigaparty.ROWS, GAME_KEY, SimpleNamespace(
+        mode=0x5B12, combat_value=5, after_fight_value=6, combat_legal=frozenset(),
+        control=amigaparty.Spot(0, 1, 0x80), quickfight=amigaparty.Spot(1)))
+    controller, game, _wish, _made = _fight_controller(tmp_path, monkeypatch, watch=True)
+    world = {"mode": 5, "extra": list(extra), "members": [
+        {"address": 0x41000, "raw": bytearray([0, 1, 7])},
+        {"address": 0x41100, "raw": bytearray([0x80, 1, 7])}]}
+    wish = _EdgeWish(controller.clock, world, game)
+    controller.wish = wish
+    wish.open()
+    wish.window.session = SimpleNamespace(target=_amiga_target())
+    controller.write_log = fsuaewishaccept.WishWriteLog(
+        tmp_path / fsuaewishaccept.WRITE_LOG, lambda: 0.0, controller._wish_target)
+    monkeypatch.setattr(controller, "_await", lambda state, limit=90, interstitials=(): {
+        "raw": f"{state}.raw.png"})
+    monkeypatch.setattr(controller, "_read_mode", lambda: world["mode"])
+    monkeypatch.setattr(controller, "_action_readback", lambda: [
+        {"slot": at, "name": f"M{at}", "address": m["address"], "raw": bytes(m["raw"]).hex(),
+         "items": []} for at, m in enumerate(world["members"])])
+    monkeypatch.setattr(controller, "_controls_listing", lambda: [
+        "ListItem|Removed quickfight from 1 character.|messages|enabled=True|visible=True"
+        if removed else "ListItem|Party|messages|enabled=True|visible=True"])
+    return controller, game
+
+
+def test_the_fs_uae_edge_grades_watch_a_from_wishs_own_writes(tmp_path, monkeypatch):
+    controller, game = _fs_edge(tmp_path, monkeypatch)
+    controller.write_log.install()
+    try:
+        assert controller._watch_edge("N") is True
+    finally:
+        controller.write_log.remove()
+    assert controller._wish_writes() == [(0x41001, b"\x00")]
+    wish_row = controller.summary["watch_a"]
+    assert (wish_row["status"], wish_row["reason"]) == ("awaiting image review", None)
+    assert controller.summary["watch_control_b"]["reason"] == winwishaccept.CONTROL_NOT_RUN
+    assert [c for c in game.calls if c[0] in ("snapshot", "restore", "press")] == [("press", "N")]
+    rows = [json.loads(line) for line in (tmp_path / fsuaewishaccept.WRITE_LOG).read_text().splitlines()]
+    assert [(r["address"], r["data"]) for r in rows] == [("0x41001", "00")]
+
+
+@pytest.mark.parametrize("extra, removed, reason", [
+    ([(0x41002, b"\x09")], True, "Wish wrote 00 at 0x41001, 09 at 0x41002"),
+    ((), False, "Messages holds no 'Removed quickfight' line")])
+def test_the_fs_uae_edge_fails_on_a_write_or_a_message_wish_should_not_have_made(
+        tmp_path, monkeypatch, extra, removed, reason):
+    controller, _game = _fs_edge(tmp_path, monkeypatch, extra=extra, removed=removed)
+    controller.write_log.install()
+    try:
+        controller._watch_edge("N")
+    finally:
+        controller.write_log.remove()
+    wish_row = controller.summary["watch_a"]
+    assert wish_row["status"] == "failed" and wish_row["reason"].startswith(reason)
+
+
+def _fight_preflight(tmp_path, monkeypatch, **extra):
+    media, mounted = _ssb_media(tmp_path)
+    (tmp_path / "prepare.json").write_text("{}")
+    route = _route(media=media, mounted=mounted)
+    states = {"title", "world", "combat_bar"}
+    plan = SimpleNamespace(entry="walk", survive=True, extra_guards={"combat_bar": {"rule": 1}})
+    monkeypatch.setattr(winwishaccept, "leg_preflight", lambda args, route, manifest: {
+        "persist": None, "plan": plan, "specimen": {"place": {"x": 1}, "pin": "abc"},
+        "stage": None, "states": states})
+    seen = []
+
+    def export(args, route, wanted=None, *, extra=None):
+        seen.append((wanted, extra))
+        return "guards", {"export": "x"}
+
+    binary = tmp_path / "fs-uae"
+    binary.write_bytes(b"emulator")
+    result = fsuaewishaccept.preflight(
+        _fight_args(tmp_path, **extra), game=FakeGame(tmp_path),
+        route_for=lambda title, manifest, **legs: route, binary=lambda: binary,
+        kickstart=lambda: binary, driver=lambda: {"sha": "x", "dirty": False}, export=export)
+    return result, seen, states, plan
+
+
+def test_the_fight_leg_passes_preflight_with_its_plan_and_merged_guards(tmp_path, monkeypatch):
+    (_route_, guards, info), seen, states, plan = _fight_preflight(
+        tmp_path, monkeypatch, watch=True, watch_map=True)
+    assert info["leg"] == "fight" and guards == "guards"
+    assert info["fight"] == {"entry": "walk", "survive": True, "place": {"x": 1}, "pin": "abc",
+                             "loaded": None, "stage": None, "walk": None}
+    assert seen == [(states, plan.extra_guards)]
+
+
+def test_the_guard_export_merges_the_fight_guards_before_the_state_check(tmp_path, monkeypatch):
+    guard_path = tmp_path / "maps" / f"guards_{fsuaewishaccept.guardmaps.FILES['ssb']}.json"
+    guard_path.parent.mkdir()
+    guard_path.write_text("{}")
+    route = SimpleNamespace(title="ssb", guard_path=guard_path)
+
+    def export(argv):
+        out = pathlib.Path(argv[argv.index("--out") + 1])
+        (out / "guards.json").write_text(json.dumps({"world": 1}))
+        return 0
+
+    def merge(path, extra):
+        path.write_text(json.dumps({**json.loads(path.read_text()), **extra}))
+
+    monkeypatch.setattr(fsuaewishaccept.guardmaps, "main", export)
+    monkeypatch.setattr(winwishaccept, "_merge_guards", merge)
+    monkeypatch.setattr(fsuaewishaccept.screens, "PixelGuards", lambda path: SimpleNamespace(
+        rules=json.loads(pathlib.Path(path).read_text())))
+    guards, _info = fsuaewishaccept._export_guards(
+        _args(tmp_path), route, {"world", "combat_bar"}, extra={"combat_bar": 2})
+    assert guards.rules == {"world": 1, "combat_bar": 2}
+
+
+def test_a_fight_stage_on_another_leg_stops_in_preflight(tmp_path):
+    (tmp_path / "prepare.json").write_text(json.dumps({"fight": {}}))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="fight stage runs only with --leg fight"):
+        fsuaewishaccept.preflight(_args(tmp_path), game=FakeGame(tmp_path),
+                                  route_for=lambda *a, **k: pytest.fail("route read"))
