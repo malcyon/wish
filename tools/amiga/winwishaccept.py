@@ -2767,7 +2767,7 @@ class Controller:
         result["evidence"] = last
         row_ = amigaparty.ROWS[self.route.game_key]
         # Outdoors the resident map block is whatever the engine last left there, so only an
-        # area view has a map hash worth comparing.
+        # area view has a map hash that identifies the map.
         in_area = not any(fix.get("outdoors") or fix.get("world_map")
                           for fix in (initial["fix"], final["fix"] or {}))
         if (final["fix"] != initial["fix"] or
