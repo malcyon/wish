@@ -2542,7 +2542,7 @@ def test_a_failed_write_says_which_emulator_it_could_not_write_to(
 
     said = []
     bar = ActionBar(make_root(),
-                    say=lambda text, detail="", alarm=False: said.append((text, alarm)))
+                    say=lambda text, detail="", alarm=False, dedup=True: said.append((text, alarm)))
     bar.attach(session.target)
     heal = next(a for a in bar.actions if a.name == "heal")
 
@@ -2564,7 +2564,7 @@ def test_a_failed_read_does_not_claim_a_failed_write():
 
     said = []
     bar = ActionBar(make_root(),
-                    say=lambda text, detail="", alarm=False: said.append(text))
+                    say=lambda text, detail="", alarm=False, dedup=True: said.append(text))
     target = MemoryTarget()
 
     def busy(addr, length):

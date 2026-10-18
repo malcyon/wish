@@ -388,7 +388,7 @@ def test_a_trip_that_does_not_fire_puts_everything_back(lengths):
     window, target = attached(CURSE, GUILD, ticked=(SEWERS, FIRE_KNIFE))
     bar = window.fasttravel_bar
     said = []
-    bar.say = lambda text, detail="", alarm=False: said.append((text, alarm))
+    bar.say = lambda text, detail="", alarm=False, dedup=True: said.append((text, alarm))
     before = bytes(target.ram)
     pick(window, SEWERS)
     bar.button.click()

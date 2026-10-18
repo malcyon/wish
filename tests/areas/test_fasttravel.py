@@ -196,7 +196,7 @@ def test_the_wait_gives_up_rather_than_hanging(app, monkeypatch):
     monkeypatch.setattr(actionbar, "WAIT_SECONDS", 0.1)
     said = []
     target = machine(resting=IN_THE_IRQ)            # never comes back
-    bar = row(app, target, say=lambda text, detail="", alarm=False:
+    bar = row(app, target, say=lambda text, detail="", alarm=False, dedup=True:
               said.append((text, alarm)))
     somewhere_else(bar)
     started = time.monotonic()
@@ -224,7 +224,7 @@ def test_a_connection_lost_mid_wait_ends_the_wait_rather_than_spinning(app):
     """
     said = []
     target = machine(resting=Machine.LOST)
-    bar = row(app, target, say=lambda text, detail="", alarm=False:
+    bar = row(app, target, say=lambda text, detail="", alarm=False, dedup=True:
               said.append((text, alarm)))
     somewhere_else(bar)
     target.answers = [IN_THE_IRQ]      # one look, and then it is gone
@@ -250,7 +250,7 @@ def test_a_messages_panel_line_opens_with_a_capital(app):
     string would leave the prefix lowercase and change nothing a user sees.
     """
     said: list[str] = []
-    bar = row(app, say=lambda text, detail="", alarm=False: said.append(text))
+    bar = row(app, say=lambda text, detail="", alarm=False, dedup=True: said.append(text))
     bar._report("fast travel",
                 actions.Outcome(False, actionbar.FastTravelBar.STILL_BUSY))
     assert said[-1] == ("Fast travel: the game was busy and nothing was "

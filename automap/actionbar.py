@@ -223,7 +223,9 @@ class ActionBar(QObject):
         self.root = root
         #: Where results are reported. `MessagesPanel.say` in the window; a
         #: no-op alone, so the bar is usable without one.
-        self.say = say or (lambda text, detail="", alarm=False: None)
+        # An action result is an event, so a repeat is a new row; only the
+        # connection's waiting line is dropped when repeated.
+        self.say = say or (lambda text, detail="", alarm=False, dedup=True: None)
         #: Whose addresses the buttons write to. **None is Pool of Radiance**,
         #: which is what a bar built without a window means; the window tells
         #: it the title it resolved off the disks, and again whenever those
@@ -373,7 +375,7 @@ class ActionBar(QObject):
         # lowercase and fix nothing a user sees.
         line = line[:1].upper() + line[1:]
         detail = "\n".join(outcome.notes)
-        self.say(line, detail, alarm=not outcome.ok)
+        self.say(line, detail, alarm=not outcome.ok, dedup=False)
 
     def run(self, action) -> engine.Outcome | None:
         """Ask if the action wants asking, apply it, and say what happened."""
@@ -560,7 +562,7 @@ class FastTravelBar(QObject):
                  parent: QObject | None = None):
         super().__init__(parent)
         self.root = root
-        self.say = say or (lambda text, detail="", alarm=False: None)
+        self.say = say or (lambda text, detail="", alarm=False, dedup=True: None)
         #: Whether `use_amiga` put an Amiga title's trips in, and what it
         #: displaced: the C64 action, and the title and game the window set.
         self._amiga = False
@@ -1014,7 +1016,7 @@ class FastTravelBar(QObject):
     # -- running one -------------------------------------------------------
 
     def _said(self, line: str, alarm: bool = False) -> None:
-        self.say(line, alarm=alarm)
+        self.say(line, alarm=alarm, dedup=False)
 
     def _report(self, what: str, outcome: engine.Outcome) -> None:
         self.last = outcome
@@ -1033,7 +1035,7 @@ class FastTravelBar(QObject):
         # string, capitalised where it is assembled, rather than each source
         # string upper-cased and every other caller of it left lowercase.
         notes = [n[:1].upper() + n[1:] for n in outcome.notes if n]
-        self.say(line, "\n".join(notes), alarm=not outcome.ok)
+        self.say(line, "\n".join(notes), alarm=not outcome.ok, dedup=False)
         self.refresh()
 
     def wait_for_key_wait(self) -> engine.Verdict:

@@ -2935,7 +2935,7 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     from automap.actionbar import ActionBar
     machine = MemoryTarget({0x6E11: b"\x00"})
     said = []
-    bar = ActionBar(make_root(), say=lambda text, detail="", alarm=False: said.append(text))
+    bar = ActionBar(make_root(), say=lambda text, detail="", alarm=False, dedup=True: said.append(text))
     asked = []
     bar.ask = lambda question: asked.append(question) or False
     bar.attach(machine)

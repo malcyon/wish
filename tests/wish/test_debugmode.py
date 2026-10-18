@@ -302,7 +302,7 @@ def test_the_fasttravel_tooltip_capitalises_every_note(app):
     capitalises the message line the same way; this is the same fix for the
     notes below it."""
     said = []
-    row = bar(app, say=lambda text, detail="", alarm=False:
+    row = bar(app, say=lambda text, detail="", alarm=False, dedup=True:
               said.append((text, detail)))
     row._report("fast travel", actions.Outcome(
         True, "Traveling to Kuto's Well.",
@@ -902,7 +902,7 @@ def test_the_bar_makes_a_pending_second_hop_on_the_poll_and_attach_none_clears_i
     ft = actions.FastTravel()
     ft.pending = actions.PendingHop(13, 27, area(0), None,
                                     time.monotonic() + 60)
-    row = bar(app, say=lambda text, detail="", alarm=False:
+    row = bar(app, say=lambda text, detail="", alarm=False, dedup=True:
               said.append((text, alarm)), fasttravel=ft)
     row.attach(target)
     assert target.jumps == [addr.tail]
@@ -928,7 +928,7 @@ def test_a_party_that_went_through_and_came_back_says_nothing(app):
     ft = actions.FastTravel()
     ft.pending = actions.PendingHop(13, 27, area(0), None,
                                     time.monotonic() - 1)
-    row = bar(app, say=lambda text, detail="", alarm=False:
+    row = bar(app, say=lambda text, detail="", alarm=False, dedup=True:
               said.append((text, alarm)), fasttravel=ft)
     through, back = machine(area=27, pc=0x0400), machine(area=13)
     row.attach(through)
@@ -941,7 +941,7 @@ def test_a_party_that_went_through_and_came_back_says_nothing(app):
 def test_a_blocked_fasttravel_is_reported_as_an_alarm(app):
     said = []
     row = bar(app, machine(mode=COMBAT),
-              say=lambda text, detail="", alarm=False: said.append((text, alarm)))
+              say=lambda text, detail="", alarm=False, dedup=True: said.append((text, alarm)))
     row.combo.setCurrentIndex(row.rows.index(area(13)))
     row.run()
     assert said and said[-1][1] is True
@@ -1154,7 +1154,7 @@ def test_check_arrival_names_the_place_in_the_running_title_not_pools(app):
     said = []
     row_bar = bar(app, target, maps={row.geos[0]: Geo(raw)},
                  title=areas.CURSE_OF_THE_AZURE_BONDS,
-                 say=lambda text, detail="", alarm=False: said.append(text))
+                 say=lambda text, detail="", alarm=False, dedup=True: said.append(text))
     row_bar.combo.setCurrentIndex(row_bar.rows.index(row))
     assert row_bar.run().ok
     assert row_bar.check_arrival() == row.geos[0]

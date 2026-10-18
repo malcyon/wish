@@ -123,3 +123,35 @@ def test_a_line_that_is_no_longer_newest_is_not_withdrawn(app):
     panel.withdraw(first)
     assert [line.split("  ", 1)[1] for line in panel.lines()] == [
         "Line A", "Line B"]
+
+
+def test_a_repeated_action_result_is_its_own_row(app):
+    from automap import actions as engine
+    from automap.actionbar import ActionBar
+    from automap.target import MemoryTarget
+
+    class Repeat(engine.Action):
+        name, label, description, combat_legal = "heal", "Repeat", "d", True
+
+        def legality(self, target):
+            return engine.Verdict(True)
+
+        def run(self, target, **kwargs):
+            return engine.Outcome(True, "Removed quickfight from 1 character.", ())
+
+    panel = _panel_with_room(app)
+    bar = ActionBar(make_root(), actions=[Repeat()], say=panel.say)
+    bar.attach(MemoryTarget())
+    action = bar.actions[0]
+    bar.run(action)
+    bar.run(action)
+    lines = panel.lines()
+    assert len(lines) == 2
+    assert all("Removed quickfight from 1 character." in t for t in lines)
+
+
+def test_the_connections_repeated_status_line_is_still_shown_once(app):
+    panel = _panel_with_room(app)
+    panel.say("Waiting to connect...")
+    panel.say("Waiting to connect...")
+    assert len(panel.lines()) == 1
