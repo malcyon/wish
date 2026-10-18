@@ -1495,7 +1495,8 @@ def _fight_preflight(tmp_path, monkeypatch, **extra):
     result = fsuaewishaccept.preflight(
         _fight_args(tmp_path, **extra), game=FakeGame(tmp_path),
         route_for=lambda title, manifest, **legs: route, binary=lambda: binary,
-        kickstart=lambda: binary, driver=lambda: {"sha": "x", "dirty": False}, export=export)
+        kickstart=lambda: binary, driver=lambda: {"sha": "x", "dirty": False}, export=export,
+        journal_check=lambda executable: None)
     return result, seen, states, plan
 
 
