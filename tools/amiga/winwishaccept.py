@@ -104,7 +104,12 @@ MAX_WAIT_LANES = 1800
 UNSAVED_ITEM_PREFIX = {"Pools of Darkness": 0x2E}
 #: Leading item-node bytes the game rewrites with the ITEMS list line it draws, keyed by `PartyRow.title`;
 #: Wish never writes them, so an action check ignores them on both sides.
-RECOMPOSED_ITEM_TEXT = {"Pool of Radiance": 0x2A}
+RECOMPOSED_ITEM_TEXT = {
+    "Pool of Radiance": 0x2A,
+    "Curse of the Azure Bonds": 0x2A,
+    "Secret of the Silver Blades": 0x2A,
+    "Pools of Darkness": 0x2A,
+}
 #: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
 #: L, Y, slot, B, E and N; Pools of Darkness' L, Y, P, slot and B.
 PERSIST_RELOAD_KEYS = 6
