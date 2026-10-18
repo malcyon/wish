@@ -67,3 +67,27 @@ def test_each_fight_guard_matches_its_screens_and_no_other_frame(title, tmp_path
         for capture, captured in frames.items():
             matched = {name for name, frame in captured.items() if guards(state, frame)}
             assert matched == (expected if capture == own else set()), (state, capture)
+
+
+#: Frames of the Pools of Darkness encounter bar, with the four-button and two-button forms.
+ENCOUNTER_FRAMES = {
+    'four buttons': 'WISH-2/wish2-a3/accept2/shots/13-world.png',
+    'undead, two buttons': 'WISH-359/qf-off1/w14.png',
+    'undead, two buttons, walk': 'WISH-359/fight/darkness/watch2/fight/010-walk.png',
+}
+
+
+@pytest.mark.parametrize('name', sorted(ENCOUNTER_FRAMES))
+def test_darkness_encounter_guard_matches_both_command_bars(name, tmp_path):
+    """The ATTACK FLEE TALK WAIT bar and the undead ATTACK FLEE bar are both an encounter, and neither is the world or a member's bar."""
+    source = ROOT / ENCOUNTER_FRAMES[name]
+    if not source.exists():
+        pytest.skip(f'{source.name} is not on this machine')
+    assert guardmaps.main(['export', '--title', 'darkness', '--out', str(tmp_path / 'map')]) == 0
+    guards = screens.PixelGuards(tmp_path / 'map' / 'guards.json')
+    frame = tmp_path / 'frame.png'
+    screens.canonical_file(source, frame)
+    assert guards('encounter', frame)
+    if name != 'four buttons':
+        assert not guards('world', frame)
+        assert not guards('combat_bar', frame)

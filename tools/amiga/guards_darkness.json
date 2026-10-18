@@ -1747,17 +1747,30 @@
       "example": "WISH-2/train-measure/measure1/shots/15-elm-np2.png",
       "sha256": "c13a2d2a5e8740caf23c3725896aa001b04e7f6bb20d7c1fda47927ca43d72cb"
     },
-    "encounter": {
-      "also": [],
-      "box": [
-        58,
-        402,
-        698,
-        430
-      ],
-      "example": "WISH-2/wish2-a3/accept2/shots/13-world.png",
-      "sha256": "03aa1e681bdb5c268b6323dbc66d5bd296a336789bfce2a78bb6fd59e95ac527"
-    },
+    "encounter": [
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-2/wish2-a3/accept2/shots/13-world.png",
+        "sha256": "03aa1e681bdb5c268b6323dbc66d5bd296a336789bfce2a78bb6fd59e95ac527"
+      },
+      {
+        "also": [],
+        "box": [
+          58,
+          402,
+          698,
+          430
+        ],
+        "example": "WISH-359/qf-off1/w14.png",
+        "sha256": "c07ad2f0a13369f4cba4adc50bdb82119d97e4af75e82a5af0ed31df361171fa"
+      }
+    ],
     "exit_game": [
       {
         "also": [],
