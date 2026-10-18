@@ -1175,7 +1175,11 @@ def test_levelup_stages_the_first_member_that_can_be_raised_when_none_is_eligibl
 def test_levelup_clicks_the_chosen_members_own_card_among_several_enabled(tmp_path, monkeypatch):
     members = _pod_party({0, 1, 2, 3}, tmp_path)
     controller, _ = _levelup_controller(tmp_path, monkeypatch, members)
-    listing = [f"Button|Level up M{n}|card_{n}_level_up|enabled=True" for n in range(4)]
+    prefix = "QApplication.WishWindow.centralwidget.tabs.automap_roster_inner"
+    listing = []
+    for n in range(4):
+        listing.append(f"Text|M{n}  |{prefix}.card_{n}.card_{n}_name|enabled=True||1.{n}|offscreen=False|0,0,1,1")
+        listing.append(f"Button|Level up|{prefix}.card_{n}.card_{n}_level_up|enabled=True||2.{n}|offscreen=False|0,0,1,1")
     clicks = []
 
     def ui(guest, holder, command, labels=(), **kwargs):
@@ -1185,12 +1189,15 @@ def test_levelup_clicks_the_chosen_members_own_card_among_several_enabled(tmp_pa
         return listing
 
     monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
-    context = {"kind": "levelup", "member": "M2", "evidence": [], "clicks": []}
+    context = {"kind": "levelup", "member": "M2", "slot": 2, "evidence": [], "clicks": []}
     controller._unique_action(automation_id="card_2_level_up", context=context)
     assert clicks == ["card_2_level_up"]
-    wrong = {"kind": "levelup", "member": "M3", "evidence": [], "clicks": []}
+    wrong = {"kind": "levelup", "member": "M3", "slot": 2, "evidence": [], "clicks": []}
     with pytest.raises(winwishaccept.AcceptanceStop, match="does not name M3"):
         controller._unique_action(automation_id="card_2_level_up", context=wrong)
+    listing[5] = listing[5].replace("enabled=True", "enabled=False")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="absent, ambiguous or disabled"):
+        controller._unique_action(automation_id="card_2_level_up", context=dict(context, evidence=[]))
 
 
 def test_levelup_stops_when_a_member_other_than_the_selected_one_changes(tmp_path, monkeypatch):

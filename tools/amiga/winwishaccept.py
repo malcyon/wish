@@ -2539,12 +2539,17 @@ class Controller:
         path.write_text("\n".join(listing) + "\n")
         context["evidence"].append(str(path))
         matches = [line for line in listing if len(parts := line.split("|")) >= 4
-                   and ((automation_id is not None and parts[2] == automation_id)
+                   and ((automation_id is not None
+                         and (parts[2] == automation_id or parts[2].endswith("." + automation_id)))
                         or (label is not None and parts[1] == label))]
         if len(matches) != 1 or "enabled=True" not in matches[0]:
             raise AcceptanceStop(f"{label or automation_id}: absent, ambiguous or disabled; kept {path}")
         if context["kind"] == "levelup":
-            if context["member"] not in matches[0]:
+            # The button line carries no name; the card's name is its own Text line.
+            suffix = f".card_{context['slot']}_name"
+            names = [parts[1] for line in listing
+                     if len(parts := line.split("|")) >= 4 and parts[2].endswith(suffix)]
+            if len(names) != 1 or names[0].strip() != context["member"].strip():
                 raise AcceptanceStop(f"Level up card does not name {context['member']}; kept {path}")
         self._count(action=True)
         event = {"control": label or automation_id, "listing": str(path),
