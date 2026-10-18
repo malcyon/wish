@@ -3337,17 +3337,17 @@ class Controller:
         """Keep the Automapper showing after the last Q until CONTINUE BATTLE, glancing at the
         game after `MAP_HOLD_FIRST` seconds and then every `MAP_HOLD_NEXT`.
 
-        Every glance frees the pipe, so Wish does not poll then. Leaves the Character Editor
-        showing when it returns."""
+        Every glance frees the pipe, so Wish does not poll then. Every return, whether CONTINUE
+        BATTLE, a command bar or a defeat screen, leaves Wish on the Character Editor with the
+        pipe released; a stop on the time limit raises with the editor showing too."""
         self.map_hold_done = True
         result = self.summary["watch_map"]
         modes = self.summary["fight"]["modes"]
         gaps: list[dict[str, float]] = []
         shown = round(self.clock() - self.started, 3)
-        held, wait = 0.0, MAP_HOLD_FIRST
+        began, wait = self.clock(), MAP_HOLD_FIRST
         while True:
             self.sleep(self.left(wait))
-            held += wait
             wait = MAP_HOLD_NEXT
             opened = round(self.clock() - self.started, 3)
             self._game_section()
@@ -3374,7 +3374,7 @@ class Controller:
             if state is not None:
                 result["reason"] = f"the fight reached {state} during the hold"
                 return
-            if held >= MAP_HOLD_LIMIT:
+            if self.clock() - began >= MAP_HOLD_LIMIT:
                 raise AcceptanceStop(
                     f"CONTINUE BATTLE did not show within {MAP_HOLD_LIMIT:.0f} s of the last Q")
             self._map_section()
@@ -3653,6 +3653,9 @@ class Controller:
             result["walk"] = self._fight_entry(plan, screens, memory)
             outcome = cursefight.fight(screens, memory, [], plan.rules, found=result["found"])
             result["outcome"] = outcome["outcome"]
+            if self.watch_map and not self.map_hold_done:
+                self.summary["watch_map"]["reason"] = (
+                    "the last quick member never got a command bar, so the hold never ran")
             if not self.greyed_done:
                 raise AcceptanceStop("the fight ended before a command bar showed")
             if self.press_off:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import pathlib
 from types import SimpleNamespace
@@ -888,7 +889,7 @@ class MapWorld(World):
         return self.screen
 
 
-def _map_fight(tmp_path, monkeypatch, fight_row, *, controls=(), **options):
+def _map_fight(tmp_path, monkeypatch, fight_row, *, controls=(), plan=None, **options):
     """Two party members on a bar each; returns the controller, world, screens and the times the
     tabs were shown."""
     controller, world = _edge(tmp_path, monkeypatch, fight_row, _members((0, 0, 7), (0, 0, 7)),
@@ -919,7 +920,8 @@ def _map_fight(tmp_path, monkeypatch, fight_row, *, controls=(), **options):
     controller.summary["fight"]["found"]["bars"] = bars[:1]
     memory = SimpleNamespace(holder="h", _target=None,
                              owner=lambda: {"name": f"M{world.owner}", "address": 0})
-    screens = winwishaccept._fight_screens(controller, winwishaccept.fight_plan("darkness"), memory)
+    screens = winwishaccept._fight_screens(controller, plan or winwishaccept.fight_plan("darkness"),
+                                         memory)
     return controller, world, screens, tabs, bars
 
 
@@ -984,3 +986,55 @@ def test_watch_map_stops_when_continue_battle_never_shows(tmp_path, monkeypatch,
     with pytest.raises(winwishaccept.AcceptanceStop,
                        match="CONTINUE BATTLE did not show within 600 s of the last Q"):
         screens.press("Q", "combat_bar")
+
+
+def test_watch_map_limit_counts_the_time_the_glances_take(tmp_path, monkeypatch, fight_row):
+    controller, world, screens, _tabs, bars = _map_fight(
+        tmp_path, monkeypatch, fight_row, continue_after=1e9)
+    # Each read of the game takes 100 s on the driver's clock.
+    monkeypatch.setattr(controller, "_read_mode", lambda: (controller.clock.sleep(100), 5)[1])
+    world.owner = 1
+    controller.summary["fight"]["found"]["bars"] = bars
+    with pytest.raises(winwishaccept.AcceptanceStop, match="did not show within 600 s"):
+        screens.press("Q", "combat_bar")
+    glances = [m for m in controller.summary["fight"]["modes"] if m.get("hold")]
+    assert len(glances) == 3
+
+
+def test_watch_map_leaves_the_row_unproven_with_a_reason_on_a_defeat_screen(
+        tmp_path, monkeypatch, fight_row):
+    plan = winwishaccept.fight_plan("darkness")
+    plan = dataclasses.replace(plan, rules=dataclasses.replace(plan.rules,
+                                                               defeat=("party_destroyed",)))
+    controller, world, screens, _tabs, bars = _map_fight(
+        tmp_path, monkeypatch, fight_row, hold_screen="party_destroyed", continue_after=1e9,
+        plan=plan)
+    world.owner = 1
+    controller.summary["fight"]["found"]["bars"] = bars
+    screens.press("Q", "combat_bar")
+    result = controller.summary["watch_map"]
+    assert result["status"] == "unproven" and "party_destroyed" in result["reason"]
+    assert world.tab == "editor"
+
+
+def test_a_watch_map_run_whose_hold_never_fired_says_why(tmp_path, monkeypatch, fight_row):
+    from tools.amiga import curseadd, cursefight
+
+    controller = _controller(tmp_path, watch=True, watch_map=True)
+    controller.out.mkdir(parents=True, exist_ok=True)
+    for name in ("_up", "_game_section", "_cleanup", "_verify_no_write"):
+        monkeypatch.setattr(controller, name, lambda *a, **k: None)
+    monkeypatch.setattr(controller, "_await_title", lambda: "title.png")
+    monkeypatch.setattr(controller, "run_phase", lambda *a, **k: None)
+    monkeypatch.setattr(controller, "_action_readback", lambda: [])
+    monkeypatch.setattr(winwishaccept, "_fight_load", lambda *a, **k: None)
+    monkeypatch.setattr(winwishaccept, "_fight_memory", lambda *a: SimpleNamespace(holder="h"))
+    monkeypatch.setattr(winwishaccept, "_fight_screens", lambda *a: None)
+    monkeypatch.setattr(controller, "_fight_entry", lambda *a: {})
+    monkeypatch.setattr(curseadd, "bounded", lambda reader, holder, seconds: None)
+    monkeypatch.setattr(cursefight, "fight", lambda *a, **k: {"outcome": "won"})
+    controller.route.title = "darkness"
+    controller.greyed_done = True
+    controller.run_fight()
+    result = controller.summary["watch_map"]
+    assert result["status"] == "unproven" and "never got a command bar" in result["reason"]
