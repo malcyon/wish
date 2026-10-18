@@ -740,6 +740,13 @@ def row(status: str = "unproven", *, expected: Any = None, observed: Any = None,
             "evidence": evidence or [], "reason": reason}
 
 
+def _title_row(title: dict[str, Any]) -> dict[str, Any]:
+    """The title row for image review; a wait that ended on a later screen says which."""
+    passed = title.get("passed") if isinstance(title, dict) else None
+    return row("awaiting image review", observed={"screen": passed} if passed else None,
+               evidence=[title])
+
+
 def _driver_sha() -> str:
     result = subprocess.run(["git", "rev-parse", "HEAD"], check=True,
                             text=True, capture_output=True)
@@ -1647,6 +1654,7 @@ class Controller:
 
     def _await_title(self) -> dict[str, Any]:
         """The title screen, answering the title's own boot pages and code wheel on the way."""
+        self._title_passed = self._title_frame = None
         frame = self._await("title", limit=self.route.amiga_title.title_limit,
                             interstitials=_title_pages(self.route, self.guards),
                             passed_by=("party_menu",))
@@ -2048,6 +2056,10 @@ class Controller:
             self._title_passed = None
         skipped = bool(passed and phase.steps and phase.steps[0].kind == "key"
                        and phase.steps[0].state == passed)
+        if passed and not skipped:
+            raise AcceptanceStop(
+                f"the wait for the title ended on {passed}, but {phase.name} does not begin "
+                f"with a key into {passed}")
         if skipped:
             last_frame = self._title_frame
         else:
@@ -3095,7 +3107,7 @@ class Controller:
             self._up()
             self._game_section()
             title = self._await_title()
-            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            self.summary["mapping"]["title"] = _title_row(title)
             phases = {phase.name: phase for phase in self.route.phases}
             for name in maproute.LEG_PREFIX[self.route.title]:
                 self.run_phase(phases[name])
@@ -3703,7 +3715,7 @@ class Controller:
             self._up()
             self._game_section()
             title = self._await_title()
-            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            self.summary["mapping"]["title"] = _title_row(title)
             self.run_phase(_fight_load(self.route, self.fight.get("place"), self.fight.get("loaded")))
             self.summary["mapping"]["load"] = row("awaiting image review")
             plan = fight_plan(self.route.title)
@@ -4234,7 +4246,7 @@ class Controller:
             self._up(restarts_emulator=True)
             self._game_section()
             title = self._await_title()
-            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            self.summary["mapping"]["title"] = _title_row(title)
             reconnect = self.leg == "reconnect"
             if not reconnect:
                 _phase_map(self.route)

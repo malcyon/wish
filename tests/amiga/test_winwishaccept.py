@@ -4634,6 +4634,35 @@ def test_the_load_phase_skips_its_title_key_once_the_party_menu_is_showing(tmp_p
     assert game.keys == []
 
 
+def test_a_new_title_wait_clears_a_title_passed_flag_left_by_an_earlier_one(tmp_path):
+    controller, game, screen = _screen_controller(tmp_path, "pool", (), "mystery")
+    controller._title_passed = "party_menu"
+    controller._title_frame = {"crop": None}
+    with pytest.raises(winwishaccept.AcceptanceStop, match="title screen was not recognized"):
+        controller._await_title()
+    assert controller._title_passed is None
+
+
+def test_a_passed_title_with_a_phase_that_does_not_start_there_stops_with_the_mismatch(
+        tmp_path, monkeypatch):
+    controller, game, screen = _screen_controller(tmp_path, "curse", (), "party_menu")
+    controller._title_passed = "party_menu"
+    controller._title_frame = {"crop": None}
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    phase = _phase("load", "title", _step("key", "load_picker", "L"))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="ended on party_menu"):
+        controller.run_phase(phase)
+    assert game.keys == []
+
+
+def test_the_title_row_says_when_the_wait_ended_on_the_party_menu():
+    plain = winwishaccept._title_row({"crop": "a"})
+    assert plain["observed"] is None
+    passed = winwishaccept._title_row({"crop": "a", "passed": "party_menu"})
+    assert passed["observed"] == {"screen": "party_menu"}
+    assert passed["status"] == "awaiting image review"
+
+
 def test_a_second_wheel_frame_or_an_unknown_frame_gets_no_title_key(tmp_path):
     from tools.amiga import route_pool
 
