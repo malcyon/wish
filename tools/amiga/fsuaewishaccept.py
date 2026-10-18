@@ -57,6 +57,9 @@ STEP_CALLS = {"insert": "insert", "snapshot": "snapshot", "restore": "restore", 
 POLL_LOG = "polls.jsonl"
 #: The log `WishWriteLog` writes in the run folder: one row per write Wish's session made.
 WRITE_LOG = "writes.jsonl"
+#: Seconds closing a fight memory's client waits for a read still holding its lock, before
+#: closing the client under it, so cleanup always goes on.
+CLOSE_LOCK_WAIT = 5.0
 #: Seconds a hold may end early, from the clock's own granularity, before it stops the run.
 HOLD_SLACK = 0.5
 
@@ -477,13 +480,14 @@ class WishWriteLog:
             self._saved = None
 
     def record(self, address: int, data: bytes, error: str | None) -> None:
-        self.made.append((address, data))
-        if self.failure is not None:
-            return
-        row = {"write": len(self.made), "elapsed": round(self.elapsed(), 3),
-               "wall": round(time.time(), 3), "address": f"0x{address:X}",
-               "length": len(data), "data": data.hex(), "error": error}
+        """Keep one write; a fault here is kept in `failure` and never replaces the write's own outcome."""
         try:
+            self.made.append((address, data))
+            if self.failure is not None:
+                return
+            row = {"write": len(self.made), "elapsed": round(self.elapsed(), 3),
+                   "wall": round(time.time(), 3), "address": f"0x{address:X}",
+                   "length": len(data), "data": data.hex(), "error": error}
             with self.path.open("a") as stream:
                 stream.write(json.dumps(row) + "\n")
         except Exception as exc:  # noqa: BLE001 -- a full disk must not end Wish's write
@@ -503,10 +507,16 @@ def helper_memory(memory: Any, open_client: Any) -> Any:
     held: dict[str, Any] = {"gdb": None}
 
     def close_client() -> None:
-        with memory._lock:
+        # A worker `curseadd.bounded` gave up on may hold the lock in a read that never ends;
+        # closing its client under it ends that read, and cleanup is not held up.
+        locked = memory._lock.acquire(timeout=CLOSE_LOCK_WAIT)
+        try:
             gdb, held["gdb"], memory._target = held["gdb"], None, None
             if gdb is not None:
                 gdb.close()
+        finally:
+            if locked:
+                memory._lock.release()
 
     def target() -> Any:
         with memory._lock:
@@ -779,6 +789,7 @@ class FsuaeController(base.Controller):
         if not show_map:
             raise AcceptanceStop(f"{key}: FS-UAE cannot send a key while Wish does not read the game")
         before = self.clock()
+        ticks = self._wish_ticks()
         self._send_key(key)
         sent = self.key_sent = self.clock()
         self._let_wish_read(key)
@@ -790,9 +801,18 @@ class FsuaeController(base.Controller):
                     "shot_s": round(self.clock() - before, 3)}
         self.log("map_walk", **schedule)
         if self.clock() < read + base.WALK_SETTLE:
-            raise AcceptanceStop(f"the route time ran out before Wish had read for "
-                                 f"{base.WALK_SETTLE:.0f} s after key {key}")
+            reads = None if ticks is None or self._wish_ticks() is None else self._wish_ticks() - ticks
+            raise AcceptanceStop(
+                f"key {key} was sent, then the route time ran out: Wish read the game "
+                f"{'an unknown number of' if reads is None else reads} times in the "
+                f"{self.clock() - sent:.1f} s after it, short of the {base.WALK_SETTLE:.0f} s "
+                "settle after its second read")
         return schedule
+
+    def _wish_ticks(self) -> int | None:
+        """How many times Wish has read the game so far; None with no window open."""
+        window = getattr(self.wish, "window", None)
+        return None if window is None else window.mapper._ticks
 
     def _fight_memory(self, make: Any, holder: str, route: Any) -> Any:
         """The fight driver's memory from `make`, reading through a helper client of its own."""

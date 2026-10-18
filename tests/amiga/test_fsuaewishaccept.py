@@ -1536,3 +1536,79 @@ def test_a_fight_stage_on_another_leg_stops_in_preflight(tmp_path):
     with pytest.raises(winwishaccept.AcceptanceStop, match="fight stage runs only with --leg fight"):
         fsuaewishaccept.preflight(_args(tmp_path), game=FakeGame(tmp_path),
                                   route_for=lambda *a, **k: pytest.fail("route read"))
+
+
+def test_a_key_whose_settle_the_route_time_cuts_short_says_it_was_sent_and_what_wish_read(
+        tmp_path, monkeypatch):
+    controller, game, wish, _made = _fight_controller(tmp_path, monkeypatch)
+    wish.open()
+    monkeypatch.setattr(controller, "left", lambda limit: min(limit, 1.0))
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match=r"key N was sent, then the route time ran out: Wish read the game "
+                             r"[3-9] times in the \d+\.\d s after it"):
+        controller._scheduled_key("N", show_map=True)
+    assert [call for call in game.calls if call[0] == "press"] == [("press", "N")]
+
+
+def test_a_log_fault_never_replaces_the_writes_own_outcome(tmp_path):
+    def broken_clock():
+        raise RuntimeError("clock gone")
+
+    seen = {"target": _amiga_target()}
+    log = fsuaewishaccept.WishWriteLog(tmp_path / "writes.jsonl", broken_clock, lambda: seen["target"])
+    log.install()
+    try:
+        assert seen["target"].write(0x40000, b"\x00") is None
+        seen["target"] = _amiga_target(fail=True)
+        with pytest.raises(amiga.GuestError):
+            seen["target"].write(0x40001, b"\x01")
+    finally:
+        log.remove()
+    assert log.made == [(0x40000, b"\x00"), (0x40001, b"\x01")]
+    assert log.failure == "RuntimeError: clock gone"
+
+
+def test_cleanup_closes_a_fight_client_whose_lock_a_stuck_read_holds(tmp_path, monkeypatch):
+    import threading
+
+    from tools.amiga import ssbfight
+
+    monkeypatch.setattr(fsuaewishaccept, "CLOSE_LOCK_WAIT", 0.1)
+    controller, _game, _wish, made = _fight_controller(tmp_path, monkeypatch, title="ssb")
+    memory = controller._fight_memory(lambda holder, route: ssbfight.Memory(holder), "h",
+                                      controller.route)
+    memory.target()
+    held, release = threading.Event(), threading.Event()
+
+    def stuck_read():
+        with memory._lock:
+            held.set()
+            release.wait(10)
+
+    worker = threading.Thread(target=stuck_read, daemon=True)
+    worker.start()
+    held.wait(5)
+    try:
+        controller._cleanup()
+        assert made[0][0].closed and memory._target is None
+        assert controller.summary["cleanup"]["errors"] == []
+        assert ("release",) in _game.calls or not controller.claimed
+    finally:
+        release.set()
+        worker.join(5)
+
+
+def test_a_fight_leg_that_raises_puts_back_the_fight_memory_and_the_pipe(tmp_path, monkeypatch):
+    from tools.amiga import amigatarget
+
+    controller, _game, _wish, _made = _fight_controller(tmp_path, monkeypatch)
+    memory, pipe = winwishaccept._fight_memory, amigatarget.connect_pipe
+
+    def run_fight():
+        assert winwishaccept._fight_memory is not memory
+        raise RuntimeError("fight driver broke")
+
+    monkeypatch.setattr(controller, "run_fight", run_fight)
+    with pytest.raises(RuntimeError, match="fight driver broke"):
+        controller.run_title()
+    assert winwishaccept._fight_memory is memory and amigatarget.connect_pipe is pipe
