@@ -2684,9 +2684,10 @@ class Controller:
             raise AcceptanceStop(f"{label or automation_id}: absent, ambiguous or disabled; kept {path}")
         if context["kind"] == "levelup":
             # The button line carries no name; the card's name is its own Text line.
-            suffix = f".card_{context['slot']}_name"
+            card = f"card_{context['slot']}_name"
             names = [parts[1] for line in listing
-                     if len(parts := line.split("|")) >= 4 and parts[2].endswith(suffix)]
+                     if len(parts := line.split("|")) >= 4
+                     and (parts[2] == card or parts[2].endswith("." + card))]
             if len(names) != 1 or names[0].strip() != context["member"].strip():
                 raise AcceptanceStop(f"Level up card does not name {context['member']}; kept {path}")
         self._count(action=True)

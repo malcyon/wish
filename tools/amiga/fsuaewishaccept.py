@@ -570,6 +570,9 @@ KEY_READ_LIMIT = 20.0
 class FsuaeController(base.Controller):
     """One bounded FS-UAE boot. One `FsuaeGuest` is both the lane and the game."""
 
+    #: The shipped FS-UAE binary cannot restore an exact picture, so no leg takes a branch that needs one.
+    control_branches = False
+
     def __init__(self, args: argparse.Namespace, *, game: Any, guards: Any, route: Any,
                  info: dict[str, Any], wish_run: Any = None, machine: Any = helper_machine,
                  clock=time.monotonic, sleep=None):
@@ -712,6 +715,11 @@ class FsuaeController(base.Controller):
             raise base.ControlGreyed(name, reply["error"])
         if reply["error"]:
             raise AcceptanceStop(f"{name}: {reply['error']}")
+        self.log("click_dialogs", control=name, dialogs=reply["dialogs"])
+        unexpected = [d for d in reply["dialogs"] if d["kind"] in ("choice", "message")]
+        if unexpected:
+            raise AcceptanceStop(f"{name} raised a {unexpected[0]['kind']} dialog that was not answered "
+                                 f"as a question: {unexpected[0].get('text')!r}")
         return reply
 
     def _wish_log_blocks(self) -> list[dict[str, Any]]:

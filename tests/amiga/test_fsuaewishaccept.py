@@ -1074,13 +1074,13 @@ def test_a_greyed_click_raises_control_greyed_naming_the_button(tmp_path, monkey
 
     def click(window, name, answer=None, spell=None, deadline=0):
         calls.append((name, answer))
-        return {"error": "button is disabled" if name == "action_heal" else None}
+        return {"error": "button is disabled" if name == "action_heal" else None, "dialogs": []}
 
     monkeypatch.setattr(windowbuttons, "click", click)
     with pytest.raises(winwishaccept.ControlGreyed) as raised:
         controller._click("Heal party")
     assert raised.value.control == "action_heal" and calls == [("action_heal", "yes")]
-    assert controller._click(automation_id="x.ft") == {"error": None}
+    assert controller._click(automation_id="x.ft") == {"error": None, "dialogs": []}
     assert calls[-1] == ("ft", "yes")
     monkeypatch.setattr(windowbuttons, "click", lambda *a, **k: {"error": "button is hidden"})
     with pytest.raises(winwishaccept.AcceptanceStop, match="hidden"):
@@ -1149,3 +1149,59 @@ def test_a_bad_leg_flag_stops_before_the_manifest_is_read(tmp_path, extra, messa
     with pytest.raises(winwishaccept.AcceptanceStop, match=message):
         fsuaewishaccept.preflight(_args(tmp_path, **extra), game=SimpleNamespace(),
                                   route_for=lambda *a: pytest.fail("route read"))
+
+
+def test_fs_uae_runs_no_control_branch():
+    assert fsuaewishaccept.FsuaeController.control_branches is False
+    assert winwishaccept.Controller.control_branches is True
+
+
+@pytest.mark.parametrize("dialog, stops", [
+    ({"kind": "question", "text": "Level up?", "answer": "yes"}, False),
+    ({"kind": "choice", "text": "learns one new spell:", "items": ["Bless"], "picked": None}, True),
+    ({"kind": "message", "text": "No room"}, True)])
+def test_a_choice_or_message_dialog_stops_the_click_and_every_dialog_is_logged(
+        tmp_path, monkeypatch, dialog, stops):
+    from tools.gui import windowbuttons
+
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    wish.window = SimpleNamespace(map=object())
+    monkeypatch.setattr(windowbuttons, "click", lambda *a, **k: {"error": None, "dialogs": [dialog]})
+    if stops:
+        with pytest.raises(winwishaccept.AcceptanceStop, match=dialog["kind"]):
+            controller._click(automation_id="card_0_level_up")
+    else:
+        controller._click(automation_id="card_0_level_up")
+    logged = [e for e in _events(tmp_path) if e["event"] == "click_dialogs"]
+    assert logged[0]["dialogs"] == [dialog]
+
+
+def test_the_level_up_card_check_reads_the_real_window_listing(tmp_path, monkeypatch):
+    from PyQt6.QtWidgets import QApplication, QMainWindow
+
+    from automap.actionbar import ActionBar, FastTravelBar
+    from automap.panel import MessagesPanel, RosterPanel
+    from tools.gui import windowbuttons
+    from wish.ui_window import Ui_WishWindow
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    QApplication.instance() or QApplication([])
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    messages = MessagesPanel(root)
+    window = SimpleNamespace(root=root, messages=messages, roster=RosterPanel(root),
+                             actions_bar=ActionBar(root, actions=[], say=messages.say),
+                             fasttravel_bar=FastTravelBar(root, say=messages.say))
+    window.roster.cards[0].name.setText("MAGNUS")
+    controller, _game, _wish, _ = _controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_controls_listing", lambda: windowbuttons.listing(window))
+    clicks = []
+    monkeypatch.setattr(controller, "_click", lambda label=None, automation_id=None: clicks.append(automation_id))
+
+    def context(member):
+        return {"kind": "levelup", "slot": 0, "member": member, "evidence": [], "clicks": []}
+
+    controller._unique_action(automation_id="card_0_level_up", context=context("MAGNUS"))
+    assert clicks == ["card_0_level_up"]
+    with pytest.raises(winwishaccept.AcceptanceStop, match="does not name"):
+        controller._unique_action(automation_id="card_0_level_up", context=context("OTHER"))
