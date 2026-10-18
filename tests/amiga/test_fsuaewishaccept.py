@@ -1013,7 +1013,8 @@ def _persist_preflight(tmp_path, monkeypatch, **extra):
     result = fsuaewishaccept.preflight(
         _args(tmp_path, leg="persist", action=["heal"], **extra), game=FakeGame(tmp_path),
         route_for=lambda title, manifest, **legs: route, binary=lambda: binary,
-        kickstart=lambda: binary, driver=lambda: {"sha": "x", "dirty": False}, export=export)
+        kickstart=lambda: binary, driver=lambda: {"sha": "x", "dirty": False}, export=export,
+        journal_check=lambda executable: None)
     return result, seen, states
 
 
@@ -1035,7 +1036,8 @@ def test_the_mapping_leg_exports_its_guards_with_no_state_set(tmp_path, monkeypa
         route_for=lambda title, manifest, **legs: _route(media=media, mounted=mounted),
         binary=lambda: binary, kickstart=lambda: binary,
         driver=lambda: {"sha": "x", "dirty": False},
-        export=lambda *a: (seen.append(a), ("g", {}))[1])
+        export=lambda *a: (seen.append(a), ("g", {}))[1],
+        journal_check=lambda executable: None)
     assert len(seen[0]) == 2 and "persist" not in info
 
 
