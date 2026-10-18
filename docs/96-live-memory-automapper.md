@@ -762,11 +762,11 @@ read when the other gates pass. These offers do not prove complete four-title
 Wish-tab game-sheet/reload acceptance. `docs/212-the-live-tab-per-title.md`
 has the per-title result.
 
-**The party cards read only the name, the hit points and the quickfight flag.**
-`window.amiga_snapshot` leaves class, level, experience, armour class and THAC0
-empty, so a card draws `?  L0`, experience 0 and armour class `--`, and the
-hit-point bar's tooltip still names the C64's source. This is a defect, not a
-design: each title's record carries those fields and the cards must show them.
+**The party cards read the name, hit points, quickfight flag and the sheet's fields.**
+`window.amiga_snapshot` fills class, level, experience, armour class and THAC0
+from `amigaparty.card_fields`, with the experience bars from the title's own
+thresholds. Whether each decoded value equals the game's View sheet is not yet
+compared.
 
 **Pool of Radiance's record block is one byte short.** Its loader allocates
 `malloc(0x11F)` (the size word before every record reads `0x123`, which is
