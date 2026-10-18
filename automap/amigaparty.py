@@ -215,13 +215,15 @@ ROWS: dict[str, PartyRow] = {
     # `/program`: save 0x27750 walks `h32+0xAEE` through record +0x106;
     # character writer 0x2646C writes 0x120 bytes, items (0x41) from +0xCA
     # and effects (10) from +0x80; reader 0x267CE clears +0x106, +0xCA, +0x80
-    # and +0x10A; append 0x26EAE sets `h32+0xAEA`.
+    # and +0x10A; append 0x26EAE sets `h32+0xAEA`. The thirteen readied-item
+    # pointers after the item head (+0xCE..) are rebuilt on load as Curse's
+    # are; the count of 13 is PROBABLE, taken from Curse's layout.
     "pool-of-radiance": PartyRow(
         title="Pool of Radiance", head=0xAEE, current=0xAEA,
         next_offset=0x106, record_size=0x120, slot=0xC1,
         items=Chain(head=0xCA, link=0x2A, size=0x41),
         effects=Chain(head=0x80, link=0x06, size=0x0A),
-        pointers=(0x080, 0x0CA, 0x106, 0x10A),
+        pointers=(0x080, *_longwords(0x0CA, 14), 0x106, 0x10A),
         # 3 on the travel grid, 5 in a fight: CONFIRMED live.
         mode=0xBA, combat_value=5,
         name=0,

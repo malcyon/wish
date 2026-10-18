@@ -674,7 +674,9 @@ save routine is the same loop:
 longwords.** Each writer writes the record straight out of its heap block
 (`write(fd, record, 0x1AC)`; Pool of Radiance `fwrite(record, 1, 0x120, fp)`),
 and each loader reads the file into a fresh block and then rewrites the
-pointers: Pool of Radiance clears `+0x106`, `+0xCA`, `+0x80` and `+0x10A`;
+pointers: Pool of Radiance clears `+0x106`, `+0xCA`, `+0x80` and `+0x10A`
+and, as Curse does, rebuilds the readied-item pointers at `+0xCE` (thirteen,
+PROBABLE);
 Curse clears `+0x18E` and `+0x192` and `0x1A45C` rebuilds the thirteen
 readied-item pointers at `+0x156`; Silver Blades clears `+0x13A` and `+0x13E`.
 So a file holds whatever heap addresses the party had when it was saved.

@@ -939,6 +939,26 @@ def test_spells_save_clear_and_restore_compare_all_members(tmp_path):
                                   [member(0, b"\x03\x04"), member(1, b"\x08\x00")])
 
 
+def test_action_check_ignores_a_pointer_difference_and_stops_on_a_stray_spell_byte(tmp_path):
+    from automap import amigaparty
+
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    row = amigaparty.ROWS[controller.route.game_key]
+
+    def member(*, pointer=b"\0\0\0\0", memorised=b"\x03\x04"):
+        raw = bytearray(row.record_size)
+        raw[row.memorised.offset:row.memorised.offset + len(memorised)] = memorised
+        raw[row.pointers[-1]:row.pointers[-1] + 4] = pointer
+        return {"slot": 0, "name": "A", "address": 100, "raw": raw.hex(), "items": []}
+
+    context = {"slot": 0, "spell_index": 0, "baseline": [member()]}
+    controller._verify_action("spells", context, [member(pointer=b"\x12\x34\x56\x78")])
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("spells", context, [member(memorised=b"\x03\x05")])
+
+
 def test_staging_preserves_every_other_member_and_item(tmp_path):
     from automap import amigaparty
 
@@ -1160,7 +1180,7 @@ def test_levelup_checks_every_selected_record_byte_and_hit_point_arithmetic(tmp_
     valid = {**baseline, "raw": trained.hex()}
     controller._verify_action("levelup", context, [valid])
     unrelated = bytearray(trained)
-    unrelated[0x10] ^= 1
+    unrelated[0x40] ^= 1
     with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
         controller._verify_action("levelup", context, [{**valid, "raw": unrelated.hex()}])
     wrong_hp = bytearray(trained)
@@ -1400,7 +1420,7 @@ def test_levelup_verifies_hit_point_arithmetic_on_every_title(title, tmp_path):
     valid = {**baseline, "raw": trained.hex()}
     controller._verify_action("levelup", context, [valid])
     unrelated = bytearray(trained)
-    unrelated[0x10] ^= 1
+    unrelated[0x40] ^= 1
     with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
         controller._verify_action("levelup", context, [{**valid, "raw": unrelated.hex()}])
     wrong_hp = bytearray(trained)
