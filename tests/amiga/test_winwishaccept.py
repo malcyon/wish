@@ -815,6 +815,41 @@ def test_full_party_action_deltas_include_zero_hp_and_all_item_nodes(tmp_path):
         controller._verify_action("identify", {"baseline": before}, identified[:1] + before[1:])
 
 
+def test_identify_ignores_the_item_text_the_game_rewrites_but_not_other_bytes(tmp_path):
+    from automap import amigaparty
+
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    controller.route.game_key = "pool-of-radiance"
+    row = amigaparty.ROWS[controller.route.game_key]
+    assert row.title == "Pool of Radiance"
+    text = winwishaccept.RECOMPOSED_ITEM_TEXT[row.title]
+    assert text <= row.hidden.offset
+
+    def member(node):
+        return [{"slot": 0, "name": "Member0", "address": 1000,
+                 "raw": bytes(row.record_size).hex(), "items": [[100, bytes(node).hex()]]}]
+
+    node = bytearray(row.items.size)
+    node[:7] = b"Long Sw"
+    node[row.hidden.offset] = 7
+    before = member(node)
+    rewritten = bytearray(node)
+    rewritten[:7] = b"\x00Yes  \x00"
+    rewritten[row.hidden.offset] = 0
+    controller._verify_action("identify", {"baseline": before}, member(rewritten))
+    for offset in (row.hidden.offset + 1, text):
+        bad = bytearray(rewritten)
+        bad[offset] ^= 0x01
+        with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+            controller._verify_action("identify", {"baseline": before}, member(bad))
+    wrong = bytearray(rewritten)
+    wrong[row.hidden.offset] = 4
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("identify", {"baseline": before}, member(wrong))
+
+
 def test_final_reload_is_separate_and_compares_original_party_and_location(tmp_path, monkeypatch):
     from automap import amigaparty
 

@@ -649,7 +649,8 @@ def test_every_screen_a_route_waits_for_matches_the_capture_frame_that_showed_it
 _NEW_GUARDS = {
     "pool": {"grid": {"10-after_A", "12-E", "13-grid_north", "46-reloaded"},
              "boat_question": {"14-boat"},
-             "cli": {"31-afterY_t2", "31-afterY_t5", "31-afterY_t10", "31-afterY_t20"}},
+             "cli": {"31-afterY_t2", "31-afterY_t5", "31-afterY_t10", "31-afterY_t20",
+                     "32-program_t5"}},
     "curse": {"yulash_checkpoint": {"22-w_NP8_3"}, "dalelands": {"29-t_NP8_3"},
               "yulash_arrival": {"30-enter"},
               "reboot": {"35-exitY", "36-afterY_5", "37-afterY_8", "38-afterY_12", "39-stop1",

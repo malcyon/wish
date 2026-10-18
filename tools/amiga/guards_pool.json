@@ -94,19 +94,34 @@
       "example": "679/5fcbfccc65-amiga-pool-accept2b/accept2b/shots/08-camp_save_picker.png",
       "sha256": "1fe574ec349643251e596530106ad79aa8faa8bac655168d46f20228f0112457"
     },
-    "camp_sheet_items": {
-      "also": [
-        "sheet"
-      ],
-      "box": [
-        60,
-        418,
-        584,
-        432
-      ],
-      "example": "amiga-grab-crops/wish16-a__08-camp_sheet_items.png",
-      "sha256": "5679be3fb6ed36eceb24bf089ebd75f136c22f5992246ac2ad458a58f2bbd47b"
-    },
+    "camp_sheet_items": [
+      {
+        "also": [
+          "sheet"
+        ],
+        "box": [
+          60,
+          418,
+          584,
+          432
+        ],
+        "example": "amiga-grab-crops/wish16-a__08-camp_sheet_items.png",
+        "sha256": "5679be3fb6ed36eceb24bf089ebd75f136c22f5992246ac2ad458a58f2bbd47b"
+      },
+      {
+        "also": [
+          "sheet"
+        ],
+        "box": [
+          60,
+          418,
+          584,
+          432
+        ],
+        "example": "WISH-359/persist2/pool-spells/game-114.png",
+        "sha256": "507e5cad31e18f3602afcbd1dc40a3fb4f9f2c35b6900000c66cac4aacf72fcc"
+      }
+    ],
     "camp_sheet_items_7": {
       "also": [
         "sheet"
@@ -120,17 +135,30 @@
       "example": "WISH-303/s7-cap/cap1/shots/052-camp_sheet_items_7.png",
       "sha256": "eaae1c980f1d978804608e2ab1fdb83ef2a0cfbb41c69edd56e44067f5b8a1ab"
     },
-    "cli": {
-      "also": [],
-      "box": [
-        64,
-        56,
-        620,
-        380
-      ],
-      "example": "amiga-grab-crops/wish1-pcap1__31-afterY_t5.png",
-      "sha256": "8036b752fb597832813983faced290b0938ba1ed5147e17b5356eb7679f786bb"
-    },
+    "cli": [
+      {
+        "also": [],
+        "box": [
+          64,
+          56,
+          620,
+          380
+        ],
+        "example": "amiga-grab-crops/wish1-pcap1__31-afterY_t5.png",
+        "sha256": "8036b752fb597832813983faced290b0938ba1ed5147e17b5356eb7679f786bb"
+      },
+      {
+        "also": [],
+        "box": [
+          56,
+          34,
+          692,
+          54
+        ],
+        "example": "WISH-359/persist2/pool-heal/game-182.png",
+        "sha256": "6b62ed698b009874e65145e9fdbf7f720f01d6fc8067a6dd23464875f5b97835"
+      }
+    ],
     "combat_bar": {
       "also": [],
       "box": [
@@ -776,6 +804,9 @@
     ],
     "amiga-grab-crops/wish1-pcap1__32-program_t40.png": [
       "wheel"
+    ],
+    "amiga-grab-crops/wish1-pcap1__32-program_t5.png": [
+      "cli"
     ],
     "amiga-grab-crops/wish1-pcap1__32-program_t60.png": [
       "wheel"

@@ -265,7 +265,7 @@ def test_pool_map_guards_line_one_items_and_holds_its_list_identity():
     assert route.strict <= spec['guards'].keys()
     assert {'camp_items', 'camp_sheet_items'} <= spec['identity'].keys()
     # The camp sheet is the world sheet's picture, so each guard admits the other.
-    assert 'sheet' in spec['guards']['camp_sheet_items']['also']
+    assert all('sheet' in rule['also'] for rule in _rules(spec['guards']['camp_sheet_items']))
     assert 'camp_sheet_items' in spec['guards']['sheet']['also']
     # The pinned party keeps its sheet and roster rules beside the substituted party's.
     for state in ('sheet', 'world'):

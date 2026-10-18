@@ -94,6 +94,9 @@ FIGHT_PINS: dict[str, dict[str, Any]] = {
 MAX_WAIT_LANES = 1800
 #: Item-node bytes a title's save does not write, keyed by `PartyRow.title`; no load restores them.
 UNSAVED_ITEM_PREFIX = {"Pools of Darkness": 0x2E}
+#: Leading item-node bytes the game rewrites with the ITEMS list line it draws, keyed by `PartyRow.title`;
+#: Wish never writes them, so an action check ignores them on both sides.
+RECOMPOSED_ITEM_TEXT = {"Pool of Radiance": 0x2A}
 #: The most keys a camp-LOAD reload by screen can press after a persist save: Silver Blades'
 #: L, Y, slot, B, E and N; Pools of Darkness' L, Y, P, slot and B.
 PERSIST_RELOAD_KEYS = 6
@@ -2500,7 +2503,14 @@ class Controller:
                         predicted[hp_current] = (0 if damage > predicted[hp_max]
                                                  else predicted[hp_max] - damage)
                     raw = predicted
-            if new["name"] != old["name"] or new["raw"] != raw.hex() or new["items"] != items:
+            text = RECOMPOSED_ITEM_TEXT.get(row_.title, 0)
+
+            def without_text(nodes):
+                return [[address, (bytes(min(text, len(data := bytes.fromhex(value)))) + data[text:]).hex()]
+                        for address, value in nodes]
+
+            if (new["name"] != old["name"] or new["raw"] != raw.hex()
+                    or without_text(new["items"]) != without_text(items)):
                 raise AcceptanceStop(f"{kind} changed unexpected bytes for {old['name']}")
 
     def _wish_log_mark(self, control: str) -> set[tuple[str, str]] | None:
