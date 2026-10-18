@@ -126,6 +126,19 @@ def test_heal_writes_at_record_plus_offset_and_skips_the_dead(world, store):
     assert any("B is at 0" in n for n in out.notes)
 
 
+def test_a_name_padded_with_spaces_reads_with_one_space_in_every_message(
+        world, store):
+    world.members = [Member("saint eric   ", BASE, 3, 9),
+                     Member("dead one  ", BASE + 0x100, 0, 9),
+                     Member("new one  ", BASE + 0x200, 5, 9)]
+    out = acts(store)["heal"].apply(world.target)
+    assert out.message == "Healed saint eric, new one up to full."
+    assert out.notes[0].startswith("dead one is at 0 and")
+    restore = acts(store)["restore-spells"].apply(world.target)
+    assert "nothing stored for saint eric" in restore.notes
+    assert "nothing stored for dead one" in restore.notes
+
+
 def test_heal_with_everyone_full_says_what_the_c64_says(world, store):
     world.members = [Member("A", BASE, 9, 9)]
     out = acts(store)["heal"].apply(world.target)

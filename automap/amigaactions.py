@@ -217,7 +217,7 @@ class AmigaHealParty(_AmigaAction, engine.HealParty):
         ceiling = (1 << (8 * spot.length)) - 1
         for m in party:
             if m.hp == 0:
-                notes.append(f"{m.name} is at 0 and was left alone: dead or "
+                notes.append(f"{m.name.rstrip()} is at 0 and was left alone: dead or "
                              f"dying is not a hit point count")
                 continue
             goal = min(m.hp_max, ceiling)
@@ -225,7 +225,7 @@ class AmigaHealParty(_AmigaAction, engine.HealParty):
                 continue
             writes.append((m.address + spot.offset,
                            goal.to_bytes(spot.length, "big")))
-            healed.append(m.name)
+            healed.append(m.name.rstrip())
         engine._write_all(target, writes)
         if not writes:
             return engine.Outcome(True, "All party members are at full health.",
@@ -260,7 +260,7 @@ class AmigaRestoreSpells(_AmigaAction, engine.RestoreSpells):
         for m in party:
             raw = self.store.get(self.store_key, m.name)
             if raw is None:
-                notes.append(f"nothing stored for {m.name}")
+                notes.append(f"nothing stored for {m.name.rstrip()}")
                 continue
             if len(raw) > spot.length:
                 continue
