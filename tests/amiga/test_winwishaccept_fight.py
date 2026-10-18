@@ -457,7 +457,11 @@ def _args_for(tmp_path, **flags):
     ({"leg": "persist", "press_quickfight_off": True}, "--press-quickfight-off needs --leg fight"),
     ({"watch_dip": True, "title": "curse"}, "--watch-dip needs --watch"),
     ({"watch": True, "watch_dip": True, "title": "ssb"}, "--watch-dip runs only on Curse"),
-    ({"press_quickfight_off": True, "title": "curse"}, "--press-quickfight-off runs only on Pools")])
+    ({"press_quickfight_off": True, "title": "curse"}, "--press-quickfight-off runs only on Pools"),
+    ({"leg": "mapping", "watch_map": True}, "--watch-map needs --leg fight"),
+    ({"watch_map": True, "title": "ssb"}, "--watch-map needs --watch"),
+    ({"watch_map": True, "watch": True, "press_quickfight_off": True, "title": "darkness"},
+     "do not run together")])
 def test_watch_needs_the_fight_leg_and_dip_and_press_need_their_title(tmp_path, flags, match):
     args = _args_for(tmp_path, **flags)
     with pytest.raises(winwishaccept.AcceptanceStop, match=match):
@@ -546,12 +550,12 @@ def _edge_row(fight_row):
                      after_fight_value=6)
 
 
-def _edge(tmp_path, monkeypatch, fight_row, members, **options):
+def _edge(tmp_path, monkeypatch, fight_row, members, flags=None, world_class=World, **options):
     """A controller over a `World`, with the screens, tabs and reads faked around it."""
     _edge_row(fight_row)
-    world = World(members, **options)
+    world = world_class(members, **options)
     clock = FakeClock()
-    controller = _controller(tmp_path, game=world, watch=True)
+    controller = _controller(tmp_path, game=world, watch=True, **(flags or {}))
     monkeypatch.setattr(controller, "_game_section",
                         lambda: (setattr(world, "tab", "editor"), world.events.append(("tab", "editor"))))
     monkeypatch.setattr(controller, "_map_section",
@@ -845,3 +849,138 @@ def test_watch_rows_need_every_mode_after_the_first_bar_to_be_2_4_or_5(
     for name in ("watch_control_b", "watch_a"):
         assert controller.summary[name]["status"] == status
         assert (controller.summary[name]["reason"] is None) == (status != "unproven")
+
+
+# --- --watch-map: the Automapper stays up from the last Q to CONTINUE BATTLE ------------------
+
+class MapWorld(World):
+    """A `World` whose queued Q sets its owner's QUICK byte, after which the screen is an
+    unguarded fight frame until `continue_after` seconds of game time, then CONTINUE BATTLE."""
+
+    def __init__(self, members, *, continue_after=330.0, hold_screen="fight", mid_clear=False,
+                 **options):
+        super().__init__(members, **options)
+        self.owner, self.landed_at, self.clock = 0, None, None
+        self.continue_after, self.hold_screen, self.mid_clear = continue_after, hold_screen, mid_clear
+        self.queued_owner = None
+
+    def press(self, holder, key, timeout):
+        super().press(holder, key, timeout)
+        if key == "Q":
+            self.members[self.owner][1] = 1
+
+    def schedule_key(self, holder, key, lead_frames, timeout):
+        self.queued_owner = self.owner
+        return super().schedule_key(holder, key, lead_frames, timeout)
+
+    def land(self):
+        if self.pending != "Q":
+            return super().land()
+        self.pending = None
+        self.members[self.queued_owner][1] = 1
+        if self.mid_clear and self.tab == "map":
+            self.members[0][1] = 0
+        self.landed_at, self.screen = self.clock(), self.hold_screen
+
+    def current(self):
+        if self.landed_at is not None and self.clock() - self.landed_at >= self.continue_after:
+            return "continue_battle"
+        return self.screen
+
+
+def _map_fight(tmp_path, monkeypatch, fight_row, *, controls=(), **options):
+    """Two party members on a bar each; returns the controller, world, screens and the times the
+    tabs were shown."""
+    controller, world = _edge(tmp_path, monkeypatch, fight_row, _members((0, 0, 7), (0, 0, 7)),
+                              flags={"watch_map": True}, world_class=MapWorld, **options)
+    world.clock = controller.clock
+    tabs = []
+    for name, tab in (("_game_section", "editor"), ("_map_section", "map")):
+        shown = getattr(controller, name)
+        monkeypatch.setattr(controller, name, lambda shown=shown, tab=tab: (
+            tabs.append((tab, world.clock())), shown()))
+    controller.out.mkdir(parents=True, exist_ok=True)
+
+    def capture(state, check=True):
+        path = controller.out / f"{state}-{len(tabs)}.png"
+        path.write_text(world.current())
+        return {"raw": str(path), "crop": str(path)}
+
+    def pair(name, lap):
+        path = controller.out / f"controls-{name}.txt"
+        path.write_text("\n".join(controls) + "\n")
+        return pathlib.Path(f"wish-{name}.png"), path
+
+    monkeypatch.setattr(controller, "_capture", capture)
+    monkeypatch.setattr(controller, "_wish_pair", pair)
+    bars = [{"owner": f"M{at}", "address": 0x1000 + 0x100 * at} for at in range(2)]
+    controller.greyed_done = True
+    controller.summary["fight_greyed"]["observed"] = {"party_before": world.readback()}
+    controller.summary["fight"]["found"]["bars"] = bars[:1]
+    memory = SimpleNamespace(holder="h", _target=None,
+                             owner=lambda: {"name": f"M{world.owner}", "address": 0})
+    screens = winwishaccept._fight_screens(controller, winwishaccept.fight_plan("darkness"), memory)
+    return controller, world, screens, tabs, bars
+
+
+def test_watch_map_queues_the_last_q_and_keeps_the_automapper_until_continue_battle(
+        tmp_path, monkeypatch, fight_row):
+    controller, world, screens, tabs, bars = _map_fight(tmp_path, monkeypatch, fight_row)
+    screens.press("Q", "combat_bar")
+    world.owner = 1
+    controller.summary["fight"]["found"]["bars"] = bars
+    screens.press("Q", "combat_bar")
+    assert [event for event in world.events if event[0] in ("key", "tab")][:2] == [
+        ("key", "Q", "editor"), ("tab", "map")]
+    # The editor first shows 300 s after the map did, to glance at the game.
+    (_tab, mapped), (_tab2, glanced) = tabs[0], tabs[1]
+    assert (tabs[0][0], tabs[1][0]) == ("map", "editor")
+    assert glanced - mapped >= winwishaccept.WALK_SETTLE + winwishaccept.MAP_HOLD_FIRST
+    result = controller.summary["watch_map"]
+    assert result["status"] == "awaiting image review", result
+    assert [m["screen"] for m in controller.summary["fight"]["modes"] if m.get("hold")] == [
+        None, "continue_battle"]
+    assert world.tab == "editor" and controller.map_hold_done
+    assert result["evidence"][:2] == ["wish-watch_map.png", str(controller.out / "controls-watch_map.txt")]
+
+
+def test_watch_map_presses_an_earlier_q_the_ordinary_way(tmp_path, monkeypatch, fight_row):
+    controller, world, screens, tabs, _bars = _map_fight(tmp_path, monkeypatch, fight_row)
+    screens.press("Q", "combat_bar")
+    assert world.keys == ["Q"] and tabs == [] and not controller.map_hold_done
+
+
+@pytest.mark.parametrize("options,controls,reason", [
+    ({"mid_clear": True}, (), "QUICK 0 at CONTINUE BATTLE on M0"),
+    ({}, ("ListItem|Removed quickfight from 1 character|x",), "Removed quickfight line")])
+def test_watch_map_fails_on_a_mid_fight_clear(tmp_path, monkeypatch, fight_row, options, controls,
+                                              reason):
+    controller, world, screens, _tabs, bars = _map_fight(
+        tmp_path, monkeypatch, fight_row, controls=controls, **options)
+    screens.press("Q", "combat_bar")
+    world.owner = 1
+    controller.summary["fight"]["found"]["bars"] = bars
+    screens.press("Q", "combat_bar")
+    result = controller.summary["watch_map"]
+    assert result["status"] == "failed" and reason in result["reason"]
+
+
+def test_watch_map_fails_when_a_command_bar_shows_during_the_hold(tmp_path, monkeypatch, fight_row):
+    controller, world, screens, _tabs, bars = _map_fight(
+        tmp_path, monkeypatch, fight_row, hold_screen="combat_bar", continue_after=1e9)
+    world.owner = 1
+    controller.summary["fight"]["found"]["bars"] = bars
+    screens.press("Q", "combat_bar")
+    result = controller.summary["watch_map"]
+    assert result["status"] == "failed" and "command bar showed for M1" in result["reason"]
+    assert world.tab == "editor"
+
+
+def test_watch_map_stops_when_continue_battle_never_shows(tmp_path, monkeypatch, fight_row):
+    controller, world, screens, _tabs, bars = _map_fight(
+        tmp_path, monkeypatch, fight_row, continue_after=1e9)
+    world.owner = 1
+    controller.summary["fight"]["found"]["bars"] = bars
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="CONTINUE BATTLE did not show within 600 s of the last Q"):
+        screens.press("Q", "combat_bar")

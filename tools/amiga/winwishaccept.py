@@ -59,7 +59,13 @@ FIGHT_EDGE_SNAPSHOT = "fight_edge"
 POD_QF_SNAPSHOT = "pod_qf"
 #: The fight leg's extra rows, by the flag that adds them.
 WATCH_ROWS = {"watch": ("watch_control_b", "watch_a"), "watch_dip": ("watch_dip",),
-              "press_quickfight_off": ("qf_press_a", "qf_press_b")}
+              "watch_map": ("watch_map",), "press_quickfight_off": ("qf_press_a", "qf_press_b")}
+#: `--watch-map`: seconds from the last Q to the first glance at the game, between the later
+#: glances, and the most the hold waits for CONTINUE BATTLE (it keeps the fight under
+#: `cursefight.FIGHT_LIMIT`).
+MAP_HOLD_FIRST = 300.0
+MAP_HOLD_NEXT = 60.0
+MAP_HOLD_LIMIT = 600.0
 #: Seconds after a walk key before its screen is looked at.
 FIGHT_STEP_SETTLE = 6.0
 #: The Automapper's action buttons, by label, and the action name `PartyRow.combat_legal` uses.
@@ -608,6 +614,7 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                              controller.guards, controller.route_end, clock=controller.clock,
                              sleep=controller.sleep)
             self.last_state: object = object()
+            self.memory = memory
 
         def _matches(self, state: str, crop: pathlib.Path) -> bool:
             name = plan.map_state if state == "world" else state
@@ -660,6 +667,12 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                 bars = controller.summary["fight"]["found"].get("bars") or []
                 if controller.press_off and not controller.pod and bars:
                     controller._press_quickfight_off(bars)
+                if (controller.watch_map and not controller.map_hold_done
+                        and controller._last_quick(bars)):
+                    # The last Q is queued with the Automapper showing, and stays showing.
+                    self.press_queued(key, on)
+                    controller._map_hold(plan, self)
+                    return
             controller._count(action=True)
             if (on == "continue_battle" and controller.watch and not controller.edge_done
                     and controller._watch_edge(key)):
@@ -973,6 +986,10 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         raise AcceptanceStop("--watch-dip needs --watch")
     if getattr(args, "watch_dip", False) and args.title != "curse":
         raise AcceptanceStop("--watch-dip runs only on Curse of the Azure Bonds")
+    if getattr(args, "watch_map", False) and not getattr(args, "watch", False):
+        raise AcceptanceStop("--watch-map needs --watch")
+    if getattr(args, "watch_map", False) and getattr(args, "press_quickfight_off", False):
+        raise AcceptanceStop("--watch-map and --press-quickfight-off do not run together")
     if getattr(args, "press_quickfight_off", False) and args.title != "darkness":
         raise AcceptanceStop("--press-quickfight-off runs only on Pools of Darkness")
     if getattr(args, "quickfight_control", False) and not (
@@ -1262,6 +1279,9 @@ class Controller:
         self.edge_done = False
         self.watch = bool(getattr(args, "watch", False))
         self.press_off = bool(getattr(args, "press_quickfight_off", False))
+        #: `--watch-map`: whether the last Q's hold with the Automapper showing has run.
+        self.watch_map = bool(getattr(args, "watch_map", False))
+        self.map_hold_done = False
         #: The persist leg's control: Quickfight off is not pressed, so the saved byte stays 1.
         self.quickfight_control = bool(getattr(args, "quickfight_control", False))
         self.dip: dict[str, Any] | None = None
@@ -3299,6 +3319,99 @@ class Controller:
                     result.update(status="unproven", reason=odd)
         return True
 
+    def _last_quick(self, bars: list[dict[str, Any]]) -> bool:
+        """Whether the bar just read is the last Q: every record the party plays and had not on
+        QUICK at the first bar has had a bar. A companion or a `--watch-dip` member is not one."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        before = (self.summary["fight_greyed"].get("observed") or {}).get("party_before") or []
+        if not bars:
+            return False
+        if not any(r["address"] == bars[0]["address"] for r in before):
+            raise AcceptanceStop("the first bar's owner is not a party record")
+        row_ = amigaparty.ROWS[self.route.game_key]
+        played = {r["address"] for r in before if self._member_bytes(row_, r) == (0, 0)}
+        return bool(played) and played <= {bar["address"] for bar in bars}
+
+    def _map_hold(self, plan: FightPlan, screens: Any) -> None:
+        """Keep the Automapper showing after the last Q until CONTINUE BATTLE, glancing at the
+        game after `MAP_HOLD_FIRST` seconds and then every `MAP_HOLD_NEXT`.
+
+        Every glance frees the pipe, so Wish does not poll then. Leaves the Character Editor
+        showing when it returns."""
+        self.map_hold_done = True
+        result = self.summary["watch_map"]
+        modes = self.summary["fight"]["modes"]
+        gaps: list[dict[str, float]] = []
+        shown = round(self.clock() - self.started, 3)
+        held, wait = 0.0, MAP_HOLD_FIRST
+        while True:
+            self.sleep(self.left(wait))
+            held += wait
+            wait = MAP_HOLD_NEXT
+            opened = round(self.clock() - self.started, 3)
+            self._game_section()
+            frame = self._capture("hold", check=False)
+            mode = self._read_mode()
+            crop = frame.get("crop")
+            state = next((name for name in ("continue_battle", "combat_bar", *plan.rules.defeat)
+                          if crop and screens._matches(name, pathlib.Path(crop))), None)
+            now = round(self.clock() - self.started, 3)
+            modes.append({"screen": state, "mode": mode, "elapsed": now, "hold": True})
+            gaps.append({"from": opened, "to": now})
+            result["observed"] = {"map_shown_s": shown, "editor_gaps": gaps}
+            if state == "continue_battle":
+                self._grade_map_hold(result, frame, shown, gaps)
+                return
+            if state == "combat_bar":
+                from tools.amiga import curseadd, cursefight  # noqa: PLC0415
+
+                owner = curseadd.bounded(lambda _h: screens.memory.owner(), screens.memory.holder,
+                                         self.left(cursefight.READ_LIMIT))
+                result.update(status="failed", reason=(
+                    f"a command bar showed for {(owner or {}).get('name')} during the hold"))
+                return
+            if state is not None:
+                result["reason"] = f"the fight reached {state} during the hold"
+                return
+            if held >= MAP_HOLD_LIMIT:
+                raise AcceptanceStop(
+                    f"CONTINUE BATTLE did not show within {MAP_HOLD_LIMIT:.0f} s of the last Q")
+            self._map_section()
+
+    def _grade_map_hold(self, result: dict[str, Any], frame: dict[str, Any], shown: float,
+                        gaps: list[dict[str, float]]) -> None:
+        """The `watch_map` row at CONTINUE BATTLE, with the Character Editor showing: every member
+        Q'd or staged still on QUICK, and no `Removed quickfight` line in Wish's Messages."""
+        from automap import amigaparty  # noqa: PLC0415
+
+        row_ = amigaparty.ROWS[self.route.game_key]
+        wanted = {bar["address"]: bar["owner"] for bar in self.summary["fight"]["found"]["bars"]}
+        if self.dip is not None:
+            wanted[self.dip["address"]] = self.dip["name"]
+        readback = self._action_readback()
+        by_address = {r["address"]: r for r in readback}
+        problems = []
+        for address, name in wanted.items():
+            record = by_address.get(address)
+            value = None if record is None else self._member_bytes(row_, record)[1]
+            if value != 1:
+                problems.append(f"QUICK {0 if value is None else value} at CONTINUE BATTLE on {name}")
+        self._map_section()
+        timings: dict[str, float] = {}
+        wish_path, controls_path = self._wish_pair("watch_map", self._lap(timings))
+        if any("ListItem" in line and "Removed quickfight" in line
+               for line in controls_path.read_text().splitlines()):
+            problems.append("Wish's Messages list holds a Removed quickfight line")
+        self._game_section()
+        result.update(
+            status="failed" if problems else "awaiting image review",
+            reason="; ".join(problems) or None,
+            evidence=[str(wish_path), str(controls_path), frame.get("raw")],
+            observed={"set": sorted(wanted.values()), "party": readback,
+                      "modes_in_hold": [m for m in self.summary["fight"]["modes"] if m.get("hold")],
+                      "editor_gaps": gaps, "map_shown_s": shown})
+
     def _odd_modes(self) -> str | None:
         """Why the modes table cannot back the edge: a mode other than 2, 4 or 5 between the
         first command bar and CONTINUE BATTLE."""
@@ -4176,6 +4289,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--watch-dip", action="store_true",
                         help="with --watch, Curse only: stage QUICK on one member and start the "
                              "fight with the Automapper showing")
+    parser.add_argument("--watch-map", action="store_true",
+                        help="fight leg, with --watch: keep the Automapper showing from the last Q "
+                             "to CONTINUE BATTLE, glancing at the game now and then")
     parser.add_argument("--press-quickfight-off", action="store_true",
                         help="fight leg, Pools of Darkness only: press Quickfight off at a second "
                              "member's bar and replay from before it without")
