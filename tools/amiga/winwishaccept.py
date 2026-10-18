@@ -1323,7 +1323,9 @@ class Controller:
                         else {action.kind: row() for action in route.actions}),
             "original_slot_reload": row(),
             "checkpoints": self.checkpoints, "completed_sequence": [],
-            "failure": None, "cleanup": {}}
+            "failure": None, "cleanup": {},
+            #: Log reads that failed, so a run where nobody looked at Wish's log shows it.
+            "wish_log_unread": 0}
         if self.persist:
             self.summary["persistence"] = row()
         if self.quickfight_control:
@@ -2489,6 +2491,7 @@ class Controller:
         try:
             return {winwish.log_block_id(b) for b in winwish.wish_log_errors(self.guest, self.args.holder)}
         except winwish.WinwishError as exc:
+            self.summary["wish_log_unread"] += 1
             self.log("wish_log_unread", control=control, error=str(exc))
             return None
 
@@ -2499,6 +2502,7 @@ class Controller:
         try:
             blocks = winwish.wish_log_errors(self.guest, self.args.holder)
         except winwish.WinwishError as exc:
+            self.summary["wish_log_unread"] += 1
             self.log("wish_log_unread", control=control, error=str(exc))
             return
         new = [b for b in blocks if winwish.log_block_id(b) not in mark]

@@ -1008,6 +1008,8 @@ def test_an_unreadable_wish_log_is_recorded_and_the_run_goes_on(tmp_path, monkey
     controller.run_actions()
     assert controller.summary["actions"]["spells"]["status"] == "awaiting image review"
     assert "wish_log_unread" in events
+    # An unreadable mark skips the check, so each of the two clicks counts once.
+    assert controller.summary["wish_log_unread"] == 2
 
 
 def test_dispatched_click_without_acknowledgement_keeps_uncertain_attempt(tmp_path, monkeypatch):

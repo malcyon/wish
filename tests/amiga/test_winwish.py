@@ -2521,3 +2521,14 @@ def test_wish_log_errors_reads_a_crashes_log_traceback():
              "KeyError: 'x'")
     block = winwish.wish_log_errors(_log_guest(reply, []), "h1")[0]
     assert block["file"] == "crashes.log" and block["exception"] == "KeyError: 'x'"
+
+
+def test_a_long_traceback_keeps_its_first_line_and_its_exception_line():
+    body = [f'  File "x.py", line {n}, in f' for n in range(100)]
+    reply = "\n".join(["ok", "@@ wish-x.log", "20:21:04 ERROR unhandled exception",
+                        "Traceback (most recent call last):", *body, "ValueError: deep"])
+    block = winwish.wish_log_errors(_log_guest(reply, []), "h1")[0]
+    assert block["exception"] == "ValueError: deep"
+    assert len(block["lines"]) == winwish.LOG_BLOCK_LINES
+    assert block["lines"][0] == "20:21:04 ERROR unhandled exception"
+    assert block["lines"][-1] == "ValueError: deep"

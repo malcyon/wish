@@ -2004,11 +2004,11 @@ def wish_log_script(holder: str) -> str:
         "  else { continue }",
         "  $fs = [IO.File]::Open($f.FullName, 'Open', 'Read', 'ReadWrite, Delete')",
         "  try { $text = (New-Object IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }",
-        "  $inside = $false; $count = 0",
+        "  $inside = $false",
         '  foreach ($line in ($text -split "`r?`n")) {',
-        "    if ($line -cmatch $start) { $inside = $true; $count = 1; $found.Add('@@ ' + $n); $found.Add($line) }",
+        "    if ($line -cmatch $start) { $inside = $true; $found.Add('@@ ' + $n); $found.Add($line) }",
         "    elseif ($line -cmatch $stop) { $inside = $false }",
-        f"    elseif ($inside -and $count -lt {LOG_BLOCK_LINES}) {{ $found.Add($line); $count++ }}",
+        "    elseif ($inside) { $found.Add($line) }",
         "  }",
         "}",
         "'ok'",
@@ -2032,6 +2032,9 @@ def wish_log_errors(guest: Guest, holder: str) -> list[dict[str, Any]]:
         while len(block["lines"]) > 1 and not block["lines"][-1].strip():
             block["lines"].pop()
         block["exception"] = _log_exception(block["lines"])
+        if len(block["lines"]) > LOG_BLOCK_LINES:
+            # The exception line closes a traceback, so a long one keeps its end.
+            block["lines"] = block["lines"][:1] + block["lines"][1 - LOG_BLOCK_LINES:]
     return blocks
 
 
