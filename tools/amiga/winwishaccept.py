@@ -1021,9 +1021,9 @@ def leg_preflight(args: argparse.Namespace, route: Any, manifest: Any) -> dict[s
     """The checks that need the route and manifest and belong to the leg, whichever emulator runs it.
 
     Returns the persist plan, the fight plan with its specimen and stage, and the guard states
-    the leg needs (None for the mapping and reconnect legs).
+    the leg needs (None for the mapping and reconnect legs). The caller runs `check_leg_flags`
+    first, before it reads the manifest.
     """
-    check_leg_flags(args)
     leg = getattr(args, "leg", "mapping")
     persist = plan = specimen = stage = states = None
     if leg == "reconnect":
@@ -1102,6 +1102,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     if leg != "fight" and isinstance(manifest, dict) and "fight" in manifest:
         raise AcceptanceStop("a fight stage runs only with --leg fight")
     route = route_for(args.title, manifest)
+    checked = {"persist": None, "plan": None, "specimen": None, "stage": None, "states": None}
     if discovery:
         source = manifest.get("substitute")
         if args.title != "ssb" or manifest.get("title") != "ssb" or not isinstance(
@@ -1120,6 +1121,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
 
         route_silver_blades.journal_preflight(sys.executable)
     else:
+        checked = leg_preflight(args, route, manifest)
         if leg == "mapping":
             _phase_map(route)
         if args.title == "ssb":
@@ -1144,7 +1146,6 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     for item in route.media:
         if not item.path.is_file() or digest(item.path) != item.sha256:
             raise AcceptanceStop(f"prepared medium {item.key} is missing or changed")
-    checked = leg_preflight(args, route, manifest)
     persist = checked["persist"]
     plan, fight_specimen, fight_stage = checked["plan"], checked["specimen"], checked["stage"]
     expected_source = f"guards_{guardmaps.FILES[route.title]}.json"

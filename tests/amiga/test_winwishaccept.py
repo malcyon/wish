@@ -6269,15 +6269,35 @@ def test_the_default_listing_hook_reads_the_guest_controls(tmp_path, monkeypatch
     ({"leg": "mapping", "action": ["heal"]}, "--action needs --leg persist"),
     ({"leg": "reconnect", "action": ["heal"]}, "--leg reconnect presses no actions"),
     ({"leg": "mapping", "watch": True}, "--watch needs --leg fight")])
-def test_leg_preflight_stops_on_a_flag_the_leg_does_not_take(tmp_path, flags, match):
+def test_check_leg_flags_stops_on_a_flag_the_leg_does_not_take(tmp_path, flags, match):
     args = _args(tmp_path)
     for name, value in flags.items():
         setattr(args, name, value)
     with pytest.raises(winwishaccept.AcceptanceStop, match=match):
-        winwishaccept.leg_preflight(args, object(), {})
+        winwishaccept.check_leg_flags(args)
 
 
 def test_leg_preflight_has_nothing_to_add_for_the_mapping_leg(tmp_path):
     assert winwishaccept.leg_preflight(_args(tmp_path), object(), {}) == {
         "persist": None, "plan": None, "specimen": None, "stage": None, "states": None}
 
+
+@pytest.mark.parametrize("leg,check", [("persist", "_check_persist"), ("reconnect", "_check_reconnect"),
+                                       ("fight", "_check_fight_stage")])
+def test_a_leg_fault_is_reported_before_the_mute_proof_and_media_faults(
+        tmp_path, monkeypatch, leg, check):
+    args = _args(tmp_path, leg=leg)
+    args.manifest.write_text("{}")
+    if leg == "fight":
+        monkeypatch.setattr(winwishaccept, "_check_fight", lambda route, manifest: {})
+    if leg == "persist":
+        args.action = ["heal"]
+
+    def stop(*unused):
+        raise winwishaccept.AcceptanceStop(f"{leg} fault")
+
+    monkeypatch.setattr(winwishaccept, check, stop)
+    monkeypatch.setattr(winwishaccept.winwish, "_mute_proof", lambda path: False)
+    route = SimpleNamespace(mounted=(), media=())
+    with pytest.raises(winwishaccept.AcceptanceStop, match=f"{leg} fault"):
+        winwishaccept.preflight(args, guest=object(), route_for=lambda *a: route, driver_sha=SHA)
