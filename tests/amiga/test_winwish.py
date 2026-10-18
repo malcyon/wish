@@ -194,6 +194,16 @@ def test_map_only_leaves_the_actions_flag_unset():
     assert f"$env:{winwish.ACTIONS_FLAG}" not in body
 
 
+def test_the_window_probe_is_read_by_name_and_a_failed_read_means_not_ready():
+    script = winwish.start_script("h", winwish.environment("h"))
+    assert "Get-ScheduledTask -TaskName" not in script
+    assert "New-Object -ComObject Schedule.Service" in script
+    assert ".Connect()" in script and "GetFolder(" in script and ".GetTask($probe)" in script
+    ready = script[script.index("function Test-ProbeReady"):script.index("function Get-WishWindows")]
+    assert "catch { return $false }" in ready
+    assert "Test-ProbeReady" in script[script.index("function Get-WishWindows"):]
+
+
 def test_an_unreadable_process_path_fails_start_and_stop_instead_of_passing():
     for script in (winwish.start_script("h", winwish.environment("h")),
                    winwish.stop_script("h")):
@@ -1313,7 +1323,7 @@ def test_a_start_that_fails_removes_the_probe_task_over_ssh_too():
 
 def test_the_probe_is_started_only_when_the_task_is_ready():
     script = _start()
-    ready = script.index("State -ne 'Ready'")
+    ready = script.index("if (-not (Test-ProbeReady))")
     assert ready < script.index("Start-ScheduledTask -TaskName $probe")
     assert "the window probe was still running" in script
 

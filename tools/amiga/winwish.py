@@ -422,10 +422,19 @@ def start_script(holder: str, env: dict[str, str], wait: int = START_SECONDS,
         "Register-ScheduledTask -TaskName $probe -Action $pa -Principal $p -Settings $s -Force | Out-Null",
         # One probe at a time: starting a task that is still running does nothing, and
         # a late finish would delete the next answer.  `$seconds` bounds the whole call.
+        # Looked up by name through the Task Scheduler service: listing every task races
+        # another holder deleting its own, so a failed read counts as not ready yet.
+        "function Test-ProbeReady {",
+        "  try {",
+        "    $svc = New-Object -ComObject Schedule.Service",
+        "    $svc.Connect()",
+        "    return ($svc.GetFolder('\\').GetTask($probe).State -eq 3)",
+        "  } catch { return $false }",
+        "}",
         "function Get-WishWindows([double]$seconds) {",
         "  $until = (Get-Date).AddSeconds($seconds)",
-        "  while ((Get-ScheduledTask -TaskName $probe).State -ne 'Ready' -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 100 }",
-        "  if ((Get-ScheduledTask -TaskName $probe).State -ne 'Ready') { return @('the window probe was still running') }",
+        "  while (-not (Test-ProbeReady) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 100 }",
+        "  if (-not (Test-ProbeReady)) { return @('the window probe was still running') }",
         "  Remove-Item -LiteralPath $probeOut -ErrorAction SilentlyContinue",
         "  Start-ScheduledTask -TaskName $probe",
         "  while (-not (Test-Path -LiteralPath $probeOut) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 100 }",
