@@ -3630,7 +3630,7 @@ class Controller:
                 result["reason"] = f"{x['owner']} was not on QUICK at {y['owner']}'s bar"
             return
         self.pod.update(snapshot=POD_QF_SNAPSHOT if self.control_branches else None, before=before,
-                        waiting={"seen": set(), "done": False, "skip": 0})
+                        waiting={"seen": {y["address"]}, "done": False, "skip": 0})
         self._map_section()
         mark = self._wish_log_mark("Quickfight off")
         try:

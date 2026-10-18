@@ -1234,3 +1234,15 @@ def test_branch_b_waits_until_a_member_repeats_and_never_sees_the_pressed_member
     controller.pod["waiting"] = {"seen": set(), "done": False, "skip": 1}
     # The replayed Y is answered as before; Z waits; Y repeating is the next round.
     assert _bar_keys(screens, controller, [Y_BAR, Z_BAR, Y_BAR, Z_BAR]) == ["Q", "E", "Q", "Q"]
+
+
+def test_both_branches_answer_the_pressed_turns_member_alike_when_x_is_auto_played(
+        tmp_path, monkeypatch, fight_row):
+    controller, _order, _row = _pod(tmp_path, monkeypatch, fight_row, [X_BAR, Y_BAR])
+    memory = SimpleNamespace(holder="h", _target=None)
+    screens = winwishaccept._fight_screens(controller, winwishaccept.fight_plan("darkness"), memory)
+    # Branch A: X never returns; Y repeating is round 2 and is answered normally.
+    a = _bar_keys(screens, controller, [Y_BAR, Z_BAR, Y_BAR, Z_BAR])
+    controller.pod["waiting"] = {"seen": set(), "done": False, "skip": 1}
+    b = _bar_keys(screens, controller, [Y_BAR, Z_BAR, Y_BAR, Z_BAR])
+    assert a == b == ["Q", "E", "Q", "Q"]
