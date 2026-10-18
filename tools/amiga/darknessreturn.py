@@ -65,7 +65,7 @@ BUNDLE_EXEC_SHA256 = "6f8fee2dd8ea035b156cb0eb1c1d16e9172aa450a4f2b9e54e6d0018cf
 BUNDLE_CONFIG_SHA256 = "f8c66a210efc8fbcec4eaa0cac50f6354964a6d7818418b0e8113a7010605ca2"
 BUNDLE_PREPARED_SHA256 = "55d4a3fa960ec96884b5e9f9e9265124dee480d2015ccc84dcdf461eebe076de"
 BUNDLE_MANIFEST_SHA256 = "5b28297f1432ebced6812be75f516ade3a9f221f36a8bdee46a79e2ccf4e77fe"
-BUNDLE_CURRENT_RULES_SHA256 = "f629a21f46b165c56da8f1dfce0e7259bfc2eed94fce71f999fd9d05c83114c5"
+BUNDLE_CURRENT_RULES_SHA256 = "f5350cad62ff1971575e64ddfa37e02bb27ef3dbbaf9c2fc0713556c3babab5a"
 # Exact source-specific selectors established on retained W4D frames, not generic alternatives.
 BUNDLE_GUARD_VARIANTS = {"title": 0, "party_menu": 0, "load_from": 0,
                          "load_picker": 0, "disk2_prompt": 0, "loaded_menu": 1,
