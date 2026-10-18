@@ -2461,3 +2461,63 @@ def test_a_tab_that_never_reads_selected_is_not_called_unclickable():
     tab = bare.index("never read back as selected")
     assert bare.index("(Get-Kind $bare) -eq 'TabItem'") < tab < bare.index("offers no way to be clicked")
     assert "SelectionItem" in bare[:tab]
+
+
+def _log_guest(reply, sent):
+    def run(argv, timeout):
+        if argv[:2] == ["winvm", "ps"]:
+            sent.append(argv[2])
+            return 0, reply
+        return 0, "ok"
+    return winwish.Guest(run)
+
+
+LOG_REPLY = "\n".join([
+    "ok",
+    "@@ wish-20261016-195731.log",
+    "20:21:04 ERROR unhandled exception",
+    "Traceback (most recent call last):",
+    '  File "x.py", line 1, in f',
+    "ValueError: A write of 141 bytes is not between 1 and 64.",
+    "@@ wish-20261016-195731.log",
+    "20:22:00 CRITICAL the pipe closed",
+])
+
+
+def test_wish_log_errors_parses_a_traceback_block_and_a_bare_error_line():
+    sent: list[str] = []
+    blocks = winwish.wish_log_errors(_log_guest(LOG_REPLY, sent), "h1")
+    assert [b["file"] for b in blocks] == ["wish-20261016-195731.log"] * 2
+    assert blocks[0]["lines"][0] == "20:21:04 ERROR unhandled exception"
+    assert len(blocks[0]["lines"]) == 4
+    assert blocks[0]["exception"] == "ValueError: A write of 141 bytes is not between 1 and 64."
+    assert blocks[1]["lines"] == ["20:22:00 CRITICAL the pipe closed"]
+    assert blocks[1]["exception"] == "the pipe closed"
+
+
+def test_wish_log_errors_reads_without_blocking_wish_and_matches_error_and_critical_only():
+    sent: list[str] = []
+    winwish.wish_log_errors(_log_guest("ok", sent), "h1")
+    script = sent[0]
+    assert "ReadWrite, Delete" in script
+    assert "ERROR|CRITICAL" in script and "WARNING" not in script
+    assert "Get-Content" not in script and "Select-String" not in script
+    assert winwish.log_dir("h1") in script
+
+
+def test_a_rolled_over_log_file_gives_a_block_the_same_identity():
+    first = winwish.wish_log_errors(_log_guest(
+        "ok\n@@ wish-x.log\n20:21:04 ERROR boom", []), "h1")[0]
+    rolled = winwish.wish_log_errors(_log_guest(
+        "ok\n@@ wish-x.log.1\n20:21:04 ERROR boom", []), "h1")[0]
+    other = winwish.wish_log_errors(_log_guest(
+        "ok\n@@ wish-x.log.1\n20:21:05 ERROR boom", []), "h1")[0]
+    assert winwish.log_block_id(first) == winwish.log_block_id(rolled)
+    assert winwish.log_block_id(first) != winwish.log_block_id(other)
+
+
+def test_wish_log_errors_reads_a_crashes_log_traceback():
+    reply = ("ok\n@@ crashes.log\n2026-10-18 06:00:00 crash\nTraceback (most recent call last):\n"
+             "KeyError: 'x'")
+    block = winwish.wish_log_errors(_log_guest(reply, []), "h1")[0]
+    assert block["file"] == "crashes.log" and block["exception"] == "KeyError: 'x'"

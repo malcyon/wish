@@ -2481,6 +2481,33 @@ class Controller:
             if new["name"] != old["name"] or new["raw"] != raw.hex() or new["items"] != items:
                 raise AcceptanceStop(f"{kind} changed unexpected bytes for {old['name']}")
 
+    def _wish_log_mark(self, control: str) -> set[tuple[str, str]] | None:
+        """The exception records Wish's logs already hold, so only a new one is charged to the next click.
+
+        None when the log cannot be read: that must not end an otherwise good run.
+        """
+        try:
+            return {winwish.log_block_id(b) for b in winwish.wish_log_errors(self.guest, self.args.holder)}
+        except winwish.WinwishError as exc:
+            self.log("wish_log_unread", control=control, error=str(exc))
+            return None
+
+    def _wish_log_stop(self, mark: set[tuple[str, str]] | None, control: str) -> None:
+        """Stop the run when Wish logged an exception since `mark`."""
+        if mark is None:
+            return
+        try:
+            blocks = winwish.wish_log_errors(self.guest, self.args.holder)
+        except winwish.WinwishError as exc:
+            self.log("wish_log_unread", control=control, error=str(exc))
+            return
+        new = [b for b in blocks if winwish.log_block_id(b) not in mark]
+        if not new:
+            self.log("wish_log_check", control=control, new=0)
+            return
+        self.log("wish_log_exception", control=control, file=new[0]["file"], lines=new[0]["lines"])
+        raise AcceptanceStop(f"Wish logged an exception after {control}: {new[0]['exception']}")
+
     def _unique_action(self, label: str | None = None, automation_id: str | None = None,
                        *, context: dict[str, Any]) -> None:
         listing = winwish.ui(self.guest, self.args.holder, "controls")
@@ -2500,6 +2527,8 @@ class Controller:
                  "acknowledged": False}
         context["clicks"].append(event)
         self.log("action_click_attempt", **event)
+        context["log_control"] = event["control"]
+        context["log_mark"] = self._wish_log_mark(event["control"])
         try:
             winwish.ui(self.guest, self.args.holder, "click", (() if label is None else (label,)),
                        automation_id=automation_id)
@@ -2556,6 +2585,7 @@ class Controller:
                     self._unique_action("Save spells", context=context)
                     self._game_section()
                     context["saved"] = self._action_readback()
+                    self._wish_log_stop(context["log_mark"], context["log_control"])
                     self._verify_action("spells", context, context["saved"])
                     self._game_section()
                     target, party = self._fresh_party()
@@ -2578,6 +2608,8 @@ class Controller:
                     self._unique_action(labels[action.kind], context=context)
                 self._game_section()
                 context["after"] = self._action_readback()
+                if "log_mark" in context:
+                    self._wish_log_stop(context["log_mark"], context["log_control"])
                 control = action.kind == "quickfight" and self.quickfight_control
                 self._verify_action(action.kind, context, context["after"],
                                     step="control" if control else "action")
@@ -3078,6 +3110,7 @@ class Controller:
                      if action not in row_.combat_legal)
         click: dict[str, Any] = {"control": label, "acknowledged_as_action": False}
         self._map_section()
+        mark = self._wish_log_mark(label)
         try:
             click["reply"] = winwish.ui(self.guest, self.args.holder, "click", (label,))
         except winwish.ControlDisabled as exc:
@@ -3087,6 +3120,7 @@ class Controller:
             click["error"] = f"{type(exc).__name__}: {exc}"
         observed["click"] = click
         self.log("greyed_click", **click)
+        self._wish_log_stop(mark, label)
         self._game_section()
         problems = []
         try:
@@ -3296,6 +3330,7 @@ class Controller:
             return
         self.pod.update(snapshot=POD_QF_SNAPSHOT, before=before)
         self._map_section()
+        mark = self._wish_log_mark("Quickfight off")
         try:
             reply = winwish.ui(self.guest, holder, "click", ("Quickfight off",))
         except Exception as exc:  # noqa: BLE001 - the error is the record
@@ -3304,6 +3339,7 @@ class Controller:
         self.log("quickfight_off_click", reply=reply)
         self._game_section()
         after = self._action_readback()
+        self._wish_log_stop(mark, "Quickfight off")
         problems = []
         if self._member_bytes(row_, next(r for r in after if r["address"] == x["address"]))[1] != 0:
             problems.append(f"{x['owner']} still reads QUICK 1")

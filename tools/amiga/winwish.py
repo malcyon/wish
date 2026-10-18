@@ -1985,6 +1985,69 @@ def collect_log(guest: Guest, holder: str, out: pathlib.Path) -> list[str]:
     return files
 
 
+LOG_BLOCK_LINES = 60
+
+
+def wish_log_script(holder: str) -> str:
+    """A guest script listing the ERROR and CRITICAL records of Wish's logs, each with its traceback lines.
+
+    The files are opened with FileShare.Delete as the `ui` reader does, so neither Wish's
+    writes nor its log rollover meet a sharing violation.
+    """
+    lines = [
+        "$ErrorActionPreference = 'Stop'",
+        "$found = New-Object System.Collections.Generic.List[string]",
+        f"foreach ($f in (Get-ChildItem -LiteralPath {q(log_dir(holder))} -File)) {{",
+        "  $n = $f.Name",
+        r"  if ($n -like 'wish-*.log*') { $start = '^\d\d:\d\d:\d\d (ERROR|CRITICAL) '; $stop = '^\d\d:\d\d:\d\d ' }",
+        r"  elseif ($n -eq 'crashes.log') { $start = '^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d '; $stop = $start }",
+        "  else { continue }",
+        "  $fs = [IO.File]::Open($f.FullName, 'Open', 'Read', 'ReadWrite, Delete')",
+        "  try { $text = (New-Object IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }",
+        "  $inside = $false; $count = 0",
+        '  foreach ($line in ($text -split "`r?`n")) {',
+        "    if ($line -cmatch $start) { $inside = $true; $count = 1; $found.Add('@@ ' + $n); $found.Add($line) }",
+        "    elseif ($line -cmatch $stop) { $inside = $false }",
+        f"    elseif ($inside -and $count -lt {LOG_BLOCK_LINES}) {{ $found.Add($line); $count++ }}",
+        "  }",
+        "}",
+        "'ok'",
+        "$found",
+    ]
+    return "\n".join(lines)
+
+
+def wish_log_errors(guest: Guest, holder: str) -> list[dict[str, Any]]:
+    """The ERROR and CRITICAL records in the holder's Wish logs, as `file`, `lines` and `exception`."""
+    guest.holds_lane(holder)
+    out = guest.ps(wish_log_script(holder), step="wish log")
+    blocks: list[dict[str, Any]] = []
+    for line in out.splitlines()[1:]:
+        line = line.rstrip("\r")
+        if line.startswith("@@ "):
+            blocks.append({"file": line[3:].strip(), "lines": []})
+        elif blocks:
+            blocks[-1]["lines"].append(line)
+    for block in blocks:
+        while len(block["lines"]) > 1 and not block["lines"][-1].strip():
+            block["lines"].pop()
+        block["exception"] = _log_exception(block["lines"])
+    return blocks
+
+
+def _log_exception(lines: list[str]) -> str:
+    """The traceback's last unindented line, or the record's own message when it has no traceback."""
+    for line in reversed(lines[1:]):
+        if line.strip() and not line[0].isspace() and not line.startswith("Traceback (most recent"):
+            return line
+    return re.sub(r"^\S+ (?:ERROR|CRITICAL) ", "", lines[0]) if lines else ""
+
+
+def log_block_id(block: dict[str, Any]) -> tuple[str, str]:
+    """A block's identity: its file with a rollover's `.1` removed, and its first line with the time."""
+    return re.sub(r"\.\d+$", "", block["file"]), block["lines"][0] if block["lines"] else ""
+
+
 def floppy_paths(args: argparse.Namespace) -> list[str]:
     """The ADFs for DF0 upward, none for a Wish-only run; a drive may not be given without the one before it."""
     given = [args.df0, args.df1, args.df2, args.df3]

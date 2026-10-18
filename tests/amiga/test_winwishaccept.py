@@ -924,6 +924,92 @@ def test_save_spells_releases_the_pipe_before_readback(tmp_path, monkeypatch):
     assert controller.summary["actions"]["spells"]["status"] == "awaiting image review"
 
 
+@pytest.fixture(autouse=True)
+def _no_wish_log_errors(monkeypatch):
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors", lambda guest, holder: [])
+
+
+VALUE_ERROR_BLOCK = {
+    "file": "wish-20261016-195731.log",
+    "lines": ["20:21:04 ERROR unhandled exception",
+              "Traceback (most recent call last):",
+              "ValueError: A write of 141 bytes is not between 1 and 64."],
+    "exception": "ValueError: A write of 141 bytes is not between 1 and 64."}
+
+
+def _spells_controller(tmp_path, monkeypatch):
+    controller, _game = _action_controller(tmp_path, monkeypatch)
+    controller.route.actions[0].kind = "spells"
+    controller.summary["actions"]["spells"] = controller.summary["actions"].pop("heal")
+    controller.action_limit = winwishaccept._action_budget(controller.route)
+    monkeypatch.setattr(controller, "_action_input", lambda action: {
+        "member": "A", "slot": 0, "spell_index": 0, "before": [], "baseline": []})
+    monkeypatch.setattr(controller, "_action_readback", lambda: [])
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    monkeypatch.setattr(controller, "_map_section", lambda: None)
+    monkeypatch.setattr(controller, "_fresh_party", lambda: (
+        SimpleNamespace(write=lambda *args: None, close=lambda: None),
+        [SimpleNamespace(slot=0, address=100,
+                         row=SimpleNamespace(memorised=SimpleNamespace(offset=5)))]))
+    return controller
+
+
+def _clicking(clicked):
+    def ui(*args, **kwargs):
+        if args[2] == "click":
+            clicked.append(args[3])
+            return ["ok"]
+        return ["Button|Save spells|save|enabled=True",
+                "Button|Restore spells|restore|enabled=True"]
+    return ui
+
+
+def test_an_exception_in_wishs_log_after_restore_spells_stops_the_run(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+    clicked: list = []
+    verified: list = []
+    monkeypatch.setattr(controller, "_verify_action", lambda kind, context, after, step="action": (
+        verified.append(step)))
+    monkeypatch.setattr(winwishaccept.winwish, "ui", _clicking(clicked))
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors", lambda guest, holder: (
+        [VALUE_ERROR_BLOCK] if ("Restore spells",) in clicked else []))
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="ValueError: A write of 141 bytes is not between 1 and 64."):
+        controller.run_actions()
+    reason = controller.summary["actions"]["spells"]["reason"]
+    assert "after Restore spells" in reason and "ValueError: A write of 141 bytes" in reason
+    # Only the Save spells and cleared checks ran; the Restore spells check did not.
+    assert verified == ["action", "cleared"]
+
+
+def test_a_block_already_in_wishs_log_before_the_click_does_not_stop_the_run(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", _clicking([]))
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors",
+                        lambda guest, holder: [VALUE_ERROR_BLOCK])
+    controller.run_actions()
+    assert controller.summary["actions"]["spells"]["status"] == "awaiting image review"
+
+
+def test_an_unreadable_wish_log_is_recorded_and_the_run_goes_on(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", _clicking([]))
+
+    def unreadable(guest, holder):
+        raise winwishaccept.winwish.GuestError("the guest said: nothing", step="wish log",
+                                               exit_code=1, command_length=0)
+
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors", unreadable)
+    events: list = []
+    real_log = controller.log
+    monkeypatch.setattr(controller, "log", lambda event, **kw: (events.append(event), real_log(event, **kw))[1])
+    controller.run_actions()
+    assert controller.summary["actions"]["spells"]["status"] == "awaiting image review"
+    assert "wish_log_unread" in events
+
+
 def test_dispatched_click_without_acknowledgement_keeps_uncertain_attempt(tmp_path, monkeypatch):
     controller, _game = _action_controller(tmp_path, monkeypatch)
     monkeypatch.setattr(controller, "_action_input", lambda action: {

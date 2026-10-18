@@ -20,6 +20,11 @@ LISTING = ["Button|Heal party|heal|enabled={heal}", "Button|Save spells|store|en
            "Button|Level up|card_0_level_up|enabled=False"]
 
 
+@pytest.fixture(autouse=True)
+def _no_wish_log_errors(monkeypatch):
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors", lambda guest, holder: [])
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -785,6 +790,18 @@ def test_quickfight_off_a_needs_x_cleared_and_a_later_bar_for_x(tmp_path, monkey
     _replay(controller, monkeypatch, [X_BAR, Y_BAR, dict(X_BAR, shot="x2.png")], [Y_BAR])
     assert controller.summary["qf_press_a"]["status"] == "awaiting image review"
     assert controller.summary["qf_press_a"]["evidence"] == ["x2.png"]
+
+
+def test_an_exception_in_wishs_log_after_the_quickfight_off_press_stops_the_run(
+        tmp_path, monkeypatch, fight_row):
+    controller, order, _row = _pod(tmp_path, monkeypatch, fight_row, [X_BAR, Y_BAR])
+    block = {"file": "wish-1.log", "lines": ["10:00:00 ERROR unhandled exception", "KeyError: 'x'"],
+             "exception": "KeyError: 'x'"}
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors", lambda guest, holder: (
+        [block] if ("click", ("Quickfight off",)) in order else []))
+    with pytest.raises(winwishaccept.AcceptanceStop,
+                       match="Wish logged an exception after Quickfight off: KeyError: 'x'"):
+        controller._press_quickfight_off([X_BAR, Y_BAR])
 
 
 def test_quickfight_off_b_fails_when_x_gets_a_bar_after_the_restore(tmp_path, monkeypatch, fight_row):
