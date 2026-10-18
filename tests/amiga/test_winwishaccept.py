@@ -1265,6 +1265,21 @@ def test_levelup_skips_a_member_whose_press_asks_for_a_spell(tmp_path, monkeypat
     assert context["slot"] == 1 and writes == []
 
 
+def test_levelup_stops_before_any_write_when_no_member_qualifies(tmp_path, monkeypatch):
+    from automap import amigalevelup as levelup
+
+    members = _pod_party(set(), tmp_path)
+    controller, writes = _levelup_controller(tmp_path, monkeypatch, members)
+
+    def plan_member(member, key, **kwargs):
+        raise levelup.CannotLevel("no")
+
+    monkeypatch.setattr(levelup, "plan_member", plan_member)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="none can be staged"):
+        controller._action_input(SimpleNamespace(kind="levelup", selector="levelup"))
+    assert writes == []
+
+
 @pytest.mark.parametrize("title,chosen", [("pool", 1), ("curse", 1), ("ssb", 0)])
 def test_levelup_skips_a_multiclass_member_on_pool_and_curse(title, chosen, tmp_path, monkeypatch):
     members = _title_party(title, [("cleric", True), (None, True)])
