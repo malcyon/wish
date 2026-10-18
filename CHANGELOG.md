@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- On Windows, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in WinUAE, drawing each square as the party walks, with no setting to switch on.
+- On Windows, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in WinUAE, drawing each square as the party walks.
 - On Linux, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in the patched FS-UAE.
-- On Windows, Fast Travel and Return now work in the Amiga games for trips that have been confirmed, with no setting to switch on.
+- On Windows, Fast Travel and Return now work in the Amiga games for trips that have been confirmed.
 - On Windows, Wish names Pools of Darkness from its Amiga disks and offers its game folder in Preferences.
 - On Linux, Wish reads Pools of Darkness data from its Amiga disks and offers its game folder in Preferences.
 - The Automapper shows the Amiga Pool of Radiance quest log from the running game.
@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Automapper's Quest Log no longer lists Pool of Radiance commissions on a C64 Curse or Silver Blades game, and no longer shows empty section headings before a game is attached.
 - The Automapper greys its action buttons and marks the party cards stale when the game disconnects, and the Messages pane drops its waiting-to-connect line once the game connects.
 - The Automapper's Quickfight and Fast Travel buttons keep their full labels beside a wide area dropdown.
+- Messages now shows each result of an Automapper action or Fast Travel trip, even when it repeats the line before.
 
 ## [0.1.6] - 2026-10-12
 
