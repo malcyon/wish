@@ -280,17 +280,17 @@ of a press in Wish's own WinUAE tab followed by a game-sheet check and reload.
 |---|---|---|---|---|
 | Marker and facing indoors, FS-UAE, in Wish's own window | CONFIRMED: turns, steps, and a step taken while Wish was closed | CONFIRMED (`GEO01`, Buccaneer Base) | CONFIRMED (`GEO10`) | CONFIRMED (`GEO21`) |
 | Same, WinUAE, in Wish's own window | CONFIRMED: loads, turns, steps, a step taken while Wish was closed, Wish restarted, and the walk out of New Phlan onto the travel grid | CONFIRMED: loads, turns and walks (Yulash streets) | CONFIRMED: turns, walks, the east gate into The Ruins, and a camp-and-reload | CONFIRMED: loads, turns, two steps east and back, a step taken while Wish was closed |
-| Area name | named | named | named | named where `goldbox.areas` has a name (Aerie); an unnamed area leaves the place line blank |
+| Area name | named | named | named | named from `AREAS_POOLS_OF_DARKNESS` (about 20 named areas, such as the Aerie); an area without a name there has none to show |
 | Outdoors | the wilderness page, drawn from the Amiga disks, followed across the three windows by the test driver | a world-map fix with node and destination, followed by the test driver; no route page with only Amiga disks | none: The Ruins is an ordinary area | blank tab, area strip and status line on the overland |
-| Party cards | name, hit points and quickfight flag; class, level, experience and armour class are stand-ins | same | same | same |
+| Party cards | name, class, level, experience, armour class, THAC0, hit points and quickfight flag | same | same | same |
 | Heal | offered: maximum confirmed by a game's heal and subsequent step | offered: maximum seen again after a journey leg | offered: maximum seen again after two steps | offered |
 | Save spells, Restore spells, Identify | offered | offered: fight-value gate measured | offered | offered |
 | Quickfight off | offered: next-fight turn menu returned after writing 0 | offered: written and unwritten next-fight controls differed | offered: next-fight turn menu returned after writing 0 | off: the game rewrites the flag at fight start; the effect is not confirmed |
 | Level up | offered to eligible members; hall/write and game-save reload proof | offered to eligible members; hall/write and game-save reload proof | offered to eligible members; earlier tab check does not prove current four-title acceptance | offered to eligible members; Wish-tab sheet/save acceptance outstanding |
 | Fast Travel | offered while the game sits at its world menu on a writable backend, except for a leg `trips.leg_held` or `held_starts` holds | same | same | same |
-| Return | offered after a trip, back to the square it started on | same | same | same |
+| Return | offered after a trip, back to the square it started on, except where `back_verdict` (`legality(..., back=True)`) finds the same `trips.leg_held` or `held_starts` hold | same | same | same |
 
-**The cards read the record the way each title's View sheet does.** A card draws class, level, experience, armour class and THAC0 from `amigaparty.card_fields` through `window.amiga_snapshot`, and the hit-point bar shows the current and maximum hit points. UNKNOWN: whether each title's decoded class, armour class and THAC0 equal what the game's View sheet prints; no run compared them.
+**The cards show each title's decoded class, level, experience, armour class and THAC0**, from `amigaparty.card_fields` through `window.amiga_snapshot`, and the hit-point bar shows the current and maximum hit points. UNKNOWN: whether each title's decoded class, armour class and THAC0 equal what the game's View sheet prints; no run compared them.
 
 **Silver Blades' The Ruins prints a coordinate that is not the map square.** The
 game's status line read `x,y` equal to the engine's `(x - 11, y + 13)` mod 16 on
@@ -303,5 +303,6 @@ not known.
 connects**, because the sweep reads only the A500's 512K chip and 512K slow RAM
 (`automap.amiga.MEMORY`).
 
-**Area changes are followed in Wish's own window on all four titles**, on both emulators: the marker, facing and place line match the game after a walked or ridden change. Not checked at this commit: whether the quest log and the party-strength
-line keep a C64's last values after a switch to an Amiga.
+**Area changes are followed in Wish's own window on all four titles**, on both emulators: the marker, facing and place line match the game after a walked or ridden change, and on Curse the exit to the world map and the return to Yulash.
+
+Not checked: whether the quest log and the party-strength line keep a C64's last values after a switch to an Amiga.
