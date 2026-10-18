@@ -596,6 +596,17 @@ def _fight_memory(holder: str, route: Any) -> Any:
     memory.record = {"control": row_.control.offset, "quickfight": row_.quickfight.offset,
                      "hit_points": row_.hp.offset}
     memory.record_size = row_.record_size
+
+    def owner() -> dict | None:
+        # The name sits where the party row says (+0x060 on Pools of Darkness), not at 0.
+        address = memory.turn_pointer()
+        if not address:
+            return None
+        raw = bytes(memory.target().read(address, memory.record_size))
+        return {"address": address, "name": cursefight._name(raw[row_.name:]),
+                **memory.fields(raw)}
+
+    memory.owner = owner
     return memory
 
 

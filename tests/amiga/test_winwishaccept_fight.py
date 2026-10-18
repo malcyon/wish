@@ -1054,3 +1054,42 @@ def test_a_watch_map_run_whose_hold_never_fired_says_why(tmp_path, monkeypatch, 
     controller.run_fight()
     result = controller.summary["watch_map"]
     assert result["status"] == "unproven" and "never got a command bar" in result["reason"]
+
+
+class _RecordTarget:
+    data_base = 0
+
+    def __init__(self, raw):
+        self.raw = raw
+
+    def read(self, address, length):
+        return self.raw[:length]
+
+
+def _owner_of(memory, raw):
+    memory._target = _RecordTarget(raw)
+    memory.turn_pointer = lambda: 0x1000
+    return memory.owner()["name"]
+
+
+def _record(row, name_at, name):
+    raw = bytearray(row.record_size)
+    raw[name_at:name_at + len(name)] = name
+    return bytes(raw)
+
+
+@pytest.mark.parametrize("key", ["pool-of-radiance", "pools-of-darkness"])
+def test_the_bar_owner_is_read_where_the_party_row_keeps_the_name(key):
+    row = amigaparty.ROWS[key]
+    route = SimpleNamespace(title="pool" if key.startswith("pool-of-r") else "darkness", game_key=key)
+    memory = winwishaccept._fight_memory("h", route)
+    assert _owner_of(memory, _record(row, row.name, b"ORLA\xffX\0")) == "ORLA X"
+
+
+@pytest.mark.parametrize("key,route_title", [("curse-of-the-azure-bonds", "curse"),
+                                             ("secret-of-the-silver-blades", "ssb")])
+def test_curse_and_silver_blades_bar_owners_still_read_from_the_record_start(key, route_title):
+    row = amigaparty.ROWS[key]
+    route = SimpleNamespace(title=route_title, game_key=key)
+    memory = winwishaccept._fight_memory("h", route)
+    assert _owner_of(memory, _record(row, 0, b"SUNDRA\0")) == "SUNDRA"
