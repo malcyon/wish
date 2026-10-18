@@ -6208,3 +6208,76 @@ def test_pools_of_darkness_reload_ignores_item_bytes_the_save_does_not_write():
     changed = _pod_item_party(row, b"", hidden=0x05)
     assert (winwishaccept.Controller._without_addresses(bare, row)
             != winwishaccept.Controller._without_addresses(changed, row))
+
+
+# --- the controls listing, click and Wish log are seams a subclass overrides -------------------
+
+def test_an_action_click_goes_through_the_listing_click_and_log_hooks(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    monkeypatch.setattr(winwishaccept.winwish, "ui",
+                        lambda *args, **kwargs: pytest.fail("the guest was reached directly"))
+    monkeypatch.setattr(winwishaccept.winwish, "wish_log_errors",
+                        lambda guest, holder: pytest.fail("the guest log was read directly"))
+    calls: list = []
+    monkeypatch.setattr(controller, "_controls_listing", lambda: (
+        calls.append("listing"), ["Button|Save spells|save|enabled=True",
+                                  "Button|Restore spells|restore|enabled=True"])[1])
+    monkeypatch.setattr(controller, "_click", lambda label=None, automation_id=None: (
+        calls.append(("click", label, automation_id)), ["ok"])[1])
+    monkeypatch.setattr(controller, "_wish_log_blocks", lambda: (calls.append("log"), [])[1])
+    controller.run_actions()
+    assert calls.count("listing") == 2 and "log" in calls
+    assert [c for c in calls if isinstance(c, tuple)] == [("click", "Save spells", None),
+                                                          ("click", "Restore spells", None)]
+    assert controller.summary["actions"]["spells"]["status"] == "awaiting image review"
+
+
+def test_a_log_block_from_the_log_hook_stops_the_run(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(controller, "_verify_action", lambda *args, **kwargs: None)
+    clicked: list = []
+    monkeypatch.setattr(winwishaccept.winwish, "ui", _clicking(clicked))
+    monkeypatch.setattr(controller, "_wish_log_blocks", lambda: (
+        [VALUE_ERROR_BLOCK] if clicked else []))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="Wish logged an exception after"):
+        controller.run_actions()
+
+
+def test_the_default_click_maps_a_disabled_control_to_control_greyed(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+
+    def ui(guest, holder, action, names=(), **kwargs):
+        raise winwishaccept.winwish.ControlDisabled(f"fail {names[0]} is disabled", names[0])
+
+    monkeypatch.setattr(winwishaccept.winwish, "ui", ui)
+    with pytest.raises(winwishaccept.ControlGreyed) as raised:
+        controller._click("Identify")
+    assert raised.value.control == "Identify" and "is disabled" in str(raised.value)
+
+
+def test_the_default_listing_hook_reads_the_guest_controls(tmp_path, monkeypatch):
+    controller = _spells_controller(tmp_path, monkeypatch)
+    monkeypatch.setattr(winwishaccept.winwish, "ui", lambda guest, holder, action, *a, **k: [
+        action, holder])
+    assert controller._controls_listing() == ["controls", controller.args.holder]
+
+
+# --- the leg checks shared with another emulator's preflight -----------------------------------
+
+@pytest.mark.parametrize("flags,match", [
+    ({"leg": "mapping", "action": ["heal"]}, "--action needs --leg persist"),
+    ({"leg": "reconnect", "action": ["heal"]}, "--leg reconnect presses no actions"),
+    ({"leg": "mapping", "watch": True}, "--watch needs --leg fight")])
+def test_leg_preflight_stops_on_a_flag_the_leg_does_not_take(tmp_path, flags, match):
+    args = _args(tmp_path)
+    for name, value in flags.items():
+        setattr(args, name, value)
+    with pytest.raises(winwishaccept.AcceptanceStop, match=match):
+        winwishaccept.leg_preflight(args, object(), {})
+
+
+def test_leg_preflight_has_nothing_to_add_for_the_mapping_leg(tmp_path):
+    assert winwishaccept.leg_preflight(_args(tmp_path), object(), {}) == {
+        "persist": None, "plan": None, "specimen": None, "stage": None, "states": None}
+

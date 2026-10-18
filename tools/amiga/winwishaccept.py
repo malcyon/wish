@@ -58,6 +58,11 @@ FIGHT_WALK_SNAPSHOT = "fight_walk"
 #: command bar where Quickfight off is pressed.
 FIGHT_EDGE_SNAPSHOT = "fight_edge"
 POD_QF_SNAPSHOT = "pod_qf"
+#: The reason a control row gives when the leg runs without machine-state restores.
+CONTROL_NOT_RUN = ("not run on FS-UAE; the game fact is that the game does not clear QUICK by "
+                   "itself, shown by the WinUAE control run")
+#: The Messages line Wish adds when it clears quickfight.
+REMOVED_QUICKFIGHT = "Removed quickfight"
 #: The fight leg's extra rows, by the flag that adds them.
 WATCH_ROWS = {"watch": ("watch_control_b", "watch_a"), "watch_dip": ("watch_dip",),
               "watch_map": ("watch_map",), "press_quickfight_off": ("qf_press_a", "qf_press_b")}
@@ -358,6 +363,14 @@ def _plain_cut(raw: pathlib.Path, crop: pathlib.Path) -> bool:
 
 class AcceptanceStop(RuntimeError):
     """A route failed closed; the run still collects evidence and cleans up."""
+
+
+class ControlGreyed(RuntimeError):
+    """A click found the one control it was given and left it alone because it is greyed."""
+
+    def __init__(self, control: str, message: str | None = None):
+        super().__init__(message or f"{control} is disabled")
+        self.control = control
 
 
 @dataclasses.dataclass(frozen=True)
@@ -970,6 +983,74 @@ def guest_failure_fields(exc: BaseException) -> dict[str, Any]:
     return {"step": exc.step, "exit_code": exc.exit_code, "command_length": exc.command_length}
 
 
+def check_leg_flags(args: argparse.Namespace) -> None:
+    """Stop on a leg flag that needs another flag, leg or title; reads no manifest."""
+    mode = getattr(args, "discover", None)
+    leg = getattr(args, "leg", "mapping")
+    if leg == "persist" and mode:
+        raise AcceptanceStop("--leg persist is not a discovery mode")
+    if leg == "reconnect" and mode:
+        raise AcceptanceStop("--leg reconnect is not a discovery mode")
+    if leg == "reconnect" and getattr(args, "action", None):
+        raise AcceptanceStop("--leg reconnect presses no actions")
+    if leg == "fight" and mode:
+        raise AcceptanceStop("--leg fight is not a discovery mode")
+    if leg in ("mapping", "fight") and getattr(args, "action", None):
+        raise AcceptanceStop("--action needs --leg persist")
+    flags = [name for name in WATCH_ROWS if getattr(args, name, False)]
+    if flags and leg != "fight":
+        raise AcceptanceStop(f"--{flags[0].replace('_', '-')} needs --leg fight")
+    if getattr(args, "watch_dip", False) and not getattr(args, "watch", False):
+        raise AcceptanceStop("--watch-dip needs --watch")
+    if getattr(args, "watch_dip", False) and args.title != "curse":
+        raise AcceptanceStop("--watch-dip runs only on Curse of the Azure Bonds")
+    if getattr(args, "watch_map", False) and not getattr(args, "watch", False):
+        raise AcceptanceStop("--watch-map needs --watch")
+    if getattr(args, "watch_map", False) and getattr(args, "press_quickfight_off", False):
+        raise AcceptanceStop("--watch-map and --press-quickfight-off do not run together")
+    if getattr(args, "press_quickfight_off", False) and args.title != "darkness":
+        raise AcceptanceStop("--press-quickfight-off runs only on Pools of Darkness")
+    if getattr(args, "quickfight_control", False) and not (
+            leg == "persist" and args.title in ("curse", "ssb")
+            and getattr(args, "action", None) == ["quickfight"]):
+        raise AcceptanceStop("--quickfight-control runs only on --leg persist, Curse or Silver "
+                             "Blades, with --action quickfight alone")
+
+
+def leg_preflight(args: argparse.Namespace, route: Any, manifest: Any) -> dict[str, Any]:
+    """The checks that need the route and manifest and belong to the leg, whichever emulator runs it.
+
+    Returns the persist plan, the fight plan with its specimen and stage, and the guard states
+    the leg needs (None for the mapping and reconnect legs).
+    """
+    check_leg_flags(args)
+    leg = getattr(args, "leg", "mapping")
+    persist = plan = specimen = stage = states = None
+    if leg == "reconnect":
+        _check_reconnect(route)
+    elif leg == "persist":
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from tools.amiga import maproute  # noqa: PLC0415
+
+        actions = _check_persist(args, route)
+        letter = maproute.persist_letter(args.title, manifest, route.media)
+        if letter is None:
+            raise AcceptanceStop("every persist save letter is on the prepared save disk")
+        _check_steps(SimpleNamespace(phases=_persist_phases(route, letter)))
+        persist = {"letter": letter, "actions": [action.kind for action in actions]}
+        states = _persist_states(route, actions, letter)
+    elif leg == "fight":
+        specimen = _check_fight(route, manifest)
+        stage = _check_fight_stage(args.title, manifest, route)
+        plan = fight_plan(route.title)
+        load = route.phases[0]
+        states = ({"title", load.initial_state, *(step.state for step in load.steps)}
+                  | _page_states(route) | _declared_pages(route, [load]) | plan.states())
+    return {"persist": persist, "plan": plan,
+            "specimen": specimen, "stage": stage, "states": states}
+
+
 def preflight(args: argparse.Namespace, *, guest: Any, route_for: Any,
               driver_sha: str | None = None) -> tuple[Any, Any, pathlib.Path, dict[str, Any]]:
     """Check every static dependency before a lane can be claimed.
@@ -1003,34 +1084,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         raise AcceptanceStop("--sha must be a full 40-digit frozen-build commit")
     mode = getattr(args, "discover", None)
     leg = getattr(args, "leg", "mapping")
-    if leg == "persist" and mode:
-        raise AcceptanceStop("--leg persist is not a discovery mode")
-    if leg == "reconnect" and mode:
-        raise AcceptanceStop("--leg reconnect is not a discovery mode")
-    if leg == "reconnect" and getattr(args, "action", None):
-        raise AcceptanceStop("--leg reconnect presses no actions")
-    if leg == "fight" and mode:
-        raise AcceptanceStop("--leg fight is not a discovery mode")
-    if leg in ("mapping", "fight") and getattr(args, "action", None):
-        raise AcceptanceStop("--action needs --leg persist")
-    flags = [name for name in WATCH_ROWS if getattr(args, name, False)]
-    if flags and leg != "fight":
-        raise AcceptanceStop(f"--{flags[0].replace('_', '-')} needs --leg fight")
-    if getattr(args, "watch_dip", False) and not getattr(args, "watch", False):
-        raise AcceptanceStop("--watch-dip needs --watch")
-    if getattr(args, "watch_dip", False) and args.title != "curse":
-        raise AcceptanceStop("--watch-dip runs only on Curse of the Azure Bonds")
-    if getattr(args, "watch_map", False) and not getattr(args, "watch", False):
-        raise AcceptanceStop("--watch-map needs --watch")
-    if getattr(args, "watch_map", False) and getattr(args, "press_quickfight_off", False):
-        raise AcceptanceStop("--watch-map and --press-quickfight-off do not run together")
-    if getattr(args, "press_quickfight_off", False) and args.title != "darkness":
-        raise AcceptanceStop("--press-quickfight-off runs only on Pools of Darkness")
-    if getattr(args, "quickfight_control", False) and not (
-            leg == "persist" and args.title in ("curse", "ssb")
-            and getattr(args, "action", None) == ["quickfight"]):
-        raise AcceptanceStop("--quickfight-control runs only on --leg persist, Curse or Silver "
-                             "Blades, with --action quickfight alone")
+    check_leg_flags(args)
     wait_lanes = getattr(args, "wait_lanes", 0)
     if not 0 <= wait_lanes <= MAX_WAIT_LANES:
         raise AcceptanceStop(f"--wait-lanes must be from 0 to {MAX_WAIT_LANES} seconds")
@@ -1066,13 +1120,7 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
 
         route_silver_blades.journal_preflight(sys.executable)
     else:
-        persist_actions = _check_persist(args, route) if leg == "persist" else None
-        if leg == "reconnect":
-            _check_reconnect(route)
-        elif leg == "fight":
-            fight_specimen = _check_fight(route, manifest)
-            fight_stage = _check_fight_stage(args.title, manifest, route)
-        elif persist_actions is None:
+        if leg == "mapping":
             _phase_map(route)
         if args.title == "ssb":
             from tools.amiga import route_silver_blades  # noqa: PLC0415
@@ -1096,17 +1144,9 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     for item in route.media:
         if not item.path.is_file() or digest(item.path) != item.sha256:
             raise AcceptanceStop(f"prepared medium {item.key} is missing or changed")
-    persist = None
-    if leg == "persist":
-        from types import SimpleNamespace  # noqa: PLC0415
-
-        from tools.amiga import maproute  # noqa: PLC0415
-
-        letter = maproute.persist_letter(args.title, manifest, route.media)
-        if letter is None:
-            raise AcceptanceStop("every persist save letter is on the prepared save disk")
-        _check_steps(SimpleNamespace(phases=_persist_phases(route, letter)))
-        persist = {"letter": letter, "actions": [action.kind for action in persist_actions]}
+    checked = leg_preflight(args, route, manifest)
+    persist = checked["persist"]
+    plan, fight_specimen, fight_stage = checked["plan"], checked["specimen"], checked["stage"]
     expected_source = f"guards_{guardmaps.FILES[route.title]}.json"
     if route.guard_path.name != expected_source or not route.guard_path.is_file():
         raise AcceptanceStop(f"the measured guard source must be {expected_source}")
@@ -1121,7 +1161,6 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
     if rc:
         raise AcceptanceStop(f"guard export failed with exit {rc}")
     exported = export_dir / "guards.json"
-    plan = fight_plan(route.title) if leg == "fight" else None
     if plan is not None:
         _merge_guards(exported, plan.extra_guards)
     guards = screens.PixelGuards(exported)
@@ -1143,12 +1182,8 @@ def _preflight(args: argparse.Namespace, made: list[pathlib.Path], *, guest: Any
         states = {"title"} | _page_states(route) | {
             state for phase in prefix
             for state in (phase.initial_state, *(s.state for s in phase.steps))}
-    elif persist:
-        states = _persist_states(route, persist_actions, persist["letter"])
-    elif plan is not None:
-        load = route.phases[0]
-        states = ({"title", load.initial_state, *(step.state for step in load.steps)}
-                  | _page_states(route) | _declared_pages(route, [load]) | plan.states())
+    elif checked["states"] is not None:
+        states = checked["states"]
     else:
         states = _states(route, actions=False)
     missing = states - guards.rules.keys()
@@ -1293,6 +1328,10 @@ def _is_party_heading(line: str) -> bool:
 
 class Controller:
     """One bounded boot with injectable guests and clock for lifecycle tests."""
+
+    #: Whether the fight leg runs its branches that restore a machine state. A subclass whose
+    #: emulator cannot restore an exact picture sets this False.
+    control_branches = True
 
     def __init__(self, args: argparse.Namespace, *, guest: Any, lane: Any,
                  game: Any, guards: Any, route: Any, zipped: pathlib.Path,
@@ -1864,14 +1903,14 @@ class Controller:
                     raise AcceptanceStop(f"the bounded route time ran out while Wish still showed '{WAITING_HEADING}'")
                 raise AcceptanceStop(f"Wish still shows '{WAITING_HEADING}' {CONNECT_WAIT} s after the first checkpoint")
             self.sleep(CONNECT_POLL)
-            controls = winwish.ui(self.guest, self.args.holder, "controls")
+            controls = self._controls_listing()
 
     def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
         """Wish's shot and its controls, of whichever tab is showing."""
         wish_path = self.out / f"wish-{name}.png"
         winwish.shot(self.guest, self.args.holder, "wish", wish_path)
         lap("wish_shot")
-        controls = winwish.ui(self.guest, self.args.holder, "controls")
+        controls = self._controls_listing()
         if not self.connection_checked:
             controls = self._await_connection(controls)
             self.connection_checked = True
@@ -2010,7 +2049,7 @@ class Controller:
                 winwish.restart_wish(self.guest, self.args.holder,
                                      features=features, reseed=False)
             self.sleep(self.left(delay))
-            listing = winwish.ui(self.guest, self.args.holder, "controls")
+            listing = self._controls_listing()
             listed = self.out / f"flags-{name}.txt"
             listed.write_text("\n".join(listing) + "\n")
             picture = self.out / f"flags-{name}.png"
@@ -2581,13 +2620,33 @@ class Controller:
                     or without_text(new["items"]) != without_text(items)):
                 raise AcceptanceStop(f"{kind} changed unexpected bytes for {old['name']}")
 
+    def _controls_listing(self) -> list[str]:
+        """Wish's controls as `Type|Name|AutomationId|enabled=|visible=` lines."""
+        return winwish.ui(self.guest, self.args.holder, "controls")
+
+    def _click(self, label: str | None = None, automation_id: str | None = None) -> Any:
+        """Click one of Wish's controls; ControlGreyed when it is greyed and was left alone."""
+        try:
+            return winwish.ui(self.guest, self.args.holder, "click",
+                              (() if label is None else (label,)), automation_id=automation_id)
+        except winwish.ControlDisabled as exc:
+            raise ControlGreyed(exc.control, str(exc)) from exc
+
+    def _wish_log_blocks(self) -> list[dict[str, Any]]:
+        """The exception records in Wish's logs, in `winwish.wish_log_errors` form."""
+        return winwish.wish_log_errors(self.guest, self.args.holder)
+
+    def _wish_writes(self) -> list[tuple[int, bytes]] | None:
+        """Every write Wish's own session has made to the game, oldest first; None when no log is kept."""
+        return None
+
     def _wish_log_mark(self, control: str) -> set[tuple[str, str]] | None:
         """The exception records Wish's logs already hold, so only a new one is charged to the next click.
 
         None when the log cannot be read: that must not end an otherwise good run.
         """
         try:
-            return {winwish.log_block_id(b) for b in winwish.wish_log_errors(self.guest, self.args.holder)}
+            return {winwish.log_block_id(b) for b in self._wish_log_blocks()}
         except winwish.WinwishError as exc:
             self.summary["wish_log_unread"] += 1
             self.log("wish_log_unread", control=control, error=str(exc))
@@ -2598,7 +2657,7 @@ class Controller:
         if mark is None:
             return
         try:
-            blocks = winwish.wish_log_errors(self.guest, self.args.holder)
+            blocks = self._wish_log_blocks()
         except winwish.WinwishError as exc:
             self.summary["wish_log_unread"] += 1
             self.log("wish_log_unread", control=control, error=str(exc))
@@ -2612,7 +2671,7 @@ class Controller:
 
     def _unique_action(self, label: str | None = None, automation_id: str | None = None,
                        *, context: dict[str, Any]) -> None:
-        listing = winwish.ui(self.guest, self.args.holder, "controls")
+        listing = self._controls_listing()
         path = self.out / f"action-controls-{context['kind']}-{len(context['evidence']):02d}.txt"
         path.write_text("\n".join(listing) + "\n")
         context["evidence"].append(str(path))
@@ -2637,8 +2696,7 @@ class Controller:
         context["log_control"] = event["control"]
         context["log_mark"] = self._wish_log_mark(event["control"])
         try:
-            winwish.ui(self.guest, self.args.holder, "click", (() if label is None else (label,)),
-                       automation_id=automation_id)
+            self._click(label, automation_id)
         except Exception as exc:
             raise AcceptanceStop(f"action click returned no acknowledgement: {exc}") from exc
         event["acknowledged"] = True
@@ -3221,8 +3279,8 @@ class Controller:
         self._map_section()
         mark = self._wish_log_mark(label)
         try:
-            click["reply"] = winwish.ui(self.guest, self.args.holder, "click", (label,))
-        except winwish.ControlDisabled as exc:
+            click["reply"] = self._click(label)
+        except ControlGreyed as exc:
             # The click script found the button and left it alone: the answer a greyed one gives.
             click.update(disabled=exc.control, message=str(exc))
         except Exception as exc:  # noqa: BLE001 - the reply or error is the record, not a verdict
@@ -3325,7 +3383,8 @@ class Controller:
         mode = self._read_mode()
         if mode != row_.combat_value:
             raise AcceptanceStop(f"CONTINUE BATTLE reads mode {mode}, not {row_.combat_value}")
-        self.game.snapshot(FIGHT_EDGE_SNAPSHOT, holder)
+        if self.control_branches:
+            self.game.snapshot(FIGHT_EDGE_SNAPSHOT, holder)
         edge_before = self._action_readback()
         chosen = [r["slot"] for r in edge_before if self._member_bytes(row_, r) == (0, 1)]
         if not chosen:
@@ -3339,34 +3398,39 @@ class Controller:
             record = next((r for r in readback if r["slot"] == slot), None)
             return None if record is None else self._member_bytes(row_, record)[1]
 
-        schedule = self._scheduled_key(key, show_map=False)
-        frame = self._await("party_won", limit=60)
-        after = self._action_readback()
-        mode_b = self._read_mode()
-        problems = []
-        if mode_b != row_.after_fight_value:
-            problems.append(f"the mode reads {mode_b}, not {row_.after_fight_value}")
-        cleared = [by_slot[slot]["name"] for slot in chosen if quickfight(after, slot) != 1]
-        if cleared:
-            problems.append("the game itself cleared QUICK on " + ", ".join(cleared))
-        control_row.update(
-            status="failed" if problems else "awaiting image review",
-            reason="; ".join(problems) or None, evidence=[frame.get("raw")],
-            observed={"set": chosen, "mode": mode_b, "schedule": schedule,
-                      "party_after": after})
-        control_after = after
-        self.game.restore(FIGHT_EDGE_SNAPSHOT, holder)
-        self._await("continue_battle", limit=60)
-        mode_r = self._read_mode()
-        changed = self._record_differences(edge_before, self._action_readback())
-        if mode_r != row_.combat_value or changed:
-            why = (f"the restored game reads mode {mode_r}, not {row_.combat_value}"
-                   if mode_r != row_.combat_value else "party bytes differ after the restore: "
-                   + ", ".join(changed))
-            for result in (control_row, wish_row):
-                result.update(status="unproven", reason=why)
-            raise AcceptanceStop(f"fight_edge restore: {why}")
+        control_after = None
+        if self.control_branches:
+            schedule = self._scheduled_key(key, show_map=False)
+            frame = self._await("party_won", limit=60)
+            after = self._action_readback()
+            mode_b = self._read_mode()
+            problems = []
+            if mode_b != row_.after_fight_value:
+                problems.append(f"the mode reads {mode_b}, not {row_.after_fight_value}")
+            cleared = [by_slot[slot]["name"] for slot in chosen if quickfight(after, slot) != 1]
+            if cleared:
+                problems.append("the game itself cleared QUICK on " + ", ".join(cleared))
+            control_row.update(
+                status="failed" if problems else "awaiting image review",
+                reason="; ".join(problems) or None, evidence=[frame.get("raw")],
+                observed={"set": chosen, "mode": mode_b, "schedule": schedule,
+                          "party_after": after})
+            control_after = after
+            self.game.restore(FIGHT_EDGE_SNAPSHOT, holder)
+            self._await("continue_battle", limit=60)
+            mode_r = self._read_mode()
+            changed = self._record_differences(edge_before, self._action_readback())
+            if mode_r != row_.combat_value or changed:
+                why = (f"the restored game reads mode {mode_r}, not {row_.combat_value}"
+                       if mode_r != row_.combat_value else "party bytes differ after the restore: "
+                       + ", ".join(changed))
+                for result in (control_row, wish_row):
+                    result.update(status="unproven", reason=why)
+                raise AcceptanceStop(f"fight_edge restore: {why}")
+        else:
+            control_row.update(status="unproven", reason=CONTROL_NOT_RUN)
         self._count(action=True)
+        writes_before = len(self._wish_writes() or [])
         schedule = self._scheduled_key(key, show_map=True)
         timings: dict[str, float] = {}
         wish_path, controls_path = self._wish_pair("watch_a", self._lap(timings))
@@ -3387,12 +3451,18 @@ class Controller:
         suffix = f" +0x{row_.quickfight.offset:02X}"
         # The control run takes the same journey, so the experience and fight teardown the game
         # itself writes are in its bytes too; only what Wish writes differs.
-        other = [d for d in self._record_differences(control_after, after) if not d.endswith(suffix)]
-        if other:
-            problems.append("bytes other than QUICK changed: " + ", ".join(other))
+        unproven = None
+        if control_after is not None:
+            other = [d for d in self._record_differences(control_after, after) if not d.endswith(suffix)]
+            if other:
+                problems.append("bytes other than QUICK changed: " + ", ".join(other))
+        else:
+            # Without a control run the proof that only QUICK changed is what Wish itself wrote.
+            unproven = self._grade_wish_writes(row_, by_slot, chosen, writes_before,
+                                               controls_path, problems)
         wish_row.update(
-            status="failed" if problems else "awaiting image review",
-            reason="; ".join(problems) or None,
+            status="failed" if problems else "unproven" if unproven else "awaiting image review",
+            reason="; ".join(problems) or unproven,
             evidence=[str(wish_path), str(controls_path), frame.get("raw")],
             observed={"set": chosen, "companions": companions, "mode": mode_a,
                       "schedule": schedule, "timings": timings})
@@ -3403,6 +3473,28 @@ class Controller:
                 if result["status"] == "awaiting image review":
                     result.update(status="unproven", reason=odd)
         return True
+
+    def _grade_wish_writes(self, row_: Any, by_slot: dict[int, dict[str, Any]], chosen: list[int],
+                           writes_before: int, controls_path: pathlib.Path,
+                           problems: list[str]) -> str | None:
+        """Charge to `problems` whatever Wish wrote since `writes_before` other than one QUICK
+        byte set to 0 per chosen member, and the Messages line that reports the clear.
+
+        Returns the reason the check cannot be made when no write log is kept."""
+        log = self._wish_writes()
+        if log is None:
+            return "no log of Wish's writes was kept, so only the read-back judged the clear"
+        expected = sorted((by_slot[slot]["address"] + row_.quickfight.offset, b"\x00")
+                          for slot in chosen)
+        written = sorted(log[writes_before:])
+        if written != expected:
+            problems.append("Wish wrote " + (", ".join(f"{data.hex()} at 0x{address:X}"
+                                                      for address, data in written) or "nothing")
+                            + ", not one QUICK 0 per chosen member")
+        listed = controls_path.read_text() if controls_path.is_file() else ""
+        if REMOVED_QUICKFIGHT not in listed:
+            problems.append("Messages holds no 'Removed quickfight' line")
+        return None
 
     def _last_quick(self, bars: list[dict[str, Any]]) -> bool:
         """Whether the bar just read is the last Q: every record the party plays and had not on
@@ -3523,18 +3615,19 @@ class Controller:
         rows = (self.summary["qf_press_a"], self.summary["qf_press_b"])
         self.pod = {"x": x, "y": y, "y_index": len(bars) - 1, "snapshot": None}
         self._game_section()
-        self.game.snapshot(POD_QF_SNAPSHOT, holder)
+        if self.control_branches:
+            self.game.snapshot(POD_QF_SNAPSHOT, holder)
         before = self._action_readback()
         record = next((r for r in before if r["address"] == x["address"]), None)
         if record is None or self._member_bytes(row_, record)[1] != 1:
             for result in rows:
                 result["reason"] = f"{x['owner']} was not on QUICK at {y['owner']}'s bar"
             return
-        self.pod.update(snapshot=POD_QF_SNAPSHOT, before=before)
+        self.pod.update(snapshot=POD_QF_SNAPSHOT if self.control_branches else None, before=before)
         self._map_section()
         mark = self._wish_log_mark("Quickfight off")
         try:
-            reply = winwish.ui(self.guest, holder, "click", ("Quickfight off",))
+            reply = self._click("Quickfight off")
         except Exception as exc:  # noqa: BLE001 - the error is the record
             rows[0].update(status="unproven", reason=f"Quickfight off returned no acknowledgement: {exc}")
             raise AcceptanceStop(rows[0]["reason"]) from exc
@@ -3565,7 +3658,7 @@ class Controller:
             for item in (click_row, control_row):
                 item["reason"] = "the fight ended before a second member's command bar"
             return
-        if pod["snapshot"] is None:
+        if "before" not in pod:
             return
         x, y = pod["x"], pod["y"]
         later = [bar for bar in (result["found"].get("bars") or [])[pod["y_index"] + 1:]
@@ -3577,6 +3670,9 @@ class Controller:
                                  observed={"x": x["owner"], "bars": len(later)})
             else:
                 click_row["reason"] = f"the fight ended before {x['owner']}'s next turn"
+        if not self.control_branches:
+            control_row.update(status="unproven", reason=CONTROL_NOT_RUN)
+            return
         self._game_section()
         self.game.restore(POD_QF_SNAPSHOT, self.args.holder)
         self._await("combat_bar", limit=60)
@@ -3642,7 +3738,8 @@ class Controller:
         `plan.opens`; the walk's own screens get their answer, and any other screen restores the
         snapshot taken before the first step, at most `FIGHT_RESTORES` times."""
         self._game_section()
-        self.game.snapshot(FIGHT_WALK_SNAPSHOT, self.args.holder)
+        if self.control_branches:
+            self.game.snapshot(FIGHT_WALK_SNAPSHOT, self.args.holder)
         steps: list[dict[str, Any]] = []
         restores, key = 0, "NP8"
 
@@ -3680,7 +3777,7 @@ class Controller:
             if state is None:
                 # No guard matched, or no frame was grabbed: nothing says what the key did.
                 raise AcceptanceStop(f"the walk to a fight met no recognized screen; kept {shot}")
-            if restores >= FIGHT_RESTORES:
+            if restores >= FIGHT_RESTORES or not self.control_branches:
                 raise AcceptanceStop(f"the walk to a fight met {state}, which it does not answer; "
                                      f"kept {shot}")
             steps.append({"key": key, "before": before, "unanswered": str(shot)})

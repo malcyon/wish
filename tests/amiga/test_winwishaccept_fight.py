@@ -1093,3 +1093,107 @@ def test_curse_and_silver_blades_bar_owners_still_read_from_the_record_start(key
     route = SimpleNamespace(title=route_title, game_key=key)
     memory = winwishaccept._fight_memory("h", route)
     assert _owner_of(memory, _record(row, 0, b"SUNDRA\0")) == "SUNDRA"
+
+
+# --- the fight leg without machine-state restores (control_branches off) -----------------------
+
+class LoggedWorld(World):
+    """A `World` that logs the QUICK byte Wish clears, as a session's write log would."""
+
+    def __init__(self, members, **options):
+        super().__init__(members, **options)
+        self.writes = []
+
+    def land(self):
+        before = [member[1] for member in self.members]
+        was_map = self.tab == "map"
+        super().land()
+        if was_map:
+            self.writes += [(0x1000 + 0x100 * at + 1, b"\x00")
+                            for at, (old, member) in enumerate(zip(before, self.members))
+                            if old == 1 and member[1] == 0]
+
+
+def _restless_edge(tmp_path, monkeypatch, fight_row, members, *, removed=True, logged=True,
+                   extra_write=False, **options):
+    controller, world = _edge(tmp_path, monkeypatch, fight_row, members, world_class=LoggedWorld,
+                              **options)
+    controller.control_branches = False
+
+    def pair(name, lap):
+        controls = tmp_path / f"controls-{name}.txt"
+        controls.write_text("Removed quickfight from 1 character\n" if removed else "Party\n")
+        return pathlib.Path(f"wish-{name}.png"), controls
+
+    monkeypatch.setattr(controller, "_wish_pair", pair)
+    monkeypatch.setattr(controller, "_wish_writes", lambda: (
+        None if not logged else world.writes + ([(0x1002, b"\x01")] if extra_write else [])))
+    return controller, world
+
+
+def test_the_edge_without_control_branches_grades_wish_from_its_write_log(
+        tmp_path, monkeypatch, fight_row):
+    controller, world = _restless_edge(tmp_path, monkeypatch, fight_row,
+                                       _members((0, 1, 7), (0x80, 1, 7)))
+    assert controller._watch_edge("N") is True
+    assert [event[0] for event in world.events if event[0] in ("snapshot", "restore")] == []
+    assert world.snapshots == [] and world.restores == []
+    assert [event for event in world.events if event[0] == "key"] == [("key", "N", "editor")]
+    wish = controller.summary["watch_a"]
+    assert (wish["status"], wish["reason"]) == ("awaiting image review", None)
+    control = controller.summary["watch_control_b"]
+    assert control["status"] == "unproven" and control["reason"] == winwishaccept.CONTROL_NOT_RUN
+    assert control["reason"].startswith("not run on FS-UAE; the game fact is")
+
+
+@pytest.mark.parametrize("options,status,reason", [
+    ({"removed": False}, "failed", "Messages holds no 'Removed quickfight' line"),
+    ({"extra_write": True}, "failed", "Wish wrote"),
+    ({"logged": False}, "unproven", "no log of Wish's writes was kept"),
+    ({"wish_clears": False}, "failed", "QUICK still set on M0; Wish wrote nothing")])
+def test_the_edge_without_control_branches_fails_on_a_write_log_that_does_not_match(
+        tmp_path, monkeypatch, fight_row, options, status, reason):
+    controller, _world = _restless_edge(tmp_path, monkeypatch, fight_row,
+                                        _members((0, 1, 7), (0x80, 1, 7)), **options)
+    controller._watch_edge("N")
+    wish = controller.summary["watch_a"]
+    assert wish["status"] == status and wish["reason"].startswith(reason)
+
+
+def test_quickfight_off_without_control_branches_takes_no_snapshot_and_replays_nothing(
+        tmp_path, monkeypatch, fight_row):
+    controller, order, _row = _pod(tmp_path, monkeypatch, fight_row, [X_BAR, Y_BAR])
+    controller.control_branches = False
+    controller._press_quickfight_off([X_BAR, Y_BAR])
+    assert controller.game.snapshots == [] and order == ["map", ("click", ("Quickfight off",))]
+    _replay(controller, monkeypatch, [X_BAR, Y_BAR, dict(X_BAR, shot="x2.png")], [Y_BAR])
+    assert controller.game.restores == []
+    assert controller.summary["qf_press_a"]["status"] == "awaiting image review"
+    control = controller.summary["qf_press_b"]
+    assert control["status"] == "unproven" and control["reason"] == winwishaccept.CONTROL_NOT_RUN
+
+
+def test_quickfight_off_without_control_branches_still_says_when_x_was_not_on_quick(
+        tmp_path, monkeypatch, fight_row):
+    controller, _order, _row = _pod(tmp_path, monkeypatch, fight_row, [X_BAR, Y_BAR])
+    controller.control_branches = False
+    monkeypatch.setattr(controller, "_action_readback", lambda: [
+        {"slot": 0, "name": "X", "address": 0xA0, "raw": bytes([0, 0, 0]).hex(), "items": []}])
+    controller._press_quickfight_off([X_BAR, Y_BAR])
+    _replay(controller, monkeypatch, [X_BAR, Y_BAR], [Y_BAR])
+    assert "was not on QUICK" in controller.summary["qf_press_a"]["reason"]
+    assert controller.game.restores == [] and controller.game.snapshots == []
+
+
+def test_the_walk_without_control_branches_takes_no_snapshot_and_stops_on_a_screen_it_does_not_answer(
+        tmp_path, monkeypatch):
+    game = ScriptGame(["world"])
+    controller = _controller(tmp_path, game=game)
+    controller.control_branches = False
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    memory = SimpleNamespace(fix=lambda: (1, 1, 0))
+    screens = WalkScreens(["camp"] * 3)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="does not answer; kept walk.png"):
+        controller._walk_to_fight(winwishaccept.fight_plan("darkness"), screens, memory)
+    assert game.snapshots == [] and game.restores == []
+    assert [key for _on, key in screens.keys] == ["NP8"]
