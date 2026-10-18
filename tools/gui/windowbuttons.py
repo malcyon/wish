@@ -49,6 +49,31 @@ def rows(window) -> list[dict]:
     return [_row(window, b) for b in _buttons(window)]
 
 
+def button_lines(button_rows: list[dict]) -> list[str]:
+    """Button rows as `Button|Name|objectName|enabled=B|visible=B`, the field order of the WinUAE controls listing."""
+    return [f"Button|{r['text'].replace('&', '')}|{r['name']}|enabled={r['enabled']}"
+            f"|visible={r['visible']}" for r in button_rows]
+
+
+def listing(window) -> list[str]:
+    """The window's controls in the WinUAE controls listing's field order.
+
+    The buttons come first, then each roster card's name as `Text`, its quickfight
+    badge row as `IconRow` (with the number of icons it paints) and one `ListItem`
+    for each line of Messages.
+    """
+    lines = button_lines(rows(window))
+    for card in window.roster.cards:
+        if card.name is not None:
+            lines.append(f"Text|{card.name.text()}|{card.name.objectName()}"
+                         f"|enabled={card.name.isEnabled()}|visible={card.name.isVisibleTo(window.root)}")
+        if card.quickfight is not None:
+            lines.append(f"IconRow|{card.quickfight.toolTip()}|{card.quickfight.objectName()}"
+                         f"|icons={len(card.quickfight.names)}")
+    lines += [f"ListItem|{item.text()}|messages".replace("\n", " ") for item in _messages(window)]
+    return lines
+
+
 def _messages(window) -> list:
     panel = window.messages.list
     return [] if panel is None else [panel.item(i) for i in range(panel.count())]

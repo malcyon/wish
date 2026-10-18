@@ -207,6 +207,8 @@ def _controller(tmp_path, monkeypatch, *, route=None, guards=None, rows=None):
     monkeypatch.setattr(controller, "_leave_environment",
                         lambda: game.calls.append(("environment_restored",)))
     monkeypatch.setattr(controller, "_shoot_window", lambda path: path.write_bytes(b"png"))
+    monkeypatch.setattr(controller, "_controls_listing",
+                        lambda: fsuaewishaccept.control_lines(wish.buttons()))
     return controller, game, wish, made
 
 
@@ -449,7 +451,8 @@ def test_the_encounter_switch_waits_for_wish_to_read(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("extra, message", [
     ({"discover": "ssb-leave"}, "discovery modes"),
-    ({"leg": "persist"}, "--leg persist"),
+    ({"quickfight_control": True}, "--quickfight-control"),
+    ({"leg": "fight"}, "--leg fight"),
     ({"leg": "reconnect"}, "--leg reconnect"),
 ])
 def test_the_modes_left_out_stop_before_the_claim(tmp_path, extra, message):
@@ -986,3 +989,163 @@ def test_idle_turns_the_poll_log_on(tmp_path, monkeypatch):
               "--out", str(tmp_path)]
     assert fsuaewishaccept.main(common + ["--idle", "300"]) == 2
     assert seen[0].idle == 300.0 and seen[0].poll_log is True
+
+
+# -- the persist leg: Wish's controls, clicks and log --------------------------------------
+
+
+def _persist_preflight(tmp_path, monkeypatch, **extra):
+    media, mounted = _ssb_media(tmp_path)
+    (tmp_path / "prepare.json").write_text("{}")
+    route = _route(media=media, mounted=mounted)
+    states = {"title", "world"}
+    seen = []
+    monkeypatch.setattr(winwishaccept, "leg_preflight", lambda args, route, manifest: {
+        "persist": {"letter": "C", "actions": ["heal"]}, "plan": None, "specimen": None,
+        "stage": None, "states": states})
+
+    def export(args, route, wanted=None):
+        seen.append(wanted)
+        return "guards", {"export": "x"}
+
+    binary = tmp_path / "fs-uae"
+    binary.write_bytes(b"emulator")
+    result = fsuaewishaccept.preflight(
+        _args(tmp_path, leg="persist", action=["heal"], **extra), game=FakeGame(tmp_path),
+        route_for=lambda title, manifest, **legs: route, binary=lambda: binary,
+        kickstart=lambda: binary, driver=lambda: {"sha": "x", "dirty": False}, export=export)
+    return result, seen, states
+
+
+def test_the_persist_leg_passes_preflight_with_its_plan_and_its_own_guard_states(tmp_path, monkeypatch):
+    (_route_, guards, info), seen, states = _persist_preflight(tmp_path, monkeypatch)
+    assert info["leg"] == "persist" and info["persist"]["letter"] == "C"
+    assert seen == [states] and guards == "guards"
+
+
+def test_the_mapping_leg_exports_its_guards_with_no_state_set(tmp_path, monkeypatch):
+    media, mounted = _ssb_media(tmp_path)
+    (tmp_path / "prepare.json").write_text("{}")
+    seen = []
+    binary = tmp_path / "fs-uae"
+    binary.write_bytes(b"emulator")
+    monkeypatch.setattr(winwishaccept, "_phase_map", lambda route: None)
+    _r, _g, info = fsuaewishaccept.preflight(
+        _args(tmp_path), game=FakeGame(tmp_path),
+        route_for=lambda title, manifest, **legs: _route(media=media, mounted=mounted),
+        binary=lambda: binary, kickstart=lambda: binary,
+        driver=lambda: {"sha": "x", "dirty": False},
+        export=lambda *a: (seen.append(a), ("g", {}))[1])
+    assert len(seen[0]) == 2 and "persist" not in info
+
+
+def test_the_cleanup_records_the_working_disks_under_the_names_the_readers_use(tmp_path, monkeypatch):
+    media, mounted = _ssb_media(tmp_path)
+    controller, _game, _wish, _ = _controller(tmp_path, monkeypatch,
+                                              route=_route(media=media, mounted=mounted))
+    controller.info["media"] = {"df0": {}}
+    controller.run_title()
+    entry = controller.info["media"]["df0"]
+    assert entry["guest_working_copy"] == str(tmp_path / "working-df0.adf")
+    assert entry["guest_working_sha256"] == hashlib.sha256(b"adf").hexdigest()
+    assert "working_copy" not in entry
+
+
+def test_the_persist_leg_runs_inside_the_helper_reads(tmp_path, monkeypatch):
+    from tools.amiga import amigatarget
+
+    controller, _game, _wish, _ = _controller(tmp_path, monkeypatch)
+    controller.leg = "persist"
+    seen = []
+    monkeypatch.setattr(controller, "run_persist",
+                        lambda: seen.append(amigatarget.connect_pipe) or {"ok": True})
+    assert controller.run_title() == {"ok": True}
+    assert seen[0] == controller._connect
+
+
+def test_a_greyed_click_raises_control_greyed_naming_the_button(tmp_path, monkeypatch):
+    from tools.gui import windowbuttons
+
+    controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
+    wish.window = SimpleNamespace(map=object())
+    monkeypatch.setattr(windowbuttons, "rows", lambda window: [
+        {"name": "action_heal", "text": "Heal party"}, {"name": "ft", "text": "Fast &Travel"}])
+    calls = []
+
+    def click(window, name, answer=None, spell=None, deadline=0):
+        calls.append((name, answer))
+        return {"error": "button is disabled" if name == "action_heal" else None}
+
+    monkeypatch.setattr(windowbuttons, "click", click)
+    with pytest.raises(winwishaccept.ControlGreyed) as raised:
+        controller._click("Heal party")
+    assert raised.value.control == "action_heal" and calls == [("action_heal", "yes")]
+    assert controller._click(automation_id="x.ft") == {"error": None}
+    assert calls[-1] == ("ft", "yes")
+    monkeypatch.setattr(windowbuttons, "click", lambda *a, **k: {"error": "button is hidden"})
+    with pytest.raises(winwishaccept.AcceptanceStop, match="hidden"):
+        controller._click("Heal party")
+    with pytest.raises(winwishaccept.AcceptanceStop, match="0 buttons"):
+        controller._click("Nothing")
+
+
+def test_the_wish_log_blocks_read_the_session_log_and_the_crash_file(tmp_path):
+    (tmp_path / "wish-20260101-000000.log").write_text(
+        "10:00:00 INFO fine\n10:00:01 ERROR unhandled exception\nTraceback (most recent call last):\n"
+        "  File \"x.py\", line 1, in f\nValueError: bad\n10:00:02 INFO after\n\n")
+    (tmp_path / "crashes.log").write_text(
+        "\n2026-01-01 10:00:05 versions\nTraceback (most recent call last):\n  File \"y\"\nKeyError: 'k'\n")
+    (tmp_path / "other.txt").write_text("10:00:00 ERROR no\n")
+    blocks = fsuaewishaccept.wish_log_blocks(tmp_path)
+    assert [(b["file"], b["exception"]) for b in blocks] == [
+        ("crashes.log", "KeyError: 'k'"), ("wish-20260101-000000.log", "ValueError: bad")]
+    assert fsuaewishaccept.wish_log_blocks(tmp_path / "missing") == []
+
+
+_SLOT_SCRIPT = """
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["XDG_CONFIG_HOME"] = sys.argv[1]
+from PyQt6.QtWidgets import QApplication, QPushButton
+from tools.amiga import fsuaewishaccept
+from wish import debuglog
+original = sys.excepthook
+if sys.argv[2] == "hook":
+    saved = fsuaewishaccept.install_wish_hooks()
+app = QApplication([])
+button = QPushButton()
+def boom(_checked=False):
+    raise RuntimeError("slot failed")
+button.clicked.connect(boom)
+button.click()
+blocks = fsuaewishaccept.wish_log_blocks(debuglog.log_dir())
+if sys.argv[2] == "hook":
+    fsuaewishaccept.restore_wish_hooks(saved)
+print(json.dumps({"exceptions": [b["exception"] for b in blocks],
+                  "restored": sys.excepthook is original}))
+"""
+
+
+def test_an_exception_in_a_slot_of_the_in_process_window_reaches_wish_log(tmp_path):
+    """Qt aborts the process on a slot exception unless the hook is installed, so this runs apart."""
+    import subprocess
+    import sys
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    done = subprocess.run([sys.executable, "-c", _SLOT_SCRIPT, str(tmp_path), "hook"], cwd=root,
+                          env={**os.environ, "PYTHONPATH": str(root)}, text=True,
+                          capture_output=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout.splitlines()[-1]) == {
+        "exceptions": ["RuntimeError: slot failed"], "restored": True}
+
+
+@pytest.mark.parametrize("extra, message", [
+    ({"action": ["heal"]}, "--action needs --leg persist"),
+    ({"watch_map": True}, "--watch-map needs --leg fight"),
+])
+def test_a_bad_leg_flag_stops_before_the_manifest_is_read(tmp_path, extra, message):
+    # No prepare.json exists, so only a flag check ahead of the manifest read can give this message.
+    with pytest.raises(winwishaccept.AcceptanceStop, match=message):
+        fsuaewishaccept.preflight(_args(tmp_path, **extra), game=SimpleNamespace(),
+                                  route_for=lambda *a: pytest.fail("route read"))

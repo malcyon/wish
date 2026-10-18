@@ -7,8 +7,8 @@ instance-pool slot, started without the driver's own debugger connection, and
 the real Wish window runs offscreen in this process, so its connection helper
 is the emulator's one client. Keys go through X, so the Automapper stays up
 while the party walks, and the driver reads memory through a client of that
-helper. Discovery modes, `--leg persist`, `--leg reconnect` and `--leg fight`
-stop before a slot is claimed.
+helper. The mapping and persist legs run here; discovery modes, `--leg reconnect`,
+`--leg fight` and `--quickfight-control` stop before a slot is claimed.
 
 A person must review the paired game and Wish images before a mapping row can
 be accepted.
@@ -24,6 +24,7 @@ import inspect
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -71,8 +72,48 @@ def driver_state() -> dict[str, Any]:
 def control_lines(rows: list[dict[str, Any]]) -> list[str]:
     """Button rows as `Type|Name|objectName|enabled=B|visible=B`, the field order the WinUAE
     controls listing has, so `flag_controls` reads `parts[1]` and `parts[3]` from both."""
-    return [f"Button|{r['text'].replace('&', '')}|{r['name']}|enabled={r['enabled']}"
-            f"|visible={r['visible']}" for r in rows]
+    from tools.gui import windowbuttons  # noqa: PLC0415
+
+    return windowbuttons.button_lines(rows)
+
+
+#: The ERROR and CRITICAL record starts and the line that ends one, in the session log and in `crashes.log`.
+_LOG_BLOCKS = (
+    ("wish-", re.compile(r"\d\d:\d\d:\d\d (ERROR|CRITICAL) "), re.compile(r"\d\d:\d\d:\d\d ")),
+    ("crashes.log", re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d "),
+     re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ")))
+
+
+def wish_log_blocks(folder: pathlib.Path) -> list[dict[str, Any]]:
+    """The ERROR and CRITICAL records of Wish's logs in `folder`, in `winwish.wish_log_errors` form.
+
+    Each is a dict with its `file`, its `lines` (the record and its traceback) and the
+    `exception` line that closes it; a missing folder holds none."""
+    from tools.amiga import winwish  # noqa: PLC0415
+
+    blocks: list[dict[str, Any]] = []
+    for path in sorted(pathlib.Path(folder).glob("*")) if pathlib.Path(folder).is_dir() else ():
+        rule = next((r for prefix, *r in _LOG_BLOCKS
+                     if path.name.startswith(prefix) and (prefix != "wish-" or ".log" in path.name)), None)
+        if rule is None or not path.is_file():
+            continue
+        start, stop = rule
+        inside = False
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if start.match(line):
+                inside = True
+                blocks.append({"file": path.name, "lines": [line]})
+            elif stop.match(line):
+                inside = False
+            elif inside:
+                blocks[-1]["lines"].append(line)
+    for block in blocks:
+        while len(block["lines"]) > 1 and not block["lines"][-1].strip():
+            block["lines"].pop()
+        block["exception"] = winwish._log_exception(block["lines"])  # noqa: SLF001
+        if len(block["lines"]) > winwish.LOG_BLOCK_LINES:
+            block["lines"] = block["lines"][:1] + block["lines"][1 - winwish.LOG_BLOCK_LINES:]
+    return blocks
 
 
 def guest_gaps(game: Any, route: Any) -> list[str]:
@@ -150,8 +191,11 @@ def stage_search_area(manifest_path: pathlib.Path, out: pathlib.Path) -> pathlib
     return written
 
 
-def _export_guards(args: argparse.Namespace, route: Any) -> tuple[Any, dict[str, Any]]:
-    """The measured guards exported into the run folder, renamed into place only once complete."""
+def _export_guards(args: argparse.Namespace, route: Any,
+                   states: set[str] | None = None) -> tuple[Any, dict[str, Any]]:
+    """The measured guards exported into the run folder, renamed into place only once complete.
+
+    `states` are the screens the leg needs a guard for; the mapping route's own when None."""
     final = pathlib.Path(args.out) / "guards-export"
     if final.exists():
         raise AcceptanceStop(f"guard export directory already exists: {final}")
@@ -169,7 +213,7 @@ def _export_guards(args: argparse.Namespace, route: Any) -> tuple[Any, dict[str,
         if rc:
             raise AcceptanceStop(f"guard export failed with exit {rc}")
         guards = screens.PixelGuards(made / "guards.json")
-        missing = base._states(route, actions=False) - guards.rules.keys()
+        missing = (base._states(route, actions=False) if states is None else states) - guards.rules.keys()
         if missing:
             raise AcceptanceStop("route has no measured guards for " + ", ".join(sorted(missing)))
         made.rename(final)
@@ -190,8 +234,11 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     if getattr(args, "discover", None):
         raise AcceptanceStop("discovery modes are not run on FS-UAE")
     leg = getattr(args, "leg", "mapping")
-    if leg != "mapping":
+    if leg not in ("mapping", "persist"):
         raise AcceptanceStop(f"--leg {leg} is not run on FS-UAE")
+    if getattr(args, "quickfight_control", False):
+        raise AcceptanceStop("--quickfight-control is not run on FS-UAE")
+    base.check_leg_flags(args)
     if args.deadline > base.MAX_SECONDS or args.deadline <= base.CLEANUP_SECONDS:
         raise AcceptanceStop(f"--deadline must be above {base.CLEANUP_SECONDS} "
                              f"and at most {base.MAX_SECONDS}")
@@ -216,8 +263,10 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
         route = route_for(args.title, manifest, **legs)
     except RouteError as exc:
         raise AcceptanceStop(str(exc)) from exc
-    base._phase_map(route)
+    if leg == "mapping":
+        base._phase_map(route)
     check_holds(route)
+    checked = base.leg_preflight(args, route, manifest)
     gaps = guest_gaps(game, route)
     if gaps:
         raise AcceptanceStop("; ".join(gaps))
@@ -247,7 +296,7 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
         rom = pathlib.Path((kickstart or fsuaesession._kickstart)())
     except RouteError as exc:
         raise AcceptanceStop(str(exc)) from exc
-    guards, guard_info = export(args, route)
+    guards, guard_info = export(args, route, *(() if checked["states"] is None else (checked["states"],)))
     info = {"emulator": "fsuae", "driver": driver(),
             "fs_uae": {"path": str(emulator), "sha256": digest(emulator)},
             "kickstart": {"path": str(rom), "sha256": digest(rom)},
@@ -255,6 +304,9 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
             "provenance": dict(route.provenance),
             "media": {key: {"source": str(item.path), "source_sha256": item.sha256}
                       for key, item in media.items()}}
+    if checked["persist"]:
+        info["leg"] = "persist"
+        info["persist"] = checked["persist"]
     return route, guards, info
 
 
@@ -476,6 +528,26 @@ def helper_machine(port: int) -> tuple[Any, Any, Any]:
     return gdb, target, layout
 
 
+def install_wish_hooks() -> tuple[Any, ...]:
+    """Install Wish's exception hooks in this process and return what they replaced.
+
+    Without them an exception in a Qt slot aborts the process; with them it is written to
+    Wish's log, which `wish_log_blocks` reads."""
+    from wish import debuglog  # noqa: PLC0415
+
+    saved = (sys.excepthook, sys.unraisablehook, debuglog._previous_hook)  # noqa: SLF001
+    debuglog._previous_hook = None  # noqa: SLF001
+    debuglog.install_excepthook()
+    return saved
+
+
+def restore_wish_hooks(saved: tuple[Any, ...]) -> None:
+    """Put back what `install_wish_hooks` replaced."""
+    from wish import debuglog  # noqa: PLC0415
+
+    sys.excepthook, sys.unraisablehook, debuglog._previous_hook = saved  # noqa: SLF001
+
+
 @contextlib.contextmanager
 def _reads_through(connect: Any):
     """`amigatarget.connect_pipe` answered by `connect` for the inherited readers, which import it at call time."""
@@ -510,6 +582,7 @@ class FsuaeController(base.Controller):
         self.saved_env: dict[str, str | None] | None = None
         self.saved_port: Any = None
         self.poll_log: PollLog | None = None
+        self.saved_hooks: tuple[Any, ...] | None = None
         super().__init__(args, guest=None, lane=game, game=game,
                          guards=_NotingGuards(guards, game.note_recognised)
                          if callable(getattr(game, "note_recognised", None)) else guards,
@@ -614,12 +687,44 @@ class FsuaeController(base.Controller):
             sidecar["error"] = f"{type(exc).__name__}: {exc}"
         pathlib.Path(str(path) + ".json").write_text(json.dumps(sidecar, indent=1, default=str) + "\n")
 
+    def _controls_listing(self) -> list[str]:
+        from tools.gui import windowbuttons  # noqa: PLC0415
+
+        return windowbuttons.listing(self.wish.window.map)
+
+    def _click(self, label: str | None = None, automation_id: str | None = None) -> Any:
+        """Press a button by its label or its id, answering Yes to its question; a greyed one raises ControlGreyed.
+
+        A choice dialog is cancelled, as `windowbuttons.click` does with no spell."""
+        from tools.gui import windowbuttons  # noqa: PLC0415
+
+        window = self.wish.window.map
+        if automation_id is not None:
+            name = automation_id.rsplit(".", 1)[-1]
+        else:
+            names = [r["name"] for r in windowbuttons.rows(window)
+                     if r["text"].replace("&", "") == label]
+            if len(names) != 1:
+                raise AcceptanceStop(f"{label}: {len(names)} buttons carry that label")
+            name = names[0]
+        reply = windowbuttons.click(window, name, answer="yes")
+        if reply["error"] == "button is disabled":
+            raise base.ControlGreyed(name, reply["error"])
+        if reply["error"]:
+            raise AcceptanceStop(f"{name}: {reply['error']}")
+        return reply
+
+    def _wish_log_blocks(self) -> list[dict[str, Any]]:
+        from wish import debuglog  # noqa: PLC0415
+
+        return wish_log_blocks(debuglog.log_dir())
+
     def _wish_pair(self, name: str, lap: Any) -> tuple[pathlib.Path, pathlib.Path]:
         wish_path = self.out / f"wish-{name}.png"
         self._wish_shot(wish_path, name)
         lap("wish_shot")
         controls_path = self.out / f"controls-{name}.txt"
-        controls_path.write_text("\n".join(control_lines(self.wish.buttons())) + "\n")
+        controls_path.write_text("\n".join(self._controls_listing()) + "\n")
         lap("controls")
         return wish_path, controls_path
 
@@ -841,11 +946,16 @@ class FsuaeController(base.Controller):
         settings.game_folders = {**(settings.game_folders or {}),
                                  self.route.game_key: str(self._disk_folder().resolve())}
         settings.diagnostics = True
+        settings.clear_quickfight = bool(getattr(self.args, "watch", False))
         settings.save()
+        self.saved_hooks = install_wish_hooks()
 
     def _leave_environment(self) -> None:
         from automap import amiga  # noqa: PLC0415
 
+        if self.saved_hooks is not None:
+            restore_wish_hooks(self.saved_hooks)
+            self.saved_hooks = None
         if self.saved_env is None:
             return
         for name, value in self.saved_env.items():
@@ -915,8 +1025,8 @@ class FsuaeController(base.Controller):
                 try:
                     copied = self.out / f"working-{medium.key}.adf"
                     self.game.get(self.remotes[medium.key], copied, timeout=60)
-                    self.info["media"][medium.key]["working_sha256"] = digest(copied)
-                    self.info["media"][medium.key]["working_copy"] = str(copied)
+                    self.info["media"][medium.key]["guest_working_sha256"] = digest(copied)
+                    self.info["media"][medium.key]["guest_working_copy"] = str(copied)
                 except Exception as exc:  # noqa: BLE001
                     failures.append(f"working medium {medium.key}: {exc}")
             if self.saved_env is not None:
@@ -983,36 +1093,40 @@ class FsuaeController(base.Controller):
 
     def run_title(self) -> dict[str, Any]:
         with fsuaegdb.interruptible(lambda **payload: _log_note(self.log, "interrupt", payload)):
-            try:
-                self._up()
-                title = self._await_title()
-                self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
-                base._phase_map(self.route)
-                for phase in self.route.phases:
-                    if phase.name == "reopen_step":
-                        self._close_wish()
-                    self.run_phase(phase)
-                    label = "reopen" if phase.name == "reopen_step" else phase.name
-                    if label in self.summary["mapping"]:
-                        self.summary["mapping"][label] = row("awaiting image review")
-                    if phase.name == "load":
-                        if getattr(self.args, "idle", None) is not None:
-                            self._idle_leg()
-                            break
-                        self.flag_controls()
-                else:
-                    self._finish_route()
-            except BaseException as exc:
-                self.summary["failure"] = f"{type(exc).__name__}: {exc}"
-                self.log("failure", error=self.summary["failure"])
-                incomplete = next((name for name, result in self.summary["mapping"].items()
-                                   if result["status"] == "unproven"), None)
-                if incomplete:
-                    self.summary["mapping"][incomplete]["reason"] = self.summary["failure"]
-            finally:
-                self._cleanup()
-                (self.out / "summary.json").write_text(
-                    json.dumps(self.summary, indent=2, default=str) + "\n")
+            with _reads_through(self._connect):
+                return self.run_persist() if self.leg == "persist" else self._run_mapping()
+
+    def _run_mapping(self) -> dict[str, Any]:
+        try:
+            self._up()
+            title = self._await_title()
+            self.summary["mapping"]["title"] = row("awaiting image review", evidence=[title])
+            base._phase_map(self.route)
+            for phase in self.route.phases:
+                if phase.name == "reopen_step":
+                    self._close_wish()
+                self.run_phase(phase)
+                label = "reopen" if phase.name == "reopen_step" else phase.name
+                if label in self.summary["mapping"]:
+                    self.summary["mapping"][label] = row("awaiting image review")
+                if phase.name == "load":
+                    if getattr(self.args, "idle", None) is not None:
+                        self._idle_leg()
+                        break
+                    self.flag_controls()
+            else:
+                self._finish_route()
+        except BaseException as exc:
+            self.summary["failure"] = f"{type(exc).__name__}: {exc}"
+            self.log("failure", error=self.summary["failure"])
+            incomplete = next((name for name, result in self.summary["mapping"].items()
+                               if result["status"] == "unproven"), None)
+            if incomplete:
+                self.summary["mapping"][incomplete]["reason"] = self.summary["failure"]
+        finally:
+            self._cleanup()
+            (self.out / "summary.json").write_text(
+                json.dumps(self.summary, indent=2, default=str) + "\n")
         return self.summary
 
 
@@ -1026,8 +1140,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--discover", choices=(*base.LEAVE_MODES, *base.OPENING_MODES),
                         help="not run on FS-UAE; the run stops before a slot is claimed")
     parser.add_argument("--leg", choices=base.LEGS, default="mapping",
-                        help="only mapping runs on FS-UAE; persist and reconnect stop "
+                        help="mapping and persist run on FS-UAE; reconnect and fight stop "
                              "before a slot is claimed")
+    parser.add_argument("--action", action="append", choices=base.ACTION_KINDS,
+                        help="run only this enabled action; repeat for several (--leg persist only)")
     parser.add_argument("--arrival-hold", type=float, metavar="SECONDS",
                         help="Curse Yulash: hold the arrival question this long before SNEAK IN; "
                              "implies --poll-log")

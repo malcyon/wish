@@ -78,6 +78,21 @@ def test_rows_lists_every_kind_of_button(window):
     assert named(rows, "card_0_level_up")["visible"] is False
 
 
+def test_listing_gives_buttons_card_names_quickfight_rows_and_messages(window):
+    window.messages.say("Plain done.")
+    card = window.roster.cards[0]
+    card.name.setText("MAGNUS")
+    card.quickfight.set_icons(("sparkling-sabre",))
+    card.quickfight.setToolTip("Quickfight")
+    lines = windowbuttons.listing(window)
+    assert "Button|Plain|action_heal|enabled=True|visible=True" in lines
+    assert "Text|MAGNUS|card_0_name|enabled=True|visible=False" in lines
+    assert "IconRow|Quickfight|card_0_quickfight|icons=1" in lines
+    assert "IconRow||card_1_quickfight|icons=0" in lines
+    assert [line for line in lines if line.startswith("ListItem")][0].endswith("  Plain done.|messages")
+    assert all(len(line.split("|")) >= 4 for line in lines if not line.startswith("ListItem"))
+
+
 def test_a_disabled_button_is_not_clicked(window):
     out = windowbuttons.click(window, "action_restore")
     assert out["error"] == "button is disabled"
