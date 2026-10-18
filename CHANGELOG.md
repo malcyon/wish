@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-18
+
 ### Added
 
 - When connected to WinUAE, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness, drawing each square as the party walks.
@@ -288,7 +290,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/malcyon/wish/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/malcyon/wish/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/malcyon/wish/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/malcyon/wish/compare/v0.1.3...v0.1.4
