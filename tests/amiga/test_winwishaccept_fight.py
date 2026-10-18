@@ -1197,3 +1197,40 @@ def test_the_walk_without_control_branches_takes_no_snapshot_and_stops_on_a_scre
         controller._walk_to_fight(winwishaccept.fight_plan("darkness"), screens, memory)
     assert game.snapshots == [] and game.restores == []
     assert [key for _on, key in screens.keys] == ["NP8"]
+
+
+Z_BAR = {"owner": "Z", "address": 0xC0, "control": 0, "quickfight": 1, "hit_points": 9,
+         "shot": "z1.png", "number": 3}
+
+
+def _bar_keys(screens, controller, bars):
+    """The key the game receives for each bar, as the fight loop would put it on screen."""
+    sent = []
+    for bar in bars:
+        screens.events.append({"bar": bar})
+        before = len(controller.game.keys)
+        screens.press("Q", "combat_bar")
+        sent.append(controller.game.keys[before])
+    return sent
+
+
+def test_after_the_press_every_bar_ends_its_turn_until_the_pressed_member_returns(
+        tmp_path, monkeypatch, fight_row):
+    controller, _order, _row = _pod(tmp_path, monkeypatch, fight_row, [X_BAR, Y_BAR])
+    memory = SimpleNamespace(holder="h", _target=None)
+    screens = winwishaccept._fight_screens(controller, winwishaccept.fight_plan("darkness"), memory)
+    # Y's own bar is the pressed turn and keeps its normal key; Z then waits; X's next bar is
+    # answered normally, and so is everything after it.
+    sent = _bar_keys(screens, controller, [Y_BAR, Z_BAR, dict(X_BAR), Z_BAR])
+    assert sent == ["Q", "E", "Q", "Q"]
+
+
+def test_branch_b_waits_until_a_member_repeats_and_never_sees_the_pressed_member(
+        tmp_path, monkeypatch, fight_row):
+    controller, _order, _row = _pod(tmp_path, monkeypatch, fight_row, [X_BAR, Y_BAR])
+    memory = SimpleNamespace(holder="h", _target=None)
+    screens = winwishaccept._fight_screens(controller, winwishaccept.fight_plan("darkness"), memory)
+    _bar_keys(screens, controller, [Y_BAR])
+    controller.pod["waiting"] = {"seen": set(), "done": False, "skip": 1}
+    # The replayed Y is answered as before; Z waits; Y repeating is the next round.
+    assert _bar_keys(screens, controller, [Y_BAR, Z_BAR, Y_BAR, Z_BAR]) == ["Q", "E", "Q", "Q"]

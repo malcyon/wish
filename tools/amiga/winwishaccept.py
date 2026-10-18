@@ -58,6 +58,8 @@ FIGHT_WALK_SNAPSHOT = "fight_walk"
 #: command bar where Quickfight off is pressed.
 FIGHT_EDGE_SNAPSHOT = "fight_edge"
 POD_QF_SNAPSHOT = "pod_qf"
+#: END on the Pools of Darkness command bar: the member's turn ends with no action.
+POD_WAIT_KEY = "E"
 #: The reason a control row gives when the leg runs without machine-state restores.
 CONTROL_NOT_RUN = ("not run on FS-UAE; the game fact is that the game does not clear QUICK by "
                    "itself, shown by the WinUAE control run")
@@ -707,6 +709,8 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                 bars = controller.summary["fight"]["found"].get("bars") or []
                 if controller.press_off and not controller.pod and bars:
                     self._timed(controller._press_quickfight_off, bars)
+                else:
+                    key = controller._pod_wait_key(key, self.events)
                 if (controller.watch_map and not controller.map_hold_done
                         and controller._last_quick(bars)):
                     # The last Q is queued with the Automapper showing, and stays showing.
@@ -3625,7 +3629,8 @@ class Controller:
             for result in rows:
                 result["reason"] = f"{x['owner']} was not on QUICK at {y['owner']}'s bar"
             return
-        self.pod.update(snapshot=POD_QF_SNAPSHOT if self.control_branches else None, before=before)
+        self.pod.update(snapshot=POD_QF_SNAPSHOT if self.control_branches else None, before=before,
+                        waiting={"seen": set(), "done": False, "skip": 0})
         self._map_section()
         mark = self._wish_log_mark("Quickfight off")
         try:
@@ -3648,6 +3653,27 @@ class Controller:
         if problems:
             rows[0].update(status="failed", reason="; ".join(problems))
             raise AcceptanceStop("Quickfight off: " + rows[0]["reason"])
+
+    def _pod_wait_key(self, key: str, events: list[dict[str, Any]]) -> str:
+        """END for a command bar after the Quickfight off press, until the pressed member's own
+        bar appears or a member's bar repeats, which is the next round.
+
+        END ends the member's turn without an action, so the monsters survive into round 2 and
+        the pressed member either gets a bar there or is played by the game."""
+        wait = self.pod.get("waiting") if self.pod else None
+        bar = next((e["bar"] for e in reversed(events) if "bar" in e), None)
+        if wait is None or wait["done"] or bar is None:
+            return key
+        address = bar["address"]
+        if wait["skip"]:
+            wait["skip"] -= 1
+            wait["seen"].add(address)
+            return key
+        if address == self.pod["x"]["address"] or address in wait["seen"]:
+            wait["done"] = True
+            return key
+        wait["seen"].add(address)
+        return POD_WAIT_KEY
 
     def _pod_replay(self, plan: FightPlan, screens: Any, memory: Any) -> None:
         """Judge the click's run, then play the same turn again from the snapshot without it."""
@@ -3689,6 +3715,8 @@ class Controller:
             raise AcceptanceStop(f"pod_qf restore: {why}")
         found_b: dict[str, Any] = {}
         result["found_b"] = found_b
+        # The restored bar is the pressed turn's own, which branch A answered with its normal key.
+        pod["waiting"] = {"seen": set(), "done": False, "skip": 1}
         outcome = cursefight.fight(screens, memory, [], plan.rules, found=found_b)
         result["outcome_b"] = outcome["outcome"]
         bad = [bar for bar in found_b.get("bars", []) if bar["address"] == x["address"]]
