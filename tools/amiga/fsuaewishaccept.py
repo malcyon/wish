@@ -314,7 +314,8 @@ def preflight(args: argparse.Namespace, *, game: Any, route_for: Any,
     plan = checked["plan"]
     guards, guard_info = export(args, route, *(() if checked["states"] is None else (checked["states"],)),
                                 **({} if plan is None else {"extra": plan.extra_guards}))
-    info = {"emulator": "fsuae", "driver": driver(),
+    state = driver()
+    info = {"emulator": "fsuae", "driver": state, "driver_sha": state["sha"],
             "fs_uae": {"path": str(emulator), "sha256": digest(emulator)},
             "kickstart": {"path": str(rom), "sha256": digest(rom)},
             "guards": guard_info, "loaded_slot": route.loaded_slot,
@@ -908,7 +909,8 @@ class FsuaeController(base.Controller):
             name = names[0]
         reply = windowbuttons.click(window, name, answer="yes")
         if reply["error"] == "button is disabled":
-            raise base.ControlGreyed(name, reply["error"])
+            # The greyed-control check compares this with the label it clicked, as on WinUAE.
+            raise base.ControlGreyed(label or name, reply["error"])
         if reply["error"]:
             raise AcceptanceStop(f"{name}: {reply['error']}")
         self.log("click_dialogs", control=name, dialogs=reply["dialogs"])

@@ -1039,6 +1039,7 @@ def test_the_mapping_leg_exports_its_guards_with_no_state_set(tmp_path, monkeypa
         export=lambda *a: (seen.append(a), ("g", {}))[1],
         journal_check=lambda executable: None)
     assert len(seen[0]) == 2 and "persist" not in info
+    assert info["driver_sha"] == "x" and info["driver"] == {"sha": "x", "dirty": False}
 
 
 def test_the_cleanup_records_the_working_disks_under_the_names_the_readers_use(tmp_path, monkeypatch):
@@ -1065,7 +1066,7 @@ def test_the_persist_leg_runs_inside_the_helper_reads(tmp_path, monkeypatch):
     assert seen[0] == controller._connect
 
 
-def test_a_greyed_click_raises_control_greyed_naming_the_button(tmp_path, monkeypatch):
+def test_a_greyed_click_raises_control_greyed_naming_the_label_clicked(tmp_path, monkeypatch):
     from tools.gui import windowbuttons
 
     controller, _game, wish, _ = _controller(tmp_path, monkeypatch)
@@ -1081,7 +1082,10 @@ def test_a_greyed_click_raises_control_greyed_naming_the_button(tmp_path, monkey
     monkeypatch.setattr(windowbuttons, "click", click)
     with pytest.raises(winwishaccept.ControlGreyed) as raised:
         controller._click("Heal party")
-    assert raised.value.control == "action_heal" and calls == [("action_heal", "yes")]
+    assert raised.value.control == "Heal party" and calls == [("action_heal", "yes")]
+    with pytest.raises(winwishaccept.ControlGreyed) as by_id:
+        controller._click(automation_id="x.action_heal")
+    assert by_id.value.control == "action_heal"
     assert controller._click(automation_id="x.ft") == {"error": None, "dialogs": []}
     assert calls[-1] == ("ft", "yes")
     monkeypatch.setattr(windowbuttons, "click", lambda *a, **k: {"error": "button is hidden"})
