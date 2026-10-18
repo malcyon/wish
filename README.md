@@ -131,8 +131,6 @@ package/bin/fs-uae/fs-uae-linux_x64 --remote_debugger=60 --remote_debugger_port=
   --floppy_drive_0=/path/to/game-disk.adf
 ```
 
-   Use FS-UAE's default A500 machine, with no fast RAM.
-
 - In Wish, open Preferences, choose FS-UAE (Amiga) under Live backend, and connect.
 
 
