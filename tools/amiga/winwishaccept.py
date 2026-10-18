@@ -618,6 +618,16 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                              sleep=controller.sleep)
             self.last_state: object = object()
             self.memory = memory
+            #: Seconds the driver's own checks have used inside the fight loop; the fight limit
+            #: does not count them, because the game waits on its bar while they run.
+            self.spent = 0.0
+
+        def _timed(self, step: Any, *args: Any) -> Any:
+            began = controller.clock()
+            try:
+                return step(*args)
+            finally:
+                self.spent += controller.clock() - began
 
         def _matches(self, state: str, crop: pathlib.Path) -> bool:
             name = plan.map_state if state == "world" else state
@@ -666,10 +676,10 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                              f"{key} is not a key this driver sends on {on}")
             if on == "combat_bar":
                 if not controller.greyed_done:
-                    controller._fight_bar(memory)
+                    self._timed(controller._fight_bar, memory)
                 bars = controller.summary["fight"]["found"].get("bars") or []
                 if controller.press_off and not controller.pod and bars:
-                    controller._press_quickfight_off(bars)
+                    self._timed(controller._press_quickfight_off, bars)
                 if (controller.watch_map and not controller.map_hold_done
                         and controller._last_quick(bars)):
                     # The last Q is queued with the Automapper showing, and stays showing.
@@ -678,7 +688,7 @@ def _fight_screens(controller: Any, plan: FightPlan, memory: Any) -> Any:
                     return
             controller._count(action=True)
             if (on == "continue_battle" and controller.watch and not controller.edge_done
-                    and controller._watch_edge(key)):
+                    and self._timed(controller._watch_edge, key)):
                 # The edge queued the key itself, once on each branch.
                 self.note(key, on)
                 return

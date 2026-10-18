@@ -1337,9 +1337,15 @@ def fight(screens: Screens, memory: Memory, members: list[str],
         found.update(bars=bars, answered=answered)
     started = still_since = guided = screens.clock()
     settle_from = None
+    # A caller's own checks inside the loop, summed on `screens.spent`, are no fight time either.
+    hooks = getattr(screens, "spent", 0.0)
     lost = won = captured = False
     last: object = object()
     while True:
+        now = getattr(screens, "spent", 0.0)
+        away, hooks = now - hooks, now
+        started, still_since, guided = started + away, still_since + away, guided + away
+        settle_from = None if settle_from is None else settle_from + away
         require(screens.clock() - started < FIGHT_LIMIT,
                 f"the fight was still going after {FIGHT_LIMIT:.0f}s")
         seen, shot = screens.look("fight")

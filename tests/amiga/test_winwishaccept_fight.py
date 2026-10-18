@@ -1001,6 +1001,22 @@ def test_watch_map_limit_counts_the_time_the_glances_take(tmp_path, monkeypatch,
     assert len(glances) == 3
 
 
+def test_fight_screens_total_the_driver_checks_but_not_the_map_hold(
+        tmp_path, monkeypatch, fight_row):
+    controller, world, screens, _tabs, bars = _map_fight(tmp_path, monkeypatch, fight_row)
+    controller.greyed_done = False
+    monkeypatch.setattr(controller, "_fight_bar", lambda memory: controller.clock.sleep(100))
+    controller.summary["fight"]["found"]["bars"] = bars
+    world.owner = 1
+    screens.press("Q", "combat_bar")
+    assert screens.spent == pytest.approx(100, abs=1)
+    before = screens.spent
+    monkeypatch.setattr(controller, "_map_hold", lambda plan, scr: controller.clock.sleep(300))
+    controller.map_hold_done, controller.greyed_done = False, True
+    screens.press("Q", "combat_bar")
+    assert controller.clock() > 400 and screens.spent == before
+
+
 def test_watch_map_leaves_the_row_unproven_with_a_reason_on_a_defeat_screen(
         tmp_path, monkeypatch, fight_row):
     plan = winwishaccept.fight_plan("darkness")

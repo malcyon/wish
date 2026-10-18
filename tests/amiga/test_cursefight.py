@@ -236,6 +236,52 @@ def test_fight_answers_every_screen_and_logs_each_bar_owner(tmp_path):
     _keys_allowed(screens, game)
 
 
+def _animated(monkeypatch):
+    frames = iter(range(100_000))
+    monkeypatch.setattr(cursefight, "_digest", lambda shot: str(next(frames)))
+
+
+class _HookedScreens(cursefight.Screens):
+    """Screens whose caller's own checks take `hook` seconds on each key, summed on `spent`."""
+
+    hook = 0.0
+    spent = 0.0
+
+    def press(self, key, on):
+        self.clock.now += self.hook
+        self.spent += self.hook
+        super().press(key, on)
+
+
+def _hooked(tmp_path, game, clock, hook):
+    screens = _HookedScreens(game, "holder", tmp_path / "shots", game, 100_000,
+                             clock=clock, sleep=clock.sleep)
+    screens.hook = hook
+    return screens
+
+
+def test_fight_limit_does_not_count_the_callers_own_checks(tmp_path):
+    clock = Clock()
+    game = Game(clock, FIGHT, owners=[_owner("SUNDRA"), _owner("EVOKER")])
+    game.walking = False
+    screens = _hooked(tmp_path, game, clock, cursefight.FIGHT_LIMIT)
+    found = cursefight.fight(screens, game, ["EVOKER"])
+    assert len(found["bars"]) == 2
+    assert clock.now > cursefight.FIGHT_LIMIT
+
+
+def test_fight_limit_still_counts_the_games_own_time(tmp_path, monkeypatch):
+    clock = Clock()
+    game = Game(clock, [None])
+    game.walking = False
+    _animated(monkeypatch)
+    screens = _hooked(tmp_path, game, clock, 0.0)
+    screens.spent = 5.0
+    with pytest.raises(RouteError, match="the fight was still going"):
+        cursefight.fight(screens, game, ["EVOKER"])
+    assert cursefight.FIGHT_LIMIT <= clock.now < cursefight.FIGHT_LIMIT + 10
+
+
 def test_fight_stops_when_a_named_member_had_no_bar(tmp_path):
     clock = Clock()
     game = Game(clock, FIGHT, owners=[_owner("SUNDRA"), _owner("GALAIN")])
@@ -283,11 +329,6 @@ def test_fight_waits_through_unknown_screens_that_keep_changing(tmp_path, monkey
     found = cursefight.fight(_screens(tmp_path, game, clock), game, ["EVOKER"])
     assert clock.now > cursefight.FIGHT_STALL and game.keys == ["Q", "N", "RET"]
     assert found["bars"][0]["owner"] == "EVOKER"
-
-
-def _animated(monkeypatch):
-    frames = iter(range(100_000))
-    monkeypatch.setattr(cursefight, "_digest", lambda shot: str(next(frames)))
 
 
 def test_fight_stops_on_an_animated_unknown_screen_outside_a_fight(tmp_path, monkeypatch):
