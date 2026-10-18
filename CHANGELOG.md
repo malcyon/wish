@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- On Windows, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in WinUAE, drawing each square as the party walks.
-- On Linux, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness while you play them in the patched FS-UAE.
-- On Windows, Fast Travel and Return now work in the Amiga games for trips that have been confirmed.
-- On Windows, Wish names Pools of Darkness from its Amiga disks and offers its game folder in Preferences.
-- On Linux, Wish reads Pools of Darkness data from its Amiga disks and offers its game folder in Preferences.
+- When connected to WinUAE, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness, drawing each square as the party walks.
+- When connected to the patched FS-UAE, the Automapper now maps the Amiga versions of Pool of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and Pools of Darkness.
+- On Linux, Preferences lists FS-UAE (Amiga) under Live backend.
+- When connected to WinUAE, Fast Travel and Return now work in the Amiga games for trips that have been confirmed.
+- On Windows and Linux, Wish reads Pools of Darkness from its Amiga disks and offers its game folder in Preferences.
 - The Automapper shows the Amiga Pool of Radiance quest log from the running game.
 - The Automapper shows the Amiga Pool of Radiance travel grid position the way the game prints it.
 
@@ -22,10 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Curse of the Azure Bonds character converted to the C64 gets the THAC0 and missile bonus his readied weapon gives, as Pool of Radiance already did, with dexterity up to 25.
 - A Curse of the Azure Bonds character converted to the C64 gets his movement as the game rebuilds it, so a converted zombie's sheet shows his living movement before his first fight.
 - A Curse of the Azure Bonds or Secret of the Silver Blades companion who joined on the C64 keeps his portrait, former class and combat figure when converted to DOS or the Amiga, and one converted into the C64 gets what the C64 game gives that companion on joining.
-
-### Removed
-
-- Removed the WISH_EXPERIMENTAL_AMIGA_FSUAE feature flag. The patched FS-UAE emulator option is now available in Preferences.
 
 ### Fixed
 
