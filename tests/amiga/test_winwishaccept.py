@@ -886,6 +886,34 @@ def test_final_reload_is_separate_and_compares_original_party_and_location(tmp_p
     assert controller.summary["original_slot_reload"]["status"] == "unproven"
 
 
+@pytest.mark.parametrize("view,stops", [
+    ({"outdoors": True}, False), ({"world_map": True}, False), ({}, True)])
+def test_final_reload_compares_the_map_hash_only_in_an_area_view(tmp_path, monkeypatch, view,
+                                                                  stops):
+    from automap import amigaparty
+
+    controller, game = _action_controller(tmp_path, monkeypatch)
+    controller.route.phases = tuple(
+        _phase("reload", "world", SimpleNamespace(**{**vars(_step("key", "world", "L")),
+                                                     "checkpoint": "returned", "expected": None}))
+        if phase.name == "reload" else phase for phase in controller.route.phases)
+    row = amigaparty.ROWS[controller.route.game_key]
+    record = {"slot": 0, "name": "A", "address": 100,
+              "raw": bytes(row.record_size).hex(), "items": []}
+    initial = {"fix": {"area": 3, "x": 4, "y": 5, **view}, "geo_sha256": "map",
+               "party": [record]}
+    controller.checkpoints["loaded"] = {"observed": initial}
+    monkeypatch.setattr(controller, "_checkpoint", lambda name, expected, frame:
+                        controller.checkpoints.update({name: {"observed": {
+                            **initial, "geo_sha256": "other"}}}))
+    if stops:
+        with pytest.raises(winwishaccept.AcceptanceStop, match="changed location or party"):
+            controller._final_reload()
+    else:
+        controller._final_reload()
+        assert controller.summary["original_slot_reload"]["status"] == "awaiting image review"
+
+
 def test_spells_save_clear_and_restore_compare_all_members(tmp_path):
     from automap import amigaparty
 
@@ -4573,6 +4601,37 @@ def test_the_pool_code_wheel_is_answered_before_the_title(tmp_path, monkeypatch)
     assert game.keys == ["RET"]
     assert result["interstitial_keys"] == 1
     assert result["mapping"]["title"]["status"] == "awaiting image review"
+
+
+def test_a_slow_intro_gets_one_escape_and_a_party_menu_counts_as_the_title_passed(tmp_path):
+    from tools.amiga import route_darkness
+
+    controller, game, screen = _screen_controller(
+        tmp_path, "darkness", route_darkness.DARKNESS.interstitials, "intro")
+    clock = controller.clock
+    game.press = lambda holder, key, timeout: game.keys.append(key)
+    plain_sleep = controller.sleep
+
+    def sleep(seconds):
+        plain_sleep(seconds)
+        if clock.now > 4:
+            screen["show"] = "party_menu"
+
+    controller.sleep = sleep
+    frame = controller._await_title()
+    assert game.keys == ["ESC"]
+    assert frame["passed"] == "party_menu"
+    assert controller._title_passed == "party_menu"
+
+
+def test_the_load_phase_skips_its_title_key_once_the_party_menu_is_showing(tmp_path, monkeypatch):
+    controller, game, screen = _screen_controller(tmp_path, "pool", (), "party_menu")
+    controller._title_passed = "party_menu"
+    controller._title_frame = {"crop": None}
+    monkeypatch.setattr(controller, "_game_section", lambda: None)
+    phase = _phase("load", "title", _step("key", "party_menu", "P"))
+    controller.run_phase(phase)
+    assert game.keys == []
 
 
 def test_a_second_wheel_frame_or_an_unknown_frame_gets_no_title_key(tmp_path):

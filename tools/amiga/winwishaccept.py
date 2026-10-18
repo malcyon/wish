@@ -178,6 +178,8 @@ HIRES_SCREENS = {"pool": frozenset({"cli"}), "curse": frozenset({"reboot"})}
 #: Seconds `amigacursewheel.answer` waits after each of its two keys, and a `type` step before
 #: it grabs the guard frame for the next key.
 WHEEL_SETTLE = 2.0
+# Seconds a page that was answered may keep showing before the same key is sent again.
+INTERSTITIAL_SETTLE = 6.0
 #: Seconds to recognize the screen again before each wheel key and each typed key.
 KEY_GUARD_WAIT = 30
 #: The most one checkpoint read fetches, as for `acceptance.py --read-at`.
@@ -1495,11 +1497,14 @@ class Controller:
         return evidence
 
     def _await(self, state: str, *, limit: float = 90,
-               interstitials: tuple = ()) -> dict[str, Any]:
+               interstitials: tuple = (), passed_by: tuple[str, ...] = ()) -> dict[str, Any]:
+        """Wait for `state`, answering `interstitials`. A frame matching a state in `passed_by`
+        ends the wait too, with its name under `passed`: the screen has moved on."""
         end = self.clock() + self.left(limit)
         last = None
         timed_out: ShotTimedOut | None = None
         counts = [0] * len(interstitials)
+        pressed_at: list[float | None] = [None] * len(interstitials)
         while self.clock() < end:
             try:
                 last = self._capture(state, check=False)
@@ -1517,11 +1522,22 @@ class Controller:
                 crop = pathlib.Path(last["crop"])
                 if self.guards(state, crop):
                     return last
+                for later in passed_by:
+                    if self.guards(later, crop):
+                        return {**last, "passed": later}
                 for at, (name, action, waiting_for, row_limit) in enumerate(interstitials):
+                    if pressed_at[at] is not None and not self.guards(name, crop):
+                        pressed_at[at] = None
                     if (action[0] in ("keys", "wheel") and counts[at] < row_limit
                             and (waiting_for is None or state in waiting_for)
                             and self.guards(name, crop)):
+                        # A game that is slow to react to a key still shows the page; a second
+                        # press would land on whatever comes next.
+                        if (pressed_at[at] is not None
+                                and self.clock() - pressed_at[at] < INTERSTITIAL_SETTLE):
+                            break
                         counts[at] += 1
+                        pressed_at[at] = self.clock()
                         if action[0] == "wheel":
                             self._answer_wheel(name)
                         else:
@@ -1631,8 +1647,13 @@ class Controller:
 
     def _await_title(self) -> dict[str, Any]:
         """The title screen, answering the title's own boot pages and code wheel on the way."""
-        return self._await("title", limit=self.route.amiga_title.title_limit,
-                           interstitials=_title_pages(self.route, self.guards))
+        frame = self._await("title", limit=self.route.amiga_title.title_limit,
+                            interstitials=_title_pages(self.route, self.guards),
+                            passed_by=("party_menu",))
+        # The load phase then starts after the key that leaves the title.
+        self._title_passed = frame.get("passed")
+        self._title_frame = frame
+        return frame
 
     def _phase_pages(self, phase: Any) -> tuple:
         names = set(getattr(phase, "pages", ()) or ())
@@ -2022,8 +2043,16 @@ class Controller:
         if not phase.ready:
             raise AcceptanceStop(f"{phase.name} is unready: {phase.reason}")
         self._game_section()
-        last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
-            phase.initial_state, self.route.amiga_title.title_limit))
+        passed = getattr(self, "_title_passed", None) if phase.initial_state == "title" else None
+        if phase.initial_state == "title":
+            self._title_passed = None
+        skipped = bool(passed and phase.steps and phase.steps[0].kind == "key"
+                       and phase.steps[0].state == passed)
+        if skipped:
+            last_frame = self._title_frame
+        else:
+            last_frame = self._await(phase.initial_state, limit=self.route.amiga_title.wait_limits.get(
+                phase.initial_state, self.route.amiga_title.title_limit))
         pages = self._phase_pages(phase)
         map_walk = getattr(self.args, "walk_tab", "editor") == "map" and phase.name == "walk"
         if map_walk:
@@ -2040,7 +2069,10 @@ class Controller:
             relaunch = getattr(step, "relaunch", False)
             if relaunch:
                 self._relaunch_ready(step)
-            if kind == "type":
+            if skipped and step is phase.steps[0]:
+                # The title is already gone: this step's key was pressed before the wait began.
+                pass
+            elif kind == "type":
                 self._type(step, action=self._counts_as_action(action_context, namespace))
             elif kind in ("key", "turn", "move"):
                 self._press(step.key, action=self._counts_as_action(action_context, namespace))
@@ -2722,8 +2754,12 @@ class Controller:
         result["observed"] = final
         result["evidence"] = last
         row_ = amigaparty.ROWS[self.route.game_key]
+        # Outdoors the resident map block is whatever the engine last left there, so only an
+        # area view has a map hash worth comparing.
+        in_area = not any(fix.get("outdoors") or fix.get("world_map")
+                          for fix in (initial["fix"], final["fix"] or {}))
         if (final["fix"] != initial["fix"] or
-                final["geo_sha256"] != initial["geo_sha256"] or
+                (in_area and final["geo_sha256"] != initial["geo_sha256"]) or
                 final["party"] is None or
                 self._without_addresses(final["party"], row_) !=
                 self._without_addresses(initial["party"], row_)):
