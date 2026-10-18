@@ -945,18 +945,47 @@ def test_action_check_ignores_a_pointer_difference_and_stops_on_a_stray_spell_by
     controller = winwishaccept.Controller(
         _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
         route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    controller.route.game_key = "pool-of-radiance"
     row = amigaparty.ROWS[controller.route.game_key]
 
     def member(*, pointer=b"\0\0\0\0", memorised=b"\x03\x04"):
         raw = bytearray(row.record_size)
         raw[row.memorised.offset:row.memorised.offset + len(memorised)] = memorised
-        raw[row.pointers[-1]:row.pointers[-1] + 4] = pointer
+        # 0xDE is a readied-item pointer in the middle of the list; the row must name it.
+        for at in (*row.pointers, 0xDE):
+            raw[at:at + 4] = pointer
         return {"slot": 0, "name": "A", "address": 100, "raw": raw.hex(), "items": []}
 
     context = {"slot": 0, "spell_index": 0, "baseline": [member()]}
+    # Every pointer longword differs at once, so a pointer missing from the row would stop the check.
     controller._verify_action("spells", context, [member(pointer=b"\x12\x34\x56\x78")])
     with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
         controller._verify_action("spells", context, [member(memorised=b"\x03\x05")])
+
+
+def test_staging_check_ignores_pointer_differences_in_every_member(tmp_path):
+    from automap import amigaparty
+
+    controller = winwishaccept.Controller(
+        _args(tmp_path), guest=object(), lane=object(), game=FakeGame(), guards=object(),
+        route=_route(), zipped=tmp_path / "build.zip", info={"media": {}}, clock=FakeClock())
+    controller.route.game_key = "pool-of-radiance"
+    row = amigaparty.ROWS[controller.route.game_key]
+
+    def record(pointer):
+        raw = bytearray(row.record_size)
+        # 0xDE is a readied-item pointer in the middle of the list; the row must name it.
+        for at in (*row.pointers, 0xDE):
+            raw[at:at + 4] = pointer
+        return {"slot": 0, "name": "A", "address": 100, "raw": raw.hex(), "items": []}
+
+    party = [amigaparty.AmigaMember(row, 0, 100, bytes(row.record_size))]
+    context = {"slot": 0, "before": [record(b"\0\0\0\0")],
+               "baseline": [record(b"\x12\x34\x56\x78")], "staged": {"hp": 0}}
+    controller._verify_staging("none", context, party)
+    context["baseline"][0]["raw"] = (bytes([1]) + bytes.fromhex(context["baseline"][0]["raw"])[1:]).hex()
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected byte"):
+        controller._verify_staging("none", context, party)
 
 
 def test_staging_preserves_every_other_member_and_item(tmp_path):

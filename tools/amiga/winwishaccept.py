@@ -26,6 +26,7 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+from automap.amigaparty import comparable  # noqa: E402
 from tools.amiga import guardmaps, noencounters, screens, winwish  # noqa: E402
 from tools.amiga.winuaesession import (  # noqa: E402
     KEY_HOLD_FRAMES,
@@ -2472,8 +2473,8 @@ class Controller:
             old, new = original[member.slot], staged[member.slot]
             raw = bytearray.fromhex(old["raw"])
             items = [[address, data] for address, data in old["items"]]
-            new = {**new, "raw": self._blank_pointers(new["raw"], member.row)}
-            raw = self._blank_pointers_in(raw, member.row)
+            new = {**new, "raw": comparable(bytes.fromhex(new["raw"]), member.row).hex()}
+            raw = bytearray(comparable(bytes(raw), member.row))
             if member.slot == slot:
                 if kind == "heal":
                     spot = member.row.hp
@@ -2491,16 +2492,6 @@ class Controller:
             if new["raw"] != raw.hex() or new["items"] != items or new["name"] != old["name"]:
                 raise AcceptanceStop(f"staging changed an unexpected byte for {member.name}")
 
-    @staticmethod
-    def _blank_pointers_in(raw: bytearray, row_: Any) -> bytearray:
-        """The record with its heap-address longwords zeroed, which a reload places again."""
-        for offset in row_.pointers:
-            raw[offset:offset + 4] = b"\x00" * 4
-        return raw
-
-    def _blank_pointers(self, raw_hex: str, row_: Any) -> str:
-        return self._blank_pointers_in(bytearray.fromhex(raw_hex), row_).hex()
-
     def _verify_action(self, kind: str, context: dict[str, Any], after: list[dict[str, Any]],
                        *, step: str = "action") -> None:
         from automap import amigalevelup, amigaparty  # noqa: PLC0415
@@ -2511,8 +2502,8 @@ class Controller:
             raise AcceptanceStop("action changed the party slots")
         row_ = amigaparty.ROWS[self.route.game_key]
         for slot, old in baseline.items():
-            new = {**actual[slot], "raw": self._blank_pointers(actual[slot]["raw"], row_)}
-            raw = self._blank_pointers_in(bytearray.fromhex(old["raw"]), row_)
+            new = {**actual[slot], "raw": comparable(bytes.fromhex(actual[slot]["raw"]), row_).hex()}
+            raw = bytearray(comparable(bytes.fromhex(old["raw"]), row_))
             items = [[address, data] for address, data in old["items"]]
             if kind == "heal":
                 hp, maximum = row_.hp.value(raw), row_.hp_max.value(raw)
@@ -2744,9 +2735,7 @@ class Controller:
     def _without_addresses(records: list[dict[str, Any]], row_: Any) -> list[dict[str, Any]]:
         normalized = []
         for record in records:
-            raw = bytearray.fromhex(record["raw"])
-            for offset in row_.pointers:
-                raw[offset:offset + 4] = b"\x00" * 4
+            raw = bytearray(comparable(bytes.fromhex(record["raw"]), row_))
             items = []
             for _, value in record["items"]:
                 node = bytearray.fromhex(value)
