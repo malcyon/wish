@@ -2513,7 +2513,7 @@ class Controller:
                         predicted[hp_current] = (0 if damage > predicted[hp_max]
                                                  else predicted[hp_max] - damage)
                     raw = predicted
-            text = RECOMPOSED_ITEM_TEXT.get(row_.title, 0)
+            text = RECOMPOSED_ITEM_TEXT.get(row_.title, 0) if kind == "identify" else 0
 
             def without_text(nodes):
                 return [[address, (bytes(min(text, len(data := bytes.fromhex(value)))) + data[text:]).hex()]

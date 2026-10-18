@@ -844,6 +844,11 @@ def test_identify_ignores_the_item_text_the_game_rewrites_but_not_other_bytes(tm
         bad[offset] ^= 0x01
         with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
             controller._verify_action("identify", {"baseline": before}, member(bad))
+    retexted = bytearray(node)
+    retexted[:7] = b"\x00Yes  \x00"
+    healed = member(retexted)
+    with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):
+        controller._verify_action("heal", {"baseline": before}, healed)
     wrong = bytearray(rewritten)
     wrong[row.hidden.offset] = 4
     with pytest.raises(winwishaccept.AcceptanceStop, match="unexpected bytes"):

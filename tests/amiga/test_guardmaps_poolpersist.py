@@ -17,6 +17,8 @@ def _frame(run, number):
 
 @pytest.fixture(scope='module')
 def guards(tmp_path_factory):
+    if not KEPT.is_dir():
+        pytest.skip('the kept frames of this run are not on this machine')
     out = tmp_path_factory.mktemp('pool-guards')
     assert guardmaps.main(['export', '--title', 'pool', '--out', str(out)]) == 0
     return screens.PixelGuards(out / 'guards.json')
