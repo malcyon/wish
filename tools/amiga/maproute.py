@@ -140,7 +140,8 @@ class SpellsParty:
     """A registered party whose Cast list shows Save and Restore spells clearing a spell.
 
     `route_for` gives it the load and the camp reload and no mapping phase, so only the
-    persist leg can run it. `specimen` names the registered folder without `WISH-SPEC-`.
+    persist leg can run it, unless the title is in `_SPELLS_ON_MAPPING_ROUTE`.
+    `specimen` names the registered folder without `WISH-SPEC-`.
     """
 
     specimen: str
@@ -152,8 +153,15 @@ class SpellsParty:
     member: str
 
 
-#: One spells party per title whose mapping party cannot show a cleared spell.
+#: One spells party per title whose mapping party cannot show a cleared spell, and Pool's
+#: mapping party, whose memorised bytes were read off its registered source.
 SPELLS_PARTIES = {
+    # Pool's mapping source, slot B, saved at 15,1 facing east. GOLDLEAF holds spell 21 at
+    # record +0x2B, the first memorised byte by party slot; LAURANN, CONLY and MELCAR also
+    # hold spells.
+    "pool": SpellsParty(
+        "por-amiga-outdoor", "por1-outdoor.adf", _POOL_OUTDOOR_SHA256, "B",
+        {"area": 26, "x": 15, "y": 1, "facing": 1}, "GOLDLEAF"),
     # The game's own save of slot C in Tilverton. SHARA holds Find Traps (22) twice at record
     # +0x70 and +0x71, so clearing the first leaves one in her Cast list; PHILIPPE holds
     # Magic Missile, Stinking Cloud and Fireball (15, 34, 47) at +0x6F to +0x71.
@@ -168,7 +176,9 @@ SPELLS_PARTIES = {
         "b6538d4e540baea597905f27a6713d263f4223e9fe26791fcb4d61ceaef1facd", "C",
         {"area": 16, "x": 3, "y": 3, "facing": 2}, "PAINE"),
 }
-_SPELLS_SLOT = {"curse": "B", "ssb": "D"}
+_SPELLS_SLOT = {"pool": "A", "curse": "B", "ssb": "D"}
+#: Titles whose spells party is the mapping party, so the route keeps every mapping phase.
+_SPELLS_ON_MAPPING_ROUTE = frozenset({"pool"})
 _PERSIST_ONLY = "The spells party is pinned for the persist leg, which walks no mapping phase."
 
 
@@ -991,7 +1001,8 @@ def route_for(title: str, manifest: Mapping[str, object], *,
     spells = _spells_party(title, manifest, source, slot)
     load = _load(title, slot, opening_scene, curse_yulash,
                  _square(spells) if spells is not None and title == "curse" else None)
-    phases = (_spells_phases(title, load, slot, spells) if spells is not None
+    persist_only = spells is not None and title not in _SPELLS_ON_MAPPING_ROUTE
+    phases = (_spells_phases(title, load, slot, spells) if persist_only
               else _phases(title, load, slot, curse_yulash, arrival_hold, search_area))
     specimen_gaps = _specimen_gaps(title, manifest, source, media, slot)
     provenance: dict[str, object] = {
@@ -1029,6 +1040,7 @@ def route_for(title: str, manifest: Mapping[str, object], *,
                                      "after_arrival_hold": AFTER_ARRIVAL_HOLD}
     if spells is not None:
         provenance["spells_party"] = f"WISH-SPEC-{spells.specimen}/{spells.file} slot {spells.letter}"
+    if persist_only:
         provenance["confidence"] = (
             "CONFIRMED: The party, slot and memorised bytes were read off the registered disk. "
             "SPECULATIVE: The load and camp reload are the mapping route's keys, not yet matched "

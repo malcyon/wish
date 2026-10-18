@@ -998,6 +998,98 @@ def test_the_pinned_spells_party_holds_a_ready_spell_for_the_selector_to_clear(
     assert len(ready) >= (2 if title == "curse" else 1)
 
 
+def test_the_pinned_pool_party_enables_spells_and_keeps_the_mapping_route(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from tools.amiga import winwishaccept
+
+    route = maproute.route_for("pool", _spells_manifest("pool", tmp_path))
+    unpinned = maproute.route_for("pool", _manifest("pool", tmp_path))
+    by_kind = {a.kind: a for a in route.actions if a.enabled}
+
+    assert set(by_kind) == {"heal", "identify", "spells"} | EXTRA_ENABLED["pool"]
+    assert [p.name for p in route.phases] == [p.name for p in unpinned.phases]
+    assert all(phase.ready for phase in route.phases)
+    assert route.unresolved == ()
+    winwishaccept._phase_map(route)
+    spells = winwishaccept._check_persist(SimpleNamespace(action=["spells"]), route)
+    assert [action.kind for action in spells] == ["spells"]
+    assert route.provenance["spells_party"] == (
+        "WISH-SPEC-por-amiga-outdoor/por1-outdoor.adf slot B")
+    assert route.provenance["confidence"] == unpinned.provenance["confidence"]
+    heal = by_kind["heal"]
+    for mine, theirs in ((by_kind["spells"].show, heal.show), (by_kind["spells"].back, heal.back)):
+        assert mine.initial_state == theirs.initial_state
+        assert [(s.kind, s.state, s.key) for s in mine.steps] == [
+            (s.kind, s.state, s.key) for s in theirs.steps]
+    assert by_kind["spells"].show.steps[-1].checkpoint == "spells_sheet"
+    guards = json.loads(route.guard_path.read_text())["guards"]
+    phases = [p for a in by_kind.values() for p in (a.show, a.back)]
+    assert ({p.initial_state for p in phases} | {s.state for p in phases for s in p.steps}
+            <= guards.keys())
+
+
+@pytest.mark.parametrize("change", [
+    {"state_a": None},
+    {"state_a": {"area": 26, "x": 15, "y": 2, "facing": 1}},
+    {"substitute": {"letter": "C"}},
+    {"substitute": {"sha256": "c" * 64}},
+    {"loaded_letter": "C"},
+])
+def test_pool_spells_stays_off_without_the_pin(change: dict, tmp_path: Path):
+    manifest = _spells_manifest("pool", tmp_path)
+    if "substitute" in change:
+        change = {"substitute": {**manifest["substitute"], **change["substitute"]}}
+    manifest = {**manifest, **change}
+    if manifest.get("state_a") is None:
+        del manifest["state_a"]
+    route = maproute.route_for("pool", manifest)
+
+    assert not {a.kind: a for a in route.actions}["spells"].enabled
+    assert "spells_party" not in route.provenance
+
+
+def test_pool_spells_stops_the_persist_leg_without_the_pin(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from tools.amiga import winwishaccept
+
+    route = maproute.route_for("pool", _manifest("pool", tmp_path))
+    with pytest.raises(winwishaccept.AcceptanceStop, match="is not enabled"):
+        winwishaccept._check_persist(SimpleNamespace(action=["spells"]), route)
+
+
+def test_the_pinned_pool_party_holds_a_ready_spell_for_the_selector_to_clear():
+    import hashlib
+
+    from gamedata import specimen
+
+    from automap import amigaparty
+    from goldbox import amiga_adf, amiga_savegame
+
+    party = maproute.SPELLS_PARTIES["pool"]
+    path = specimen(party.specimen, platform="amiga") / party.file
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == party.sha256
+    disk = amiga_adf.AmigaDisk.open(path)
+    save = disk.read_file(amiga_savegame.por_save_path(
+        amiga_savegame.por_savegame_filename(party.letter), amiga_savegame.por_save_drawer(disk)))
+    state = amiga_savegame.read_por_state(save)
+    assert {"area": state.area, "x": state.x, "y": state.y, "facing": state.facing} == party.place
+    row = amigaparty.ROWS["pool-of-radiance"]
+    spot = row.memorised
+
+    def memorised(member) -> bytes:
+        return member.raw[spot.offset:spot.offset + spot.length]
+
+    members = sorted(amiga_savegame.read_por_characters(disk, party.letter),
+                     key=lambda m: m.raw[row.slot])
+    # The selector takes the first member by party slot with any memorised byte.
+    chosen = next(member for member in members if any(memorised(member)))
+    assert chosen.raw[:15].split(b"\0")[0].decode("latin1") == party.member
+    # Bit 7 marks a spell still being memorised, which the game does not count as held.
+    assert not next(value for value in memorised(chosen) if value) & 0x80
+
+
 def _outdoor(route):
     phase = next(p for p in route.phases if p.name == "outdoor")
     return phase, [(s.kind, s.state, s.key, s.seconds, s.checkpoint) for s in phase.steps]
